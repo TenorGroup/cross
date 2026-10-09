@@ -16,7 +16,7 @@ start = source.index('static int cardStatRunWidth(')
 end = source.index('\nvoid HomeActivity::drawRecentCard()', start)
 methods = source[start:end]
 new = 'HomeStatsBounds* bounds' in methods
-placement = source[source.index('  const auto size = tenorchrome::kTouchShell ? cardCoverSize(shown)'):source.index('  heldCover =')] if new else 'auto frame = homeCardLayout(in);'
+placement = source[source.index('  const auto size = tenorchrome::kTouchShell ? cardCoverSize(shown)'):source.index('  heldCover =', source.index('  const auto size = tenorchrome::kTouchShell ? cardCoverSize(shown)'))] if new else 'auto frame = homeCardLayout(in);'
 fixture = Path(__file__).with_name('home_cover_alignment_fixture.cpp').read_text()
 fixture = fixture.replace('@@METHODS@@', methods)
 fixture = fixture.replace('@@PLACE@@', placement)

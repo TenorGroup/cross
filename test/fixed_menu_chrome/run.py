@@ -642,7 +642,8 @@ else:
                     declaration = function(read_source(f'src/activities/{directory}/{activity}.h'), 'int tabCount()')
                     fixture += '\n' + declaration.replace('int tabCount()', 'int EpubReaderMenuActivity::tabCount()').replace(' override', '')
         fixture += Path(__file__).with_name('Phase2ChromeTest.cpp').read_text()
-    fixture += Path(__file__).with_name('PathGeometryTest.h').read_text()
+    if not args.footer_spacing:
+        fixture += Path(__file__).with_name('PathGeometryTest.h').read_text()
     fixture += Path(__file__).with_name('FooterSpacingTest.cpp' if args.footer_spacing else 'X3ScreenLayoutTest.cpp').read_text()
 args.work.mkdir(parents=True, exist_ok=True)
 unit = args.work / 'layout.cpp'

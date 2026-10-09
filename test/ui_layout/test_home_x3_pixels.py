@@ -23,7 +23,7 @@ for phase in ('before','after'):
     source=read('src/activities/home/HomeActivity.cpp');(inc/'HomeExcerptStyle.h').write_text(read('src/components/HomeExcerptStyle.h'))
     methods=source[source.index('static int cardStatRunWidth('):source.index('\nvoid HomeActivity::drawRecentCard()')]
     new='HomeStatsBounds* bounds' in methods
-    placement=source[source.index('  const auto size = tenorchrome::kTouchShell ? cardCoverSize(shown)'):source.index('  heldCover =')] if new else 'auto frame=homeCardLayout(in);'
+    placement=source[source.index('  const auto size = tenorchrome::kTouchShell ? cardCoverSize(shown)'):source.index('  heldCover =', source.index('  const auto size = tenorchrome::kTouchShell ? cardCoverSize(shown)'))] if new else 'auto frame=homeCardLayout(in);'
     cpp=fixture.replace('@@METHODS@@',methods).replace('@@PLACE@@',placement).replace('@@BOUNDS@@','' if new else 'struct HomeStatsBounds { int top=0,bottom=0; };')
     if not new:cpp=cpp.replace('int drawCardStats(const HomeCardLayout& card, HomeStatsBounds* bounds=nullptr);','int drawCardStats(const HomeCardLayout& card);')
     src=folder/'paint.cpp';src.write_text(cpp);exe=folder/'paint'
