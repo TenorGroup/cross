@@ -21,6 +21,8 @@ class FontDecompressor {
 
   // Free all cached data (page buffer + hot group).
   void clearCache();
+  void setReaderInk(const EpdFontData* const faces[4], uint8_t level, bool antiAliased);
+  bool hasReaderInkFor(const EpdFontData* fontData) const { return inkLevel_ && isReaderFace(fontData); }
 
   // Pre-scan UTF-8 text and extract needed glyph bitmaps into a flat page buffer.
   // Each group is decompressed once into a temp buffer; only needed glyphs are kept.
@@ -38,6 +40,7 @@ class FontDecompressor {
     uint32_t peakTempBytes = 0;    // largest temp buffer in prewarm
     uint32_t getBitmapTimeUs = 0;  // cumulative getBitmap time (micros)
     uint32_t getBitmapCalls = 0;   // number of getBitmap calls
+    uint32_t inkApplications = 0;
   };
   void logStats(const char* label = "FDC");
   void resetStats();
@@ -45,6 +48,11 @@ class FontDecompressor {
 
  private:
   Stats stats;
+  const EpdFontData* readerFaces_[4] = {};
+  uint8_t inkLevel_ = 0;
+  bool inkAntiAliased_ = true;
+  bool isReaderFace(const EpdFontData* fontData) const;
+  void applyInk(const EpdFontData* fontData, const EpdGlyph& glyph, uint8_t* bitmap);
   InflateReader inflateReader;
 
   // Page buffer slots: each style gets its own flat glyph buffer with sorted lookup.

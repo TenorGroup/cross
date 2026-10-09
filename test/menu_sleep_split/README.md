@@ -12,6 +12,8 @@ Coverage: 12 board/IMU/optional-row cases plus 1 persistence case, unique row ow
 
 `web-schema-sha256.json` records pre-split serializer output for those 12 cases. Change it only for a deliberate web schema/value change, with independent review. `--web-baseline` additionally compares a directory of complete recorded `*-web.json` outputs.
 
+The 12 hashes now include 6 reader ink options. Starting from each base c1087f0 web payload and appending STR_READER_INK_4 and STR_READER_INK_5 to that row reproduces the entire updated payload. Every other row and value stays unchanged.
+
 All 12 hashes include the header clock's 3 values in 82183a56 (Hide, Time, Time and date): `clockShowHeader` is an
 enum of STR_HIDE, STR_CLOCK_HEADER_TIME and STR_CLOCK_HEADER_TIME_DATE instead of a toggle. Putting only that row
 back to the toggle reproduces each earlier hash.

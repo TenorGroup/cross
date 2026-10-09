@@ -26,7 +26,6 @@ struct PreviewKey {
   uint8_t letterSpacing = 1;
   uint8_t wordSpacing = 0;
   uint8_t dropCapMode = 0;
-  uint8_t inkWeight = 0xFF;
   uint8_t language = 0xFF;
   bool hyphenation = false;
   bool operator==(const PreviewKey&) const = default;
@@ -43,6 +42,8 @@ struct PreviewLayout {
   // (doan mot da bi chu lon dau chuong chiem cho nen khong the hien muc thut).
   size_t firstParagraphLines = 0;
   PreviewKey key;
+  uint8_t inkWeight = 0xFF;
+  uint8_t antiAliasing = 0xFF;
 };
 
 // Draws the sample-text pane via the reader engine, reusing layout across redraws

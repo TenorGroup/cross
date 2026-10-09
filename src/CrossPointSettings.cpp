@@ -263,12 +263,18 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   if (inkVersion < readerInk::SCHEMA_VERSION) {
     readerInkWeight = doc["readerInkWeight"].isNull()
                           ? uint8_t{0}
-                          : readerInk::fromLegacy(doc["readerInkWeight"].as<int>());
+                          : inkVersion == 0 ? readerInk::fromLegacy(doc["readerInkWeight"].as<int>())
+                                            : (doc["readerInkWeight"].as<int>() >= 1 &&
+                                                       doc["readerInkWeight"].as<int>() <= 3
+                                                   ? uint8_t{1}
+                                                   : uint8_t{0});
     needsResave = true;
   } else if (!doc["readerInkWeight"].isNull()) {
     const int storedInkWeight = doc["readerInkWeight"].as<int>();
     readerInkWeight = readerInk::clamp(storedInkWeight);
     if (storedInkWeight != readerInkWeight) needsResave = true;
+  } else {
+    readerInkWeight = 0;
   }
 
   // v1.0.2 luu hai co an rieng cho thanh trang thai ngoai/trong trinh doc. Quy doi

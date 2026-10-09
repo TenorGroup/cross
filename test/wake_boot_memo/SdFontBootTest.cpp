@@ -11,6 +11,9 @@
 #include "SdCardFontSystem.h"
 #include "SdFontBootMemo.h"
 #include "fontIds.h"
+#include "ReaderInkWeight.h"
+
+void readerInk::apply(GfxRenderer&) {}
 
 namespace {
 
@@ -61,6 +64,22 @@ TEST_F(SdFontBoot, ColdBootWalksTheCardOnceAndLoadsTheSavedFamily) {
   EXPECT_EQ(hostLoads, std::vector<std::string>{"/.fonts/Bokerlam/Bokerlam-SD_14.cpfont"});
   EXPECT_EQ(system.registry().getFamilyCount(), 2);
   EXPECT_EQ(hostDiscoveries, 1);
+}
+
+TEST_F(SdFontBoot, ReaderInkUsesRootFileAndKeepsLoadedFontIdentity) {
+  SdCardFontSystem system;
+  GfxRenderer renderer;
+  boot(ESP_RST_POWERON, system, renderer);
+  const auto fontId = system.resolveFontId("Bokerlam", 14);
+  const auto loads = hostLoads;
+  EXPECT_EQ(system.availableWeightMask(), 0x3f);
+  for (int level = 0; level < 6; ++level) {
+    SETTINGS.readerInkWeight = level;
+    system.ensureLoaded(renderer);
+    EXPECT_EQ(system.resolveFontId("Bokerlam", 14), fontId);
+    EXPECT_EQ(hostLoads, loads);
+    EXPECT_EQ(system.effectiveWeight(), level);
+  }
 }
 
 TEST_F(SdFontBoot, LongVariantNamesStaySelectedAfterWake) {

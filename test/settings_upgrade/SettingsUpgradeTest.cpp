@@ -109,7 +109,10 @@ int runRealFile(const char* fixtureName, const char* label) {
   settings_test_io::setNextRead(before);
   bool ok = expect(SETTINGS.loadFromFile(), "fixture loads");
   const JsonDocument after = saved();
-  ok = roundTripsExcept(before, after, HOST_BOARD_HIDDEN, label) && ok;
+  auto preserved = HOST_BOARD_HIDDEN;
+  preserved.push_back("readerInkWeightVersion");
+  ok = roundTripsExcept(before, after, preserved, label) && ok;
+  ok = expect(after["readerInkWeightVersion"] == 2 && after["readerInkWeight"] == 1, "ink schema 2") && ok;
 
   // clockUtcOffsetQ (legacy quarter-hour offset) stays a stored key: #3562 added
   // clockTimezone/clockDst/clockShowInHeader beside it, it did not retype or drop it.
@@ -123,7 +126,7 @@ int runRealFile(const char* fixtureName, const char* label) {
   // Second load of what was just saved must not drift further (no double migration).
   ok = expect(SETTINGS.saveToFile(), "save succeeds") && ok;
   ok = expect(SETTINGS.loadFromFile(), "second load") && ok;
-  ok = roundTripsExcept(before, saved(), HOST_BOARD_HIDDEN, "second load") && ok;
+  ok = roundTripsExcept(before, saved(), preserved, "second load") && ok;
 
   std::printf("settings_upgrade=%s:%s\n", label, ok ? "GREEN" : "RED");
   return ok ? 0 : 1;

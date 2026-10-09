@@ -39,8 +39,8 @@ bool wokeFromDeepSleep() {
 
 #if CROSSPOINT_VECTOR_FONTS
 // Stable, non-zero renderer font id for a vector family at a size (FNV-1a of
-// name + size + ink). 0 is the "not found" sentinel, so bump collisions to 1.
-int computeTtfFontId(const char* familyName, uint8_t pointSize, uint8_t inkWeight = 0) {
+// name + size). 0 is the "not found" sentinel, so bump collisions to 1.
+int computeTtfFontId(const char* familyName, uint8_t pointSize) {
   uint32_t hash = 2166136261u;
   for (const char* p = familyName; p && *p; ++p) {
     hash ^= static_cast<uint8_t>(*p);
@@ -49,10 +49,6 @@ int computeTtfFontId(const char* familyName, uint8_t pointSize, uint8_t inkWeigh
   hash ^= pointSize;
   hash *= 16777619u;
   hash ^= 0x54544600u;  // "TTF\0" salt to avoid colliding with cpfont ids
-  if (inkWeight) {
-    hash ^= inkWeight;
-    hash *= 16777619u;
-  }
   const int id = static_cast<int>(hash);
   return id != 0 ? id : 1;
 }
@@ -99,6 +95,11 @@ std::array<UiFontSize, 3> uiFontSizes(const uint8_t uiTextSize) {
 }  // namespace
 
 void SdCardFontSystem::begin(GfxRenderer& renderer) {
+  beginImpl(renderer);
+  readerInk::apply(renderer);
+}
+
+void SdCardFontSystem::beginImpl(GfxRenderer& renderer) {
   // Register this system as the SD font ID resolver in settings.
   // Uses a static trampoline since CrossPointSettings stores a plain function pointer.
   SETTINGS.sdFontIdResolver = [](void* ctx, const char* familyName, uint8_t pointSize) -> int {
@@ -223,11 +224,10 @@ const SdCardFontFamilyInfo* SdCardFontSystem::familyNamed(const std::string& nam
 }
 
 bool SdCardFontSystem::loadSelected(GfxRenderer& renderer, const SdCardFontFamilyInfo& family) {
-  if (!manager_.loadFamily(family, renderer, SETTINGS.fontPointSize, readerInk::physical(SETTINGS.readerInkWeight))) {
+  if (!manager_.loadFamily(family, renderer, SETTINGS.fontPointSize, 0)) {
     return false;
   }
   snapFontPointSizeTo(manager_.currentPointSize());
-  loadedRequestWeight_ = SETTINGS.readerInkWeight;
   sdfontmemo::save(family, bootMemo);
   setupUiFallbacks(renderer);
   LOG_DBG("SDFS", "Loaded SD font family: %s", family.name.c_str());
@@ -242,6 +242,11 @@ void SdCardFontSystem::releaseForOta(GfxRenderer& renderer) {
 }
 
 void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
+  ensureLoadedImpl(renderer);
+  readerInk::apply(renderer);
+}
+
+void SdCardFontSystem::ensureLoadedImpl(GfxRenderer& renderer) {
   // If the web server (or another task) installed/deleted fonts, re-discover.
   // Track whether we just re-discovered so we can force a reload below even
   // when the wanted family/size still maps to the same point size - the file
@@ -301,10 +306,7 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
     // Snap before the early return: the wanted size can already be loaded while
     // the setting still names a size this family does not ship.
     snapFontPointSizeTo(wantedPt);
-    // Cache the request as well as the effective weight: a missing or damaged
-    // variant falls back once and must not be reopened on every preview.
-    if (!registryWasDirty && wantedPt == manager_.currentPointSize() &&
-        SETTINGS.readerInkWeight == loadedRequestWeight_)
+    if (!registryWasDirty && wantedPt == manager_.currentPointSize())
       return;
     LOG_DBG("SDFS", "Reloading %s: size %u -> %u%s", wantedFamily, manager_.currentPointSize(), wantedPt,
             registryWasDirty ? " [registry dirty]" : "");
@@ -389,13 +391,10 @@ int SdCardFontSystem::resolveFontId(const char* familyName, uint8_t /*pointSize*
 }
 
 uint8_t SdCardFontSystem::availableWeightMask() const {
-  const auto* family = familyNamed(SETTINGS.sdFontFamilyName);
-#if CROSSPOINT_VECTOR_FONTS
-  if (family && family->vector) return 0x0f;
-#endif
-  const auto* file = family ? family->findNearestSize(SETTINGS.fontPointSize) : nullptr;
-  return file ? readerInk::publicMask(family->weights(*file)) : 1;
+  return 0x3f;
 }
+
+uint8_t SdCardFontSystem::effectiveWeight() const { return readerInk::clamp(SETTINGS.readerInkWeight); }
 
 #if CROSSPOINT_VECTOR_FONTS
 
@@ -429,7 +428,6 @@ void SdCardFontSystem::unloadTtf(GfxRenderer& renderer) {
   ttfFamily_.clear();
   ttfFontId_ = 0;
   ttfPointSize_ = 0;
-  ttfInkWeight_ = 0;
 }
 
 bool SdCardFontSystem::openTtfSource(const uint8_t style, const std::string& path) {
@@ -585,8 +583,8 @@ void SdCardFontSystem::loadTtfFamily(const SdCardFontFamilyInfo& family, GfxRend
   const uint8_t size = SETTINGS.fontPointSize;
   const uint8_t inkWeight = readerInk::clamp(SETTINGS.readerInkWeight);
 
-  // Same family, size and ink with unchanged files keeps the loaded glyphs.
-  if (!registryWasDirty && ttf_ && ttfFamily_ == family.name && ttfPointSize_ == size && ttfInkWeight_ == inkWeight)
+  // Same family and size with unchanged files keeps the loaded faces.
+  if (!registryWasDirty && ttf_ && ttfFamily_ == family.name && ttfPointSize_ == size)
     return;
 
   // Reader-face glyph-cache budget (used by both the resize fast path and the
@@ -601,7 +599,7 @@ void SdCardFontSystem::loadTtfFamily(const SdCardFontFamilyInfo& family, GfxRend
   const size_t cacheBytes = havePsram ? 1024 * 1024 : 32 * 1024;
   const uint16_t maxGlyphs = havePsram ? 4096 : 768;
 
-  // Same family, only the reader size or ink changed: the open style
+  // Same family, only the reader size changed: the open style
   // sources and the size-independent UI fallbacks stay loaded; only
   // re-drive the reader face at the new size, reusing the already-open files
   // instead of reopening all four and rebuilding every UI fallback.
@@ -610,11 +608,10 @@ void SdCardFontSystem::loadTtfFamily(const SdCardFontFamilyInfo& family, GfxRend
     renderer.removeFont(ttfFontId_);
     if (ttf_->load(size, /*twoBit=*/true, cacheBytes, maxGlyphs, readerInk::outlineStrength(inkWeight))) {
       ttf_->build(" ");
-      ttfFontId_ = computeTtfFontId(family.name.c_str(), size, inkWeight);
+      ttfFontId_ = computeTtfFontId(family.name.c_str(), size);
       renderer.insertFont(ttfFontId_, ttf_->family());
       renderer.registerTtfFont(ttfFontId_, ttf_.get());
       ttfPointSize_ = size;
-      ttfInkWeight_ = inkWeight;
       return;
     }
     // Resize failed: fall through to a clean full reload.
@@ -668,12 +665,11 @@ void SdCardFontSystem::loadTtfFamily(const SdCardFontFamilyInfo& family, GfxRend
   // Seed the regular face's glyph cache; other styles + glyphs fault on demand.
   ttf_->build(" ");
 
-  ttfFontId_ = computeTtfFontId(family.name.c_str(), size, inkWeight);
+  ttfFontId_ = computeTtfFontId(family.name.c_str(), size);
   renderer.insertFont(ttfFontId_, ttf_->family());
   renderer.registerTtfFont(ttfFontId_, ttf_.get());
   ttfFamily_ = family.name;
   ttfPointSize_ = size;
-  ttfInkWeight_ = inkWeight;
   LOG_DBG("SDFS", "Reader TTF face loaded (heap free %u, max block %u)", (unsigned)ESP.getFreeHeap(),
           (unsigned)ESP.getMaxAllocHeap());
   setupTtfUiFallbacks(renderer);  // CJK/script UI fallback at the built-in UI sizes

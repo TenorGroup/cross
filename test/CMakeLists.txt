@@ -118,6 +118,10 @@ add_subdirectory(webdav_replace)
 add_subdirectory(secure_http)
 
 add_subdirectory(secure_client)
+add_subdirectory(ink_bolden)
+add_subdirectory(builtin_ink)
+add_subdirectory(ttf_ink)
+add_subdirectory(reader_ink_repaint)
 
 add_subdirectory(font_installer)
 

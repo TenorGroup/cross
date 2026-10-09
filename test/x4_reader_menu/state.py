@@ -55,7 +55,8 @@ int textChoiceInUse(int row) {
 // The value a choice row stores and what each place stores (chooseTextValue); no harness row is a catalog one.
 int& textChoiceValue(int row) { return row==2?SETTINGS.lineSpacing:row==3?SETTINGS.paragraphAlignment:SETTINGS.dropCapMode; }
 int textChoiceStored(int row,int place) { return row==2?kSpacingByPlace[place]:place; }
-const void* catalogTextRow(int) { return nullptr; }
+struct CatalogTextRow { const char* key=nullptr; };
+const CatalogTextRow* catalogTextRow(int) { return nullptr; }
 namespace fontdoc {
 struct Ho { const char* ten="Family"; };
 int family=0;
@@ -143,7 +144,7 @@ class EpubReaderActivity {
  bool xteinkClassPanel()const{return true;}
  void danLaiTrang(){++previews;}
  int levelSheetRows=0;
- void applyReaderTextSettingsLocked(){}
+ void applyReaderTextSettingsLocked(const char* = nullptr){}
  void applyTextSettingLive(){requestUpdate();}
  bool textRowToggles(int row){return row > 4;}
  void cycleTextRow(int row){if(row==3)chooseTextValue(row,(SETTINGS.paragraphAlignment+1)%5);if(row==4)chooseTextValue(row,(SETTINGS.dropCapMode+1)%3);}

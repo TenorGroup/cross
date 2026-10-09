@@ -150,10 +150,10 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
                        .letterSpacing = SETTINGS.letterSpacing,
                        .wordSpacing = SETTINGS.wordSpacing,
                        .dropCapMode = SETTINGS.dropCapMode,
-                       .inkWeight = SETTINGS.readerInkWeight,
                        .language = static_cast<uint8_t>(I18N.getLanguage()),
                        .hyphenation = SETTINGS.hyphenationEnabled != 0};
-  if (key != layout.key) {
+  const bool layoutChanged = key != layout.key;
+  if (layoutChanged || layout.inkWeight != SETTINGS.readerInkWeight || layout.antiAliasing != SETTINGS.textAntiAliasing) {
 #ifdef TENOR_PRESS_PROBE
     const unsigned long started = millis();
 #endif
@@ -166,8 +166,12 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
 #ifdef TENOR_PRESS_PROBE
     const unsigned long warmed = millis();
 #endif
-    relayout(layout, renderer, fontId, textWidth);
-    layout.key = key;
+    if (layoutChanged) {
+      relayout(layout, renderer, fontId, textWidth);
+      layout.key = key;
+    }
+    layout.inkWeight = SETTINGS.readerInkWeight;
+    layout.antiAliasing = SETTINGS.textAntiAliasing;
 #ifdef TENOR_PRESS_PROBE
     LOG_INF("TXT", "Preview warm=%lu layout=%lu", warmed - started, millis() - warmed);
 #endif

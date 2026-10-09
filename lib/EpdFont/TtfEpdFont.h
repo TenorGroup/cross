@@ -76,6 +76,7 @@ class TtfEpdFont {
   // the allocator once converged. Driven by FontCacheManager::clearCache() /
   // PrewarmScope, symmetrically with the SD fonts.
   void clearCache();
+  void setInkStrength(int32_t strength, bool antiAliased = true);
 
   // Heap-critical teardown (mirrors SdCardFont::releaseResidentCaches): free
   // every rebuildable cache — the byte arenas, glyph tables, and the lazy bold/
@@ -153,7 +154,9 @@ class TtfEpdFont {
   Face faces_[4];          // 0=regular 1=bold 2=italic 3=bold-italic
   uint32_t size26_6_ = 0;  // exact 26.6 ppem (pt @150DPI), no whole-pixel rounding
   int32_t embolden26_6_ = 0;
+  void applyRenderOptions(Face& face);
   bool loaded_ = false;
+  bool inkAntiAliased_ = true;
   // Set while a glyph fault runs MemoryManager::ensureFree(): the eviction
   // sink calls releaseResidentCaches() on every TTF font, and tearing down
   // the very faces mid-fault would be use-after-free.

@@ -36,6 +36,7 @@
 #include "../../util/CoverRef.h"
 #include "BookmarkEntry.h"
 #include "CrossPointSettings.h"
+#include "ReaderInkWeight.h"
 #include "CrossPointState.h"
 #include "DictionaryWordSelectActivity.h"
 #include "EpubReaderBookmarksActivity.h"
@@ -130,7 +131,7 @@ constexpr int kTextTool = static_cast<int>(readermenu::Tool::TEXT);
 // de biet co phai dan lai hay khong.
 struct AnhChupChu {
   uint8_t fontFamily, fontPointSize, lineSpacing, screenMargin, paragraphAlignment, extraParagraphSpacing,
-      paragraphIndent, dropCapMode, hyphenationEnabled, embeddedStyle, textAntiAliasing, readerInkWeight,
+      paragraphIndent, dropCapMode, hyphenationEnabled, embeddedStyle,
       letterSpacing, wordSpacing, readerStatusBarMode, globalStatusBarMode;
   std::string sdFontFamilyName;
   uint8_t statusTop, statusBottom;
@@ -140,7 +141,6 @@ struct AnhChupChu {
             SETTINGS.paragraphAlignment,  SETTINGS.extraParagraphSpacing,
             SETTINGS.paragraphIndent,     SETTINGS.dropCapMode,
             SETTINGS.hyphenationEnabled,  SETTINGS.embeddedStyle,
-            SETTINGS.textAntiAliasing,    SETTINGS.readerInkWeight,
             SETTINGS.letterSpacing,       SETTINGS.wordSpacing,
             SETTINGS.readerStatusBarMode, SETTINGS.globalStatusBarMode,
             std::string(SETTINGS.sdFontFamilyName),
@@ -152,8 +152,7 @@ struct AnhChupChu {
            screenMargin == o.screenMargin && paragraphAlignment == o.paragraphAlignment &&
            extraParagraphSpacing == o.extraParagraphSpacing && paragraphIndent == o.paragraphIndent &&
            dropCapMode == o.dropCapMode && hyphenationEnabled == o.hyphenationEnabled &&
-           embeddedStyle == o.embeddedStyle && textAntiAliasing == o.textAntiAliasing &&
-           sdFontFamilyName == o.sdFontFamilyName && readerInkWeight == o.readerInkWeight &&
+           embeddedStyle == o.embeddedStyle && sdFontFamilyName == o.sdFontFamilyName &&
            letterSpacing == o.letterSpacing && wordSpacing == o.wordSpacing &&
            readerStatusBarMode == o.readerStatusBarMode && globalStatusBarMode == o.globalStatusBarMode &&
            statusTop == o.statusTop && statusBottom == o.statusBottom;
@@ -2043,12 +2042,18 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
 #endif
       // The menu's own screen: its pause keeps the stats in RAM as the menu's did (274 ms on the X3).
       pauseKeepsStatsInRam = true;
+      const uint8_t inkTruoc = SETTINGS.readerInkWeight;
+      const uint8_t aaTruoc = SETTINGS.textAntiAliasing;
       startActivityForResult(
           std::make_unique<TextSettingsActivity>(renderer, mappedInput, registry, tab),
-          [this, truoc](const ActivityResult&) {
-            if (truoc == AnhChupChu::chup()) return;
+          [this, truoc, inkTruoc, aaTruoc](const ActivityResult&) {
             RenderLock lock;
-            danLaiTrang();
+            if (truoc != AnhChupChu::chup()) danLaiTrang();
+            if (inkTruoc != SETTINGS.readerInkWeight || aaTruoc != SETTINGS.textAntiAliasing) {
+              readerInk::apply(renderer);
+              discardOverlayPage();
+              requestUpdate();
+            }
           });
       break;
     }
@@ -4059,8 +4064,7 @@ void EpubReaderActivity::chooseTextValue(const int row, const int place) {
     RenderLock lock;
     if (place < 0 || place >= textChoiceCount(row) || place == textChoiceInUse(row)) return;
     textChoiceValue(row) = textChoiceStored(row, place);
-    // A catalog row may be the ink weight or the anti-aliasing: the font is loaded again first, as Settings does.
-    if (catalogTextRow(row)) applyReaderTextSettingsLocked();
+    if (const auto info = catalogTextRow(row)) applyReaderTextSettingsLocked(info->key);
     else invalidateTextSettingsLocked();
   }
   applyTextSettingLive();
@@ -4243,7 +4247,9 @@ void EpubReaderActivity::cycleTextRow(int row) {
 #ifdef TENOR_PRESS_PROBE
     traceSheetHeap("SETTING_BEGIN", renderer, row);
 #endif
+    const char* key = nullptr;
     if (const auto info = catalogTextRow(row)) {
+      key = info->key;
       // A tap steps it, as a tap steps alignment: the next value, the first after the last.
       auto& value = SETTINGS.*(info->valuePtr);
       if (info->type == SettingType::TOGGLE) {
@@ -4271,7 +4277,7 @@ void EpubReaderActivity::cycleTextRow(int row) {
       default:
         return;
     }
-    applyReaderTextSettingsLocked();
+    applyReaderTextSettingsLocked(key);
   }
   applyTextSettingLive();
 }
@@ -5430,7 +5436,15 @@ void EpubReaderActivity::invalidateTextSettingsLocked() {
 #endif
 }
 
-void EpubReaderActivity::applyReaderTextSettingsLocked() {
+void EpubReaderActivity::applyReaderTextSettingsLocked(const char* key) {
+  if (key && (strcmp(key, "readerInkWeight") == 0 || strcmp(key, "textAntiAliasing") == 0)) {
+    readerInk::apply(renderer);
+    textCloseFrame.store(0, std::memory_order_relaxed);
+    textSettingsDirty = true;
+    discardOverlayPage();
+    requestUpdate();
+    return;
+  }
 #ifdef TENOR_PRESS_PROBE
   traceSheetHeap("FONT_LOAD_BEGIN", renderer);
 #endif

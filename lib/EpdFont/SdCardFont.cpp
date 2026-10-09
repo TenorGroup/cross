@@ -12,6 +12,7 @@
 #include <memory>
 
 #include "EpdFontFamily.h"
+#include "InkBolden.h"
 
 // Resident SD-font buffers (glyph/kern arenas, interval + advance tables, the
 // overflow ring) are placed in PSRAM when the board has it — freeing scarce
@@ -1361,6 +1362,9 @@ int SdCardFont::prewarmStyle(uint8_t styleIdx, const uint32_t* codepoints, uint3
       }
       lastBitmapEnd = fileOff + glyph.dataLength;
 
+      inkBolden::apply(s.miniBitmap + miniBitmapOffset, glyph.width, glyph.height,
+                       s.header.is2Bit, inkLevel_, inkAntiAliased_);
+
       glyph.dataOffset = miniBitmapOffset;
       miniBitmapOffset += glyph.dataLength;
     }
@@ -1424,6 +1428,25 @@ void SdCardFont::clearCache() {
     if (!styles_[i].present) continue;
     resetStyleMiniData(styles_[i]);
     applyGlyphMissCallback(i);
+  }
+}
+
+void SdCardFont::setReaderInk(uint8_t level, bool antiAliased) {
+  if (level > 5) level = 0;
+  if (level == inkLevel_ && antiAliased == inkAntiAliased_) return;
+  inkLevel_ = level;
+  inkAntiAliased_ = antiAliased;
+  clearOverflow();
+  for (uint8_t style = 0; style < MAX_STYLES; ++style) {
+    auto& data = styles_[style];
+    if (!data.present) continue;
+    data.miniGlyphCount = 0;
+    data.miniIntervalCount = 0;
+    data.miniBitmapUsed = 0;
+    data.miniHysteresisPending = false;
+    data.miniData = {};
+    data.epdFont.data = &data.stubData;
+    applyGlyphMissCallback(style);
   }
 }
 
@@ -1805,7 +1828,10 @@ const EpdGlyph* SdCardFont::onGlyphMiss(void* ctx, uint32_t codepoint) {
     }
   }
 
-  // All reads succeeded — commit to slot and advance ring buffer
+  inkBolden::apply(tempBitmap, tempGlyph.width, tempGlyph.height, s.header.is2Bit,
+                   self->inkLevel_, self->inkAntiAliased_);
+
+  // All reads succeeded, commit to slot and advance ring buffer
   if (wasAtCapacity) {
     psramDeleteArray(self->overflow_[slot].bitmap);
   } else {

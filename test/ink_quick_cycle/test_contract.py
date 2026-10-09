@@ -81,6 +81,7 @@ class InkQuickCycleContractTest(unittest.TestCase):
 #define LOG_ERR(...) ((void)0)
 struct CrossPointSettings {
   uint8_t readerInkWeight = 0;
+  uint8_t textAntiAliasing = 0;
   int writes = 0;
   bool writable = true;
   bool saveToFile() { ++writes; return writable; }
@@ -122,9 +123,11 @@ struct RenderLock { template<class T> explicit RenderLock(T&) {} };
 struct FontBoundary {
   int loads=0;
   uint8_t mask=1;
-  void ensureLoaded(int) { ++loads; }
+  template <typename Renderer> void ensureLoaded(Renderer&) { ++loads; }
   uint8_t availableWeightMask() const { return mask; }
 } sdFontSystem;
+class GfxRenderer {};
+namespace readerInk { void apply(GfxRenderer&) {} }
 struct TextSettingsActivity {
   @ENUMS@
   struct Name { std::string name; };
@@ -139,7 +142,8 @@ struct TextSettingsActivity {
       show(id,values,current,onSelect); inFrame=true;
     }
   } optionPopup_;
-  int currentFamilyIndex_=0, currentSizeIndex_=0, renderer=0, paints=0;
+  int currentFamilyIndex_=0, currentSizeIndex_=0, paints=0;
+  GfxRenderer renderer;
   std::atomic<bool> saveFailed_{false};
   void requestUpdate() { ++paints; }
   bool applyFamily(int) { return false; }
@@ -169,16 +173,16 @@ int main() {
   for (bool touch : {false,true}) for (uint8_t mask : {uint8_t(1), uint8_t(15)}) {
     tenorchrome::kTouchShell=touch;
     sdFontSystem.mask = mask;
-    for (int current : {0, 1, 2, 3, 255}) {
+    for (int current : {0, 1, 2, 3, 4, 5, 255}) {
       SETTINGS.readerInkWeight = current;
       SETTINGS.writes=0; a.paints=0; sdFontSystem.loads=0;
       a.confirmStyleRow(row);
       assert(SETTINGS.readerInkWeight==current && SETTINGS.writes==0 && a.paints==1 && sdFontSystem.loads==0);
-      assert(a.optionPopup_.labels.size()==4 && a.optionPopup_.selected==readerInk::clamp(current));
+      assert(a.optionPopup_.labels.size()==6 && a.optionPopup_.selected==readerInk::clamp(current));
       assert(a.optionPopup_.inFrame==touch && a.optionPopup_.callback);
       a.optionPopup_.callback(readerInk::next(current));
       assert(SETTINGS.readerInkWeight == readerInk::next(current));
-      assert(SETTINGS.writes == 1 && a.paints == 2 && sdFontSystem.loads == 1);
+      assert(SETTINGS.writes == 1 && a.paints == 2 && sdFontSystem.loads == 0);
       assert(!a.saveFailed_.load());
     }
   }
@@ -206,11 +210,11 @@ int main() {
                             str(source), "-o", str(binary)], check=True)
             subprocess.run([str(binary)], check=True)
 
-    def test_row_keeps_requested_label_and_missing_variant_is_explicit(self):
+    def test_row_keeps_requested_label_with_root_only_six_levels(self):
         self.assertIn(
             "INK_WEIGHT_IDS[readerInk::clamp(SETTINGS.readerInkWeight)]", self.value
         )
-        self.assertIn(
+        self.assertNotIn(
             "!readerInk::available(SETTINGS.readerInkWeight, sdFontSystem.availableWeightMask())",
             self.render,
         )

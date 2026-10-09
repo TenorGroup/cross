@@ -161,13 +161,7 @@ void TtfEpdFont::initFace(Face& f) {
     // on each glyph's horizontal phase — visibly uneven letter weights. Auto
     // equalizes stem widths across the face. Darkening nudges borderline-thin
     // strokes over the threshold.
-    freeink::font::FtFont::RenderOptions ro;
-    ro.hinting = freeink::font::FtFont::HintingMode::Auto;
-    ro.stemDarkening = true;
-    ro.embolden26_6 = embolden26_6_;
-    if (!f.ft.setRenderOptions(ro)) {
-      LOG_ERR("TTF", "Auto hinting unavailable (FREEINK_FONT_ENABLE_AUTOHINT not compiled)");
-    }
+    applyRenderOptions(f);
     // GPOS kerning for RESIDENT faces only (they borrow a view into the font
     // bytes — free). Unlike GSUB, GPOS must stay resident for render-time
     // pair queries, and a STREAMED face would need an owned DRAM copy exactly
@@ -257,6 +251,23 @@ void TtfEpdFont::clearCache() {
   for (Face& f : faces_) {
     if (f.inited) flushFace(f);
   }
+}
+
+void TtfEpdFont::applyRenderOptions(Face& face) {
+  freeink::font::FtFont::RenderOptions options;
+  options.hinting = freeink::font::FtFont::HintingMode::Auto;
+  options.stemDarkening = true;
+  options.embolden26_6 = embolden26_6_;
+  if (!face.ft.setRenderOptions(options))
+    LOG_ERR("TTF", "Auto hinting unavailable (FREEINK_FONT_ENABLE_AUTOHINT not compiled)");
+}
+
+void TtfEpdFont::setInkStrength(int32_t strength, bool antiAliased) {
+  if (strength == embolden26_6_ && antiAliased == inkAntiAliased_) return;
+  embolden26_6_ = strength;
+  inkAntiAliased_ = antiAliased;
+  for (auto& face : faces_) if (face.ready) applyRenderOptions(face);
+  clearCache();
 }
 
 void TtfEpdFont::releaseResidentCaches() {

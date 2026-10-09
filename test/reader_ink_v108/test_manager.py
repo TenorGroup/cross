@@ -9,7 +9,7 @@ REPO = Path(__file__).resolve().parents[2]
 
 
 class ManagerTest(unittest.TestCase):
-    def test_public_paths_identity_fallback_and_unweighted_ui(self):
+    def test_historical_pack_paths_identity_fallback_and_unweighted_ui(self):
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory)
             (out / 'Logging.h').write_text('#pragma once\n#define LOG_DBG(...)\n#define LOG_ERR(...)\n')

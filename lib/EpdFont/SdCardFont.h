@@ -89,6 +89,7 @@ class SdCardFont {
   // Preserves the persistent advance cache so repeated layout passes can reuse
   // previously fetched metrics.
   void clearCache();
+  void setReaderInk(uint8_t level, bool antiAliased);
 
   // Drop the persistent advance cache. Call when unloading the SD font or
   // when font/size/family/glyph-table state changes, or to recover a failed bitmap allocation.
@@ -330,6 +331,8 @@ class SdCardFont {
   Stats stats_;
   uint32_t contentHash_ = 0;
   bool loaded_ = false;
+  uint8_t inkLevel_ = 0;
+  bool inkAntiAliased_ = true;
 
   // Per-style helpers
   void freeStyleMiniData(PerStyle& s);

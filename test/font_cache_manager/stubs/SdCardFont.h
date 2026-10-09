@@ -12,6 +12,7 @@ class SdCardFont {
   };
 
   void clearCache() {}
+  void setReaderInk(uint8_t, bool) {}
   void releaseResidentCaches() {}
   int prewarm(const char* text, uint8_t styleMask, bool, bool, bool accumulate) {
     auto& call = prewarmCalls[prewarmCallCount++];

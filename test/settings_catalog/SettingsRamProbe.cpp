@@ -102,8 +102,8 @@ int main(int argc,char**argv){
   const auto uiSize=std::find_if(base.begin(),base.end(),[](const SettingInfo& row){return row.key && std::strcmp(row.key,"uiTextSize")==0;});
   const auto inkWeight=std::find_if(base.begin(),base.end(),[](const SettingInfo& row){return row.key && std::strcmp(row.key,"readerInkWeight")==0;});
   bool ok=expect(uiSize!=base.end() && uiSize->type==SettingType::ENUM && uiSize->enumValues.size()==3,"ui size catalog");
-  ok=expect(inkWeight!=base.end() && inkWeight->type==SettingType::ENUM && inkWeight->enumLabels().size()==4,"ink catalog")&&ok;
-  JsonDocument saved;SETTINGS.toJson(saved);ok=expect(saved["uiTextSize"].as<uint8_t>()==0 && saved["readerInkWeightVersion"].as<uint8_t>()==1,"default stamps")&&ok;
+  ok=expect(inkWeight!=base.end() && inkWeight->type==SettingType::ENUM && inkWeight->enumLabels().size()==6,"ink catalog")&&ok;
+  JsonDocument saved;SETTINGS.toJson(saved);ok=expect(saved["uiTextSize"].as<uint8_t>()==0 && saved["readerInkWeightVersion"].as<uint8_t>()==2,"default stamps")&&ok;
   JsonDocument medium;medium["uiTextSize"]=1;ok=expect(SETTINGS.fromJson(medium.as<JsonVariantConst>()),"medium load")&&ok;
   saved.clear();SETTINGS.toJson(saved);ok=expect(saved["uiTextSize"].as<uint8_t>()==1,"medium round trip")&&ok;
   JsonDocument corrupt;corrupt["uiTextSize"]=99;ok=expect(SETTINGS.fromJson(corrupt.as<JsonVariantConst>()),"corrupt UI load")&&ok;
@@ -111,6 +111,15 @@ int main(int argc,char**argv){
   JsonDocument legacy;ok=expect(SETTINGS.fromJson(legacy.as<JsonVariantConst>()),"absent UI load")&&ok;
   saved.clear();SETTINGS.toJson(saved);ok=expect(saved["uiTextSize"].as<uint8_t>()==0,"absent UI defaults")&&ok;
   const int legacyInputs[]={0,1,2,3,99};const uint8_t legacyExpected[]={0,1,1,0,0};
+  for (int version : {0,1,2,3}) for (int value : {-1,0,1,2,3,4,5,6,255}) {
+    JsonDocument input;SETTINGS.toJson(input);input["readerInkWeightVersion"]=version;input["readerInkWeight"]=value;
+    ok=SETTINGS.fromJson(input.as<JsonVariantConst>())&&ok;
+    const int expected=version==0 ? (value==1||value==2 ? 1:0) : version==1 ? (value>=1&&value<=3 ? 1:0) : (value>=0&&value<=5 ? value:0);
+    ok=expect(SETTINGS.readerInkWeight==expected,"ink schema migration")&&ok;
+    JsonDocument roundtrip;SETTINGS.toJson(roundtrip);ok=SETTINGS.fromJson(roundtrip.as<JsonVariantConst>())&&ok;
+    ok=expect(SETTINGS.readerInkWeight==expected&&roundtrip["readerInkWeightVersion"].as<int>()==2,"ink schema roundtrip")&&ok;
+  }
+  for (int version : {0,1,2}) {JsonDocument input;SETTINGS.toJson(input);input["readerInkWeightVersion"]=version;input.remove("readerInkWeight");ok=SETTINGS.fromJson(input.as<JsonVariantConst>())&&ok;ok=expect(SETTINGS.readerInkWeight==0,"missing schema ink")&&ok;}
   for(size_t i=0;i<std::size(legacyInputs);++i){JsonDocument old;SETTINGS.toJson(old);old.remove("readerInkWeightVersion");old["readerInkWeight"]=legacyInputs[i];ok=SETTINGS.fromJson(old.as<JsonVariantConst>())&&ok;ok=expect(SETTINGS.readerInkWeight==legacyExpected[i],"legacy ink mapping")&&ok;}
   JsonDocument missingInk;SETTINGS.toJson(missingInk);missingInk.remove("readerInkWeightVersion");missingInk.remove("readerInkWeight");ok=expect(SETTINGS.fromJson(missingInk.as<JsonVariantConst>()),"missing ink load")&&ok;ok=expect(SETTINGS.readerInkWeight==0,"missing ink defaults")&&ok;
   JsonDocument currentCorrupt;SETTINGS.toJson(currentCorrupt);currentCorrupt["readerInkWeight"]=99;ok=expect(SETTINGS.fromJson(currentCorrupt.as<JsonVariantConst>()),"current corrupt ink load")&&ok;ok=expect(SETTINGS.readerInkWeight==0,"current corrupt ink clamps")&&ok;

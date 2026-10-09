@@ -57,7 +57,8 @@ constexpr StrId LINE_SPACING_IDS[] = {StrId::STR_INK_DEFAULT, StrId::STR_VERY_NA
                                      StrId::STR_LINE_SPACING_160};
 static_assert(std::size(LINE_SPACING_IDS) == readerSpacing::LINE_LEVEL_COUNT, "line spacing labels");
 constexpr StrId INK_WEIGHT_IDS[] = {StrId::STR_READER_INK_0, StrId::STR_READER_INK_1,
-                                    StrId::STR_READER_INK_2, StrId::STR_READER_INK_3};
+                                    StrId::STR_READER_INK_2, StrId::STR_READER_INK_3,
+                                    StrId::STR_READER_INK_4, StrId::STR_READER_INK_5};
 static_assert(std::size(INK_WEIGHT_IDS) == readerInk::LEVEL_COUNT, "reader ink labels");
 // Tắt / Mặc định / Lớn, matching readerSpacing::DropCapMode.
 constexpr StrId DROP_CAP_IDS[] = {StrId::STR_STATE_OFF, StrId::STR_INK_DEFAULT, StrId::STR_SPACING_LARGE};
@@ -435,7 +436,8 @@ bool TextSettingsActivity::applyChosenValue(const Tab tab, const int row, const 
     RenderLock lock(*this);
     SETTINGS.*setting->valuePtr = static_cast<uint8_t>(setting->type == SettingType::VALUE
         ? setting->valueRange.min + option * setting->valueRange.step : option);
-    if (setting->valuePtr == &CrossPointSettings::readerInkWeight) sdFontSystem.ensureLoaded(renderer);
+    if (setting->valuePtr == &CrossPointSettings::readerInkWeight ||
+        setting->valuePtr == &CrossPointSettings::textAntiAliasing) readerInk::apply(renderer);
   }
   // RAM stays applied on an SD failure. Its visible error and Back retry are
   // separate from the font lifecycle, whose resources changed under the lock.
@@ -480,10 +482,6 @@ void TextSettingsActivity::prepareFormQuip(const int row, const int candidate) {
     key = ugly::valueKey(*setting, number);
   }
   auto line = ugly::quip(ugly::Quip::SetValue, key, 0, number);
-  if (row == 13 && !readerInk::available(candidate, sdFontSystem.availableWeightMask())) {
-    if (!line.empty()) line += '\n';
-    line += tr(STR_INK_UNAVAILABLE);
-  }
   RenderLock lock(*this);
   form_.setQuip(row, std::move(line));
 }
@@ -669,14 +667,10 @@ void TextSettingsActivity::render(RenderLock&&) {
     renderUi();
   });
 
-  const bool weightUnavailable =
-      tab_ == Tab::Style && ringPos() - 1 == static_cast<int>(StyleRow::InkWeight) &&
-      !readerInk::available(SETTINGS.readerInkWeight, sdFontSystem.availableWeightMask());
-  if (weightUnavailable || focusedRowHasNoPreview()) {
+  if (focusedRowHasNoPreview()) {
     const int captionHeight = renderer.getTextHeight(UI_10_FONT_ID) + metrics_.verticalSpacing;
     const int capY = afterHeader + usableHeight - captionHeight + metrics_.verticalSpacing;
-    renderer.drawText(UI_10_FONT_ID, metrics_.previewPadding, capY,
-                      weightUnavailable ? tr(STR_INK_UNAVAILABLE) : tr(STR_NOT_IN_PREVIEW));
+    renderer.drawText(UI_10_FONT_ID, metrics_.previewPadding, capY, tr(STR_NOT_IN_PREVIEW));
   }
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabelText(), tr(STR_DIR_UP), tr(STR_DIR_DOWN));

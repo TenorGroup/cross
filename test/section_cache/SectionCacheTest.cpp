@@ -498,6 +498,17 @@ class SectionCacheTest : public ::testing::Test {
   }
 };
 TEST_F(SectionCacheTest, FullProductionRoundTripPreservesAllBookWords) { retryAndCheckEveryWord(); }
+TEST_F(SectionCacheTest, RasterOnlyChangesReuseSectionCacheAndPageOffsets) {
+  for (int level = 0; level < 6; ++level) for (bool aa : {false, true}) {
+    Section reopened(epub, 0, renderer);
+    ASSERT_TRUE(reopened.loadSectionFile(spec)) << level << ' ' << aa;
+    EXPECT_EQ(reopened.pageCount, fullPages);
+    EXPECT_EQ(bytes(cache()), valid);
+    ASSERT_NE(reopened.loadPage(3), nullptr);
+    for (uint16_t index = 0; index < fullPages; ++index)
+      EXPECT_EQ(pod<uint32_t>(bytes(cache()), lutOffset + index * 4), pageOffsets[index]);
+  }
+}
 TEST_F(SectionCacheTest, StarvedHeapParksBuildInsteadOfAbandoning) {
   std::filesystem::remove(cache());
   Section section(epub, 0, renderer);

@@ -252,10 +252,31 @@ static void offsetCapacityMeasurement() {
             << " largest_allocation=" << largestAllocation << " growth_overlap_bytes=" << peakBytes << '\n';
 }
 
+static void inkKeepsIndexHit() {
+  auto first = book();
+  const auto size = first->fileSize;
+  for (bool preview : {false, true}) {
+    TxtReaderActivity initial;initial.txt = std::make_unique<Txt>();initial.txt->fileSize = size;initial.preview = preview;
+    GfxRenderer gfx;initial.initializeReader(gfx);CHECK(initial.initialized);
+    const auto path = preview ? "/cache/preview_index.bin" : "/cache/index.bin";
+    const auto bytes = Storage.files.at(path)->bytes;
+    for (int level = 0; level < 6; ++level) for (int aa = 0; aa < 2; ++aa) {
+      SETTINGS.readerInkWeight = level;SETTINGS.textAntiAliasing = aa;
+      TxtReaderActivity reopened;reopened.txt = std::make_unique<Txt>();reopened.txt->fileSize = size;reopened.preview = preview;
+      GfxRenderer hit;reopened.initializeReader(hit);
+      CHECK(reopened.initialized);CHECK(hit.textScans == 0);CHECK(reopened.totalPages == initial.totalPages);
+      CHECK(Storage.files.at(path)->bytes == bytes);
+      for (uint32_t index = 0; index < initial.pageOffsetCount; ++index)
+        CHECK(reopened.pageOffsets[index] == initial.pageOffsets[index]);
+    }
+  }
+}
+
 int main(int argc, char** argv) {
   const std::string filter = argc > 1 ? argv[1] : "all";
   int total = 0, failures = 0;
   const std::vector<std::pair<const char*, std::function<void()>>> cases = {
+    {"INK index and preview index remain HIT", inkKeepsIndexHit},
     {"READ-03 negative read", txtReadError}, {"READ-03 short then EOF", txtShortEof},
     {"READ-03 short reads complete", txtShortCompletes}, {"IO-01 negative stored read", zipReadError},
     {"IO-01 short reads complete", zipShortCompletes}, {"IO-01 early stop contract", zipEarlyStop},

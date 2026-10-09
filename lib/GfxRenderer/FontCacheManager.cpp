@@ -39,6 +39,33 @@ FontCacheManager::FontCacheManager(const std::map<int, EpdFontFamily>& fontMap,
 
 void FontCacheManager::setFontDecompressor(FontDecompressor* d) { fontDecompressor_ = d; }
 
+void FontCacheManager::setReaderInk(int fontId, uint8_t level, bool antiAliased) {
+  if (level > 5) level = 0;
+  const EpdFontData* faces[4] = {};
+  const auto selected = sdCardFonts_.find(fontId);
+  bool builtin = selected == sdCardFonts_.end();
+#if CROSSPOINT_VECTOR_FONTS
+  const auto vectorSelected = ttfFonts_.find(fontId);
+  builtin = builtin && vectorSelected == ttfFonts_.end();
+#endif
+  const auto family = fontMap_.find(fontId);
+  if (builtin && family != fontMap_.end()) {
+    for (uint8_t style = 0; style < 4; ++style)
+      faces[style] = family->second.getData(static_cast<EpdFontFamily::Style>(style));
+  }
+  if (fontDecompressor_) fontDecompressor_->setReaderInk(faces, level, antiAliased);
+  for (const auto& entry : sdCardFonts_) {
+    if (entry.second) entry.second->setReaderInk(
+        selected != sdCardFonts_.end() && entry.second == selected->second ? level : 0, antiAliased);
+  }
+#if CROSSPOINT_VECTOR_FONTS
+  for (const auto& entry : ttfFonts_) {
+    if (entry.second) entry.second->setInkStrength(
+        vectorSelected != ttfFonts_.end() && entry.second == vectorSelected->second ? level * 32 : 0, antiAliased);
+  }
+#endif
+}
+
 void FontCacheManager::clearCache() {
   if (fontDecompressor_) fontDecompressor_->clearCache();
   for (auto& [id, font] : sdCardFonts_) {
@@ -103,6 +130,12 @@ void FontCacheManager::prewarmCache(int fontId, const char* utf8Text, uint8_t st
     auto style = static_cast<EpdFontFamily::Style>(i);
     const EpdFontData* data = fontMap_.at(fontId).getData(style);
     if (!data || !data->groups) continue;
+    bool shared = false;
+    for (uint8_t previous = 0; previous < i; ++previous) {
+      if ((styleMask & (1 << previous)) &&
+          fontMap_.at(fontId).getData(static_cast<EpdFontFamily::Style>(previous)) == data) shared = true;
+    }
+    if (shared) continue;
     int missed = fontDecompressor_->prewarmCache(data, utf8Text);
     if (missed > 0) {
       LOG_DBG("FCM", "prewarmCache: %d glyph(s) not cached for style %d", missed, i);

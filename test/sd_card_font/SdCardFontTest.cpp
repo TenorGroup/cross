@@ -1,5 +1,6 @@
 #include <HalStorage.h>
 #include <SdCardFont.h>
+#include <InkBolden.h>
 #include <gtest/gtest.h>
 
 #include <cstdio>
@@ -190,6 +191,114 @@ void expectPageBitmaps(SdCardFont& font, uint32_t first, uint32_t count) {
   }
 }
 }  // namespace
+
+namespace {
+template <typename Font>
+void configureInk(Font& font, uint8_t level, bool aa) {
+  if constexpr (requires { font.setReaderInk(level, aa); }) font.setReaderInk(level, aa);
+}
+std::vector<uint8_t> inkBitmap(SdCardFont& font, uint32_t codepoint) {
+  const auto* face = font.getEpdFont();
+  const auto* glyph = face->getGlyph(codepoint);
+  const auto* bytes = font.isOverflowGlyph(glyph) ? font.getOverflowBitmap(glyph) : face->data->bitmap + glyph->dataOffset;
+  return {bytes, bytes + glyph->dataLength};
+}
+void makeInkFont(bool twoBit) {
+  makeFont();
+  put16(10, twoBit ? 1 : 0);
+  if (twoBit) for (uint32_t index = 0; index < GLYPHS; ++index) {
+    EpdGlyph glyph;
+    const auto offset = 88 + index * sizeof(glyph);
+    std::memcpy(&glyph, sdFontTestFile.data() + offset, sizeof(glyph));
+    glyph.height = 16;
+    glyph.top = 16;
+    std::memcpy(sdFontTestFile.data() + offset, &glyph, sizeof(glyph));
+  }
+}
+}
+
+TEST(SdCardFontTest, InkMiniAndOverflowMatchOriginalWithoutAccumulation) {
+  std::printf("SdCardFont_size=%zu\n", sizeof(SdCardFont));
+  for (bool twoBit : {false, true}) {
+    makeInkFont(twoBit);
+    SdCardFont font;
+    ASSERT_TRUE(font.load("fixture"));
+    const uint32_t codepoint = FIRST + 17;
+    const auto text = page(codepoint, 1);
+    ASSERT_EQ(0, font.prewarm(text.c_str(), 15, false, false, false));
+    const auto original = *font.getEpdFont()->getGlyph(codepoint);
+    const auto raw = inkBitmap(font, codepoint);
+    for (int level = 0; level < 6; ++level) for (bool aa : {false, true}) {
+      auto expected = raw;
+      inkBolden::apply(expected.data(), original.width, original.height, twoBit, level, aa);
+      configureInk(font, level, aa);
+      ASSERT_EQ(0, font.prewarm(text.c_str(), 15, false, false, false));
+      EXPECT_EQ(inkBitmap(font, codepoint), expected) << level << ' ' << aa << ' ' << twoBit;
+      const auto* glyph = font.getEpdFont()->getGlyph(codepoint);
+      EXPECT_EQ(glyph->width, original.width);
+      EXPECT_EQ(glyph->height, original.height);
+      EXPECT_EQ(glyph->advanceX, original.advanceX);
+      EXPECT_EQ(glyph->top, original.top);
+      EXPECT_EQ(glyph->left, original.left);
+      font.releaseResidentCaches();
+      EXPECT_EQ(inkBitmap(font, codepoint), expected);
+      const auto reads = sdFontTestReads;
+      EXPECT_EQ(inkBitmap(font, codepoint), expected);
+      EXPECT_EQ(sdFontTestReads, reads);
+      for (uint32_t index = 1; index <= 10; ++index) inkBitmap(font, codepoint + index);
+      EXPECT_EQ(inkBitmap(font, codepoint), expected);
+    }
+  }
+}
+
+TEST(SdCardFontTest, InkChangeInvalidatesRetainedMiniButKeepsAdvances) {
+  makeInkFont(true);
+  SdCardFont font;
+  ASSERT_TRUE(font.load("fixture"));
+  const auto text = page(FIRST + 17, 1);
+  ASSERT_EQ(font.buildAdvanceTable(text.c_str(), 1), 0);
+  const auto advance = font.getAdvance(FIRST + 17, 0);
+  ASSERT_NE(advance, 0);
+  configureInk(font, 1, true);
+  ASSERT_EQ(font.prewarm(text.c_str(), 1, false, false, false), 0);
+  const auto light = inkBitmap(font, FIRST + 17);
+  font.clearCache();
+  const auto before = sdFontTestReads;
+  configureInk(font, 1, true);
+  ASSERT_EQ(font.prewarm(text.c_str(), 1, false, false, false), 0);
+  EXPECT_EQ(sdFontTestReads, before);
+  configureInk(font, 5, true);
+  EXPECT_EQ(font.getAdvance(FIRST + 17, 0), advance);
+  ASSERT_EQ(font.prewarm(text.c_str(), 1, false, false, false), 0);
+  EXPECT_GT(sdFontTestReads, before);
+  EXPECT_NE(inkBitmap(font, FIRST + 17), light);
+  configureInk(font, 1, true);
+  ASSERT_EQ(font.prewarm(text.c_str(), 1, false, false, false), 0);
+  EXPECT_EQ(inkBitmap(font, FIRST + 17), light);
+  font.clearCache();
+  const auto beforeAa = sdFontTestReads;
+  configureInk(font, 1, false);
+  ASSERT_EQ(font.prewarm(text.c_str(), 1, false, false, false), 0);
+  EXPECT_GT(sdFontTestReads, beforeAa);
+}
+
+TEST(SdCardFontTest, InkMetadataOnlyThenFullPrewarmUsesOriginalBitmap) {
+  makeInkFont(true);
+  SdCardFont font;
+  ASSERT_TRUE(font.load("fixture"));
+  const auto text = page(FIRST + 17, 1);
+  ASSERT_EQ(font.prewarm(text.c_str(), 1, false, false, false), 0);
+  auto expected = inkBitmap(font, FIRST + 17);
+  const auto glyph = *font.getEpdFont()->getGlyph(FIRST + 17);
+  inkBolden::apply(expected.data(), glyph.width, glyph.height, true, 5, true);
+  font.releaseResidentCaches();
+  configureInk(font, 5, true);
+  ASSERT_EQ(font.prewarm(text.c_str(), 1, true, false, false), 0);
+  const auto reads = sdFontTestReads;
+  ASSERT_EQ(font.prewarm(text.c_str(), 1, false, false, false), 0);
+  EXPECT_GT(sdFontTestReads, reads);
+  EXPECT_EQ(inkBitmap(font, FIRST + 17), expected);
+}
 
 TEST(SdCardFontTest, CompletePagesReplaceEarlierGlyphs) {
   makeFont();

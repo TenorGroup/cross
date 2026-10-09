@@ -139,7 +139,9 @@ const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const Ep
   if (fontData->vectorBitmapHandler != nullptr) {
     return fontData->vectorBitmapHandler(fontData->glyphMissCtx, glyph);
   }
-  if (fontData->groups != nullptr) {
+  if (fontData->groups != nullptr || (fontCacheManager_ && fontCacheManager_->getDecompressor() &&
+                                     fontCacheManager_->getDecompressor()->hasReaderInkFor(fontData) &&
+                                     !fontData->glyphMissHandler && !fontData->vectorBitmapHandler)) {
     auto* fd = fontCacheManager_ ? fontCacheManager_->getDecompressor() : nullptr;
     if (!fd) {
       LOG_ERR("GFX", "Compressed font but no FontDecompressor set");

@@ -432,7 +432,7 @@ class EpubReaderActivity final : public ReaderActivity {
   // Mark the reader text settings for saving, (re)load the selected SD font, and
   // re-paginate the current chapter so changes apply without re-opening the book.
   void applyReaderTextSettings();
-  void applyReaderTextSettingsLocked();
+  void applyReaderTextSettingsLocked(const char* key = nullptr);
   void invalidateTextSettingsLocked();
   // The rendered page's glyph caches can yield their heap to the overlay
   // snapshot, including the first sheet opened with unchanged settings.

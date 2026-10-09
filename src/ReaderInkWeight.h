@@ -1,12 +1,12 @@
 #pragma once
 
 #include <cstdint>
+class GfxRenderer;
 
-// Public settings ordinals are separate from the on-card outline variants.
-// Keep old Strong at physical weight-2 so +1 reuses its exact bytes and cache ID.
 namespace readerInk {
-inline constexpr uint8_t SCHEMA_VERSION = 1;
-inline constexpr uint8_t LEVEL_COUNT = 4;
+void apply(GfxRenderer& renderer);
+inline constexpr uint8_t SCHEMA_VERSION = 2;
+inline constexpr uint8_t LEVEL_COUNT = 6;
 
 constexpr uint8_t clamp(const int value) {
   return value >= 0 && value < LEVEL_COUNT ? static_cast<uint8_t>(value) : 0;
@@ -20,8 +20,7 @@ constexpr uint8_t physical(const int publicLevel) {
 }
 
 constexpr int32_t outlineStrength(const int publicLevel) {
-  constexpr int32_t strengths[] = {0, 22, 28, 32};
-  return strengths[clamp(publicLevel)];
+  return clamp(publicLevel) * 32;
 }
 
 constexpr uint8_t publicFromPhysical(const int physicalLevel) {

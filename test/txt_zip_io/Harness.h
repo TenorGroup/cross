@@ -183,6 +183,7 @@ class InflateStream {
 
 struct CrossPointSettings { enum { LEFT_ALIGN = 0, JUSTIFIED = 1 }; };
 struct Settings {
+  uint8_t readerInkWeight = 0, textAntiAliasing = 0;
   uint8_t screenMargin = 0, paragraphAlignment = 0, extraParagraphSpacing = 0, wordSpacing = 0, paragraphIndent = 0;
   int8_t letterSpacing = 0;
   int getReaderFontId() const { return 0; }
