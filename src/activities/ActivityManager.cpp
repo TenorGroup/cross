@@ -140,7 +140,7 @@ void ActivityManager::loop() {
   while (pendingAction != PendingAction::None) {
     // The page turner's radio gives its heap back before the next screen allocates. Its teardown
     // can span loop passes and runs outside the render lock.
-    if (!bleturner::beforeScreenChange()) return;
+    if (pendingAction != PendingAction::ReplaceForSleep && !bleturner::beforeScreenChange()) return;
     ++screenVisit;
     if (pendingAction == PendingAction::Pop) {
       RenderLock lock;
@@ -192,7 +192,7 @@ void ActivityManager::loop() {
       // Current activity has requested a new activity to be launched
       RenderLock lock;
 
-      if (pendingAction == PendingAction::Replace) {
+      if (pendingAction == PendingAction::Replace || pendingAction == PendingAction::ReplaceForSleep) {
         // Destroy the current activity
         exitActivity(lock);
         // Clear the stack
@@ -330,6 +330,7 @@ void ActivityManager::goToReader(std::string path, const bool allowFastInitialRe
 
 void ActivityManager::goToSleep(bool fromTimeout) {
   replaceActivity(std::make_unique<SleepActivity>(renderer, mappedInput, fromTimeout));
+  if (pendingAction == PendingAction::Replace) pendingAction = PendingAction::ReplaceForSleep;
   loop();  // Important: sleep screen must be rendered immediately, the caller will go to sleep right after this returns
 }
 
