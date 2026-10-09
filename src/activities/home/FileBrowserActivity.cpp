@@ -110,9 +110,10 @@ void formatFileExtension(const std::string& filename, char* buffer, const size_t
 }
 
 FileBrowserActivity::FileBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                         std::string initialPath, const Mode mode)
+                                         std::string initialPath, const Mode mode, const bool openedFromUglyFile)
     : UiListActivity("FileBrowser", renderer, mappedInput, /*wantsTouchLongPress=*/true),
       mode(mode),
+      openedFromUglyFile(openedFromUglyFile),
       basepath(initialPath.empty() ? "/" : std::move(initialPath)),
       entryPath(basepath) {}
 
@@ -706,7 +707,7 @@ bool FileBrowserActivity::handleButtons() {
     // Short press: go up one directory, or go home if at root
     if (mappedInput.getHeldTime() < GO_HOME_MS) {
       // Touch: the root of File is the File card of Home, so a folder right under it goes back there.
-      if (tenorchrome::kTouchShell && mode == Mode::Books && basepath != "/" &&
+      if ((tenorchrome::kTouchShell || openedFromUglyFile) && mode == Mode::Books && basepath != "/" &&
           basepath.find('/', 1) == std::string::npos) {
         activityManager.goHome(HomeMenuItem::FILE_BROWSER);
       } else if (basepath != "/") {

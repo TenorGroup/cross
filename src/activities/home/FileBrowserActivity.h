@@ -28,6 +28,7 @@ class FileBrowserActivity final : public UiListActivity {
   void deleteSelected();
 
   Mode mode = Mode::Books;
+  bool openedFromUglyFile = false;
   static constexpr int kSearchRows = 0;
 
   // Files state
@@ -106,7 +107,7 @@ class FileBrowserActivity final : public UiListActivity {
 
  public:
   explicit FileBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string initialPath = "/",
-                               Mode mode = Mode::Books);
+                               Mode mode = Mode::Books, bool openedFromUglyFile = false);
   void onEnter() override;
   bool remembersNavigation() const override { return mode == Mode::Books; }
   std::string navigationMemoryKey() const override { return "FileBrowserEntry:" + entryPath; }

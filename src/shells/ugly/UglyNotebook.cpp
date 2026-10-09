@@ -11,6 +11,7 @@
 #include <cstdio>
 
 #include "activities/home/BookStatsLibraryActivity.h"
+#include "activities/home/FileBrowserActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "CrossPointSettings.h"
 #include "components/UiAppHelpers.h"
@@ -248,9 +249,11 @@ void Notebook::activate(const int row) {
     }
     case homerows::Page::Folder: {
       const std::string name = rows.folder[row];
-      then([name] {
+      then([this, name] {
         if (!name.empty() && name.back() == '/')
-          activityManager.goToFileBrowser("/" + name.substr(0, name.size() - 1));
+          activityManager.replaceActivity(std::make_unique<FileBrowserActivity>(
+              renderer, mappedInput, "/" + name.substr(0, name.size() - 1), FileBrowserActivity::Mode::Books,
+              true));
         else
           activityManager.goToReader("/" + name);
       });
