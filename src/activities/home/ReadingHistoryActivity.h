@@ -28,6 +28,7 @@ class ReadingHistoryActivity final : public UiListActivity {
   uint8_t cells[lich30::SO_O]{};
   uint32_t firstKey = 0, lastKey = 0;
   uint32_t weekMinutes[lich30::SO_TUAN]{}, weekKey[lich30::SO_TUAN]{};
+  bool weekHasSubMinute[lich30::SO_TUAN]{};
   int count = 30;
   std::array<freeink::ui::ListItem, 30> rows{};
   std::array<std::string, 30> labels{}, values{}, subtitles{};

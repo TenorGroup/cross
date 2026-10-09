@@ -26,8 +26,19 @@ void ReadingHistoryActivity::onEnter() {
   } else {
     grid = lich30::tinh(READING_STATS.kho.cacNgay(), day, cells);
     lich30::tuan(READING_STATS.kho.cacNgay(), day, weekMinutes);
-    for (int k = 0; k < lich30::SO_TUAN; ++k)
+    for (int k = 0; k < lich30::SO_TUAN; ++k) {
       weekKey[k] = habits::dateKey(day - (7 * lich30::SO_TUAN - 1) + 7 * k);
+      weekHasSubMinute[k] = false;
+      for (int d = 0; d < 7; ++d) {
+        const uint32_t key = habits::dateKey(day - (7 * lich30::SO_TUAN - 1) + 7 * k + d);
+        for (const auto& record : READING_STATS.kho.cacNgay())
+          if (record.ma == key && record.leMs) {
+            weekHasSubMinute[k] = true;
+            break;
+          }
+        if (weekHasSubMinute[k]) break;
+      }
+    }
     firstKey = habits::dateKey(day - (lich30::SO_O - 1));
     lastKey = habits::dateKey(day);
     for (int i = 0; i < count; ++i) {
@@ -98,8 +109,12 @@ void ReadingHistoryActivity::drawChart() const {
     }
     if (m >= 60)
       snprintf(text, sizeof(text), "%lu %s", static_cast<unsigned long>((m + 30) / 60), tr(STR_STATS_HOURS));
+    else if (m)
+      snprintf(text, sizeof(text), "<1 %s", tr(STR_STATS_HOURS));
+    else if (weekHasSubMinute[k])
+      snprintf(text, sizeof(text), "<1 %s", tr(STR_STATS_MINUTES));
     else
-      snprintf(text, sizeof(text), "%s %s", m ? "<1" : "0", tr(STR_STATS_HOURS));
+      snprintf(text, sizeof(text), "0 %s", tr(STR_STATS_HOURS));
     renderer.drawText(SMALL_FONT_ID, x + bar + 6, base - line - 1, text);
     snprintf(text, sizeof(text), "%02lu/%02lu", static_cast<unsigned long>(weekKey[k] % 100),
              static_cast<unsigned long>(weekKey[k] / 100 % 100));
