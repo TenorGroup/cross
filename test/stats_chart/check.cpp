@@ -4,6 +4,7 @@
 #include <cstdio>
 #include "components/ReadingStatsView.h"
 #include "components/ReadingStatsLayout.h"
+#include "components/TenorMenuChrome.h"
 int failures=0,checks=0;
 void check(bool ok,const char* msg) {++checks;if(!ok){++failures;printf("FAIL %s\n",msg);}}
 int main(int argc,char**) {
@@ -33,7 +34,7 @@ int main(int argc,char**) {
     check(shape.y>=162&&shape.y+shape.h<=792,"shape bounds");
     if(tier==0)check(shape.y+shape.h<=162+(compact?390:430),"default badge budget");
    }
-   check(panels==(tier?1:2),"rounded panels");
+   check(panels==(tenorchrome::roundFrames()?(tier?1:2):0),"rounded panels");
    if(page==0) {
     check(bars==2,"zero and missing never positive bars");
     check(r.lines.size()==1 && r.dots.size()==4,"known zero dash differs from missing dot");
@@ -53,6 +54,12 @@ int main(int argc,char**) {
    }
    const int declared=readingstatsview::panelHeight(r,tier?page:-1);
    int bottom=162;for(const auto& shape:r.shapes)if(!shape.fill&&shape.line==1)bottom=std::max(bottom,shape.y+shape.h);
+   if(!tenorchrome::roundFrames()) {
+    for(const auto& run:r.runs)bottom=std::max(bottom,run.y+run.height);
+    const int caption=r.getLineHeight(SMALL_FONT_ID);
+    const HomeReadingStatsLayout layout(caption,r.getLineHeight(UI_10_FONT_ID),r.getLineHeight(UI_12_FONT_ID),compact,tier!=0);
+    bottom+=layout.habitsHeight-layout.note-caption;
+   }
    if(!compact||tier)check(declared==bottom-162,"panelHeight matches drawing");
   }
  }
