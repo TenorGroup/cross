@@ -3809,7 +3809,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 // may read. The status bar is drawn again over the page frame still in the framebuffer and sent
 // with one fast refresh; the page is not laid out, drawn or given a gray pass again.
 void EpubReaderActivity::repaintStatusBarAlone() {
-  if (!pageFrameShown || preview || SETTINGS.readerStatusBarHidden()) return;
+  if (!pageFrameShown || !renderer.hasFrameBuffer() || preview || SETTINGS.readerStatusBarHidden()) return;
   const auto sb = SETTINGS.statusBarSpec();
   const bool usb = gpio.isUsbConnected();
   const bool usbChanged = sb.showBattery && usb != pageFrameUsb;
