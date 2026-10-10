@@ -25,4 +25,6 @@ functions += [function(root / 'src/activities/UiTabListActivity.cpp', 'void UiTa
               function(root / 'src/activities/settings/TextSettingsActivity.cpp', 'freeink::ui::BitmapRef TextSettingsActivity::tabIcon('),
               function(root / 'src/activities/reader/EpubReaderMenuActivity.cpp', 'freeink::ui::BitmapRef EpubReaderMenuActivity::tabIcon('),
               function(root / 'src/activities/reader/ReaderToolbarUi.cpp', 'void ReaderToolbarUi::buildToolRow(')]
-Path(sys.argv[2]).write_text('\n\n'.join(functions) + '\n')
+# The tab centres come from the one production function (TenorMenuChrome.h), inside its namespace.
+centre = function(root / 'src/components/TenorMenuChrome.h', 'constexpr int barTabCentre(')
+Path(sys.argv[2]).write_text('namespace tenorchrome {\n' + centre + '\n}\n\n' + '\n\n'.join(functions) + '\n')
