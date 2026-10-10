@@ -271,3 +271,7 @@ add_test(NAME SettingsChoiceSemantics COMMAND "${Python3_EXECUTABLE}" "${CMAKE_C
 add_test(NAME SettingsChoicePixels COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/settings_semantics/pixels.py" --output "${CMAKE_CURRENT_BINARY_DIR}/settings-pixels")
 
 add_test(NAME SettingsChoiceCallers COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/settings_semantics/choice_cues.py" --output "${CMAKE_CURRENT_BINARY_DIR}/settings-choice-callers")
+add_test(NAME SettingsChoiceMenuInk COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/settings_semantics/popup.py" --output "${CMAKE_CURRENT_BINARY_DIR}/settings-menu-ink")
+add_test(NAME SettingsX3Switch COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/settings_semantics/x3_switch.py" --output "${CMAKE_CURRENT_BINARY_DIR}/settings-x3-switch")
+
+add_test(NAME SettingsX3Menu COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/settings_semantics/x3_menu.py" --output "${CMAKE_CURRENT_BINARY_DIR}/settings-x3-menu")

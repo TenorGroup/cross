@@ -30,6 +30,7 @@ cpp = r'''
 #include <string>
 #include <vector>
 #include <EpdFont.h>
+#include "InlineSymbolBitmaps.h"
 #include "shells/ugly/UglyLogic.h"
 #include "shells/ugly/fonts/ugly_22.h"
 struct CrossPointSettings {
@@ -94,6 +95,25 @@ cpp = cpp.replace('namespace ugly {', '''namespace buttonSymbols {
 int labelId(const char* value) { return static_cast<unsigned char>(value[2]) - 0x80; }
 }
 namespace ugly {''', 1)
+cpp = cpp.replace('namespace ugly {', r'''namespace inlineSymbols {
+enum class Shape { Select };
+void drawShape(const GfxRenderer&, Shape, int, int, int, bool);
+}
+namespace ugly {''', 1)
+cpp += r'''}
+namespace inlineSymbols {
+void drawShape(const GfxRenderer&, Shape, int x, int y, int size, bool) {
+  const auto& glyph = size <= 14 ? inlineSymbolBitmaps::kSelectNet14 : inlineSymbolBitmaps::kSelectNet18;
+  int ink = 0;
+  for (int row = 0; row < glyph.height; ++row)
+    for (int col = 0; col < glyph.width; ++col)
+      ink += !!(glyph.rows[row] & (1u << (glyph.width-col-1)));
+  assert(ink > 0);
+  ugly::draws.push_back({x-12,y+8,24,"mark"});
+}
+}
+namespace ugly {
+'''
 if 'void batteryDigits(' in source:
     cpp += method(source, 'void batteryDigits(') + '\n'
 for signature in ('void battery(', 'bool clockText('):
@@ -163,6 +183,6 @@ translation_unit = args.output / 'battery.cpp'
 translation_unit.write_text(cpp)
 program = args.output / 'battery'
 subprocess.run(['c++', '-std=c++20', '-I'+str(args.repo/'src'), '-I'+str(args.repo/'lib/EpdFont'),
-                '-I'+str(args.repo/'lib/Utf8'), str(translation_unit), str(args.repo/'lib/EpdFont/EpdFont.cpp'),
+                '-I'+str(args.repo/'lib/Utf8'), '-I'+str(args.repo/'lib/GfxRenderer'), str(translation_unit), str(args.repo/'lib/EpdFont/EpdFont.cpp'),
                 str(args.repo/'lib/Utf8/Utf8.cpp'), '-o', str(program)], check=True)
 subprocess.run([str(program)], check=True)

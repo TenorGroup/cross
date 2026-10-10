@@ -178,6 +178,7 @@ void penErase(const GfxRenderer& r, const int cx, const int cy) {
 void keyMark(const GfxRenderer& r, const uint32_t cp, const int cx, const int cy) {
   static constexpr Mark KEYS[6] = {Mark::Tick, Mark::Back, Mark::Up, Mark::Down, Mark::Left, Mark::Right};
   if (cp == TICK) return mark(r, Mark::Tick, cx, cy);
+  if (cp == KEY_FIRST) return inlineSymbols::drawShape(r, inlineSymbols::Shape::Select, cx, cy, 18, true);
   if (cp >= 0x2190 && cp <= 0x2193) {
     constexpr Mark ARROWS[] = {Mark::Left, Mark::Up, Mark::Right, Mark::Down};
     return mark(r, ARROWS[cp - 0x2190], cx, cy);
@@ -711,7 +712,8 @@ void statusBar(const GfxRenderer& r, const char* btn1, const char* btn2, const c
     if (!words[index] || !*words[index]) continue;
     const int id = buttonSymbols::labelId(words[index]);
     if (id >= 0) {
-      mark(r, MARKS[id], positions[index] + spans[index] / 2, y);
+      if (id == 0) inlineSymbols::drawShape(r, inlineSymbols::Shape::Select, positions[index] + spans[index] / 2, y, 18, true);
+      else mark(r, MARKS[id], positions[index] + spans[index] / 2, y);
     } else {
       text(r, Size::S22, positions[index] + 4, y + 8, fitted[index].c_str());
     }

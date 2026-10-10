@@ -116,6 +116,7 @@ bool iconAsset(const GfxRenderer& renderer, const uint8_t* bits, icons::Rect box
 
 bool iconSymbol(const GfxRenderer& renderer, int shape, int x, int y, int size, bool black) {
   if (!shell::isUgly()) return false;
+  if (shape == static_cast<int>(inlineSymbols::Shape::Select)) return false;
   constexpr icons::Id ids[] = {icons::Id::Tick, icons::Id::Back, icons::Id::Up, icons::Id::Down,
     icons::Id::Left, icons::Id::Right, icons::Id::Star, icons::Id::Heart, icons::Id::Erase};
   if (shape < 0 || shape >= static_cast<int>(inlineSymbols::Shape::None)) return false;

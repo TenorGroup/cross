@@ -8,6 +8,7 @@
 // RAM vector, so the real GfxRenderer paints into memory this test can read.
 #include <ButtonSymbols.h>
 #include "BackV1056Reference.h"
+#include "EnterReference.h"
 #include <CrossPointSettings.h>
 #include <GfxRenderer.h>
 #include <HalDisplay.h>
@@ -138,6 +139,35 @@ int main(int argc, char** argv) {
   constexpr int kCx = 200, kCy = 200;
   constexpr int kRadius = 40;
 
+  if (argc == 2 && std::strcmp(argv[1], "--enter-reference") == 0) {
+    for (const int net : {14, 18}) {
+      const auto& expected = net == 14 ? enterReference::net14 : enterReference::net18;
+      const auto& actual = net == 14 ? inlineSymbolBitmaps::kSelectNet14 : inlineSymbolBitmaps::kSelectNet18;
+      const auto& back = net == 14 ? backV1056::kBackNet14 : backV1056::kBackNet18;
+      check(actual.width == expected.width && actual.height == expected.height, "Select must use Enter dimensions");
+      check(actual.height == back.height, "Select and Back must have equal height");
+      for (int path = 0; path < 2; ++path) {
+        clear();
+        if (path == 0) buttonSymbols::drawLabel(renderer, "\xEE\x84\x80", kCx, kCy, net);
+        else inlineSymbols::drawShape(renderer, inlineSymbols::Shape::Select, kCx, kCy, net, true);
+        const auto bounds = scanAround(kCx, kCy, kRadius);
+        check(bounds.any && std::abs(bounds.minY + bounds.maxY - 2 * kCy) <= 1, "Enter center exceeds 0.5 pixel");
+        for (int dy = -kRadius; dy <= kRadius; ++dy)
+          for (int dx = -kRadius; dx <= kRadius; ++dx) {
+            const int row = dy + expected.height / 2, col = dx + expected.width / 2;
+            const bool ink = row >= 0 && row < expected.height && col >= 0 && col < expected.width &&
+                             (expected.rows[row] & (1u << (expected.width - 1 - col)));
+            check(isInk(kCx + dx, kCy + dy) == ink, "Select pixel must match the hand-drawn Enter bitmap");
+          }
+      }
+      const uint32_t oldFirst = net == 14 ? 3 : 7;
+      check(actual.rows[0] != oldFirst, "Select must differ from the old tick");
+      printf("Enter net=%d bbox=%dx%d center=0.0\n", net, expected.width, expected.height);
+    }
+    printf("%s: Enter bitmaps and footer/inline paths\n", failures ? "RED" : "GREEN");
+    return failures ? 1 : 0;
+  }
+
   if (argc == 2 && std::strcmp(argv[1], "--back-reference") == 0) {
     for (const int net : {0, 8, 11, 14, 18}) {
       const auto& expected = net >= 16 ? backV1056::kBackNet18 : backV1056::kBackNet14;
@@ -213,7 +243,7 @@ int main(int argc, char** argv) {
         const int width = bounds.maxX - bounds.minX + 1;
         const int height = bounds.maxY - bounds.minY + 1;
         const int opticalHeight = symbol == 2 || symbol == 3 ? width : height;
-        check(symbol == 0 || std::abs(opticalHeight - span) <= 1, "family optical span differs by more than 1 pixel");
+        check(symbol <= 1 || std::abs(opticalHeight - span) <= 1, "family optical span differs by more than 1 pixel");
         check(bounds.minX + bounds.maxX == 2 * kCx - (width % 2 == 0), "family horizontal center moved");
         check(std::abs(bounds.minY + bounds.maxY - 2 * kCy) <= 1, "family vertical center moved");
         const auto cell = buttonSymbols::horizontalBounds(markers[symbol], net);
@@ -235,7 +265,7 @@ int main(int argc, char** argv) {
           }
           return count;
         };
-        for (int sample = 0; symbol != 0 && sample < 3; ++sample) {
+        for (int sample = 0; symbol > 1 && sample < 3; ++sample) {
           int row = bounds.minY + (net == 14 ? (symbol == 0 ? 4 : 5) : 7) + sample;
           if (symbol == 5) row = bounds.maxY - (net == 14 ? 5 : 7) - sample;
           int run = rowRun(row, symbol == 1 || symbol == 5);
@@ -248,18 +278,6 @@ int main(int argc, char** argv) {
             while (sliceRow <= bounds.maxY && isInk(column, sliceRow++)) ++run;
           }
           check(run == diagonalRun, "family straight diagonal slice differs from chevron");
-        }
-        if (symbol == 1) {
-          int shortCapRow = bounds.minY;
-          for (; shortCapRow <= bounds.maxY; ++shortCapRow) {
-            bool found = false;
-            for (int column = bounds.minX; column <= bounds.minX + width / 4; ++column)
-              found = found || isInk(column, shortCapRow);
-            if (found) break;
-          }
-          check(rowRun(bounds.minY, true) < diagonalRun && rowRun(bounds.maxY, false) < diagonalRun &&
-                    rowRun(shortCapRow, false) < diagonalRun,
-                "tick endpoints must taper to round caps");
         }
         std::printf("family symbol=%d net=%d width=%d height=%d optical=%d center=(%.1f,%.1f) ink=%zu stroke=%d\n",
                     symbol, net, width, height, opticalHeight, (bounds.minX + bounds.maxX) / 2.0 - kCx,
@@ -402,9 +420,9 @@ int main(int argc, char** argv) {
     using inlineSymbolBitmaps::Glyph;
     const Glyph* selected[] = {&inlineSymbolBitmaps::kBackNet14, &inlineSymbolBitmaps::kBackNet18,
                                &inlineSymbolBitmaps::kSelectNet14, &inlineSymbolBitmaps::kSelectNet18};
-    const uint32_t hashes[] = {0x20785c88, 0x14450811, 0xbfb21b5a, 0x48c0e14b};
+    const uint32_t hashes[] = {0x20785c88, 0x14450811, 0x5a176c29, 0x89027e22};
     const int widths[] = {24, 31, 22, 29};
-    const int heights[] = {15, 19, 17, 24};
+    const int heights[] = {15, 19, 15, 19};
     for (int index = 0; index < 4; ++index) {
       const auto& glyph = *selected[index];
       uint32_t hash = 2166136261u;

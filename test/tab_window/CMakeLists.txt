@@ -10,6 +10,7 @@ add_executable(TabWindowTest
   ${REPO_ROOT}/src/MappedInputManager.cpp
   ${REPO_ROOT}/src/activities/Activity.cpp
   ${REPO_ROOT}/src/activities/UiListActivity.cpp
+  ${REPO_ROOT}/src/activities/settings/SettingsChoiceActivity.cpp
   ${REPO_ROOT}/src/activities/UiTabListActivity.cpp
   ${REPO_ROOT}/src/util/ButtonNavigator.cpp
   ${REPO_ROOT}/src/components/UiAppHost.cpp

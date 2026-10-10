@@ -225,6 +225,8 @@ void fadeBand(const GfxRenderer&, int, int, bool, int, int) {}
 void drawMoreChevron(const GfxRenderer&, int, int, ChevronDir, int) {}
 void drawRoundRing(const GfxRenderer&, int, int, int, int, int, int, bool) {}
 void drawRowChevron(const GfxRenderer&, int, int) {}
+void drawSettingsPopupMark(const GfxRenderer&, int, int) {}
+void drawBarIcon(const GfxRenderer&, const uint8_t*, int, int, int, int, bool) {}
 void drawPillRing(const GfxRenderer&, int, int, int, int, int, bool) {}
 void drawPanel(const GfxRenderer&, int, int) {}
 void drawRowRule(const GfxRenderer&, int, int, int) {}

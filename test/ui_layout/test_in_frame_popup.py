@@ -109,7 +109,7 @@ struct Popup {
  static int rowsInFrame(int h,int head,int row,int count){return optionPopupFrameRows(h,head,row,count);}
  static void uglyPaper(const GfxRenderer&,fui::Rect){}
  static void uglyText(const GfxRenderer&,fui::Rect,const char*){}
-''' + 'template<typename Frame>\n' + method(popup, '  void renderAnchored(') + '\n' + method(popup, '  bool handleInput(') + r'''
+''' + method(popup, '  static void drawChoice(') + '\n' + 'template<typename Frame>\n' + method(popup, '  void renderAnchored(') + '\n' + method(popup, '  bool handleInput(') + r'''
  void paint(GfxRenderer&r,Target&t,fui::DeviceContext&d){
    interactions.beginPublishCycle();fui::InputSnapshot input;
    fui::Frame<17> frame(t,d,input,interactions);renderAnchored(r,frame,d.screen());interactions.publish();
@@ -120,7 +120,7 @@ int main(){
  for (int count = 0; count <= // POLICY_LIMIT; ++count) {
    assert(settingsChoiceStyle(count, true) == (count < 2 ? SettingsChoiceStyle::None :
        count < SETTINGS_CHOICE_PAGE_THRESHOLD ? SettingsChoiceStyle::Popup : SettingsChoiceStyle::Page));
-   assert(settingsChoiceStyle(count, false) == (count < 2 ? SettingsChoiceStyle::None : SettingsChoiceStyle::Popup));
+   assert(settingsChoiceStyle(count, false) == (count < 2 ? SettingsChoiceStyle::None : count < SETTINGS_CHOICE_PAGE_THRESHOLD ? SettingsChoiceStyle::Popup : SettingsChoiceStyle::Page));
  }
  const auto parentLines=rowFrameLines(6);
  const int bondFrameHeight=56+parentLines.top+parentLines.bottom;
@@ -170,7 +170,7 @@ int main(){
    assert(popup.shownRows==count&&popup.scrollTop==0);
    assert(popup.lastRenderedFrame.height==count*std::max(56,renderer.lineHeight+16)+12);
    assert(popup.lastRenderedFrame.y>=48&&popup.lastRenderedFrame.bottom()<=716);
-   assert(popup.lastRenderedFrame.width==5*12+32+34);
+   assert(popup.lastRenderedFrame.width==5*12+32+36);
    const int below=popup.anchor.bottom()+4;
    const int expectedY=below+popup.lastRenderedFrame.height<=716?below:std::max(48,popup.anchor.y-4-popup.lastRenderedFrame.height);
    assert(popup.lastRenderedFrame.y==expectedY);

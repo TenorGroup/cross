@@ -374,6 +374,15 @@ if args.ugly_contract:
     for signature in ('const char* BlePageTurnerActivity::uglyTip()', 'void BlePageTurnerActivity::drawFooter()'):
         fixture += function(ble, signature) + '\n'
     if args.ugly_status_contract:
+        fixture += r"""
+namespace inlineSymbols {
+enum class Shape { Select };
+void drawShape(const GfxRenderer& r, Shape, int x, int y, int size, bool) {
+  buttonSymbols::drawLabel(r, "\xEE\x84\x80", x, y, size);
+  if (ugly::traceStatus) ugly::statusMarks.push_back({static_cast<int>(ugly::Mark::Tick), x, y});
+}
+}
+"""
         fixture = fixture.replace('int clockFormat = 0;', '''int clockFormat = 0, clockShowInHeader = 0, statusBarClock = 1;
           bool percent = true;
           bool batteryPercentShown(bool) const { return percent; }

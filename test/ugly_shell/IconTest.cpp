@@ -206,7 +206,9 @@ TEST(UglyIcons, ActualFileAssetAndInlineShapeDispatch) {
   EXPECT_EQ(hash(untouched), before);
   shell::uglyMode = true;
   ugly::setIconFrameSeed(123);
-  EXPECT_TRUE(ugly::iconSymbol(untouched, 0, 24, 24, 18, true));
+  EXPECT_FALSE(ugly::iconSymbol(untouched, 0, 24, 24, 18, true));
+  EXPECT_EQ(hash(untouched), before);
+  EXPECT_TRUE(ugly::iconSymbol(untouched, 1, 24, 24, 18, true));
   EXPECT_NE(hash(untouched), before);
 }
 

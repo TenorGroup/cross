@@ -595,6 +595,7 @@ void UiListActivity::frameRows(fui::ListProps& props) {
   props.toggleKnobRadius = (props.toggleHeight - 8) / 2;
   props.toggleKnobInset = 4;
   props.toggleBorderWidth = 2;
+  props.chosenMark = fui::bitmapFromIcon(icon_row_chosen_24);
   if (!rowsFramed) {
     // Buttons (X3/X4): the row past the last full one shows its top, faded (fadeMoreBelow), in place of a "more"
     // chevron.
@@ -612,7 +613,6 @@ void UiListActivity::frameRows(fui::ListProps& props) {
   props.rowInset = tenorchrome::FOOT_BACK_X;
   props.sidePadding = 16;
   // The value in use in a list of choices (ListItem::chosen): bold, with the tick at the row's end.
-  props.chosenMark = fui::bitmapFromIcon(icon_row_chosen_24);
   fui::ListItem first;
   if (props.rowProvider && props.count > 0) props.rowProvider(props.rowProviderCtx, props.topIndex, first);
   rowsHaveIcons = props.rowProvider ? static_cast<bool>(first.icon) : props.items && props.count > 0 && props.items[0].icon;
