@@ -302,3 +302,4 @@ add_subdirectory(tenor_ink)
 
 add_subdirectory(progressive_jpeg)
 add_subdirectory(progressive_luma)
+add_subdirectory(idle_work)
