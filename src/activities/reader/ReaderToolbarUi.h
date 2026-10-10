@@ -126,6 +126,9 @@ class ReaderToolbarUi : public UiAppHost {
   freeink::ui::Rect panelRect() const { return skinFrame_; }
   tenorchrome::X3ScreenLayout screenLayout() const;
   freeink::ui::Rect toolRect(int index) const;
+  // The one place that says where a sheet stands: bottom-anchored in `bounds`, `height` tall, its left and right
+  // edges on the edges of the bar's tabs under it (the first tab's ring to the last one's, or the X4 Pro bar's).
+  freeink::ui::Rect sheetRect(const freeink::ui::Rect& bounds, int16_t height) const;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   int scrollRows(const MappedInputManager& input, int count) const;
 #endif

@@ -373,8 +373,20 @@ void tenorchrome::drawFavoriteMark(const GfxRenderer& r, const int x, const int 
       if (rows[j] >> i & 1) r.drawPixel(x + i, y + j, true);
 }
 
+tenorchrome::FrameSpan tenorchrome::frameSpan(const GfxRenderer& g) {
+  if (x3ScreenLayoutEnabled()) {
+    const auto bar = x3ScreenLayout(g).barRect;
+    // The tab list's centres: the ring 8 px in from the bar's ends, 5 tabs as on Home.
+    const int first = barTabCentre(bar.x + 8, bar.width - 16, 5, 0, BAR_TAB_INSET) - BAR_TAB_W / 2;
+    const int last = barTabCentre(bar.x + 8, bar.width - 16, 5, 4, BAR_TAB_INSET) + BAR_TAB_W / 2;
+    return {first, last - first};
+  }
+  return {FOOT_BACK_X, g.getScreenWidth() - 2 * FOOT_BACK_X};
+}
+
 void tenorchrome::drawPanel(const GfxRenderer& g, const int y, const int h) {
-  drawRoundRing(g, FOOT_BACK_X, y, g.getScreenWidth() - 2 * FOOT_BACK_X, h, PANEL_RADIUS, 2, true);
+  const auto span = frameSpan(g);
+  drawRoundRing(g, span.x, y, span.width, h, PANEL_RADIUS, 2, true);
 }
 
 void tenorchrome::drawRowRule(const GfxRenderer& g, const int y, const int x0, const int x1) {

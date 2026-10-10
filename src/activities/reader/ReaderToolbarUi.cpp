@@ -62,6 +62,13 @@ constexpr int kLandscapePanelHeightPercent = 88;
 [[maybe_unused]] int shownPage(const int top, const int rows, const int count) {
   return top + rows >= count ? (count + rows - 1) / rows : top / rows + 1;
 }
+// The band a sheet keeps above its content when it has no grabber: 16 px of air under its edge, nothing more.
+fui::SheetProps noGrabberBand(const fui::ThemeTokens& tokens, fui::SheetProps props) {
+  props.grabberHeight = 0;
+  props.grabberMargin = 0;
+  props.grabberInset = tokens.spaceLg;
+  return props;
+}
 // A chapter step "<" or ">": the open chevron of the bar's "<" and the list marks (3 px stroke), its ink box
 // centred in the button's box.
 void drawStepChevron(const GfxRenderer& renderer, const fui::Rect& box, const tenorchrome::ChevronDir dir) {
@@ -92,6 +99,22 @@ fui::Rect ReaderToolbarUi::toolRect(const int index) const {
                                                tenorchrome::BAR_TAB_INSET);
   return {static_cast<int16_t>(center - tenorchrome::BAR_TAB_W / 2), static_cast<int16_t>(bar.y),
           tenorchrome::BAR_TAB_W, static_cast<int16_t>(bar.height)};
+}
+
+fui::Rect ReaderToolbarUi::sheetRect(const fui::Rect& bounds, const int16_t height) const {
+  if (usesX3Bar()) {
+    const auto span = tenorchrome::frameSpan(*renderer_);
+    return {static_cast<int16_t>(span.x), static_cast<int16_t>(bounds.bottom() - height),
+            static_cast<int16_t>(span.width), height};
+  }
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  const auto span = tenorchrome::frameSpan(*renderer_);
+  return {static_cast<int16_t>(span.x),
+          static_cast<int16_t>(tenorchrome::footBackTop(bounds.height) - 12 - height),
+          static_cast<int16_t>(span.width), height};
+#else
+  return {bounds.x, static_cast<int16_t>(bounds.bottom() - height), bounds.width, height};
+#endif
 }
 
 void ReaderToolbarUi::buildX3Bar(UiScreen& screen) {
@@ -207,26 +230,37 @@ void ReaderToolbarUi::buildSheet(UiScreen& screen, const fui::SheetProps& props,
     screen.setContentMarginFromScreen({static_cast<int16_t>(body.y), 0,
                                       static_cast<int16_t>(renderer_->getScreenHeight() - body.bottom()), 0});
   }
-  if (usesX3Bar() && model_.panel) screen.insetContent({0, 16, 0, 16});
   const auto bounds = screen.body();
   const auto sheetHeight = std::min(height, bounds.height);
-  const fui::Rect rect{bounds.x, static_cast<int16_t>(bounds.bottom() - sheetHeight), bounds.width, sheetHeight};
+  const fui::Rect rect = sheetRect(bounds, sheetHeight);
   auto themed = props;
   if (themed.radius == fui::RADIUS_INHERIT) themed.radius = screen.theme().sheetRadius;
-  if (usesX3Bar() && model_.panel) themed.radius = tenorchrome::PANEL_RADIUS;
   themed.ruleWidth = 0;
-  fui::sheet(screen.frame(), rect, themed);
-  // The edge bent round the sheet's top corners (founder 06/10), at the radius of the popups this menu opens
-  // (the theme's sheet radius is its popup corner). The frame runs on past the sheet's foot, where the button
-  // hints (or the screen's edge) take its bottom line.
-  screen.target().stroke(fui::Rect{rect.x, rect.y, rect.width, static_cast<int16_t>(rect.height + themed.radius)},
-                         props.rule, static_cast<uint8_t>(props.ruleWidth), themed.radius, fui::CornersTop);
-  if (usesX3Bar() && model_.panel)
-    tenorchrome::drawRoundRing(*renderer_, rect.x, rect.y, rect.width, rect.height, tenorchrome::PANEL_RADIUS, 2, true);
+  // A sheet is not pulled, so it has no grabber (e-ink: one refresh per touch, nothing to drag).
+  themed.grabberWidth = 0;
+  if (usesX3Bar()) {
+    // The tab bar's sheet is the same frame as the X4 Pro's: one white card, the group ring (grey dots, 2 px,
+    // radius PANEL_RADIUS) closed on all 4 corners, for the toolbar and every panel. The sheet call only registers
+    // the tap on the page above.
+    themed.radius = tenorchrome::PANEL_RADIUS;
+    themed.background = fui::Paint::none();
+    fui::sheet(screen.frame(), rect, themed);
+    screen.target().fill(rect, fui::Paint::solid(fui::Color::White), themed.radius);
+    if (uiTarget.paintingEnabled()) tenorchrome::drawPanel(*renderer_, rect.y, rect.height);
+  } else {
+    fui::sheet(screen.frame(), rect, themed);
+    // The edge bent round the sheet's top corners (founder 06/10), at the radius of the popups this menu opens
+    // (the theme's sheet radius is its popup corner). The frame runs on past the sheet's foot, where the button
+    // hints (or the screen's edge) take its bottom line.
+    screen.target().stroke(fui::Rect{rect.x, rect.y, rect.width, static_cast<int16_t>(rect.height + themed.radius)},
+                           props.rule, static_cast<uint8_t>(props.ruleWidth), themed.radius, fui::CornersTop);
+  }
   skinFrame_ = rect;
   const auto content = fui::sheetContentRect(rect, themed);
-  screen.insetContent(fui::Insets{static_cast<int16_t>(content.y - bounds.y), 0,
-                                static_cast<int16_t>(bounds.bottom() - content.bottom()), 0});
+  screen.insetContent(fui::Insets{static_cast<int16_t>(content.y - bounds.y),
+                                static_cast<int16_t>(bounds.right() - rect.right()),
+                                static_cast<int16_t>(bounds.bottom() - content.bottom()),
+                                static_cast<int16_t>(rect.x - bounds.x)});
 }
 
 // The Contents / Text / More row: three equal slots, an icon centred in each,
@@ -283,6 +317,7 @@ void ReaderToolbarUi::buildToolbar(UiScreen& screen) {
   // the same family.
   sheetProps.grabberMargin = tokens.spaceLg;
   sheetProps.grabberInset = static_cast<int16_t>(tokens.spaceLg + tokens.spaceMd);
+  if (usesX3Bar()) sheetProps = noGrabberBand(tokens, sheetProps);
   const int16_t grabberBand =
       static_cast<int16_t>(sheetProps.grabberMargin + sheetProps.grabberHeight + sheetProps.grabberInset);
   buildSheet(screen, sheetProps, static_cast<int16_t>(contentH + grabberBand));
@@ -384,6 +419,7 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   // Same grabber air as the toolbar sheet / frontlight panel.
   sheetProps.grabberMargin = tokens.spaceLg;
   sheetProps.grabberInset = static_cast<int16_t>(tokens.spaceLg + tokens.spaceMd);
+  if (usesX3Bar()) sheetProps = noGrabberBand(tokens, sheetProps);
 
   // Size the sheet to an exact number of list rows instead of a fixed screen
   // share: a percentage leaves up to a row's height of dead space above the
@@ -509,6 +545,13 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
     screen.target().text(listRect.inset(fui::Insets{0, tokens.spaceLg, 0, tokens.spaceLg}), model_.emptyText, hint);
   }
 
+  if (usesX3Bar() && count > 0 && renderer_ && uiTarget.paintingEnabled()) {
+    // The grey dotted rules of every framed list (the X4 Pro's): under the title, then between 2 rows.
+    const int shown = std::min(std::min(nav_.pageRows(), windowCount), count - nav_.top);
+    for (int k = 0; k < shown; ++k)
+      tenorchrome::drawRowRule(*renderer_, listRect.y + k * rowStride - (rowGap + 1) / 2, skinFrame_.x + 16,
+                               skinFrame_.right() - 17);
+  }
   PageScrollbar::instance().drawList(*renderer_, screen.target(), listRect, nav_, count);
   const int pageRows = nav_.pageRows();
   const int totalPages = pageRows > 0 ? (count + pageRows - 1) / pageRows : 0;
@@ -522,13 +565,6 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
 }
 
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
-namespace {
-fui::Rect readerFrame(const fui::Rect& screen, const int height) {
-  return {16, static_cast<int16_t>(tenorchrome::footBackTop(screen.height) - 12 - height),
-          static_cast<int16_t>(screen.width - 32), static_cast<int16_t>(height)};
-}
-}
-
 int ReaderToolbarUi::scrollRows(const MappedInputManager& input, const int count) const {
   return swipeRows(input, nav_, count, ACTION_ROW);
 }
@@ -547,7 +583,7 @@ void ReaderToolbarUi::buildX4Tools(UiScreen& screen) {
 void ReaderToolbarUi::buildX4Toolbar(UiScreen& screen) {
   const auto& tokens = screen.theme();
   const auto bounds = screen.frame().screen();
-  const auto frame = readerFrame(bounds, 116);
+  const auto frame = sheetRect(bounds, 116);
   skinFrame_ = frame;
   const auto ink = fui::Paint::solid(fui::Color::Black);
   screen.target().fill(frame, fui::Paint::solid(fui::Color::White), 20);
@@ -590,7 +626,7 @@ void ReaderToolbarUi::buildX4Toolbar(UiScreen& screen) {
 void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
   const auto& tokens = screen.theme();
   const auto bounds = screen.frame().screen();
-  const auto frame = readerFrame(bounds, 350);
+  const auto frame = sheetRect(bounds, 350);
   skinFrame_ = frame;
   screen.target().fill(frame, fui::Paint::solid(fui::Color::White), 20);
   screen.frame().hit({0, 0, bounds.width, frame.y}, ACTION_DISMISS, 0, fui::InputTouch);

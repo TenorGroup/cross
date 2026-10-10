@@ -152,6 +152,10 @@ constexpr bool roundFrames(const bool fileList = false) { return kTouchShell && 
 // Touch shell: the one frame around a group of content across the screen, FOOT_BACK_X in from both sides,
 // grey dots 2 px, radius PANEL_RADIUS. Text inside starts 16 px in from it.
 constexpr int PANEL_RADIUS = 20;
+// Where a frame stands across the screen: on the X3 from the first tab's ring to the last one's (the bar under it), on
+// touch FOOT_BACK_X in from both sides (the X4 Pro bar's ends). One function for every frame and sheet.
+struct FrameSpan { int x, width; };
+FrameSpan frameSpan(const GfxRenderer& g);
 void drawPanel(const GfxRenderer& g, int y, int h);
 // Touch page scrollbars use PageScrollbar: outside the frame, x 469-474 on the X4 Pro, 5 px clear of the ring.
 constexpr int FRAME_BAR_WIDTH = 6;
