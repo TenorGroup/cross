@@ -302,6 +302,17 @@ int main() {
     TenorTheme{}.drawButtonHints(r, "Cập nhật", "symbol", "", "");
     check(r.paintedText == std::vector<std::string>{"Cập nhật"}, "caption beside a symbol was cut short");
   }
+  // The text footer at the largest size is one row: no label wraps into a second line or loses a word.
+  SETTINGS.uiTextSize = 2;
+  SETTINGS.tenorButtonSymbols = false;
+  {
+    GfxRenderer r;
+    r.screenHeight = 792;
+    TenorTheme{}.drawButtonHints(r, "« Trở về", "Bật/tắt", "Lên", "Xuống");
+    check(r.paintedText == std::vector<std::string>{"« Trở về", "Bật/tắt", "Lên", "Xuống"},
+          "text footer label wrapped or cut at the larger size");
+  }
+  SETTINGS.tenorButtonSymbols = true;
   // Same production painter, with the 40px Base/Lyra and 35px Tenor boxes.
   // Small caption fonts also model Base's 10pt hint font while uiTextSize=0.
   for (int face = 0; face < 2; ++face) {

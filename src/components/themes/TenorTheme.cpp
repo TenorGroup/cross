@@ -115,6 +115,72 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
     captionX[i] = std::clamp(buttonPositions[i] + (buttonWidth - 1 - width) / 2, lo, std::max(lo, hi - width));
   }
 
+  // The text footer ("Button labels: Text") at the larger sizes. Labels sitting where they always sat (centred under
+  // their button, wrapped in an 80 px cell) are left alone while all of them clear the battery, the clock, each other
+  // and the path bar. When one does not (a wrapped label climbing into the bar, a word cut in the middle, a label
+  // touching the battery or the clock) the whole footer becomes one row, as the bar above assumes: each label keeps
+  // its place under its button unless that would touch a neighbour, then slides along the row, which has room for
+  // every label at full width. Only a label that cannot fit even so is cut short with an ellipsis.
+  std::string texts[4];
+  int textBoxX[4] = {}, textBoxW[4] = {};
+  constexpr int labelSlack = 2;  // the side bearings of two glyphs: 6 px of ink between neighbouring labels
+  const bool textFooter = tenorchrome::x3ScreenLayoutEnabled() && !SETTINGS.tenorButtonSymbols && largerText;
+  bool oneRow = false;
+  if (textFooter) {
+    const int barBottom = tenorchrome::x3ScreenLayout(renderer).barRect.bottom();
+    const int boxHeight = buttonHeight - vachCao - 2;
+    const int lineStep = renderer.getLineHeight(SMALL_FONT_ID) + 2;
+    int statusInkTop = tenorchrome::statusIconTopY(pageHeight, lon);
+    if (!lon) {
+      statusInkTop = std::min(statusInkTop, tenorchrome::statusTextY(pageHeight, false) +
+                                                renderer.getTextInkTop(SMALL_FONT_ID, "0123456789", EpdFontFamily::REGULAR));
+    }
+    int previousRight = -1000;
+    for (int i = 0; i < 4 && !oneRow; i++) {
+      if (labels[i] == nullptr || labels[i][0] == '\0') continue;
+      const auto lines = renderer.wrappedText(SMALL_FONT_ID, labels[i], buttonWidth - 6, 2);
+      int width = 0;
+      for (const auto& line : lines) width = std::max(width, renderer.getTextWidth(SMALL_FONT_ID, line.c_str()));
+      const int left = buttonPositions[i] + (buttonWidth - 1 - width) / 2;
+      const int block = static_cast<int>(lines.size()) * lineStep - 2;
+      const int firstTop = pageHeight - buttonY + std::max(1, (boxHeight - block) / 2);
+      const bool climbs = lines.size() > 1 && firstTop < barBottom + 3;
+      const bool cutWord = lines.size() > 1 && std::strchr(labels[i], ' ') == nullptr;
+      // The battery and the clock only matter to a label that reaches down to their rows.
+      const int inkBottom = firstTop + (static_cast<int>(lines.size()) - 1) * lineStep +
+                            renderer.getTextInkBottom(SMALL_FONT_ID, lines.back().c_str(), EpdFontFamily::REGULAR);
+      const bool sharesRows = inkBottom + captionGap > statusInkTop;
+      const bool touchesCorner = sharesRows && (left < corners.leftEnd + captionGap ||
+                                                left + width > corners.rightStart - clockGap);
+      oneRow = climbs || cutWord || touchesCorner || left < previousRight + captionGap + labelSlack;
+      previousRight = left + width;
+    }
+  }
+  if (oneRow) {
+    int width[4] = {}, right[4] = {};
+    int limit = corners.rightStart - clockGap;
+    for (int i = 3; i >= 0; --i) {
+      if (labels[i] == nullptr || labels[i][0] == '\0') continue;
+      width[i] = renderer.getTextWidth(SMALL_FONT_ID, labels[i]);
+      right[i] = limit;
+      limit -= width[i] + captionGap + labelSlack;
+    }
+    int lo = corners.leftEnd + captionGap;
+    for (int i = 0; i < 4; i++) {
+      if (labels[i] == nullptr || labels[i][0] == '\0') continue;
+      texts[i] = labels[i];
+      int drawn = width[i];
+      if (drawn > right[i] - lo) {
+        texts[i] = renderer.truncatedText(SMALL_FONT_ID, labels[i], std::max(1, right[i] - lo), EpdFontFamily::REGULAR);
+        drawn = renderer.getTextWidth(SMALL_FONT_ID, texts[i].c_str());
+      }
+      const int left = std::clamp(buttonPositions[i] + (buttonWidth - 1 - drawn) / 2, lo, std::max(lo, right[i] - drawn));
+      textBoxX[i] = left - 2;  // drawHintLabel keeps 3 px padding inside its box and centres on box width - 1
+      textBoxW[i] = drawn + 6;
+      lo = left + drawn + captionGap + labelSlack;
+    }
+  }
+
   // Clear all cells before painting symbols that may extend beyond their original cell.
   for (int i = 0; i < 4; i++) {
     if (labels[i] == nullptr || labels[i][0] == '\0') continue;
@@ -129,6 +195,11 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
                              ? tenorchrome::x3ScreenLayout(renderer).buttonBandRect.y
                              : compactSymbol ? tenorchrome::smallFooterSymbolsTopY(renderer) : pageHeight - buttonY;
     renderer.fillRect(buttonPositions[i], clearTop, buttonWidth, pageHeight - clearTop, grayscale);
+    if (textBoxW[i]) {
+      const int left = std::min(buttonPositions[i], textBoxX[i]);
+      const int right = std::max(buttonPositions[i] + buttonWidth, textBoxX[i] + textBoxW[i]);
+      renderer.fillRect(left, clearTop, right - left, pageHeight - clearTop, grayscale);
+    }
     if (!captions[i].empty()) {
       const int left = std::min(buttonPositions[i], captionX[i]);
       const int right = std::max(buttonPositions[i] + buttonWidth, captionX[i] + renderer.getTextWidth(SMALL_FONT_ID, captions[i].c_str()));
@@ -158,7 +229,8 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
           renderer.drawText(SMALL_FONT_ID, captionX[i], inkY - inkTop, captions[i].c_str());
         }
       } else {
-        drawHintLabel(renderer, SMALL_FONT_ID, labels[i], x, buttonWidth, top, buttonHeight - vachCao - 2, textYOffset);
+        drawHintLabel(renderer, SMALL_FONT_ID, textBoxW[i] ? texts[i].c_str() : labels[i], textBoxW[i] ? textBoxX[i] : x,
+                      textBoxW[i] ? textBoxW[i] : buttonWidth, top, buttonHeight - vachCao - 2, textYOffset);
       }
     }
     renderer.fillRectDither(x, pageHeight - vachCao, buttonWidth, vachCao, Color::LightGray);

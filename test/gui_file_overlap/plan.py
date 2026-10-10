@@ -71,7 +71,7 @@ def plan(device, tier, long):
     return out
 
 
-def run_case(device, tier, lang, tips, long, state, script, shots, env, saved, port, keep=None):
+def run_case(device, tier, lang, tips, long, state, script, shots, env, saved, port, keep=None, extra=None):
     """Chay mot luot, tra ve ({ten: Image 1 bit}, log). keep: thu muc de giu log va bmp (khong thi dung thu muc tam)."""
     with tempfile.TemporaryDirectory(prefix='gf-') as tmp:
         sd = Path(tmp) / 'sd'
@@ -84,6 +84,7 @@ def run_case(device, tier, lang, tips, long, state, script, shots, env, saved, p
                     'tipsEnabled': tips, 'sleepTimeout': 120, 'readerTapTip': 0, 'sdFontFamilyName': ''}
         if long:
             settings['deviceName'] = LONG
+        settings.update(extra or {})
         (store / 'settings.json').write_text(json.dumps(settings))
         (store / 'state.json').write_text(json.dumps({'openEpubPath': '', 'lastSleepFromReader': False,
                                                       'showBootScreen': False, 'readerActivityLoadCount': 0}))
@@ -94,7 +95,7 @@ def run_case(device, tier, lang, tips, long, state, script, shots, env, saved, p
         e = {k: v for k, v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')}
         e.update(env)
         e.update(SDL_VIDEODRIVER='dummy', CROSSPOINT_SIM_SD=str(sd), CROSSPOINT_SIM_HTTP_PORT=str(port),
-                 CROSSPOINT_SIM_INPUT_SCRIPT=f'{script};{max(shots.values()) + 600}:QUIT',
+                 CROSSPOINT_SIM_INPUT_SCRIPT=(f'{script};' if script else '') + f'{max(shots.values()) + 600}:QUIT',
                  CROSSPOINT_SIM_SCREENSHOTS=';'.join(f'{shots[n]}:{out}/{shots[n]}.bmp' for n in names))
         r = subprocess.run([str(program(device))], cwd=REPO, env=e, capture_output=True, text=True, timeout=120)
         log = r.stdout + r.stderr
