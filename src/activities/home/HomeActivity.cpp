@@ -583,8 +583,9 @@ bool HomeActivity::handleButtons() {
 
 void HomeActivity::confirmStatsReset(const bool all) {
   statsResetTip.reset();
-  const std::string statsQuestion = I18N.get(all ? StrId::STR_STATS_RESET_ALL : StrId::STR_STATS_RESET_HABITS);
-  std::string statsLongAction = statsQuestion;
+  const std::string statsQuestion =
+      I18N.get(all ? StrId::STR_ALERT_STATS_ALL_QUESTION : StrId::STR_ALERT_STATS_HABITS_QUESTION);
+  std::string statsLongAction = I18N.get(all ? StrId::STR_STATS_RESET_ALL : StrId::STR_STATS_RESET_HABITS);
   if (!statsLongAction.empty() && statsLongAction.back() == '?') statsLongAction.pop_back();
   startActivityForResult(
       makeUniqueNoThrow<ConfirmationActivity>(
@@ -592,7 +593,8 @@ void HomeActivity::confirmStatsReset(const bool all) {
           I18N.get(all ? StrId::STR_STATS_RESET_ALL_BODY : StrId::STR_STATS_RESET_HABITS_BODY),
           ConfirmationContent{statsQuestion,
                               I18N.get(all ? StrId::STR_STATS_RESET_ALL_BODY : StrId::STR_STATS_RESET_HABITS_BODY),
-                              tr(STR_ALERT_STATS_ACTION_SHORT), statsLongAction, "", true}),
+                              I18N.get(all ? StrId::STR_ALERT_STATS_ACTION_SHORT : StrId::STR_ALERT_STATS_HABITS_ACTION_SHORT),
+                              statsLongAction, "", true}),
       [this, all](const ActivityResult& result) {
         if (result.isCancelled) return;
         RenderLock lock(*this);

@@ -107,9 +107,9 @@ TEST(ConfirmationCopy, EnglishAndVietnameseKeepAllSixApprovedVariants) {
       AlertCopy{"STR_ALERT_FONT_QUESTION", "STR_ALERT_FONT_MESSAGE_SUFFIX", "STR_ALERT_FONT_ACTION_SHORT",
                 "STR_ALERT_FONT_ACTION_LONG", "Delete font?", "will be deleted from the SD card.", "Delete", "Delete font"},
       AlertCopy{"STR_STATS_RESET_ALL", "STR_STATS_RESET_ALL_BODY", "STR_ALERT_STATS_ACTION_SHORT", "STR_STATS_RESET_ALL",
-                "Clear reading statistics", "Includes per-book statistics and habits.", "Reset", "Clear reading statistics"},
-      AlertCopy{"STR_STATS_RESET_HABITS", "STR_STATS_RESET_HABITS_BODY", "STR_ALERT_STATS_ACTION_SHORT",
-                "STR_STATS_RESET_HABITS", "Restart reading habits", "Keeps reading statistics and positions.", "Reset",
+                "Clear reading statistics", "Includes per-book statistics and habits.", "Clear", "Clear reading statistics"},
+      AlertCopy{"STR_STATS_RESET_HABITS", "STR_STATS_RESET_HABITS_BODY", "STR_ALERT_STATS_HABITS_ACTION_SHORT",
+                "STR_STATS_RESET_HABITS", "Restart reading habits", "Keeps reading statistics and positions.", "Restart",
                 "Restart reading habits"},
       AlertCopy{"STR_FIRMWARE_UPDATE_PROMPT", nullptr, "STR_ALERT_FIRMWARE_ACTION_SHORT",
                 "STR_ALERT_FIRMWARE_ACTION_LONG", "Update firmware?", "firmware.bin", "Update", "Update firmware"},
@@ -123,9 +123,9 @@ TEST(ConfirmationCopy, EnglishAndVietnameseKeepAllSixApprovedVariants) {
       AlertCopy{"STR_ALERT_FONT_QUESTION", "STR_ALERT_FONT_MESSAGE_SUFFIX", "STR_ALERT_FONT_ACTION_SHORT",
                 "STR_ALERT_FONT_ACTION_LONG", "Xóa font?", "sẽ bị xóa khỏi thẻ nhớ.", "Xóa", "Xóa font"},
       AlertCopy{"STR_STATS_RESET_ALL", "STR_STATS_RESET_ALL_BODY", "STR_ALERT_STATS_ACTION_SHORT", "STR_STATS_RESET_ALL",
-                "Xóa thống kê đọc", "Gồm số liệu từng sách và danh hiệu.", "Đặt lại", "Xóa thống kê đọc"},
-      AlertCopy{"STR_STATS_RESET_HABITS", "STR_STATS_RESET_HABITS_BODY", "STR_ALERT_STATS_ACTION_SHORT",
-                "STR_STATS_RESET_HABITS", "Tính lại danh hiệu từ đầu", "Giữ số liệu và vị trí đọc.", "Đặt lại",
+                "Xóa thống kê đọc", "Gồm số liệu từng sách và danh hiệu.", "Xóa", "Xóa thống kê đọc"},
+      AlertCopy{"STR_STATS_RESET_HABITS", "STR_STATS_RESET_HABITS_BODY", "STR_ALERT_STATS_HABITS_ACTION_SHORT",
+                "STR_STATS_RESET_HABITS", "Tính lại danh hiệu từ đầu", "Giữ số liệu và vị trí đọc.", "Tính lại",
                 "Tính lại danh hiệu từ đầu"},
       AlertCopy{"STR_FIRMWARE_UPDATE_PROMPT", nullptr, "STR_ALERT_FIRMWARE_ACTION_SHORT",
                 "STR_ALERT_FIRMWARE_ACTION_LONG", "Cập nhật firmware?", "firmware.bin", "Cập nhật",
@@ -155,7 +155,7 @@ TEST(ConfirmationCopy, VisibleLabelsAreSpecificAndDistinctOnEachDevice) {
                         "STR_ALERT_FONT_ACTION_LONG"},
              std::array{"STR_STATS_RESET_ALL", "STR_STATS_RESET_ALL_BODY", "STR_ALERT_STATS_ACTION_SHORT",
                         "STR_STATS_RESET_ALL"},
-             std::array{"STR_STATS_RESET_HABITS", "STR_STATS_RESET_HABITS_BODY", "STR_ALERT_STATS_ACTION_SHORT",
+             std::array{"STR_STATS_RESET_HABITS", "STR_STATS_RESET_HABITS_BODY", "STR_ALERT_STATS_HABITS_ACTION_SHORT",
                         "STR_STATS_RESET_HABITS"},
          }) {
       const auto question = yamlValue(language, keys[0]);
@@ -186,6 +186,15 @@ TEST(ConfirmationProductionContract, ButtonDialogPaintsItsOwnFourHintsBeforeRefr
   EXPECT_NE(source.find("renderer.setRenderMode(GfxRenderer::BW); layoutCross();"), std::string::npos);
   EXPECT_NE(source.find("mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN))"), std::string::npos);
   EXPECT_NE(source.find("GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4)"), std::string::npos);
+}
+
+TEST(ConfirmationCopy, StatsQuestionsAndActionsUseMatchingVerbs) {
+  EXPECT_EQ(yamlValue("vietnamese", "STR_ALERT_STATS_ALL_QUESTION"), "Xóa thống kê đọc?");
+  EXPECT_EQ(yamlValue("vietnamese", "STR_ALERT_STATS_HABITS_QUESTION"), "Tính lại danh hiệu từ đầu?");
+  EXPECT_EQ(yamlValue("vietnamese", "STR_ALERT_STATS_ACTION_SHORT"), "Xóa");
+  EXPECT_EQ(yamlValue("vietnamese", "STR_ALERT_STATS_HABITS_ACTION_SHORT"), "Tính lại");
+  EXPECT_EQ(yamlValue("english", "STR_ALERT_STATS_ALL_QUESTION"), "Clear reading statistics?");
+  EXPECT_EQ(yamlValue("english", "STR_ALERT_STATS_HABITS_QUESTION"), "Restart reading habits?");
 }
 
 }  // namespace
