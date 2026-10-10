@@ -22,6 +22,7 @@ import sys
 FREE_FLOOR = 10240
 LARGEST_FLOOR = 8192 - 12
 HELD = ("GRAY_DONE", "CLEANUP_END")  # paint marks taken while the strip is held
+STRIP_BYTES = 7920  # the strip itself (99 x 80): the heap after it is inside the window
 PAINT = re.compile(r"\[ERS_TRACE\] PAINT_(\w+) rid=(\d+).*?kind=(\S+) heap=(\d+) largest=(\d+)")
 ALLOC = re.compile(r"\[HEAP_FLOOR\] cross where=ALLOC (.*)")
 BIG = re.compile(r"\[BIG\] t=\d+ size=(\d+) caps=\S+ task=(\S+) ok=(\d) free=(\d+) largest=(\d+) strip=1")
@@ -57,7 +58,9 @@ def scan(lines):
         if m:
             size = re.search(r"size=(\d+)", m.group(1))
             hit = next((p for p in pending if size and p[1] == int(size.group(1)) and n - p[0] <= 60), None)
-            if hit:
+            if size and int(size.group(1)) == STRIP_BYTES:
+                r["held"].append((n, "ALLOC " + m.group(1).strip()))
+            elif hit:
                 pending.remove(hit)
                 r["door_test"].append((n, "ALLOC " + m.group(1).strip()))
             else:
@@ -96,10 +99,11 @@ def demo():
         "[INF] [HEAP_FLOOR] refuse who=inflate bytes=32768 free=40000 largest=20000",
         "[ERR] [ERS] Build starved of heap free=16320 largest=11764",
         "[HEAP_FLOOR] cross where=ALLOC size=32768 task=loopTask t=9 free=23400 largest=7156 floor_free=10240 floor_largest=8180",
+        "[HEAP_FLOOR] cross where=ALLOC size=7920 task=ActivityMan t=10 free=8896 largest=4596 floor_free=10240 floor_largest=8180",
     ]
     r = scan(sample)
     assert [n for n, _ in r["outside"]] == [4, 6], r["outside"]  # the paint mark once, the allocation once
-    assert [n for n, _ in r["held"]] == [1] and [n for n, _ in r["window"]] == [7, 8, 9]
+    assert [n for n, _ in r["held"]] == [1, 13] and [n for n, _ in r["window"]] == [7, 8, 9]
     assert [n for n, _ in r["window_fail"]] == [9] and [n for n, _ in r["window_big"]] == [7]
     assert [n for n, _ in r["blockers"]] == [11] and len(r["refusals"]) == 1
     assert [n for n, _ in r["door_test"]] == [12]
