@@ -24,6 +24,7 @@
 #include <builtinFonts/geist_16_regular.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -146,30 +147,87 @@ int main(int argc, char** argv) {
       const auto& back = net == 14 ? backV1056::kBackNet14 : backV1056::kBackNet18;
       check(actual.width == expected.width && actual.height == expected.height, "Select must use Enter dimensions");
       check(actual.height == back.height, "Select and Back must have equal height");
-      const int column = net == 14 ? 10 : 12;
-      const int backColumn = net == 14 ? 12 : 16;
-      int first = actual.height, last = -1, count = 0;
-      int backFirst = back.height, backLast = -1;
-      for (int row = 0; row < actual.height; ++row) {
-        if (actual.rows[row] & (1u << (actual.width - 1 - column))) {
-          first = std::min(first, row); last = row; ++count;
-        }
-        if (back.rows[row] & (1u << (back.width - 1 - backColumn))) {
-          backFirst = std::min(backFirst, row); backLast = row;
-        }
+      const auto ink = [](const inlineSymbolBitmaps::Glyph& g, int x, int y) {
+        return x >= 0 && y >= 0 && x < g.width && y < g.height && (g.rows[y] & (1u << (g.width - 1 - x)));
+      };
+      // Stroke measured on Back: shaft thickness mid-way, and the width of its right-hand vertical.
+      int stroke = 0, backVertical = 0;
+      for (int row = 0; row < back.height; ++row) stroke += ink(back, 12, row) ? 1 : 0;
+      for (int col = net == 14 ? 18 : 20; col < back.width; ++col)
+        backVertical += ink(back, col, net == 14 ? 9 : 12) ? 1 : 0;
+      check(stroke == backVertical, "Back shaft and vertical differ in thickness");
+      // Horizontal shaft: same thickness as Back at every column between head and bend.
+      const int shaftLo = net == 14 ? 8 : 10, shaftHi = net == 14 ? 15 : 20;
+      for (int col = shaftLo; col <= shaftHi; ++col) {
+        int run = 0;
+        for (int row = 0; row < actual.height; ++row) run += ink(actual, col, row) ? 1 : 0;
+        check(run == stroke, "Enter shaft thickness differs from the Back stroke");
       }
-      check(count == 3 && last - first == 2, "Enter horizontal stem must be 3 pixels");
-      check(std::abs(first + last - backFirst - backLast) <= 2, "Enter stem differs from Back by more than 1 pixel");
-      const int headWidth = net == 14 ? 8 : 10;
-      for (int row = 2; row < actual.height; ++row)
+      // Vertical stem: same thickness as Back on every row between the cap and the bend, round cap on top.
+      const int stemX = net == 14 ? 19 : 25, bendTop = net == 14 ? 5 : 6;
+      for (int row = 1; row < bendTop; ++row) {
+        int run = 0;
+        for (int col = 0; col < actual.width; ++col) run += (col >= stemX && ink(actual, col, row)) ? 1 : 0;
+        check(run == stroke, "Enter stem thickness differs from the Back stroke");
+      }
+      {
+        int cap = 0;
+        for (int col = 0; col < actual.width; ++col) cap += ink(actual, col, 0) ? 1 : 0;
+        check(cap == stroke - 2 && ink(actual, stemX + 1, 0) && ink(actual, stemX + stroke - 2, 0),
+              "Enter top cap must be the round cap of the stroke");
+      }
+      // Arrowhead: the Back head, mirrored about the shaft axis.
+      const int headWidth = net == 14 ? 8 : 10, axis = net == 14 ? 8 : 10;
+      // Rows above the shaft come straight from Back (shifted down by 2); Back's own lower wing at 14 is not symmetric,
+      // so there only the upper wing is compared and the lower one is checked as its mirror image below.
+      for (int row = 0; row < (net == 14 ? 8 : back.height - 2); ++row)
         for (int x = 0; x < headWidth; ++x)
-          check(bool(actual.rows[row] & (1u << (actual.width - 1 - x))) ==
-                    bool(back.rows[row - 2] & (1u << (back.width - 1 - x))),
+          check(bool(ink(actual, x, row + 2)) == bool(ink(back, x, row)),
                 "Enter arrowhead must preserve the v1.0.56 Back pixels");
-      check(actual.rows[0] == (1u << 1), "Enter top cap must be rounded");
-      check((actual.rows[1] & 7u) == 7u, "Enter vertical stem must be 3 pixels");
-      printf("Enter net=%d stem_offset=%.1f stroke=%d top_row=0x%08x\n", net,
-             (first + last - backFirst - backLast) / 2.0, count, actual.rows[0]);
+      // At 18 the shaft is 4 px so its bottom row is shared with the lower wing; compare wings by their free part.
+      for (int k = 2; k <= axis - 2; ++k)
+        for (int x = 0; x < (k == 2 && net == 18 ? 7 : headWidth); ++x)
+          check(ink(actual, x, axis - k) == ink(actual, x, axis + k), "Enter arrowhead is not symmetric about the shaft");
+      // Bend: quarter ring symmetric about its diagonal, run in every row and column within 0.6 px of the ideal ring.
+      const int ring = net == 14 ? 5 : 7, bx = actual.width - ring, by = net == 14 ? 5 : 6;
+      double worst = 0;
+      for (int i = 0; i < ring; ++i) {
+        const double y = i + 0.5, outer = std::sqrt(ring * ring - y * y);
+        const double inner = std::sqrt(std::max(0.0, double((ring - stroke) * (ring - stroke)) - y * y));
+        int rowRun = 0, colRun = 0;
+        for (int j = 0; j < ring; ++j) {
+          // Block mirrored so that the circle centre is its top-left corner and the stem sits on the right.
+          rowRun += ink(actual, bx + j, by + i) ? 1 : 0;
+          colRun += ink(actual, bx + i, by + j) ? 1 : 0;
+          check(ink(actual, bx + j, by + i) == ink(actual, bx + i, by + j), "Enter bend is not diagonal-symmetric");
+        }
+        worst = std::max({worst, std::fabs(rowRun - (outer - inner)), std::fabs(colRun - (outer - inner))});
+      }
+      check(worst <= 0.6, "Enter bend swells or pinches the stroke");
+      // No stray pixel: every ink pixel touches another, and the glyph is a single piece.
+      int inkCount = 0, reached = 0;
+      std::vector<std::pair<int, int>> pending;
+      std::vector<bool> seen(actual.width * actual.height, false);
+      for (int y = 0; y < actual.height; ++y)
+        for (int x = 0; x < actual.width; ++x)
+          if (ink(actual, x, y)) {
+            ++inkCount;
+            if (pending.empty() && reached == 0) { pending.push_back({x, y}); seen[y * actual.width + x] = true; }
+            check(ink(actual, x - 1, y) || ink(actual, x + 1, y) || ink(actual, x, y - 1) || ink(actual, x, y + 1),
+                  "Enter has an isolated pixel");
+          }
+      while (!pending.empty()) {
+        const auto [x, y] = pending.back();
+        pending.pop_back();
+        ++reached;
+        for (const auto [dx, dy] : {std::pair{-1, 0}, std::pair{1, 0}, std::pair{0, -1}, std::pair{0, 1}})
+          if (ink(actual, x + dx, y + dy) && !seen[(y + dy) * actual.width + x + dx]) {
+            seen[(y + dy) * actual.width + x + dx] = true;
+            pending.push_back({x + dx, y + dy});
+          }
+      }
+      check(reached == inkCount, "Enter is not one connected piece");
+      printf("Enter net=%d stroke=%d (Back=%d) bend_worst_error=%.2f ink=%d\n", net, stroke, stroke, worst, inkCount);
       for (int path = 0; path < 2; ++path) {
         clear();
         if (path == 0) buttonSymbols::drawLabel(renderer, "\xEE\x84\x80", kCx, kCy, net);
@@ -179,13 +237,11 @@ int main(int argc, char** argv) {
         for (int dy = -kRadius; dy <= kRadius; ++dy)
           for (int dx = -kRadius; dx <= kRadius; ++dx) {
             const int row = dy + expected.height / 2, col = dx + expected.width / 2;
-            const bool ink = row >= 0 && row < expected.height && col >= 0 && col < expected.width &&
-                             (expected.rows[row] & (1u << (expected.width - 1 - col)));
-            check(isInk(kCx + dx, kCy + dy) == ink, "Select pixel must match the hand-drawn Enter bitmap");
+            const bool want = row >= 0 && row < expected.height && col >= 0 && col < expected.width &&
+                              (expected.rows[row] & (1u << (expected.width - 1 - col)));
+            check(isInk(kCx + dx, kCy + dy) == want, "Select pixel must match the hand-drawn Enter bitmap");
           }
       }
-      const uint32_t oldFirst = net == 14 ? 3 : 7;
-      check(actual.rows[0] != oldFirst, "Select must differ from the old tick");
       printf("Enter net=%d bbox=%dx%d center=0.0\n", net, expected.width, expected.height);
     }
     printf("%s: Enter bitmaps and footer/inline paths\n", failures ? "RED" : "GREEN");
@@ -444,7 +500,7 @@ int main(int argc, char** argv) {
     using inlineSymbolBitmaps::Glyph;
     const Glyph* selected[] = {&inlineSymbolBitmaps::kBackNet14, &inlineSymbolBitmaps::kBackNet18,
                                &inlineSymbolBitmaps::kSelectNet14, &inlineSymbolBitmaps::kSelectNet18};
-    const uint32_t hashes[] = {0x20785c88, 0x14450811, 0x6f64b933, 0x34587548};
+    const uint32_t hashes[] = {0x20785c88, 0x14450811, 0x9fbaa395, 0x2bf6fa4b};
     const int widths[] = {24, 31, 22, 29};
     const int heights[] = {15, 19, 15, 19};
     for (int index = 0; index < 4; ++index) {
