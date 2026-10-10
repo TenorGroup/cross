@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <algorithm>
 #include <cctype>
 #include <fstream>
 #include <sstream>
@@ -171,6 +172,13 @@ TEST(ConfirmationCopy, VisibleLabelsAreSpecificAndDistinctOnEachDevice) {
     EXPECT_NE(yamlValue(language, "STR_ALERT_FIRMWARE_ACTION_SHORT"), genericConfirm);
     EXPECT_NE(yamlValue(language, "STR_ALERT_FIRMWARE_ACTION_LONG"), genericConfirm);
   }
+}
+
+TEST(ConfirmationProductionContract, TouchMessageIsWrappedWithoutTruncatingConsequences) {
+  const auto source = normalizeWhitespace(readSource("src/activities/util/ConfirmationActivity.cpp"));
+  EXPECT_EQ(source.find("renderer.truncatedText(UI_10_FONT_ID, message.c_str()"), std::string::npos);
+  EXPECT_NE(source.find("confirmationMessageLines("), std::string::npos);
+  EXPECT_NE(source.find("centeredLines(renderer, UI_10_FONT_ID"), std::string::npos);
 }
 
 }  // namespace

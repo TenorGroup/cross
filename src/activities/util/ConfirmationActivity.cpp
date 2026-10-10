@@ -1,9 +1,12 @@
 #include "ConfirmationActivity.h"
 
+#include <algorithm>
+
 #include <I18n.h>
 #include <Logging.h>
 
 #include "HalDisplay.h"
+#include "components/ConfirmationText.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
@@ -30,6 +33,22 @@ void centered(const GfxRenderer& r, int font, const char* text, const Confirmati
              box.y + (box.height - ink[3] + ink[1]) / 2 - ink[1], text, true, style);
 }
 
+void centeredLines(const GfxRenderer& r, int font, const std::vector<std::string>& lines,
+                   const ConfirmationBox& box) {
+  if (lines.empty()) return;
+  const int lineHeight = r.getLineHeight(font);
+  int inkTop = lineHeight, inkBottom = 0;
+  for (size_t i = 0; i < lines.size(); ++i) {
+    const auto ink = r.getTextInkBounds(font, lines[i].c_str(), EpdFontFamily::REGULAR);
+    const int top = static_cast<int>(i) * lineHeight + (lineHeight - ink[3] + ink[1]) / 2;
+    inkTop = std::min(inkTop, top);
+    inkBottom = std::max(inkBottom, top + ink[3] - ink[1]);
+  }
+  const int y = box.y + (box.height - inkBottom + inkTop) / 2 - inkTop;
+  for (size_t i = 0; i < lines.size(); ++i)
+    centered(r, font, lines[i].c_str(), {box.x, y + static_cast<int>(i) * lineHeight, box.width, lineHeight});
+}
+
 void whiteHalo(const GfxRenderer& r, const ConfirmationBox& box) {
   r.fillRect(box.x - 8, box.y - 8, box.width + 16, box.height + 16, false);
 }
@@ -54,12 +73,20 @@ void ConfirmationActivity::layoutCross() {
   int top = tenorchrome::contentTop();
   int bottom = tenorchrome::footBackTop(renderer.getScreenHeight()) - 8;
   int headerHeight = 0;
+  const auto& message = touch && !content.touchMessage.empty() ? content.touchMessage : content.message;
+  const int font = touch ? UI_10_FONT_ID : SMALL_FONT_ID;
+  const int width = touch ? renderer.getScreenWidth() - 64 : 326;
+  const auto& subject = message != body || !content.destructive ? body : std::string{};
+  messageLines = confirmationMessageLines(
+      message, subject, 3,
+      [&](const char* text, int maxLines) { return renderer.wrappedText(font, text, width, maxLines); },
+      [&](const char* text) { return renderer.getTextWidth(font, text); });
+  if (touch) headerHeight = 52 + (static_cast<int>(messageLines.size()) - 1) * renderer.getLineHeight(font);
   if (!touch) {
     const auto bodyRect = tenorchrome::x3ScreenLayout(renderer).bodyRect;
     top = bodyRect.y;
     bottom = bodyRect.y + bodyRect.height;
     questionLines = renderer.wrappedText(UI_12_FONT_ID, content.question.c_str(), 326, 4, EpdFontFamily::BOLD);
-    messageLines = renderer.wrappedText(SMALL_FONT_ID, content.message.c_str(), 326, 6);
     headerHeight = 40 + questionLines.size() * renderer.getLineHeight(UI_12_FONT_ID) + 4 +
                    messageLines.size() * renderer.getLineHeight(SMALL_FONT_ID);
   }
@@ -100,16 +127,14 @@ void ConfirmationActivity::render(RenderLock&& lock) {
     const auto& cancel = layout.cancel;
     renderer.fillRoundedRect(cancel.x, cancel.y, cancel.width, cancel.height, layout.radius, Color::White);
     tenorchrome::drawRoundRing(renderer, cancel.x, cancel.y, cancel.width, cancel.height, layout.radius, 2, true);
-    const auto& message = content.touchMessage.empty() ? content.message : content.touchMessage;
-    const auto fitted = renderer.truncatedText(UI_10_FONT_ID, message.c_str(), box.width - 32);
-    centered(renderer, UI_10_FONT_ID, fitted.c_str(), {box.x, box.y, box.width, 52});
-    tenorchrome::drawRowRule(renderer, box.y + 52, box.x + 16, box.x + box.width - 16);
+    centeredLines(renderer, UI_10_FONT_ID, messageLines, {box.x, box.y, box.width, layout.messageHeight});
+    tenorchrome::drawRowRule(renderer, box.y + layout.messageHeight, box.x + 16, box.x + box.width - 16);
     const auto label = renderer.truncatedText(UI_12_FONT_ID, content.longAction.c_str(),
                                               box.width - 32 - (content.destructive ? 34 : 0));
     const auto ink = renderer.getTextInkBounds(UI_12_FONT_ID, label.c_str(), EpdFontFamily::REGULAR);
     const int width = ink[2] - ink[0];
     const int left = box.x + (box.width - width - (content.destructive ? 34 : 0)) / 2;
-    const int textTop = box.y + 52 + (60 - ink[3] + ink[1]) / 2;
+    const int textTop = box.y + layout.messageHeight + (60 - ink[3] + ink[1]) / 2;
     renderer.drawText(UI_12_FONT_ID, left + (content.destructive ? 34 : 0) - ink[0], textTop - ink[1], label.c_str());
     if (content.destructive) {
       const int iconTop = textTop + (ink[3] - ink[1] - 24) / 2;

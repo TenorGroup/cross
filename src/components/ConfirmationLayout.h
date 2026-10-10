@@ -28,7 +28,9 @@ constexpr ConfirmationDecision confirmationDecision(const ConfirmationLayout& la
 constexpr ConfirmationLayout confirmationLayout(bool touch, int screenWidth, int contentTop, int contentBottom,
                                                 int headerHeight) {
   if (touch) {
-    return {{16, contentBottom - 184, screenWidth - 32, 112}, {16, contentBottom - 60, screenWidth - 32, 60}, 20, 52};
+    const int messageHeight = headerHeight > 0 ? headerHeight : 52;
+    return {{16, contentBottom - 132 - messageHeight, screenWidth - 32, messageHeight + 60},
+            {16, contentBottom - 60, screenWidth - 32, 60}, 20, messageHeight};
   }
   const int height = headerHeight + 120;
   const int x = (screenWidth - 366) / 2;

@@ -94,4 +94,15 @@ TEST(ConfirmationLayout, GeometryAndDecisionStateHaveNoDynamicOwnership) {
   static_assert(sizeof(ConfirmationLayout) == 40);
 }
 
+TEST(ConfirmationLayout, WrappedTouchMessageGrowsUpwardAndKeepsCancelFixed) {
+  for (int lines = 1; lines <= 3; ++lines) {
+    const int header = 52 + (lines - 1) * 38;
+    const auto layout = confirmationLayout(true, 480, 72, 716, header);
+    EXPECT_EQ(layout.messageHeight, header);
+    EXPECT_EQ(layout.action.height, header + 60);
+    EXPECT_EQ(layout.action.y + layout.action.height + 12, layout.cancel.y);
+    EXPECT_EQ(layout.cancel.y + layout.cancel.height, 716);
+  }
+}
+
 }  // namespace
