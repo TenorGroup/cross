@@ -2220,7 +2220,11 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
   const int titleFont = homeExcerptUsesUiFont(title.c_str()) ? UI_12_FONT_ID : UI_TITLE_FONT_ID;
   const bool centered = f.style == HomeRecentStyle::LargeCover;
   auto line = [&](int font, int x, int y, int width, const std::string& text, EpdFontFamily::Style style) {
-    if (centered) renderer.drawCenteredText(font, y, text.c_str(), true, style);
+    if (centered) {
+      const auto ink = renderer.getTextInkBounds(font, text.c_str(), style);
+      const int left = (renderer.getScreenWidth() - (ink[2] - ink[0])) / 2 - ink[0];
+      renderer.drawText(font, left, y, text.c_str(), true, style);
+    }
     else renderer.drawText(font, x, y, renderer.truncatedText(font, text.c_str(), width, style).c_str(), true, style);
   };
   int y = f.titleY;
