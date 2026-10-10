@@ -62,6 +62,7 @@ struct GfxRenderer {
  int getTextInkBottom(int,const char*,EpdFontFamily::Style)const{return inkHeight;}
  int getTextWidth(int,const char*s,EpdFontFamily::Style=EpdFontFamily::REGULAR)const{return strlen(s)*12;}
  std::string truncatedText(int,const char*s,int room,EpdFontFamily::Style)const{return std::string(s).substr(0,std::max(0,room)/12);}
+ void fillRect(int,int,int,int,bool)const{}
  void fillRoundedRect(int,int,int,int,int,Color)const{}
  void drawText(int,int x,int y,const char*s,bool,EpdFontFamily::Style)const{ink.push_back({(int16_t)x,(int16_t)y,(int16_t)(strlen(s)*12),(int16_t)inkHeight});}
 };
@@ -83,6 +84,7 @@ struct PageScrollbar {
 };
 namespace shell {bool isUgly(){return false;}}
 namespace tenorchrome {
+void drawContextActionIcon(const GfxRenderer&,int,int,int){}
 constexpr bool kTouchShell=true;constexpr int FOOT_BACK_X=16,PANEL_RADIUS=20;
 int contentTop(){return 48;}int footBackTop(int h){return h-76;}
 void drawRoundRing(const GfxRenderer&,int,int,int,int,int,int,bool){}
@@ -102,6 +104,8 @@ fui::InputSnapshot touchSnapshotFrom(const MappedInputManager&i){return i.snap;}
 struct Lines {int rule,top,bottom;};
 ''' + lines + r'''
 struct Popup {
+ bool contextMenu=false,contextPinned=false;
+ std::function<void(fui::Rect)> contextBackground;
  static constexpr int MAX_OPTIONS=16,ACTION_OPTION=1,ACTION_CHROME=2,ACTION_PAGE=3;
  bool anchored=false,inFrame=true,hasAnchor=false,alignSelected=false,marked=false,active=true,uiReady=true;
  fui::Rect frameRect,anchor;mutable fui::Rect lastRenderedFrame;
@@ -112,7 +116,7 @@ struct Popup {
  static int rowsInFrame(int h,int head,int row,int count){return optionPopupFrameRows(h,head,row,count);}
  static void uglyPaper(const GfxRenderer&,fui::Rect){}
  static void uglyText(const GfxRenderer&,fui::Rect,const char*){}
-''' + method(popup, '  static void drawChoice(') + '\n' + 'template<typename Frame>\n' + method(popup, '  void renderAnchored(') + '\n' + method(popup, '  bool handleInput(') + r'''
+''' + method(popup, '  static void drawAction(') + '\n' + method(popup, '  static void drawChoice(') + '\n' + 'template<typename Frame>\n' + method(popup, '  void renderAnchored(') + '\n' + method(popup, '  bool handleInput(') + r'''
  void paint(GfxRenderer&r,Target&t,fui::DeviceContext&d){
    interactions.beginPublishCycle();fui::InputSnapshot input;
    fui::Frame<17> frame(t,d,input,interactions);renderAnchored(r,frame,d.screen());interactions.publish();

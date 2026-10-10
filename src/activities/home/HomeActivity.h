@@ -89,7 +89,12 @@ class HomeActivity final : public UiTabListActivity {
   void showRecentRemovalConfirmation(RecentBook book);
   // Touch: a held cover's menu hangs from the cover (rule 7), not from the whole card.
   void onRowLongPress(int index) override;
+  unsigned long touchHoldMs() const override;
+  void onRowAction(const freeink::ui::ActionEvent& event) override;
   freeink::ui::Rect heldCover{};
+  freeink::ui::Rect contextCover{};
+  freeink::ui::Rect recentCoverAt(int index);
+  void drawContextBackground(freeink::ui::Rect menu);
   std::optional<RecentBook> pendingRecentRemoval;
   bool recentRemovalFailed = false;
   bool touchRowMovesRing() const override { return activeTabId == Tab::RECENT; }
@@ -261,6 +266,7 @@ class HomeActivity final : public UiTabListActivity {
   void drawTouchRecent(const HomeRecentLayout& layout);
   void drawTouchCover(const HomeRecentRect& rect, int book);
   void drawOtherBookRow(int shown, int ruleY, int rowY, const std::vector<std::string>& titleLines);
+  void drawOtherBookArrows(int shown, int rowY);
   const char* habitSuggestion() const;
   void loadRecentBooks();
 };

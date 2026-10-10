@@ -60,6 +60,7 @@
 #include "components/UIThemeTokens.h"
 #include "components/X3SleepCover.h"
 #include "components/themes/TenorRadius.h"
+#include "components/ContextMenuBackground.h"
 #include "components/icons/tenorHomeTabIcons.h"
 #include "fontIds.h"
 
@@ -934,6 +935,15 @@ void HomeActivity::buildScreen(UiScreen& screen) {
 }
 
 void HomeActivity::render(RenderLock&&) {
+  if (rowMenu.isActive() && activeTabId == Tab::RECENT && !shell::isUgly()) {
+    if (tenorchrome::kTouchShell) {
+      tenorchrome::clearFootBand(renderer);
+      tenorchrome::drawFootBar(renderer, tenorchrome::FootBar::Full, tenorchrome::Zone::Recent);
+    } else if (tenorchrome::x3ScreenLayoutEnabled()) {
+      const auto tip = homeScreenLayout().tipRect;
+      renderer.fillRect(tip.x, tip.y, tip.width, tip.height, false);
+    }
+  }
   if (rowMenu.processRender(renderer, mappedInput)) return;
   if (activeTabId == Tab::STATS && statsRowsEnlarged != statsPaged()) rebuildRows();
 #ifdef TENOR_UI_ACCEPTANCE
@@ -1122,10 +1132,23 @@ bool HomeActivity::buttonHoldOpensRowMenu(const int row) const {
 void HomeActivity::onRowLongPress(const int index) {
   if (activeTabId == Tab::RECENT) {
     showRecentActions(index, tenorchrome::kTouchShell
-        ? index == shownRecent() ? heldCover : UiAppHost::dispatchingRect() : fui::Rect{});
+        ? recentCoverAt(index) : fui::Rect{});
     return;
   }
   UiListActivity::onRowLongPress(index);
+}
+
+unsigned long HomeActivity::touchHoldMs() const {
+  return tenorchrome::kTouchShell && !shell::isUgly() && activeTabId == Tab::RECENT ? 700 : 0;
+}
+
+void HomeActivity::onRowAction(const fui::ActionEvent& event) {
+  if (tenorchrome::kTouchShell && !shell::isUgly() && activeTabId == Tab::RECENT && event.longPress) {
+    RenderLock lock(*this);
+    onRowLongPress(event.value);
+    return;
+  }
+  UiTabListActivity::onRowAction(event);
 }
 
 void HomeActivity::showOtherBookMenu() {
@@ -1146,12 +1169,47 @@ void HomeActivity::showRecentActions(const int index, const fui::Rect anchor) {
       pendingRecentRemoval = recentBooks[index];
     }
   };
-  if (anchor.height > 0) {
+  if (!shell::isUgly()) {
+    contextCover = anchor;
+    const auto& book = recentBooks[index];
+    const std::string title = book.title.empty() ? book.path.substr(book.path.find_last_of('/') + 1) : book.title;
+    const fui::Rect ring{static_cast<int16_t>(anchor.x - 7), static_cast<int16_t>(anchor.y - 7),
+                         static_cast<int16_t>(anchor.width + 14), static_cast<int16_t>(anchor.height + 14)};
+    rowMenu.showContext(title.c_str(), ring, labels, rowIsPinned(index), selected,
+                       [this](fui::Rect menu) { drawContextBackground(menu); });
+  } else if (anchor.height > 0) {
     rowMenu.showAnchored(anchor, labels, 2, selected);
   } else {
     rowMenu.show(StrId::STR_HOME_TAB_RECENT, labels, 2, 0, selected);
   }
   requestUpdate();
+}
+
+fui::Rect HomeActivity::recentCoverAt(const int index) {
+  if (index == shownRecent()) return heldCover;
+  const auto layout = recentLayout();
+  for (int slot = 0; slot < layout.shelfCount; ++slot) {
+    if (layout.shelfBooks[slot] != index) continue;
+    const auto size = cardCoverSize(index);
+    const auto& cell = layout.shelf[slot];
+    const auto fit = homeCoverFit(cell.w, cell.h, size.width, size.height);
+    return {static_cast<int16_t>(24 + slot * 152 + (128 - fit.first) / 2),
+            static_cast<int16_t>(cell.y + (cell.h - fit.second) / 2),
+            static_cast<int16_t>(fit.first), static_cast<int16_t>(fit.second)};
+  }
+  return app.publishedRect(ACTION_OTHER_BOOK, 0);
+}
+
+void HomeActivity::drawContextBackground(const fui::Rect menu) {
+  std::array<fui::Rect, 4> covers{};
+  covers[0] = heldCover;
+  const auto layout = recentLayout();
+  for (int slot = 0; slot < layout.shelfCount; ++slot)
+    covers[slot + 1] = recentCoverAt(layout.shelfBooks[slot]);
+  clearContextMenuLines(renderer, menu, covers, tenorchrome::contentTop(),
+                        tenorchrome::footBackTop(renderer.getScreenHeight()) - 8);
+  renderer.drawRoundedRect(contextCover.x - 7, contextCover.y - 7, contextCover.width + 14,
+                           contextCover.height + 14, 3, tenorradius::cover(contextCover.width) + 7, true);
 }
 
 void HomeActivity::showRecentRemovalConfirmation(RecentBook book) {
@@ -2218,6 +2276,7 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
   if (coverBufferStored && coverBufferBook == shown && restoreCoverBuffer()) {
     LOG_INF("HOME", "Home style=%u restore_us=%lu snapshot=%u", static_cast<unsigned>(f.style),
             static_cast<unsigned long>(micros() - started), static_cast<unsigned>(coverBufferSize));
+    if (f.style != HomeRecentStyle::Shelf && recentBooks.size() > 1) drawOtherBookArrows(shown, f.rowY);
     return;
   }
   freeCoverBuffer();
@@ -2409,7 +2468,7 @@ void HomeActivity::drawOtherBookRow(const int shown, const int ruleY, const int 
   const int count = static_cast<int>(recentBooks.size());
   if (count < 2) return;
   // The arrows' tips stay where the solid triangles had them, 24 px outside the text margins.
-  constexpr int MARGIN = 40, ARROW_SPAN = 7, ARROW_OUT = 24;
+  constexpr int MARGIN = 40;
   const int left = MARGIN, right = renderer.getScreenWidth() - MARGIN;
   renderer.drawLine(left, ruleY, right - 1, ruleY);
   const char* label = tr(STR_RECENT_OTHER_BOOK);
@@ -2420,6 +2479,12 @@ void HomeActivity::drawOtherBookRow(const int shown, const int ruleY, const int 
     renderer.drawText(UI_10_FONT_ID, right - titleWidth, y, line.c_str(), true, EpdFontFamily::BOLD);
     y += renderer.getLineHeight(UI_10_FONT_ID);
   }
+  drawOtherBookArrows(shown, rowY);
+}
+
+void HomeActivity::drawOtherBookArrows(const int shown, const int rowY) {
+  constexpr int MARGIN = 40, ARROW_SPAN = 7, ARROW_OUT = 24;
+  const int left = MARGIN, right = renderer.getScreenWidth() - MARGIN;
   const int top = rowY + renderer.getFontAscenderSize(UI_10_FONT_ID) * 2 / 3 - ARROW_SPAN;
   const int length = tenorchrome::moreChevronLength(ARROW_SPAN);
   tenorchrome::drawMoreChevron(renderer, right + ARROW_OUT - length, top, tenorchrome::ChevronDir::Right, ARROW_SPAN);

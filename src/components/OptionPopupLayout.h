@@ -26,8 +26,12 @@ inline OptionPopupWindow optionPopupWindow(int total, int selected, int availabl
 struct OptionPopupBox { int x, y, width, height; };
 // Size from measured content; touch value menus align with the value's right edge.
 inline OptionPopupBox optionPopupLayout(OptionPopupBox available, OptionPopupBox anchor, int contentWidth,
-                                        int height, bool touch, bool valueMenu = true) {
-  const int w = std::max(1, std::min(contentWidth, available.width));
+                                        int height, bool touch, bool valueMenu = true, bool actionMenu = false) {
+  int w = std::max(1, std::min(contentWidth, available.width));
+  if (touch && actionMenu) {
+    const int rightRoom = available.x + available.width - anchor.x;
+    w = std::min(available.width, std::clamp(std::min(contentWidth, rightRoom), 200, 360));
+  }
   const int h = std::max(1, std::min(height, available.height));
   int x = available.x + (available.width - w) / 2;
   int y = available.y + (available.height - h) / 2;

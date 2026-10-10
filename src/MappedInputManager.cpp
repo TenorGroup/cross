@@ -286,6 +286,15 @@ bool MappedInputManager::wasScreenLongPress(int& x, int& y) const {
   return true;
 }
 
+bool MappedInputManager::wasScreenHold(int& x, int& y, const unsigned long thresholdMs) const {
+  float nx = 0.0f, ny = 0.0f;
+  unsigned long heldMs = 0;
+  if (!gpio.isTouchTapCandidate(nx, ny, heldMs) || heldMs < thresholdMs) return false;
+  gpio.suppressTouchContact();
+  renderer.tapToLogical(nx, ny, x, y);
+  return true;
+}
+
 bool MappedInputManager::isScreenTouchHeld(int& x, int& y) const {
   // Live contact position while the finger is down (no tap-slop gate) - drag tracking.
   float nx = 0.0f;

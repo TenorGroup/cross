@@ -57,7 +57,8 @@ class UiAppHost {
   // Gated snapshot-build + route: the common loop head. withLongPress forwards
   // the SDK long-press (rows must carry InputLongPress); routeHeld forwards
   // held frames for InputDrag elements (sliders, drag-select fields).
-  TouchRoute routeTouch(const MappedInputManager& input, bool withLongPress = false, bool routeHeld = false);
+  TouchRoute routeTouch(const MappedInputManager& input, bool withLongPress = false, bool routeHeld = false,
+                       unsigned long holdMs = 0);
   // Touch (dynamic bar rule 11): how many rows a vertical swipe in this pass moves the list, by the one
   // rule (TouchScroll.h) and the row pitch the last layout drew; 0 when the pass holds no vertical swipe.
   int swipeRows(const MappedInputManager& input, const freeink::ui::ListNav& nav, int count,

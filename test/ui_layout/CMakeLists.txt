@@ -84,7 +84,7 @@ add_test(NAME UiLayout.corner_cost COMMAND UiLayout_corner_cost)
 # Rounded blocks through the real GfxRenderer.cpp, with the button_symbols test's stubs and a RAM
 # framebuffer, so the corner shape is checked on the pixels the panel gets. The sleep dither rides
 # on the same recipe.
-foreach(name rounded_render rounded_border sleep_gray_planes bitmap_rows home_cover_edges)
+foreach(name rounded_render rounded_border sleep_gray_planes bitmap_rows home_cover_edges context_menu_lines)
 add_executable(UiLayout_${name} ${name}.cpp
   "${REPO_ROOT}/lib/GfxRenderer/GfxRenderer.cpp"
   "${REPO_ROOT}/lib/GfxRenderer/FontCacheManager.cpp"
@@ -96,7 +96,7 @@ add_executable(UiLayout_${name} ${name}.cpp
   "${REPO_ROOT}/lib/MiniBidi/BidiUtils.cpp"
   "${REPO_ROOT}/lib/MiniBidi/minibidi.c")
 target_compile_features(UiLayout_${name} PRIVATE cxx_std_20)
-if(name STREQUAL "home_cover_edges")
+if(name STREQUAL "home_cover_edges" OR name STREQUAL "context_menu_lines")
   target_compile_options(UiLayout_${name} PRIVATE -UNDEBUG)
 endif()
 target_include_directories(UiLayout_${name} BEFORE PRIVATE "${REPO_ROOT}/test/button_symbols/stubs")

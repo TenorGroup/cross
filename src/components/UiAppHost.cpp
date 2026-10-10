@@ -25,11 +25,20 @@ void UiAppHost::renderUi() {
 }
 
 UiAppHost::TouchRoute UiAppHost::routeTouch(const MappedInputManager& input, const bool withLongPress,
-                                            const bool routeHeld) {
+                                            const bool routeHeld, const unsigned long holdMs) {
   TouchRoute result;  // named apart from route() — cppcheck flags the shadow
   cancelStaleTouch(input);
   if (!uiReady) return result;
-  result.snap = touchSnapshotFrom(input, withLongPress);
+  result.snap = touchSnapshotFrom(input, withLongPress && holdMs == 0);
+  if (withLongPress && holdMs > 0) {
+    int x = 0, y = 0;
+    if (input.wasScreenHold(x, y, holdMs)) {
+      result.snap = {};
+      result.snap.touchReleased = result.snap.longPress = true;
+      result.snap.touchX = static_cast<int16_t>(x);
+      result.snap.touchY = static_cast<int16_t>(y);
+    }
+  }
   if (!result.snap.touchPressed && !result.snap.touchReleased && !(routeHeld && result.snap.touchHeld)) {
     return result;
   }

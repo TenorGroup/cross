@@ -182,6 +182,7 @@ class UiListActivity : public Activity, protected UiAppHost {
   // wantsTouchLongPress constructor flag (rows must also carry InputLongPress).
   // Default on the touch shell: a row that can be pinned offers Pin or Unpin in the row menu.
   virtual void onRowLongPress(int index);
+  virtual unsigned long touchHoldMs() const { return 0; }
   // The selection/viewport state the loop, sync, and row dispatch operate on.
   // Default is the single `nav` member; UiTabListActivity redirects it to the
   // active tab's per-tab state.
