@@ -41,6 +41,12 @@ constexpr size_t kPoisonBytes = 12;
 constexpr size_t kLargestFloorReported = kLargestFloor - kPoisonBytes;
 // Allocations below this size do not go through the door.
 constexpr size_t kBigBytes = 4096;
+// The grayscale strip the floor keeps room for, Home and reader alike: 80 rows of the widest panel
+// without PSRAM (X3, 792 px = 99 B a row) are 7,920 B, inside the 8,192 B block above.
+constexpr int kGrayStripRows = 80;
+constexpr size_t kWidestPanelRowBytes = 99;
+static_assert(kWidestPanelRowBytes * kGrayStripRows <= kLargestFloorReported,
+              "the grayscale strip must fit the block the floor keeps");
 
 // True when this heap state (as the heap API reports it) is under the floor.
 constexpr bool crosses(const size_t freeBytes, const size_t largestReported) {

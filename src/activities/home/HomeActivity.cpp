@@ -2368,7 +2368,7 @@ bool HomeActivity::showHomeGray() {
   }
   if (!found) return false;
   if (kInkX3) {
-    constexpr int stripRows = 120;
+    constexpr int stripRows = heapfloor::kGrayStripRows;
     const int rowBytes = renderer.getDisplayWidthBytes();
     const size_t bytes = size_t(rowBytes) * stripRows;
     // As the reader's strip: the heap floor is measured before the strip is asked for (the floor keeps

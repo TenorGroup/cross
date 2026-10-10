@@ -3688,7 +3688,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const auto tDisplay = millis();
 
   if (tiledGrayscale) {
-    constexpr int STRIP_ROWS = 80;
+    constexpr int STRIP_ROWS = heapfloor::kGrayStripRows;
     const int gh = renderer.getDisplayHeight();
     const int gwBytes = renderer.getDisplayWidthBytes();
     const size_t planeBytes = static_cast<size_t>(gwBytes) * gh;
