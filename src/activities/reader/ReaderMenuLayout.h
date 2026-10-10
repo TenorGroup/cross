@@ -101,6 +101,24 @@ constexpr bool rowOpens(const Action action) {
          action != Action::SCREENSHOT && action != Action::TILT_PAGE_TURN;
 }
 
+// How a row of a reader menu ends, by what the row does (the design's 3.3, 3.5 and 3.6): a switch for an on/off that turns
+// where it stands, the up-down mark for a choice of a few values made on the spot, the chevron for a row that opens a list
+// or another screen, nothing for an action done at once. The panels of the toolbar menu ask here.
+enum class RowEnd : uint8_t { None, Opens, Switch, Choice };
+constexpr RowEnd rowEnd(const Action action) {
+  switch (action) {
+    case Action::NIGHT_MODE:
+    case Action::FRONTLIGHT:
+    case Action::TILT_PAGE_TURN: return RowEnd::Switch;
+    case Action::ROTATE_SCREEN:
+    case Action::AUTO_PAGE_TURN: return RowEnd::Choice;
+    case Action::TOGGLE_BOOKMARK:
+    case Action::SCREENSHOT: return RowEnd::None;
+    default: break;
+  }
+  return RowEnd::Opens;
+}
+
 // Danh sach yeu thich mac dinh khi nguoi dung chua tu xep: dong bo tenor/kosync.
 inline constexpr Action DEFAULT_FAVORITES[] = {Action::SYNC};
 

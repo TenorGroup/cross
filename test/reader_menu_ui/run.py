@@ -115,6 +115,15 @@ def x3(program, tmp, fails):
         fails.append(f'X3 step chevron box {prev}: want 10 x 19')
     elif track and abs((prev[1] + prev[3]) / 2 - sum(track) / len(track)) > 0.5:
         fails.append(f'X3 step chevron centre {(prev[1] + prev[3]) / 2} but track {sum(track) / len(track)}')
+    # A row ends by what it does: the night mode row is a 46 x 26 switch, the orientation row ends in the up-down mark.
+    reading = a['reading']
+    top = next(y for y in range(380, 700) if long_runs(reading, y, 200))
+    switch = bbox(reading, 380, top + 8, 470, top + 44)
+    if switch is None or (switch[2] - switch[0] + 1, switch[3] - switch[1] + 1) != (46, 26):
+        fails.append(f'X3 night mode row end {switch}: want a 46 x 26 switch')
+    mark = bbox(reading, 462, top + 112 + 8, 490, top + 112 + 44)
+    if mark is None or (mark[2] - mark[0] + 1) != 13 or not 10 <= mark[3] - mark[1] + 1 <= 16:
+        fails.append(f'X3 orientation row end {mark}: want the 13 px wide up-down mark')
     # The ring is the group ring all round: the bottom edge is a dotted row pair too, and no side column is solid.
     for name in ('position', 'tools'):
         cols = [x for x in (left, left + 1, right - 2, right - 1) if a[name][480:560, x].sum() > 0.8 * 80]
@@ -136,6 +145,10 @@ def x4(program, tmp, fails):
         diff = int((x != y).sum())
         if diff:
             fails.append(f'X4 {tool}: {diff} pixels of the reader bar differ from the text settings bar')
+    more = run(program, tmp / 'c', [(2500, 'CONFIRM'), (4500, 'TAP:412,754')], {6000: 'more'}, port=29602)['more']
+    switch = bbox(more, 340, 470, 462, 520)
+    if switch is None or (switch[2] - switch[0] + 1, switch[3] - switch[1] + 1) != (46, 26):
+        fails.append(f'X4 night mode row end {switch}: want a 46 x 26 switch')
     t = a['toolbar']
     prev = bbox(t, 30, 604, 80, 664)
     if prev is None or (prev[2] - prev[0] + 1, prev[3] - prev[1] + 1) != (10, 19):

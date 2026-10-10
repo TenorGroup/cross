@@ -77,6 +77,11 @@ class ReaderToolbarUi : public UiAppHost {
     const char* tipText = nullptr;
     // A row that opens a list or another screen ends in the grey chevron, as in Settings.
     std::function<bool(int)> rowOpens;
+    // How a row ends by what it does (readermenu::rowEnd): a switch, the up-down mark of a choice, the chevron of a
+    // row that opens something, nothing. Unset, rowOpens alone says whether the chevron ends the row.
+    std::function<readermenu::RowEnd(int)> rowEnd;
+    // The state of a switch row.
+    std::function<bool(int)> rowOn;
     // Tile row: the tool in focus (toolbar) / the open panel (panel). 0..3, -1 none.
     int activeTool = 0;
     // Button boards keep the theme's denser list row height (as every other
@@ -141,6 +146,10 @@ class ReaderToolbarUi : public UiAppHost {
   void buildToolbar(UiScreen& screen);
   void buildPanel(UiScreen& screen);
   void buildSheet(UiScreen& screen, const freeink::ui::SheetProps& props, int16_t height);
+  // The end of row `index` in `item` by its meaning, and the shapes the list gives a switch.
+  void endRow(freeink::ui::ListItem& item, int index) const;
+  void markChoiceRows(int firstRow, int rowCount) const;
+  void switchShapes(freeink::ui::ListProps& props) const;
   void buildToolRow(UiScreen& screen, freeink::ui::LayoutAnchor anchor, int16_t sideInset);
   void buildX3Bar(UiScreen& screen);
   void paintUgly();

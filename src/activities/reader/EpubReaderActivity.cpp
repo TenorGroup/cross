@@ -58,6 +58,7 @@
 #include "ReaderFontChon.h"
 #include "ReaderFontSizes.h"
 #include "ReaderToolbarUi.h"
+#include "components/SettingsChoiceStyle.h"
 #include "ReaderUtils.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
@@ -4153,6 +4154,18 @@ int textChoiceCount(const int row) {
     return info->valueRange.step ? (info->valueRange.max - info->valueRange.min) / info->valueRange.step + 1 : 0;
   return static_cast<int>(info->enumLabels().size());
 }
+// How a pinned text row ends: a switch for an on/off, the up-down mark for a choice of 2 to 6 values made on the spot,
+// the chevron for what opens a level or a list (the font, the size, 7 values or more).
+readermenu::RowEnd textRowEnd(const int place) {
+  if (textRowToggles(place)) return readermenu::RowEnd::Switch;
+  const int id = textRowId(place);
+  const int count = id >= 2 ? textChoiceCount(id) : 0;
+  return count >= 2 && count < SETTINGS_CHOICE_PAGE_THRESHOLD ? readermenu::RowEnd::Choice : readermenu::RowEnd::Opens;
+}
+bool textRowOn(const int place) {
+  const auto info = catalogTextRow(textRowId(place));
+  return info && info->valuePtr && SETTINGS.*(info->valuePtr) != 0;
+}
 int textChoiceInUse(const int row) {
   if (textChoiceCount(row) == 0) return -1;
   const uint8_t value = textChoiceValue(row);
@@ -4867,6 +4880,12 @@ void EpubReaderActivity::renderOverlay() {
       return (pin & readermenu::PIN_TEXT) ? !textRowToggles(textRowPlace(pin & ~readermenu::PIN_TEXT))
                                           : readermenu::rowOpens(static_cast<readermenu::Action>(pin));
     };
+    model.rowEnd = [this](int i) {
+      const uint8_t pin = i < static_cast<int>(favoriteRows.size()) ? favoriteRows[i] : 0;
+      return (pin & readermenu::PIN_TEXT) ? textRowEnd(textRowPlace(pin & ~readermenu::PIN_TEXT))
+                                          : readermenu::rowEnd(static_cast<readermenu::Action>(pin));
+    };
+    model.rowOn = [this](int i) { return favoriteRowOn(i); };
   }
   else {
     model.panelTitle = ReaderToolbarUi::usesX3Bar()
@@ -4882,6 +4901,12 @@ void EpubReaderActivity::renderOverlay() {
       const int row = panelActionRow(i);
       return row >= 0 && row < static_cast<int>(moreItems.size()) && readermenu::rowOpens(moreItems[row].action);
     };
+    model.rowEnd = [this](int i) {
+      const int row = panelActionRow(i);
+      return row >= 0 && row < static_cast<int>(moreItems.size()) ? readermenu::rowEnd(moreItems[row].action)
+                                                                  : readermenu::RowEnd::None;
+    };
+    model.rowOn = [this](int i) { return moreRowOn(panelActionRow(i)); };
   }
   toolbarUi->setModel(model);
   toolbarUi->render();
@@ -5746,6 +5771,17 @@ std::string EpubReaderActivity::moreRowName(int row) const {
   return row >= 0 && row < static_cast<int>(moreItems.size()) ? I18N.get(moreItems[row].labelId) : "";
 }
 
+bool EpubReaderActivity::moreRowOn(int row) const {
+  using MA = EpubReaderMenuActivity::MenuAction;
+  if (row < 0 || row >= static_cast<int>(moreItems.size())) return false;
+  switch (moreItems[row].action) {
+    case MA::NIGHT_MODE: return SETTINGS.screenInverted != 0;
+    case MA::FRONTLIGHT: return Frontlight.isOn();
+    case MA::TILT_PAGE_TURN: return SETTINGS.tiltPageTurn != 0;
+    default: return false;
+  }
+}
+
 std::string EpubReaderActivity::moreRowValue(int row) const {
   using MA = EpubReaderMenuActivity::MenuAction;
   if (row < 0 || row >= static_cast<int>(moreItems.size())) return "";
@@ -5971,6 +6007,13 @@ std::string EpubReaderActivity::favoriteRowValue(const int row) const {
   const uint8_t pin = favoriteRows[row];
   if (pin & readermenu::PIN_TEXT) return textRowValue(textRowPlace(pin & ~readermenu::PIN_TEXT));
   return moreRowValue(moreRowOf(moreItems, pin));
+}
+
+bool EpubReaderActivity::favoriteRowOn(const int row) const {
+  if (row < 0 || row >= static_cast<int>(favoriteRows.size())) return false;
+  const uint8_t pin = favoriteRows[row];
+  if (pin & readermenu::PIN_TEXT) return textRowOn(textRowPlace(pin & ~readermenu::PIN_TEXT));
+  return moreRowOn(moreRowOf(moreItems, pin));
 }
 
 void EpubReaderActivity::activateFavoriteRow(const int row) {

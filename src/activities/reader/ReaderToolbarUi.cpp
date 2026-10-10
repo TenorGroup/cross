@@ -101,6 +101,48 @@ fui::Rect ReaderToolbarUi::toolRect(const int index) const {
           tenorchrome::BAR_TAB_W, static_cast<int16_t>(bar.height)};
 }
 
+void ReaderToolbarUi::endRow(fui::ListItem& item, const int index) const {
+  // tenor/ugly writes its rows by hand and keeps its own marks; a panel that gives no ends keeps the chevron alone.
+  if (!model_.rowEnd || shell::isUgly()) {
+    item.opensNext = model_.rowOpens && model_.rowOpens(index);
+    return;
+  }
+  const auto end = model_.rowEnd(index);
+  item.opensNext = end == readermenu::RowEnd::Opens;
+  if (end == readermenu::RowEnd::Switch) {
+    item.toggle = true;
+    item.toggleChecked = model_.rowOn && model_.rowOn(index);
+  }
+}
+
+// The up-down mark at the end of every visible choice row, where the settings lists put it. Drawn once the frame is
+// laid out: the rows' places are those this frame published.
+void ReaderToolbarUi::markChoiceRows(const int firstRow, const int rowCount) const {
+  if (!model_.rowEnd || shell::isUgly() || !renderer_ || !uiTarget.paintingEnabled()) return;
+  for (int index = firstRow; index < firstRow + rowCount; ++index) {
+    if (model_.rowEnd(index) != readermenu::RowEnd::Choice) continue;
+    const auto rect = app.publishedRect(ACTION_ROW, static_cast<int16_t>(index));
+    if (rect.height > 0) tenorchrome::drawSettingsPopupMark(*renderer_, rect.right() - 31, rect.y + rect.height / 2);
+  }
+}
+
+// The switch of an on/off row and the room kept for the mark, as the settings lists size them.
+void ReaderToolbarUi::switchShapes(fui::ListProps& props) const {
+  const int scale = tenorchrome::kTouchShell ? 0 : normalizedUiTextSize(SETTINGS.uiTextSize);
+  props.toggleWidth = static_cast<int16_t>(46 + scale * 8);
+  props.toggleHeight = static_cast<int16_t>(26 + scale * 4);
+  props.toggleRadius = static_cast<uint8_t>(props.toggleHeight / 2);
+  props.toggleKnobRadius = static_cast<uint8_t>((props.toggleHeight - 8) / 2);
+  props.toggleKnobInset = 4;
+  props.toggleBorderWidth = 2;
+  if (model_.rowEnd && !shell::isUgly()) {
+    props.chevronColumn = true;
+    props.valueInset = 8;  // air between a value and the mark or chevron after it, as in the settings lists
+    props.labelText.centerInkY = true;
+    props.valueText.centerInkY = true;
+  }
+}
+
 fui::Rect ReaderToolbarUi::sheetRect(const fui::Rect& bounds, const int16_t height) const {
   if (usesX3Bar()) {
     const auto span = tenorchrome::frameSpan(*renderer_);
@@ -159,6 +201,7 @@ void ReaderToolbarUi::render() {
   // only moves forward toward the selection); the bound is a backstop.
   for (int pass = 0; pass < 3 && nav_.consumeRebuildNeeded(); ++pass) renderUi();
   uiTarget.setPaintingEnabled(true);
+  if (model_.panel) markChoiceRows(nav_.top, std::max(0, std::min(nav_.pageRows(), model_.itemCount - nav_.top)));
   if (handwritten) {
     paintUgly();
     scrollbar.repaint(*renderer_, uiTarget);
@@ -513,7 +556,7 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
     windowValues_[i] = model_.rowValue ? model_.rowValue(index) : std::string();
     fui::ListItem item;
     item.label = markedLabels_[i] ? "" : windowLabels_[i].c_str();
-    item.opensNext = model_.rowOpens && model_.rowOpens(index);
+    endRow(item, index);
     item.value = windowValues_[i].empty() ? nullptr : windowValues_[i].c_str();
     item.actionValue = static_cast<int16_t>(index);
     windowItems_[i] = item;
@@ -523,6 +566,7 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   listProps_.itemsWindowCount = static_cast<uint16_t>(std::max(0, windowCount));
   listProps_.valueText = tokens.bodyText;
   listProps_.valueText.bold = true;
+  switchShapes(listProps_);
   if (count > 0) {
     screen.list(listProps_);
     drawMarkedRows(screen, listRect, rowH, rowGap, windowCount);
@@ -663,6 +707,7 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_.valueText.bold = true;
     listProps_.valueText.maxLines = 1;
     listProps_.chosenMark = fui::bitmapFromIcon(icon_reader_tick_24);
+    switchShapes(listProps_);
     listProps_.partialTrailingRow = fonts;
     // Keep the existing text width; the shared page scrollbar is outside the frame.
     constexpr int16_t kBarStrip = 12;
@@ -679,7 +724,11 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
       windowLabels_[i] = model_.rowText ? model_.rowText(index) : std::string();
       windowValues_[i] = model_.rowValue ? model_.rowValue(index) : std::string();
       const bool marked = model_.rowMarked && model_.rowMarked(index);
-      const bool opensNext = model_.rowOpens && model_.rowOpens(index);
+      fui::ListItem item;
+      endRow(item, index);
+      // A choice row keeps the room of its up-down mark as a row that opens something keeps its chevron's.
+      const bool opensNext = item.opensNext || (model_.rowEnd && !shell::isUgly() &&
+                                               model_.rowEnd(index) == readermenu::RowEnd::Choice);
       fui::TextStyle labelStyle = listProps_.labelText;
       labelStyle.bold = labelStyle.bold || marked;
       if (fonts && !windowLabels_[i].empty()) {
@@ -703,12 +752,10 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
           return screen.target().measureText(valueStyle.font, text, valueStyle).width;
         });
       }
-      fui::ListItem item;
       item.label = rows && index == 1 ? "" : windowLabels_[i].c_str();
       item.value = windowValues_[i].empty() || (rows && index == 1) ? nullptr : windowValues_[i].c_str();
       item.actionValue = static_cast<int16_t>(index);
       item.chosen = marked;
-      item.opensNext = model_.rowOpens && model_.rowOpens(index);
       windowItems_[i] = item;
     }
     listProps_.items = windowItems_;
@@ -739,9 +786,13 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
         const int index = nav_.top + i;
         if (!model_.rowPinned(index)) continue;
         const auto& item = windowItems_[i];
-        int right = frame.right() - strip - listProps_.sidePadding - (item.opensNext ? chevron : 0);
+        const bool slot = item.opensNext || item.toggle ||
+                          (model_.rowEnd && !shell::isUgly() && model_.rowEnd(index) == readermenu::RowEnd::Choice);
+        int right = frame.right() - strip - listProps_.sidePadding - (slot ? chevron : 0);
         if (rows && index == 1)
           right = frame.right() - 204;
+        else if (item.toggle)
+          right -= listProps_.toggleWidth;
         else if (item.value)
           right -= screen.target().measureText(listProps_.valueText.font, item.value, listProps_.valueText).width;
         tenorchrome::drawFavoriteMark(*renderer_, right - 8 - tenorchrome::FAVORITE_MARK, uiScaleSpec().bodyFontId,

@@ -453,6 +453,8 @@ class EpubReaderActivity final : public ReaderActivity {
   bool actionPanel() const;
   std::string moreRowName(int row) const;
   std::string moreRowValue(int row) const;
+  bool moreRowOn(int row) const;
+  bool favoriteRowOn(int row) const;
   void activateMoreRow(int row);
   void openFootnoteSelect(bool reopenMenuOnCancel);
   // `editName` non-empty reopens that saved quote for reselection on the current page.
