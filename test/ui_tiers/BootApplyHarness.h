@@ -9,6 +9,11 @@
 #include "SdCardFontSystem.h"
 #include "components/UIScale.h"
 #include "fontIds.h"
+#include <builtinFonts/geist_8_regular.h>
+#include <builtinFonts/geist_10_regular.h>
+#include <builtinFonts/geist_10_bold.h>
+#include <builtinFonts/geist_12_regular.h>
+#include <builtinFonts/geist_12_bold.h>
 #define FREEINK_MCU_C3 1
 #define OMIT_FONTS 1
 #define LOG_INF(...) ((void)0)
@@ -54,11 +59,12 @@ void SdCardFontSystem::refreshUiFallbacks(GfxRenderer& target, uint8_t size) {
   ++fallbackRefreshCount;
   fallbackTier = size;
 }
-EpdFontData captionData = [] { EpdFontData data{}; data.advanceY = 21; return data; }();
-EpdFontData subtitleData = [] { EpdFontData data{}; data.advanceY = 26; return data; }();
-EpdFontData bodyData = [] { EpdFontData data{}; data.advanceY = 33; return data; }();
-EpdFont captionFont(&captionData), subtitleFont(&subtitleData), bodyFont(&bodyData);
-EpdFontFamily smallFontFamily(&captionFont), ui10FontFamily(&subtitleFont), ui12FontFamily(&bodyFont);
+// The shipped Geist faces, as main.cpp registers them: the tier heights are read from real font data.
+EpdFont captionFont(&geist_8_regular);
+EpdFont subtitleRegularFont(&geist_10_regular), subtitleBoldFont(&geist_10_bold);
+EpdFont bodyFont(&geist_12_regular), bodyBoldFont(&geist_12_bold);
+EpdFontFamily smallFontFamily(&captionFont), ui10FontFamily(&subtitleRegularFont, &subtitleBoldFont);
+EpdFontFamily ui12FontFamily(&bodyFont, &bodyBoldFont);
 EpdFontFamily notoserif14FontFamily(&bodyFont);
 void setupDisplayAndFonts(bool, bool);
 
@@ -92,12 +98,12 @@ void testApply() {
   // Missing final alias: earlier aliases must stay untouched and no cache I/O occurs.
   assert(!applyUiFontSize(target,2));
   assert(cache.clearCount == 0 && fallbackRefreshCount == initialRefresh);
-  assert(captionNode->getData() == &captionData);
+  assert(captionNode->getData() == &geist_8_regular);
   target.insertFont(UI_12_FONT_ID,ui12FontFamily);
   target.registerSdCardFont(UI_12_FONT_ID,reader);
   assert(!applyUiFontSize(target,2));
   assert(cache.clearCount == 0 && fallbackRefreshCount == initialRefresh);
-  assert(captionNode->getData() == &captionData);
+  assert(captionNode->getData() == &geist_8_regular);
   target.removeFont(UI_12_FONT_ID);
   target.insertFont(UI_12_FONT_ID,ui12FontFamily);
   for (const uint8_t tier : {0,1,2,0,255}) {

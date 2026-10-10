@@ -21,12 +21,12 @@ struct UITextSizeSpec {
 
 constexpr uint8_t normalizedUiTextSize(uint8_t value) { return value < 3 ? value : 0; }
 
-// Line heights are measured from the generated font data at 150 DPI.
+// Line heights are the advanceY of the generated Geist face at that point size; UIScaleTest reads them from the font data.
 constexpr UITextSizeSpec uiTextSizeSpec(uint8_t value) {
   switch (normalizedUiTextSize(value)) {
-    case 1: return {10, 12, 14, 26, 33, 38};
+    case 1: return {10, 12, 14, 27, 33, 38};
     case 2: return {12, 14, 16, 33, 38, 43};
-    default: return {8, 10, 12, 21, 26, 33};
+    default: return {8, 10, 12, 22, 27, 33};
   }
 }
 
