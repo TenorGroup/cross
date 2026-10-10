@@ -51,7 +51,7 @@ const fui::TextStyle& uiMenuLabelText(const fui::ThemeTokens& theme) { return th
 struct UiListActivity {
   int focusFavorite(const std::string&) { return -2; }
   struct RowFrameLines { int rule, top, bottom; };
-  static RowFrameLines rowFrameLines(int rowGap);
+  static RowFrameLines rowFrameLines(int rowGap, int air = 0);
 };
 struct RenderLock { template<class T> RenderLock(T&) {} };
 struct HomeActivity : UiListActivity {

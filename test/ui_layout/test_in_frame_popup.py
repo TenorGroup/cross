@@ -32,7 +32,7 @@ assert 'rowFrameFor(ACTION_ROW, nav.selected, parentFrame)' in caller
 assert 'optionPopup.showInFrame(parentFrame' in caller
 assert 'sectionHeading = tr(STR_BLE_PAIRED_DEVICES)' in ble
 lines = method(parent, 'UiListActivity::RowFrameLines UiListActivity::rowFrameLines(')
-lines = lines.replace('UiListActivity::RowFrameLines UiListActivity::rowFrameLines', 'Lines rowFrameLines')
+lines = lines.replace('UiListActivity::RowFrameLines UiListActivity::rowFrameLines', 'Lines rowFrameLines').replace('const int air)', 'const int air = 0)')
 tick_asset = (a.repo / 'src/components/icons/tenorRowMarks.h').read_text()
 tick_bytes = tick_asset.split('icon_row_chosen_24_bits[] = {', 1)[1].split('};', 1)[0]
 cpp = r'''

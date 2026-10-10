@@ -167,7 +167,10 @@ class FileBrowserActivity {
   int rowFrameGap = 0;
   int rowFadeRight = 0;
   struct RowFrameLines { int rule, top, bottom; };
-  static RowFrameLines rowFrameLines(int rowGap);
+  static RowFrameLines rowFrameLines(int rowGap, int air = 0);
+  bool framedByDesign() const { return tenorchrome::kTouchShell; }
+  bool pinMarkAfterName() const { return false; }
+  int rowFrameAir() const { return 0; }
   void reserveRowFrame(UiScreen& screen, int rowGap);
   const fui::ListItem* uglyItems_ = nullptr;
   uint16_t uglyItemsFirst_ = 0;

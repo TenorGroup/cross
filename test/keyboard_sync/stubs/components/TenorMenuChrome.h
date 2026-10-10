@@ -7,7 +7,7 @@ struct X3ScreenRect {
 struct X3ScreenLayout { X3ScreenRect bodyRect, tipRect, barRect, buttonBandRect; };
 inline bool x3ScreenLayoutEnabled() { return false; }
 inline void drawX3ActivityPath(const GfxRenderer&, const char*) {}
-inline X3ScreenLayout x3ScreenLayout(const GfxRenderer& renderer, int = 0) {
+inline X3ScreenLayout x3ScreenLayout(const GfxRenderer& renderer, int = 0, int = 0) {
   return {{0, 16, renderer.getScreenWidth(), renderer.getScreenHeight() - 116}, {}, {}, {}};
 }
 inline int tipHeight(const GfxRenderer&, const char*, int = 0) { return 0; }

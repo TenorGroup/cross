@@ -161,7 +161,7 @@ class UiAppHost {
   int swipeRows(const MappedInputManager&,const fui::ListNav&,int,fui::ActionId) const { return 0; }
 };
 namespace tenorchrome {
-constexpr int FOOT_BACK_SIZE=60,FOOT_BACK_X=16,FOOT_PILL_GAP=8,READER_TOOLS=4,TOUCH_BAR_BOTTOM_GAP=16;
+constexpr int FOOT_BACK_SIZE=60,FOOT_BACK_X=16,FOOT_PILL_GAP=8,READER_TOOLS=4,TOUCH_BAR_BOTTOM_GAP=16,FRAME_TO_BAR_GAP=8;
 constexpr bool kTouchShell=true;
 [[maybe_unused]] constexpr int PANEL_RADIUS=20;
 constexpr int FAVORITE_MARK=14;
@@ -240,7 +240,7 @@ int main() {
     model.rowValue=[](int i){return std::string(i==0?"SP3 - Traveling Typewriter-BOLD2":(i==1?"18":"Default"));};
     tenorchrome::stepperRings.clear();
     ui.setModel(model); ui.render();
-    auto frame=tenorchrome::panels.back(); assert(frame.x==16 && frame.y==362 && frame.width==448 && frame.height==350);
+    auto frame=tenorchrome::panels.back(); assert(frame.x==16 && frame.y==366 && frame.width==448 && frame.height==350);
     for(int row=0;row<5;++row) minimum(ui,ACTION_ROW,row);
     for(int tool=0;tool<tenorchrome::READER_TOOLS;++tool) minimum(ui,ACTION_TOOL,tool);
     minimum(ui,ACTION_SIZE_STEP,-1); minimum(ui,ACTION_SIZE_STEP,1); minimum(ui,ACTION_SIZE_ENTRY,0);
@@ -250,15 +250,15 @@ int main() {
     const auto minusRect = ui.app.publishedRect(ACTION_SIZE_STEP, -1);
     const auto entryRect = ui.app.publishedRect(ACTION_SIZE_ENTRY, 0);
     const auto plusRect = ui.app.publishedRect(ACTION_SIZE_STEP, 1);
-    assert(minusRect.x == 268 && minusRect.y == 464 && minusRect.width == 60 && minusRect.height == 62);
+    assert(minusRect.x == 268 && minusRect.y == 468 && minusRect.width == 60 && minusRect.height == 62);
     if (kExpectStepperCenter) {
-      assert(entryRect.x == 328 && entryRect.y == 464 && entryRect.width == 60 && entryRect.height == 62);
+      assert(entryRect.x == 328 && entryRect.y == 468 && entryRect.width == 60 && entryRect.height == 62);
       assert(std::abs((entryRect.x + entryRect.width / 2) -
                       ((minusRect.x + minusRect.width / 2 + plusRect.x + plusRect.width / 2) / 2)) <= 1 &&
              "stepper value touch rect must be centered between minus and plus");
       assert(entryRect.right() <= plusRect.x && "stepper value touch rect must not overlap plus");
     }
-    assert(plusRect.x == 388 && plusRect.y == 464 && plusRect.width == 60 && plusRect.height == 62);
+    assert(plusRect.x == 388 && plusRect.y == 468 && plusRect.width == 60 && plusRect.height == 62);
     bool sawPlus = false;
     for (const auto& text : ui.uiTarget.texts) {
       if (text.label == "+") {
@@ -270,8 +270,8 @@ int main() {
     assert(sawPlus && "plus label must be drawn");
     if (kExpectStepperRing) {
       assert(tenorchrome::stepperRings.size() == 2 && "size stepper must draw 2 grey pill rings");
-      assert(tenorchrome::stepperRings[0] == "272,473,52,44,2,1" &&
-             tenorchrome::stepperRings[1] == "392,473,52,44,2,1");
+      assert(tenorchrome::stepperRings[0] == "272,477,52,44,2,1" &&
+             tenorchrome::stepperRings[1] == "392,477,52,44,2,1");
       bool sawFont = false;
       for (const auto& text : ui.uiTarget.texts) {
         if (text.label == "Font") sawFont = true;
@@ -289,7 +289,7 @@ int main() {
     for(const auto& text:ui.uiTarget.texts) {
       if(text.label=="30" || text.label==model.numericHint) {
         ++numericLabels;
-        assert(text.rect.y>=402 && text.rect.bottom()<=454 && text.rect.height>=43);
+        assert(text.rect.y>=406 && text.rect.bottom()<=458 && text.rect.height>=43);
       }
     }
     assert(numericLabels==2 && "numeric readout and caption must both be drawn");
@@ -330,7 +330,7 @@ int main() {
     const auto preview=ui.app.publishedRect(ACTION_ROW,4);
     if (kExpectPreviewHit) {
       assert(!preview.empty() && "font preview row must be selectable");
-      assert(preview.x==16 && preview.y==650 && preview.width==436 && preview.height==38);
+      assert(preview.x==16 && preview.y==654 && preview.width==448 && preview.height==38);
       auto previewEvent=tap(ui,ACTION_ROW,4);
       assert(previewEvent.event==ReaderToolbarUi::Event::Row && previewEvent.value==4);
     } else {
@@ -338,7 +338,7 @@ int main() {
     }
     if (kExpectFade) {
       assert(tenorchrome::fades.size() == 1 && "font preview must fade below the full rows");
-      assert(tenorchrome::fades[0] == "650,38,16,452" &&
+      assert(tenorchrome::fades[0] == "654,38,16,464" &&
              "font preview fade must stop before the scroll bar");
     }
     if (kExpectMiddleFont) {

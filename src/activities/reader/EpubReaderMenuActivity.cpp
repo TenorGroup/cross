@@ -586,7 +586,7 @@ bool EpubReaderMenuActivity::infoOverBar() const { return tenorchrome::x3ScreenL
 tenorchrome::X3ScreenLayout EpubReaderMenuActivity::screenLayout() const {
   return tenorchrome::x3ScreenLayout(
       renderer, activeTabId == MenuTab::FAVORITES ? tenorchrome::tipHeight(renderer, tr(STR_FAVORITES_HINT), 4) : 0,
-      infoOverBar() ? tenorchrome::tipHeight(renderer, progressText().c_str(), 1) : 0);
+      infoOverBar() ? tenorchrome::tipHeight(renderer, progressText().c_str(), 2) : 0);
 }
 
 std::string EpubReaderMenuActivity::progressText() const {
@@ -603,9 +603,9 @@ void EpubReaderMenuActivity::drawX3Content() const {
   const auto layout = screenLayout();
   const auto text = progressText();
   if (infoOverBar()) {
-    const int infoHeight = tenorchrome::tipHeight(renderer, text.c_str(), 1);
+    const int infoHeight = tenorchrome::tipHeight(renderer, text.c_str(), 2);
     auto tips = layout.tipRect;
-    tenorchrome::drawInfoInRect(renderer, text.c_str(), {tips.x, tips.y, tips.width, static_cast<int16_t>(infoHeight)}, 1);
+    tenorchrome::drawInfoInRect(renderer, text.c_str(), {tips.x, tips.y, tips.width, static_cast<int16_t>(infoHeight)}, 2);
     tips.y = static_cast<int16_t>(tips.y + infoHeight);
     tips.height = static_cast<int16_t>(tips.height - infoHeight);
     if (activeTabId == MenuTab::FAVORITES) tenorchrome::drawTipInRect(renderer, tr(STR_FAVORITES_HINT), tips, 4);

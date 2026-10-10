@@ -6,4 +6,6 @@ constexpr bool kTouchShell = false;
 constexpr bool roundFrames() { return kTouchShell; }
 constexpr int FOOT_BACK_X = 16;
 inline void drawPanel(const GfxRenderer&, int, int) {}
+struct FrameSpan { int x, width; };
+inline FrameSpan frameSpan(const GfxRenderer&) { return {16, 448}; }
 }  // namespace tenorchrome

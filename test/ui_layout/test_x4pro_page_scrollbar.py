@@ -33,9 +33,10 @@ struct UiScreen {
 };
 namespace shell {bool isUgly(){return false;}}
 struct UiListActivity {
- bool rowsFramed=true, groups=false; int rowFrameGap=6, rowFrameFloor=650;
+ bool rowsFramed=tenorchrome::kTouchShell, groups=false; int rowFrameGap=6, rowFrameFloor=650;
  struct Lines {int top=3,bottom=5;};
- Lines rowFrameLines(int)const{return{};}
+ Lines rowFrameLines(int,int=0)const{return{};}
+ int rowFrameAir()const{return 0;}
  fui::ListNav nav;
  fui::ListNav& activeNav(){return nav;}
  int listCount()const{return 20;}

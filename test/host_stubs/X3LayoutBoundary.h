@@ -9,7 +9,7 @@ struct X3ScreenRect {
 struct X3ScreenLayout { X3ScreenRect bodyRect, tipRect, barRect, buttonBandRect; };
 constexpr bool x3ScreenLayoutEnabled() { return false; }
 template <typename Renderer>
-X3ScreenLayout x3ScreenLayout(const Renderer& renderer, int = 0) {
+X3ScreenLayout x3ScreenLayout(const Renderer& renderer, int = 0, int = 0) {
   return {{0, 16, renderer.getScreenWidth(), renderer.getScreenHeight() - 116}, {}, {}, {}};
 }
 template <typename... Args> int tipHeight(Args&&...) { return 0; }

@@ -13,6 +13,12 @@ std::string compactWords(const std::string& text) {
   return result;
 }
 
+// A page whose progress line stands over the bar keeps that room even with tips off.
+template <class Page>
+auto holdsInfoOverBar(Page& page, int) -> decltype(page.infoOverBar()) { return page.infoOverBar(); }
+template <class Page>
+bool holdsInfoOverBar(Page&, long) { return false; }
+
 template <class Page>
 void checkPage(Page& page, GfxRenderer& renderer, const char* name, const std::vector<std::string>& information = {}) {
   renderer.paintedText.clear();
@@ -26,8 +32,9 @@ void checkPage(Page& page, GfxRenderer& renderer, const char* name, const std::v
                   placed.barRect.width == home.barRect.width && placed.barRect.height == home.barRect.height,
               name);
   phase2Check(placed.bodyRect.y == 16 && placed.bodyRect.bottom() <= placed.barRect.y - 8, name);
-  phase2Check(!SETTINGS.tipsEnabled ? placed.tipRect.height == 0
-                                    : placed.tipRect.height == 0 || placed.bodyRect.bottom() + 8 <= placed.tipRect.y,
+  const bool infoBar = holdsInfoOverBar(page, 0);
+  phase2Check(!SETTINGS.tipsEnabled && !infoBar ? placed.tipRect.height == 0
+                                                : placed.tipRect.height == 0 || placed.bodyRect.bottom() + 8 <= placed.tipRect.y,
               name);
   page.drawX3Content();
   phase2Check(renderer.attemptedInkBottom <= placed.barRect.y, name);
@@ -35,7 +42,7 @@ void checkPage(Page& page, GfxRenderer& renderer, const char* name, const std::v
     const int top = renderer.ys[index];
     const int bottom = top + renderer.getLineHeight(renderer.textFontIds[index]);
     phase2Check((top >= placed.bodyRect.y && bottom <= placed.bodyRect.bottom()) ||
-                    (SETTINGS.tipsEnabled && top >= placed.tipRect.y && bottom <= placed.tipRect.bottom()),
+                    ((SETTINGS.tipsEnabled || infoBar) && top >= placed.tipRect.y && bottom <= placed.tipRect.bottom()),
                 name);
   }
   std::string painted;

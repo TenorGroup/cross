@@ -637,7 +637,7 @@ else:
         extra_methods = {
             'FileBrowserActivity': ('screenTip',),
             'QuoteTrimActivity': ('screenTip', 'screenInfo', 'areaTop', 'linesPerArea'),
-            'EpubReaderMenuActivity': ('progressText', 'tabIcon'),
+            'EpubReaderMenuActivity': ('progressText', 'tabIcon', 'infoOverBar'),
             'QuoteDetailActivity': ('metrics', 'visitX3Meta', 'layoutX3Pages'),
             'QuotesActivity': ('metrics', 'footer'),
         }

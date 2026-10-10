@@ -70,6 +70,7 @@ def main():
         "virtual bool listFramed() const", "bool FileBrowserActivity::listFramed() const")
     generated = args.output / "production_rows.inc"
     generated.write_text("namespace tenorchrome {\n" + foot_x +
+                         "\nstruct FrameSpan { int x, width; };\ntemplate <class R> inline FrameSpan frameSpan(const R&) { return {FOOT_BACK_X, 448}; }" +
                          "\ninline bool enabled() { return true; }  // a board with buttons\n}\n" +
                          framed + "\n" + row_opens + "\n" + pin_state + "\n" + base_methods + "\n" + functions)
     binary = args.output / "folder_rows"

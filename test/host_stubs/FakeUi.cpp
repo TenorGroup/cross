@@ -210,7 +210,7 @@ HalDisplay& hostTestDisplay() { return fakeDisplay; }
 HalGPIO gpio;
 namespace tenorchrome {
 bool x3ScreenLayoutEnabled() { return false; }
-X3ScreenLayout x3ScreenLayout(const GfxRenderer&, int) { return {}; }
+X3ScreenLayout x3ScreenLayout(const GfxRenderer&, int, int) { return {}; }
 void drawTipInRect(const GfxRenderer&, const char*, X3ScreenRect, int) {}
 void drawInfoInRect(const GfxRenderer&, const char*, X3ScreenRect, int) {}
 int tipY(const GfxRenderer&, bool) { return 726; }
@@ -229,6 +229,7 @@ void drawSettingsPopupMark(const GfxRenderer&, int, int) {}
 void drawBarIcon(const GfxRenderer&, const uint8_t*, int, int, int, int, bool) {}
 void drawPillRing(const GfxRenderer&, int, int, int, int, int, bool) {}
 void drawPanel(const GfxRenderer&, int, int) {}
+FrameSpan frameSpan(const GfxRenderer&) { return {FOOT_BACK_X, 448}; }
 void drawRowRule(const GfxRenderer&, int, int, int) {}
 void drawBarTab(const GfxRenderer&, int, int, int, const uint8_t*, int, int, bool) {}
 FootBar footBarFor(const char*) { return FootBar::None; }
