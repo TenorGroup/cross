@@ -8,6 +8,9 @@ allocation. While the strip is held (PAINT_GRAY_DONE, PAINT_CLEANUP_END, other t
 logged with strip=1) the floor is not compared; there the gate fails on an allocation that failed,
 and it lists every allocation larger than the largest block left after it.
 
+An allocation that the heap floor door took and gave straight back (an ALLOC mark matched by a
+"[HEAP_FLOOR] refuse" line of the same size just before it) is listed as door_test and does not fail.
+
 Fails also on: abort, STORE_FAILED, Build starved, HID begin skipped, rolled back, Radio still
 stopping, OOM on the strip. Exit 1 when the gate fails. With no argument it runs its self-check.
 
@@ -36,7 +39,8 @@ def scan(lines):
     window_fail (an allocation failed while the strip was held), window_big (an allocation larger than
     the largest block left after it), window (other tasks' allocations in the window), held (paint
     marks taken while the strip was held, not compared), blockers, refusals."""
-    r = {k: [] for k in ("outside", "window_fail", "window_big", "window", "held", "blockers", "refusals")}
+    r = {k: [] for k in ("outside", "door_test", "window_fail", "window_big", "window", "held", "blockers", "refusals")}
+    pending = []  # (line, bytes) of door refusals not yet matched with their ALLOC mark
     for n, line in enumerate(lines, 1):
         if BLOCK.search(line):
             r["blockers"].append((n, line.strip()[-140:]))
@@ -51,7 +55,13 @@ def scan(lines):
             continue
         m = ALLOC.search(line)
         if m:
-            r["outside"].append((n, "ALLOC " + m.group(1).strip()))
+            size = re.search(r"size=(\d+)", m.group(1))
+            hit = next((p for p in pending if size and p[1] == int(size.group(1)) and n - p[0] <= 60), None)
+            if hit:
+                pending.remove(hit)
+                r["door_test"].append((n, "ALLOC " + m.group(1).strip()))
+            else:
+                r["outside"].append((n, "ALLOC " + m.group(1).strip()))
             continue
         m = BIG.search(line)
         if m:
@@ -66,6 +76,9 @@ def scan(lines):
         m = REFUSE.search(line)
         if m:
             r["refusals"].append((n, m.group(1).strip()))
+            b = re.search(r"bytes=(\d+)", m.group(1))
+            if b:
+                pending.append((n, int(b.group(1))))
     return r
 
 
@@ -82,12 +95,14 @@ def demo():
         "[BIG] t=9 size=64 caps=0x1804 task=btController ok=0 free=8000 largest=40 strip=1",
         "[INF] [HEAP_FLOOR] refuse who=inflate bytes=32768 free=40000 largest=20000",
         "[ERR] [ERS] Build starved of heap free=16320 largest=11764",
+        "[HEAP_FLOOR] cross where=ALLOC size=32768 task=loopTask t=9 free=23400 largest=7156 floor_free=10240 floor_largest=8180",
     ]
     r = scan(sample)
     assert [n for n, _ in r["outside"]] == [4, 6], r["outside"]  # the paint mark once, the allocation once
     assert [n for n, _ in r["held"]] == [1] and [n for n, _ in r["window"]] == [7, 8, 9]
     assert [n for n, _ in r["window_fail"]] == [9] and [n for n, _ in r["window_big"]] == [7]
     assert [n for n, _ in r["blockers"]] == [11] and len(r["refusals"]) == 1
+    assert [n for n, _ in r["door_test"]] == [12]
     print("cong_san self-check: ok")
 
 
