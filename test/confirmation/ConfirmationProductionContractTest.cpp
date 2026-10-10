@@ -197,4 +197,20 @@ TEST(ConfirmationCopy, StatsQuestionsAndActionsUseMatchingVerbs) {
   EXPECT_EQ(yamlValue("english", "STR_ALERT_STATS_HABITS_QUESTION"), "Restart reading habits?");
 }
 
+TEST(ConfirmationCopy, ChineseAlertStringsAreTranslated) {
+  const auto yaml = readSource("lib/I18n/translations/chinese.yaml");
+  std::istringstream input(yaml);
+  std::string line;
+  size_t count = 0;
+  while (std::getline(input, line)) {
+    if (!line.starts_with("STR_ALERT_")) continue;
+    ++count;
+    const auto key = line.substr(0, line.find(':'));
+    const auto value = yamlValue("chinese", key);
+    EXPECT_NE(value, yamlValue("english", key)) << key;
+    EXPECT_TRUE(std::any_of(value.begin(), value.end(), [](unsigned char c) { return c >= 0x80; })) << key;
+  }
+  EXPECT_GE(count, 16U);
+}
+
 }  // namespace
