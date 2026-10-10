@@ -520,6 +520,8 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   // tap target. The words keep the air inside the cursor pill that every list of
   // the theme keeps (the buttons: TENOR_PILL_SIDE_PADDING, as in Settings).
   listProps_.labelText = tokens.bodyText;
+  // A long name goes to a second line, as iOS's does, where the text size is large.
+  if (usesX3Bar()) listProps_.labelText.maxLines = 2;
   listProps_.sidePadding = tokens.listSidePadding;
   // rowInset aligns the rows with the title inside the panel.
   listProps_.rowInset = tokens.spaceLg;
@@ -787,23 +789,15 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     PageScrollbar::instance().draw(*renderer_, screen.target(), listRect.y, listRect.bottom(),
                                    count * 62, nav_.top * 62, &nav_);
     if (model_.rowPinned && renderer_ && uiTarget.paintingEnabled()) {
-      // The heart stands before the value (and the chevron), inside the frame; on the size row, before its "-".
+      // The heart stands right after the row's name, as in the X3's panels and lists.
       const int16_t lh = screen.target().lineHeight(listProps_.labelText.font);
       for (int i = 0; i < std::min(nav_.visibleRows, windowCount); ++i) {
         const int index = nav_.top + i;
         if (!model_.rowPinned(index)) continue;
-        const auto& item = windowItems_[i];
-        const bool slot = item.opensNext || item.toggle ||
-                          (model_.rowEnd && !shell::isUgly() && model_.rowEnd(index) == readermenu::RowEnd::Choice);
-        int right = frame.right() - strip - listProps_.sidePadding - (slot ? chevron : 0);
-        if (rows && index == 1)
-          right = frame.right() - stepperCells().minus;
-        else if (item.toggle)
-          right -= listProps_.toggleWidth;
-        else if (item.value)
-          right -= screen.target().measureText(listProps_.valueText.font, item.value, listProps_.valueText).width;
-        tenorchrome::drawFavoriteMark(*renderer_, right - 8 - tenorchrome::FAVORITE_MARK, uiScaleSpec().bodyFontId,
-                                      listRect.y + i * 62 + (62 - lh) / 2);
+        const int16_t width = screen.target().measureText(listProps_.labelText.font, windowLabels_[i].c_str(),
+                                                          listProps_.labelText).width;
+        tenorchrome::drawFavoriteMark(*renderer_, frame.x + listProps_.sidePadding + width + tokens.spaceSm,
+                                      uiScaleSpec().bodyFontId, listRect.y + i * 62 + (62 - lh) / 2);
       }
     }
     if (count == 0 && model_.emptyText) {
