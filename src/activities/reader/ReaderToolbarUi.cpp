@@ -62,6 +62,13 @@ constexpr int kLandscapePanelHeightPercent = 88;
 [[maybe_unused]] int shownPage(const int top, const int rows, const int count) {
   return top + rows >= count ? (count + rows - 1) / rows : top / rows + 1;
 }
+// A chapter step "<" or ">": the open chevron of the bar's "<" and the list marks (3 px stroke), its ink box
+// centred in the button's box.
+void drawStepChevron(const GfxRenderer& renderer, const fui::Rect& box, const tenorchrome::ChevronDir dir) {
+  constexpr int kSpan = 9;
+  tenorchrome::drawMoreChevron(renderer, box.x + (box.width - tenorchrome::moreChevronLength(kSpan)) / 2,
+                               box.y + box.height / 2 - kSpan, dir, kSpan);
+}
 }  // namespace
 
 ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& renderer) : UiAppHost(renderer), renderer_(&renderer) {}
@@ -286,27 +293,19 @@ void ReaderToolbarUi::buildToolbar(UiScreen& screen) {
   // Scrub row: < [progress track + knob: tap/drag to jump] >
   {
     const fui::Rect band = screen.takeTop(kScrubButton, tokens.spaceLg);
-    stepProps_.label = nullptr;
-    stepProps_.icon = fui::bitmapFromIcon(icon_reader_back_24);
-    stepProps_.action = ACTION_PREV;
+    // The same chapter step buttons as the X4 Pro's: the chevron alone, its ring left out.
+    stepProps_ = fui::ButtonProps{};
     stepProps_.inputMask = fui::InputTouch;
-    stepProps_.styles.explicitlySet = true;
-    stepProps_.styles.normal.background = fui::Paint::solid(fui::Color::White);
-    stepProps_.styles.normal.foreground = fui::Paint::solid(fui::Color::Black);
-    stepProps_.styles.normal.border = fui::Paint::solid(fui::Color::Black);
-    stepProps_.styles.normal.borderWidth = 1;
-    stepProps_.styles.normal.radius = tokens.controlRadius;
-    stepProps_.styles.selected = stepProps_.styles.normal;
-    stepProps_.styles.focused = stepProps_.styles.normal;
-    stepProps_.styles.disabled = stepProps_.styles.normal;
-    stepProps_.styles.active = stepProps_.styles.normal;
-    stepProps_.styles.active.background = fui::Paint::solid(fui::Color::Black);
-    stepProps_.styles.active.foreground = fui::Paint::solid(fui::Color::White);
-    screen.button(stepProps_, fui::Rect{band.x, band.y, kScrubButton, kScrubButton});
-    stepProps_.icon = fui::bitmapFromIcon(icon_reader_next_24);
+    stepProps_.action = ACTION_PREV;
+    const fui::Rect prevBox{band.x, band.y, kScrubButton, kScrubButton};
+    const fui::Rect nextBox{static_cast<int16_t>(band.right() - kScrubButton), band.y, kScrubButton, kScrubButton};
+    screen.button(stepProps_, prevBox);
     stepProps_.action = ACTION_NEXT;
-    screen.button(stepProps_,
-                  fui::Rect{static_cast<int16_t>(band.right() - kScrubButton), band.y, kScrubButton, kScrubButton});
+    screen.button(stepProps_, nextBox);
+    if (uiTarget.paintingEnabled() && renderer_) {
+      drawStepChevron(*renderer_, prevBox, tenorchrome::ChevronDir::Left);
+      drawStepChevron(*renderer_, nextBox, tenorchrome::ChevronDir::Right);
+    }
 
     // Progress: a 2px track with a solid round knob at the book position (the
     // fill edge IS the handle, so nothing else is drawn), the scrub hit rect
@@ -558,12 +557,16 @@ void ReaderToolbarUi::buildX4Toolbar(UiScreen& screen) {
   stepProps_ = fui::ButtonProps{};
   stepProps_.inputMask = fui::InputTouch;
   stepProps_.minTouchSize = 60;
-  stepProps_.icon = fui::bitmapFromIcon(icon_reader_back_24);
   stepProps_.action = ACTION_PREV;
-  screen.button(stepProps_, {static_cast<int16_t>(frame.x + 8), static_cast<int16_t>(frame.y + 8), 60, 60});
-  stepProps_.icon = fui::bitmapFromIcon(icon_reader_next_24);
+  const fui::Rect prevBox{static_cast<int16_t>(frame.x + 8), static_cast<int16_t>(frame.y + 8), 60, 60};
+  const fui::Rect nextBox{static_cast<int16_t>(frame.right() - 68), static_cast<int16_t>(frame.y + 8), 60, 60};
+  screen.button(stepProps_, prevBox);
   stepProps_.action = ACTION_NEXT;
-  screen.button(stepProps_, {static_cast<int16_t>(frame.right() - 68), static_cast<int16_t>(frame.y + 8), 60, 60});
+  screen.button(stepProps_, nextBox);
+  if (uiTarget.paintingEnabled() && renderer_) {
+    drawStepChevron(*renderer_, prevBox, tenorchrome::ChevronDir::Left);
+    drawStepChevron(*renderer_, nextBox, tenorchrome::ChevronDir::Right);
+  }
   const fui::Rect track{static_cast<int16_t>(frame.x + 76), static_cast<int16_t>(frame.y + 8),
                         static_cast<int16_t>(frame.width - 152), 60};
   const int16_t cy = static_cast<int16_t>(track.y + 30);
