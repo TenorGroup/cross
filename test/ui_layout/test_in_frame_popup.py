@@ -9,6 +9,7 @@ p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--repo', type=Path, default=Path(__file__).resolve().parents[2])
 p.add_argument('--output', type=Path, required=True)
 p.add_argument('--skip-policy', action='store_true')
+p.add_argument('--mutation', action='store_true')
 a = p.parse_args()
 a.output.mkdir(parents=True, exist_ok=True)
 
@@ -22,6 +23,8 @@ def method(text, signature):
     return text[start:end]
 
 popup = (a.repo / 'src/components/OptionPopup.h').read_text()
+if a.mutation:
+    popup = popup.replace('MARK, MARK, x + TEXT_X, markY', 'MARK, MARK, x + w - TEXT_X - MARK, markY')
 ble = (a.repo / 'src/activities/settings/BlePageTurnerActivity.cpp').read_text()
 parent = (a.repo / 'src/activities/UiListActivity.cpp').read_text()
 caller = method(ble, 'void BlePageTurnerActivity::openPairedPopup(')
@@ -168,11 +171,12 @@ int main(){
    const double tickCenter=tick.y+(top+bottom)/2.0;
    assert(std::abs(wordCenter-tickCenter)<=0.5);
    assert(popup.shownRows==count&&popup.scrollTop==0);
-   assert(popup.lastRenderedFrame.height==count*std::max(56,renderer.lineHeight+16)+12);
+   assert(tick.x+tick.width+12<=word.x);
+   assert(popup.lastRenderedFrame.height==count*std::max(60,renderer.lineHeight+16)+12);
    assert(popup.lastRenderedFrame.y>=48&&popup.lastRenderedFrame.bottom()<=716);
    assert(popup.lastRenderedFrame.width==5*12+32+36);
-   const int below=popup.anchor.bottom()+4;
-   const int expectedY=below+popup.lastRenderedFrame.height<=716?below:std::max(48,popup.anchor.y-4-popup.lastRenderedFrame.height);
+   const int below=popup.anchor.bottom()+8;
+   const int expectedY=below+popup.lastRenderedFrame.height<=716?below:std::max(48,popup.anchor.y-8-popup.lastRenderedFrame.height);
    assert(popup.lastRenderedFrame.y==expectedY);
    assert(popup.lastRenderedFrame.right()==popup.anchor.right());
    for(size_t index=0;index<popup.interactions.publishedCount();++index)
@@ -202,4 +206,8 @@ run = subprocess.run([str(exe)], capture_output=True, text=True)
     'popup_sha256': hashlib.sha256((a.repo / 'src/components/OptionPopup.h').read_bytes()).hexdigest(),
     'boundary': 'Production popup render/input and row-frame padding, SDK hit table; fake draw and BLE state.'}, indent=2) + '\n')
 print(run.stdout + run.stderr, end='')
+if a.mutation:
+    assert run.returncode != 0, 'trailing-check mutation survived'
+    print('GREEN: trailing-check mutation rejected')
+    raise SystemExit(0)
 raise SystemExit(run.returncode)

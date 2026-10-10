@@ -19,7 +19,7 @@ for index,unit in enumerate(units):
     objects.append(str(obj))
 for phase in ('before','after'):
     folder=a.output/phase;folder.mkdir(exist_ok=True);inc=folder/'include/components';inc.mkdir(parents=True,exist_ok=True)
-    def read(file):return subprocess.check_output(['git','show','bcb678d:'+file],cwd=root,text=True) if phase=='before' else (root/file).read_text()
+    def read(file):return subprocess.check_output(['git','show','2892ac6d:'+file],cwd=root,text=True) if phase=='before' else (root/file).read_text()
     source=read('src/activities/home/HomeActivity.cpp');(inc/'HomeExcerptStyle.h').write_text(read('src/components/HomeExcerptStyle.h'))
     methods=source[source.index('static int cardStatRunWidth('):source.index('\nvoid HomeActivity::drawRecentCard()')]
     new='HomeStatsBounds* bounds' in methods

@@ -13,6 +13,8 @@
 #include "activities/settings/SettingsTabs.h"
 #include "components/HomeExcerptStyle.h"
 #include "components/HomeSettingsLayout.h"
+#include "components/HomeRecentLayout.h"
+#include <HalMemory.h>
 
 struct Rect;
 
@@ -182,8 +184,10 @@ class HomeActivity final : public UiTabListActivity {
   bool coverRendered = false;
   bool coverBufferStored = false;
   uint8_t* coverBuffer = nullptr;
+  HalMemory::PsramBuffer touchCoverBuffer;
   size_t coverBufferSize = 0;
   uint8_t coverBufferUiSize = 0;
+  uint8_t coverBufferStyle = 0;
   int coverRectX = 0, coverRectY = 0, coverRectW = 0, coverRectH = 0;
   // The tenor card keeps a second region, its text block, so the blank sides of the cover are not
   // held in RAM. Zero height when the snapshot is a single region.
@@ -213,6 +217,10 @@ class HomeActivity final : public UiTabListActivity {
   std::atomic<uint32_t> thumbWantedAtMs{0};
   int cardThumbHeight = HOME_CARD_COVER_H;
   int cardThumbWidth = HOME_CARD_COVER_W;
+  struct ThumbRequest { int book = -1, width = 0, height = 0; };
+  std::array<ThumbRequest, 4> touchThumbs{};
+  int touchThumbCount = 0;
+  void queueTouchThumb(int index, int width, int height);
   void wantThumb(int index);
   void writeMissingThumb(int index);
   // The wake's first frame is up; the main task writes state.json (V5: never the render task,
@@ -249,6 +257,9 @@ class HomeActivity final : public UiTabListActivity {
   void loadCardStats(int index);
   int drawCardStats(const HomeCardLayout& card, HomeStatsBounds* bounds = nullptr);
   void drawRecentCard();
+  HomeRecentLayout recentLayout();
+  void drawTouchRecent(const HomeRecentLayout& layout);
+  void drawTouchCover(const HomeRecentRect& rect, int book);
   void drawOtherBookRow(int shown, int ruleY, int rowY, const std::vector<std::string>& titleLines);
   const char* habitSuggestion() const;
   void loadRecentBooks();

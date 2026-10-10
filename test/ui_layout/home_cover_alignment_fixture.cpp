@@ -142,7 +142,7 @@ int main() {
     const int fullWidth=(height*sourceW+sourceH-1)/sourceH;
     const int expectedWidth=std::min(fullWidth,limit);
     const int expectedHeight=fullWidth>limit?limit*sourceH/sourceW:height;
-    const bool titleFitsLeftColumn = card.textW <= card.coverW;
+    const bool titleFitsLeftColumn = landscape ? card.textW == card.coverW : card.textW == 440;
     bool ok=aligned && (landscape || !forced) && titleFitsLeftColumn && h.renderer.inkBottom<card.ruleY && card.coverW==expectedWidth && card.coverH==expectedHeight &&
             card.coverX==24 && card.statsX-card.coverX-card.coverW==22 &&
             h.renderer.inkRight<=464 && h.renderer.inkLeft>=card.statsX &&

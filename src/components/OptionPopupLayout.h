@@ -35,8 +35,8 @@ inline OptionPopupBox optionPopupLayout(OptionPopupBox available, OptionPopupBox
     y = available.y + available.height - h;
     if (anchor.height > 0) {
       x = valueMenu ? anchor.x + anchor.width - w : anchor.x;
-      const int below = anchor.y + anchor.height + 4;
-      const int above = anchor.y - 4 - h;
+      const int below = anchor.y + anchor.height + 8;
+      const int above = anchor.y - 8 - h;
       y = below + h <= available.y + available.height ? below : above;
     }
   }

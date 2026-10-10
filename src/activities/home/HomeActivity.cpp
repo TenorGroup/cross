@@ -53,6 +53,7 @@
 #include "components/HomeStatsNavigation.h"
 #include "components/CompactStats.h"
 #include "components/HomeExcerptStyle.h"
+#include "components/HomeCoverCorners.h"
 #include "components/SettledListRender.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
@@ -849,10 +850,19 @@ void HomeActivity::buildScreen(UiScreen& screen) {
     // Touch: the whole card opens the book it shows.
     if (tenorchrome::kTouchShell && count > 0) {
       const fui::Rect body = screen.body();
+      const auto layout = recentLayout();
       // A hold pins or unpins the book shown, like holding Select on the button readers.
       screen.frame().hit(body, ACTION_ROW, static_cast<int16_t>(shownRecent()), fui::InputTouch | fui::InputLongPress);
       // The "other books" line steps to the next book instead of opening the one shown.
-      if (count > 1) {
+      if (layout.style == HomeRecentStyle::Shelf) {
+        for (int slot = 0; slot < layout.shelfCount; ++slot) {
+          const auto& r = layout.shelf[slot];
+          screen.frame().hit({static_cast<int16_t>(24 + slot * 152), static_cast<int16_t>(r.y), 128,
+                              static_cast<int16_t>(r.h + layout.shelfLabelHeight)},
+                             ACTION_ROW, static_cast<int16_t>(layout.shelfBooks[slot]),
+                             fui::InputTouch | fui::InputLongPress);
+        }
+      } else if (count > 1) {
         constexpr int16_t STRIP = 56;
         screen.frame().hit(fui::Rect{body.x, static_cast<int16_t>(body.y + body.height - STRIP), body.width, STRIP},
                            ACTION_OTHER_BOOK, 0, fui::InputTouch | fui::InputLongPress);
@@ -988,17 +998,24 @@ bool HomeActivity::storeCoverBuffer() {
       textRectW > 0 && textRectH > 0 ? renderer.getRegionByteSize(textRectX, textRectY, textRectW, textRectH) : 0;
   const size_t needed = first + second;
   if (first == 0) return false;
-  coverBuffer = static_cast<uint8_t*>(malloc(needed));
+  if (tenorchrome::kTouchShell) {
+    touchCoverBuffer = HalMemory::allocatePsram(needed);
+    coverBuffer = touchCoverBuffer.get();
+  } else {
+    coverBuffer = static_cast<uint8_t*>(malloc(needed));
+  }
   if (!coverBuffer) {
     LOG_ERR("HOME", "OOM: cover buffer (%u bytes)", (unsigned)needed);
     return false;
   }
   coverBufferSize = needed;
   coverBufferUiSize = normalizedUiTextSize(SETTINGS.uiTextSize);
+  coverBufferStyle = SETTINGS.homeStyle;
   if (!renderer.copyRegionToBuffer(coverRectX, coverRectY, coverRectW, coverRectH, coverBuffer, first) ||
       (second > 0 &&
        !renderer.copyRegionToBuffer(textRectX, textRectY, textRectW, textRectH, coverBuffer + first, second))) {
-    free(coverBuffer);
+    if (touchCoverBuffer) touchCoverBuffer.reset();
+    else free(coverBuffer);
     coverBuffer = nullptr;
     coverBufferSize = 0;
     return false;
@@ -1007,7 +1024,8 @@ bool HomeActivity::storeCoverBuffer() {
 }
 
 bool HomeActivity::restoreCoverBuffer() {
-  if (coverBufferUiSize != normalizedUiTextSize(SETTINGS.uiTextSize)) {
+  if (coverBufferUiSize != normalizedUiTextSize(SETTINGS.uiTextSize) ||
+      (tenorchrome::kTouchShell && coverBufferStyle != SETTINGS.homeStyle)) {
     freeCoverBuffer();
     return false;
   }
@@ -1022,7 +1040,8 @@ bool HomeActivity::restoreCoverBuffer() {
 
 void HomeActivity::freeCoverBuffer() {
   if (coverBuffer) {
-    free(coverBuffer);
+    if (touchCoverBuffer) touchCoverBuffer.reset();
+    else free(coverBuffer);
     coverBuffer = nullptr;
   }
   coverBufferSize = 0;
@@ -1094,7 +1113,8 @@ bool HomeActivity::buttonHoldOpensRowMenu(const int row) const {
 
 void HomeActivity::onRowLongPress(const int index) {
   if (activeTabId == Tab::RECENT) {
-    showRecentActions(index, tenorchrome::kTouchShell ? heldCover : fui::Rect{});
+    showRecentActions(index, tenorchrome::kTouchShell
+        ? index == shownRecent() ? heldCover : UiAppHost::dispatchingRect() : fui::Rect{});
     return;
   }
   UiListActivity::onRowLongPress(index);
@@ -1647,6 +1667,16 @@ int HomeActivity::drawCardStats(const HomeCardLayout& card, HomeStatsBounds* bou
 }
 
 void HomeActivity::drawRecentCard() {
+  if (coverBufferBook != shownRecent() || coverBufferStyle != SETTINGS.homeStyle) touchThumbCount = 0;
+  if (touchThumbCount > 0 && thumbWanted.load() < 0) {
+    thumbWantedAtMs = millis();
+    thumbWanted = static_cast<int8_t>(shownRecent());
+  }
+  const auto layout = recentLayout();
+  if (layout.style != HomeRecentStyle::Stats) {
+    drawTouchRecent(layout);
+    return;
+  }
   if (recentBooks.empty()) {
     renderer.drawText(UI_12_FONT_ID, 24, coverTileTop() + 26, tr(STR_NO_RECENT_BOOKS));
     return;
@@ -1712,6 +1742,7 @@ void HomeActivity::drawRecentCard() {
     in.statsMinWidth = std::min(in.statsMinWidth, renderer.getScreenWidth() / 2);
   }
   auto frame = homeCardLayout(in);
+  if (tenorchrome::kTouchShell) frame.textW = renderer.getScreenWidth() - 40;
   if (alignCover) {
     frame.statsRight = renderer.getScreenWidth() - 16;
     frame.statsBottom = frame.ruleY - 15;
@@ -1735,8 +1766,7 @@ void HomeActivity::drawRecentCard() {
       }
     }
     frame = homeCoverAlignedToStats(frame, ink, size.width, size.height, in.statsMinWidth);
-    // Keep the title and its metadata in the cover column while the stats continue below it.
-    frame.textW = frame.coverW;
+    frame.textW = size.width > size.height ? frame.coverW : renderer.getScreenWidth() - 40;
     if (!in.metadataAboveCover) {
       const int shift = frame.coverY + frame.coverH + 18 - frame.titleY;
       frame.titleY += shift;
@@ -1767,6 +1797,7 @@ void HomeActivity::drawRecentCard() {
 #ifdef TENOR_UI_ACCEPTANCE
   const uint32_t cardStartedUs = micros();
 #endif
+  LOG_INF("HOME", "Home build start style=0");
   const auto& book = recentBooks[shown];
   const auto title = book.title.empty() ? book.path.substr(book.path.find_last_of('/') + 1) : book.title;
   const char* author = book.author.empty() ? tr(STR_RECENT_NO_AUTHOR) : book.author.c_str();
@@ -1909,8 +1940,7 @@ void HomeActivity::drawRecentCard() {
   // Round the cover's corners by painting the page back over them, the pixels a rounded card
   // would not cover: a few hundred pixels, no second buffer, and the cached card keeps them.
   if (!coverKept)
-    renderer.maskRoundedRectOutsideCorners(card.coverX, card.coverY, card.coverW, card.coverH,
-                                           tenorradius::cover(card.coverW));
+    homeCoverCorners(renderer, card.coverX, card.coverY, card.coverW, card.coverH);
 #ifdef TENOR_PRESS_PROBE
   const uint32_t imageMs = millis();
 #endif
@@ -1951,6 +1981,7 @@ void HomeActivity::drawRecentCard() {
 #endif
   LOG_INF("HOME", "Recent card build=%lums cache=%u cover=%d kept=%u", static_cast<unsigned long>(millis() - started),
           static_cast<unsigned>(coverBufferSize), coverHeight, coverKept ? 1u : 0u);
+  LOG_INF("HOME", "Home build end style=0");
   LOG_INF("HOME", "Card stats rows=%02x bar=%d", static_cast<unsigned>(cardStats.rows), barY);
 }
 
@@ -1975,7 +2006,10 @@ HomeActivity::CardFile HomeActivity::loadCardFile(const std::string& path, const
     const bool whole = head.key == key;
     const size_t bytes = whole ? head.bytes : first;
     freeCoverBuffer();
-    coverBuffer = static_cast<uint8_t*>(malloc(bytes));
+    if (tenorchrome::kTouchShell) {
+      touchCoverBuffer = HalMemory::allocatePsram(bytes);
+      coverBuffer = touchCoverBuffer.get();
+    } else coverBuffer = static_cast<uint8_t*>(malloc(bytes));
     if (!coverBuffer) return CardFile::None;
     if (file.read(coverBuffer, bytes) != static_cast<int>(bytes)) {
       freeCoverBuffer();
@@ -1989,6 +2023,7 @@ HomeActivity::CardFile HomeActivity::loadCardFile(const std::string& path, const
     cardFileCover = head.cover;
     coverBufferSize = bytes;
     coverBufferUiSize = normalizedUiTextSize(SETTINGS.uiTextSize);
+    coverBufferStyle = SETTINGS.homeStyle;
     coverRectX = r[0];
     coverRectY = r[1];
     coverRectW = r[2];
@@ -2009,6 +2044,10 @@ HomeActivity::CardFile HomeActivity::loadCardFile(const std::string& path, const
 }
 
 void HomeActivity::wantThumb(const int index) {
+  if (tenorchrome::kTouchShell) {
+    queueTouchThumb(index, cardThumbWidth, cardThumbHeight);
+    return;
+  }
   if (!FsHelpers::hasEpubExtension(recentBooks[index].path)) return;
   const uint32_t id = tenorchrome::kTouchShell
                           ? fnv(fnv(fnv(2166136261u, recentBooks[index].path), &cardThumbWidth, sizeof(cardThumbWidth)),
@@ -2037,6 +2076,32 @@ void HomeActivity::onTick() {
 void HomeActivity::writeMissingThumb(const int index) {
   RenderLock lock(*this);
   if (activeTabId != Tab::RECENT || index != shownRecent()) return;
+  if (tenorchrome::kTouchShell) {
+    const auto requests = touchThumbs;
+    const int count = touchThumbCount;
+    touchThumbCount = 0;
+    freeCoverBuffer();
+    coverRendered = false;
+    for (int slot = 0; slot < count; ++slot) {
+      const auto& q = requests[slot];
+      const auto& path = recentBooks[q.book].path;
+      thumbTried[thumbTriedNext++ % 5] = fnv(fnv(fnv(2166136261u, path), &q.width, sizeof(q.width)),
+                                           &q.height, sizeof(q.height));
+      Epub epub(path, "/.crosspoint");
+      std::string href;
+      const bool ref = coverref::load(epub.getCachePath(), href);
+      if (ESP.getFreeHeap() < (ref ? CARD_THUMB_REF_MIN_FREE_HEAP : CARD_THUMB_MIN_FREE_HEAP) ||
+          ESP.getMaxAllocHeap() < CARD_THUMB_MIN_LARGEST_BLOCK) continue;
+      const uint32_t started = millis();
+      if (ref || epub.load(false, true)) {
+        epub.generateThumbBmps(ref ? href : epub.getCoverHref(), &q.width, &q.height, 1);
+      }
+      LOG_INF("HOME", "Home thumb book=%d size=%dx%d ms=%lu", q.book, q.width, q.height,
+              static_cast<unsigned long>(millis() - started));
+    }
+    requestUpdate();
+    return;
+  }
   const std::string path = recentBooks[index].path;
   thumbTried[thumbTriedNext++ % 5] = tenorchrome::kTouchShell
                                          ? fnv(fnv(fnv(2166136261u, path), &cardThumbWidth, sizeof(cardThumbWidth)),
@@ -2074,6 +2139,174 @@ void HomeActivity::writeMissingThumb(const int index) {
     }
   }
   requestUpdate();
+}
+
+HomeRecentLayout HomeActivity::recentLayout() {
+  const int shown = shownRecent();
+  const auto size = tenorchrome::kTouchShell && shown >= 0 ? cardCoverSize(shown) : CoverSize{};
+  const int serif = SETTINGS.uiTextSize == 1 ? NOTOSERIF_14_FONT_ID
+                    : SETTINGS.uiTextSize == 2 ? NOTOSERIF_16_FONT_ID : NOTOSERIF_12_FONT_ID;
+  return homeRecentLayout(tenorchrome::kTouchShell, SETTINGS.homeStyle, renderer.getScreenWidth(),
+                          coverTileTop() - 4, tenorchrome::footBackTop(renderer.getScreenHeight()) - 8,
+                          renderer.getLineHeight(UI_TITLE_FONT_ID), renderer.getLineHeight(UI_10_FONT_ID),
+                          renderer.getLineHeight(SMALL_FONT_ID), renderer.getLineHeight(serif),
+                          shown, static_cast<int>(recentBooks.size()), size.width, size.height);
+}
+
+void HomeActivity::queueTouchThumb(const int index, const int width, const int height) {
+  if (!FsHelpers::hasEpubExtension(recentBooks[index].path)) return;
+  const uint32_t id = fnv(fnv(fnv(2166136261u, recentBooks[index].path), &width, sizeof(width)), &height, sizeof(height));
+  for (const auto tried : thumbTried) if (tried == id) return;
+  for (int slot = 0; slot < touchThumbCount; ++slot)
+    if (touchThumbs[slot].book == index) return;
+  if (touchThumbCount >= static_cast<int>(touchThumbs.size())) return;
+  touchThumbs[touchThumbCount++] = {index, width, height};
+  if (thumbWanted.load() < 0) {
+    thumbWantedAtMs = millis();
+    thumbWanted = static_cast<int8_t>(shownRecent());
+  }
+}
+
+void HomeActivity::drawTouchCover(const HomeRecentRect& rect, const int index) {
+  const auto& book = recentBooks[index];
+  bool image = false;
+  if (!book.coverBmpPath.empty()) {
+    HalFile file;
+    const auto path = UITheme::getCoverThumbPath(book.coverBmpPath, rect.w, rect.h);
+    if (Storage.openFileForRead("HOME", path, file)) {
+      Bitmap bitmap(file);
+      image = bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() == rect.w &&
+              bitmap.getHeight() == rect.h && renderer.drawBitmap1Bit(bitmap, rect.x, rect.y, rect.w, rect.h);
+    }
+    if (!image) queueTouchThumb(index, rect.w, rect.h);
+  }
+  if (!image) {
+    for (int yy = 0; yy < rect.h; ++yy) {
+      const auto* row = sleepcover::PIXELS + (yy * sleepcover::HEIGHT / rect.h) * (sleepcover::WIDTH / 8);
+      for (int xx = 0; xx < rect.w; ++xx) {
+        const int sx = xx * sleepcover::WIDTH / rect.w;
+        if (!((row[sx >> 3] >> (7 - (sx & 7))) & 1)) renderer.drawPixel(rect.x + xx, rect.y + yy, true);
+      }
+    }
+  }
+  homeCoverCorners(renderer, rect.x, rect.y, rect.w, rect.h);
+  LOG_INF("HOME", "Home cover book=%d rect=%d,%d,%d,%d native=%u", index, rect.x, rect.y, rect.w, rect.h,
+          image ? 1u : 0u);
+}
+
+void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
+  if (recentBooks.empty()) {
+    renderer.drawText(UI_12_FONT_ID, 24, coverTileTop() + 26, tr(STR_NO_RECENT_BOOKS));
+    return;
+  }
+  const uint32_t started = micros();
+  const int shown = shownRecent();
+  heldCover = {static_cast<int16_t>(f.cover.x), static_cast<int16_t>(f.cover.y),
+                static_cast<int16_t>(f.cover.w), static_cast<int16_t>(f.cover.h)};
+  if (coverBufferStored && coverBufferBook == shown && restoreCoverBuffer()) {
+    LOG_INF("HOME", "Home style=%u restore_us=%lu snapshot=%u", static_cast<unsigned>(f.style),
+            static_cast<unsigned long>(micros() - started), static_cast<unsigned>(coverBufferSize));
+    return;
+  }
+  freeCoverBuffer();
+  touchThumbCount = 0;
+  LOG_INF("HOME", "Home build start style=%u", static_cast<unsigned>(f.style));
+  LOG_INF("HOME", "Home layout style=%u title=%d author=%d progress=%d excerpt=%d rule=%d shelf=%d", static_cast<unsigned>(f.style),
+          f.titleY, f.authorY, f.progressY, f.excerptY, f.ruleY, f.shelfHeadingY);
+  loadCardStats(shown);
+  drawTouchCover(f.cover, shown);
+  const auto& book = recentBooks[shown];
+  const auto title = book.title.empty() ? book.path.substr(book.path.find_last_of('/') + 1) : book.title;
+  const int titleFont = homeExcerptUsesUiFont(title.c_str()) ? UI_12_FONT_ID : UI_TITLE_FONT_ID;
+  const bool centered = f.style == HomeRecentStyle::LargeCover;
+  auto line = [&](int font, int x, int y, int width, const std::string& text, EpdFontFamily::Style style) {
+    if (centered) renderer.drawCenteredText(font, y, text.c_str(), true, style);
+    else renderer.drawText(font, x, y, renderer.truncatedText(font, text.c_str(), width, style).c_str(), true, style);
+  };
+  int y = f.titleY;
+  for (const auto& text : renderer.wrappedText(titleFont, title.c_str(), f.text.w, f.titleLines, EpdFontFamily::BOLD)) {
+    line(titleFont, f.text.x, y, f.text.w, text, EpdFontFamily::BOLD);
+    y += renderer.getLineHeight(titleFont);
+  }
+  y = f.authorY;
+  auto author = book.author.empty() ? std::string(tr(STR_RECENT_NO_AUTHOR)) : book.author;
+  const auto comma = author.find(", ");
+  if (f.authorLines > 1 && comma != std::string::npos) {
+    line(UI_10_FONT_ID, f.text.x, y, f.text.w, author.substr(0, comma), EpdFontFamily::REGULAR);
+    line(UI_10_FONT_ID, f.text.x, y + renderer.getLineHeight(UI_10_FONT_ID), f.text.w,
+         author.substr(comma + 2), EpdFontFamily::REGULAR);
+  } else {
+    for (const auto& text : renderer.wrappedText(UI_10_FONT_ID, author.c_str(), f.text.w, f.authorLines)) {
+      line(UI_10_FONT_ID, f.text.x, y, f.text.w, text, EpdFontFamily::REGULAR);
+      y += renderer.getLineHeight(UI_10_FONT_ID);
+    }
+  }
+  char progress[128];
+  if (cardStats.recorded && !centered) snprintf(progress, sizeof(progress), "%u%%", static_cast<unsigned>(cardStats.percent));
+  else if (cardStats.recorded) snprintf(progress, sizeof(progress), tr(STR_HOME_PROGRESS), static_cast<unsigned>(cardStats.percent));
+  else snprintf(progress, sizeof(progress), "%s", tr(STR_STATS_NOT_RECORDED));
+  if (cardStats.rows & (1u << HOME_STAT_FINISH)) {
+    const size_t used = strlen(progress);
+    snprintf(progress + used, sizeof(progress) - used, tr(STR_HOME_FINISH), cardStats.values[HOME_STAT_FINISH].c_str());
+  }
+  const int progressX = centered ? 96 : f.text.x;
+  const int progressW = centered ? renderer.getScreenWidth() - 192 : f.text.w;
+  auto bar = [&](int x, int y, int w, int h, int percent) {
+    renderer.drawRoundedRect(x, y, w, h, 1, h / 2, true);
+    const int fill = (w - 4) * percent / 100;
+    if (fill > 0) renderer.fillRoundedRect(x + 2, y + 2, fill, h - 4, (h - 4) / 2, Color::Black);
+  };
+  bar(progressX, f.progressY, progressW, 10, cardStats.percent);
+  const int progressFont = renderer.getTextWidth(UI_10_FONT_ID, progress) > f.text.w ? SMALL_FONT_ID : UI_10_FONT_ID;
+  const auto fitted = renderer.truncatedText(progressFont, progress, f.text.w);
+  line(progressFont, f.text.x, f.progressY + 22, f.text.w, fitted, EpdFontFamily::REGULAR);
+  if (f.style == HomeRecentStyle::Shelf) {
+    bool quoted = false;
+    const auto excerpt = cardExcerpt(shown, quoted);
+    const std::string quote = excerpt.empty() ? std::string(tr(STR_RECENT_NO_EXCERPT))
+                              : quoted ? std::string("“") + excerpt + "”" : excerpt;
+    const bool cjk = homeExcerptUsesUiFont(quote.c_str());
+    const int serif = SETTINGS.uiTextSize == 1 ? NOTOSERIF_14_FONT_ID
+                      : SETTINGS.uiTextSize == 2 ? NOTOSERIF_16_FONT_ID : NOTOSERIF_12_FONT_ID;
+    const int font = excerpt.empty() ? SMALL_FONT_ID : cjk ? UI_12_FONT_ID : serif;
+    const auto style = excerpt.empty() || cjk ? EpdFontFamily::REGULAR : EpdFontFamily::ITALIC;
+    renderer.drawText(font, 24, f.excerptY, renderer.truncatedText(font, quote.c_str(), renderer.getScreenWidth() - 48, style).c_str(), true, style);
+    if (f.shelfCount) renderer.drawText(UI_10_FONT_ID, 24, f.shelfHeadingY, tr(STR_RECENT_OTHER_BOOK));
+    for (int slot = 0; slot < f.shelfCount; ++slot) {
+      const int index = f.shelfBooks[slot];
+      const auto& other = recentBooks[index];
+      const auto size = cardCoverSize(index);
+      const auto fittedCover = homeCoverFit(f.shelf[slot].w, f.shelf[slot].h, size.width, size.height);
+      const auto& cell = f.shelf[slot];
+      const int x = 24 + slot * 152;
+      drawTouchCover({x + (128 - fittedCover.first) / 2, cell.y + (cell.h - fittedCover.second) / 2,
+                      fittedCover.first, fittedCover.second}, index);
+      loadCardStats(index);
+      const int bottom = cell.y + cell.h;
+      bar(x, bottom + 8, 128, 6, cardStats.percent);
+      const auto name = other.title.empty() ? other.path.substr(other.path.find_last_of('/') + 1) : other.title;
+      renderer.drawText(SMALL_FONT_ID, x, bottom + 20, renderer.truncatedText(SMALL_FONT_ID, name.c_str(), 128).c_str());
+      snprintf(progress, sizeof(progress), tr(STR_HOME_PROGRESS), static_cast<unsigned>(cardStats.percent));
+      if (renderer.getTextWidth(SMALL_FONT_ID, progress) > 128) snprintf(progress, sizeof(progress), "%u%%", static_cast<unsigned>(cardStats.percent));
+      renderer.drawText(SMALL_FONT_ID, x, bottom + 20 + renderer.getLineHeight(SMALL_FONT_ID), progress);
+    }
+  } else if (recentBooks.size() > 1) {
+    const auto& other = recentBooks[(shown + 1) % recentBooks.size()];
+    const auto name = other.title.empty() ? other.path.substr(other.path.find_last_of('/') + 1) : other.title;
+    const int room = renderer.getScreenWidth() - 80 - renderer.getTextWidth(UI_10_FONT_ID, tr(STR_RECENT_OTHER_BOOK)) - 16;
+    drawOtherBookRow(shown, f.ruleY, f.rowY, renderer.wrappedText(UI_10_FONT_ID, name.c_str(), room, 1, EpdFontFamily::BOLD));
+  }
+  coverRectX = f.snapshot.x; coverRectY = f.snapshot.y;
+  coverRectW = f.snapshot.w; coverRectH = f.snapshot.h;
+  textRectW = textRectH = 0;
+  coverBufferStored = storeCoverBuffer();
+  coverBufferBook = shown;
+  coverRendered = true;
+  if (auto* cache = renderer.getFontCacheManager()) cache->releaseBuiltinPageCaches();
+  LOG_INF("HOME", "Home style=%u build_us=%lu snapshot=%u thumbs=%d free=%u largest=%u", static_cast<unsigned>(f.style),
+          static_cast<unsigned long>(micros() - started), static_cast<unsigned>(coverBufferSize), touchThumbCount,
+          ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  LOG_INF("HOME", "Home build end style=%u", static_cast<unsigned>(f.style));
 }
 
 // Runs after the frame is on the panel. Checked staging preserves the committed card

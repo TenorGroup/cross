@@ -16,6 +16,13 @@ foreach(name geometry option_window stats_layout stats_navigation list_render ke
   add_test(NAME UiLayout.${name} COMMAND UiLayout_${name})
 endforeach()
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+foreach(name home_authors)
+  add_test(NAME UiLayout.${name} COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_${name}.py" --output "${CMAKE_CURRENT_BINARY_DIR}/${name}")
+  add_test(NAME UiLayout.${name}_mutation COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_${name}.py" --output "${CMAKE_CURRENT_BINARY_DIR}/${name}_mutation" --mutation)
+endforeach()
+add_test(NAME UiLayout.home_styles COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_home_styles.py" --output "${CMAKE_CURRENT_BINARY_DIR}/home_styles")
+add_test(NAME UiLayout.home_styles_mutation COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_home_styles.py" --output "${CMAKE_CURRENT_BINARY_DIR}/home_styles_mutation" --mutation)
+add_test(NAME UiLayout.home_popup_check_mutation COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_in_frame_popup.py" --output "${CMAKE_CURRENT_BINARY_DIR}/home_popup_check_mutation" --mutation)
 add_test(NAME UiLayout.in_frame_popup COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_in_frame_popup.py" --output "${CMAKE_CURRENT_BINARY_DIR}/in_frame_popup")
 add_test(NAME UiLayout.footer_tips COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_footer_tips.py")
 add_test(NAME UiLayout.sibling_arrows COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_sibling_arrows.py")
@@ -77,7 +84,7 @@ add_test(NAME UiLayout.corner_cost COMMAND UiLayout_corner_cost)
 # Rounded blocks through the real GfxRenderer.cpp, with the button_symbols test's stubs and a RAM
 # framebuffer, so the corner shape is checked on the pixels the panel gets. The sleep dither rides
 # on the same recipe.
-foreach(name rounded_render rounded_border sleep_gray_planes bitmap_rows)
+foreach(name rounded_render rounded_border sleep_gray_planes bitmap_rows home_cover_edges)
 add_executable(UiLayout_${name} ${name}.cpp
   "${REPO_ROOT}/lib/GfxRenderer/GfxRenderer.cpp"
   "${REPO_ROOT}/lib/GfxRenderer/FontCacheManager.cpp"
@@ -89,6 +96,9 @@ add_executable(UiLayout_${name} ${name}.cpp
   "${REPO_ROOT}/lib/MiniBidi/BidiUtils.cpp"
   "${REPO_ROOT}/lib/MiniBidi/minibidi.c")
 target_compile_features(UiLayout_${name} PRIVATE cxx_std_20)
+if(name STREQUAL "home_cover_edges")
+  target_compile_options(UiLayout_${name} PRIVATE -UNDEBUG)
+endif()
 target_include_directories(UiLayout_${name} BEFORE PRIVATE "${REPO_ROOT}/test/button_symbols/stubs")
 target_include_directories(UiLayout_${name} PRIVATE "${REPO_ROOT}/src" "${REPO_ROOT}/src/components"
   "${REPO_ROOT}/lib/EpdFont" "${REPO_ROOT}/lib/Utf8" "${REPO_ROOT}/lib/GfxRenderer" "${REPO_ROOT}/lib/Epub"

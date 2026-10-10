@@ -112,6 +112,7 @@ class OptionPopup {
 
   void alignValueTo(const freeink::ui::Rect& row) {
     anchor = row;
+    anchor.width = std::max<int16_t>(0, anchor.width - 23);
     hasAnchor = row.height > 0;
     alignSelected = hasAnchor;
   }
@@ -583,7 +584,7 @@ class OptionPopup {
     namespace fui = freeink::ui;
     constexpr int font = UI_12_FONT_ID, PAD = 6, RADIUS = 20, MARK = 24;
     const bool narrow = anchored;
-    const int ROW = narrow ? 56 : std::max(56, renderer.getLineHeight(font) + 16);
+    const int ROW = inFrame || narrow ? 56 : std::max(60, renderer.getLineHeight(font) + 16);
     const int pad = inFrame ? std::min(PAD, std::max(0, (frameRect.height - ROW) / 2)) : PAD;
     const int TEXT_X = narrow ? 24 : 16;
     const int count = static_cast<int>(ownedStrings.size());
