@@ -108,7 +108,7 @@ int main() {
           for (int index = 0; index < 5; ++index) {
             const auto rect = toolbar.toolRect(index);
             assert(rect.y == expected.y && rect.height == expected.height);
-            assert(rect.x + rect.width / 2 == 56 + (2 * (renderer.getScreenWidth() - 113) * index + 4) / 8);
+            assert(rect.x + rect.width / 2 == 58 + (2 * (renderer.getScreenWidth() - 117) * index + 4) / 8);
           }
           ++cases;
         }

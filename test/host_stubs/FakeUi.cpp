@@ -228,6 +228,7 @@ void drawRowChevron(const GfxRenderer&, int, int) {}
 void drawSettingsPopupMark(const GfxRenderer&, int, int) {}
 void drawBarIcon(const GfxRenderer&, const uint8_t*, int, int, int, int, bool) {}
 void drawPillRing(const GfxRenderer&, int, int, int, int, int, bool) {}
+void drawBarFrame(const GfxRenderer&, int, int, int, int) {}
 void drawPanel(const GfxRenderer&, int, int) {}
 void drawRowRule(const GfxRenderer&, int, int, int) {}
 void drawBarTab(const GfxRenderer&, int, int, int, const uint8_t*, int, int, bool) {}

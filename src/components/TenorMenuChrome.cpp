@@ -121,6 +121,14 @@ void tenorchrome::drawPillRing(const GfxRenderer& g, const int x, const int y, c
   }
 }
 
+void tenorchrome::drawBarFrame(const GfxRenderer& g, const int x, const int y, const int w, const int h) {
+#ifdef SIMULATOR
+  LOG_INF("BARFRAME", "screen=%s tier=%u x=%d y=%d w=%d h=%d", activityManager.currentName(), SETTINGS.uiTextSize, x, y,
+          w, h);
+#endif
+  drawPillRing(g, x, y, w, h, 2, true);
+}
+
 tenorchrome::PathPillLayout tenorchrome::layoutPathPill(const GfxRenderer& renderer, const int font, const char* title,
                                                         const int maxWidth, const int paddingLeft,
                                                         const int paddingRight) {
@@ -219,10 +227,11 @@ void tenorchrome::drawX3NavigationPath(const GfxRenderer& renderer, const std::v
                                       const bool file) {
   if (!x3ScreenLayoutEnabled() || shell::uglyParts()) return;
   const auto bar = x3ScreenLayout(renderer).barRect;
-  const int left = bar.x + 16;
+  const int frameX = bar.x + X3_BAR_MARGIN, frameWidth = bar.width - 2 * X3_BAR_MARGIN;
+  const int left = frameX + BAR_END_INSET;
   const int top = bar.y + BAR_TAB_INSET;
   const int height = bar.height - 2 * BAR_TAB_INSET;
-  const int available = bar.width - 32;
+  const int available = frameWidth - 2 * BAR_END_INSET;
   auto pills = layoutX3Navigation(renderer, UI_12_FONT_ID, nodes, available, height);
 #ifdef SIMULATOR
   LOG_INF("X3PATH", "screen=%s tier=%u bar=%d,%d,%d,%d titleWidth=%d nodes=%u root=%u parent=%u",
@@ -239,6 +248,7 @@ void tenorchrome::drawX3NavigationPath(const GfxRenderer& renderer, const std::v
   }
   const auto clip = renderer.getClipRect();
   renderer.setClipRect(bar.x, bar.y, bar.width, bar.height);
+  drawBarFrame(renderer, frameX, bar.y, frameWidth, bar.height);
   int leftEdge = left;
   for (const auto& pill : pills) {
 #ifdef SIMULATOR
@@ -531,7 +541,7 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
       return bold ? icon_tenor_reader_tools_bold_40 : icon_tenor_reader_tools_40;
     };
     if (!shell::isUgly())
-      drawPillRing(r, READER_BAR_LEFT, y, r.getScreenWidth() - FOOT_BACK_X - READER_BAR_LEFT, SIZE, 2, true);
+      drawBarFrame(r, READER_BAR_LEFT, y, r.getScreenWidth() - FOOT_BACK_X - READER_BAR_LEFT, SIZE);
     for (int i = 0; i < READER_TOOLS; ++i) {
       const auto cell = readerToolRect(r.getScreenWidth(), r.getScreenHeight(), i);
       const bool active = i == readerFootBar.activeTool;
