@@ -1218,8 +1218,9 @@ void Epub::generateThumbBmps(const std::string& coverImageHref, const int* width
               static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
     if (!copyCover() || !Storage.openFileForRead("EBP", coverTempPath, cover) ||
         !Storage.openFileForWrite("EBP", partPath, thumbBmp)) {
-      cover.close();
-      thumbBmp.close();
+      // A failed copy leaves both files never opened; closing those would trip the storage assert.
+      if (cover) cover.close();
+      if (thumbBmp) thumbBmp.close();
       break;
     }
     const bool success = ink
