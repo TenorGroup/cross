@@ -548,7 +548,7 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
         continue;
       }
       const freeink::Icon& icon = iconOf(tool, active);
-      drawBarTab(r, cell.x + cell.width / 2, y, SIZE, icon.bits, icon.w, icon.h, active);
+      drawBarTab(r, readerToolCentre(r.getScreenWidth(), i), y, SIZE, icon.bits, icon.w, icon.h, active);
     }
   }
 #endif

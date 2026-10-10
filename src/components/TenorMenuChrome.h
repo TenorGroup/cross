@@ -116,6 +116,21 @@ constexpr int FAVORITE_MARK = kTouchShell ? 18 : 14;
 void drawFavoriteMark(const GfxRenderer& renderer, int x, int fontId, int lineTop);
 constexpr int BAR_TAB_W = 84;
 constexpr int BAR_TAB_INSET = 6;
+// The centre of icon tab `i` of `count` in a bar ring of ringW px from ringX, the first and last tab `endInset` px
+// in from the ring's ends and the rest spread evenly between them. The one place that says it: the tab lists
+// (Home, Settings, the reader menu's lists) and the reader's own bar all ask here.
+constexpr int barTabCentre(const int ringX, const int ringW, const int count, const int i, const int endInset) {
+  const int first = ringX + endInset + BAR_TAB_W / 2;
+  const int last = ringX + ringW - 1 - endInset - BAR_TAB_W / 2;
+  return count > 1 ? first + (2 * (last - first) * i + (count - 1)) / (2 * (count - 1)) : ringX + ringW / 2;
+}
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+// The centre of the reader menu's tool `tool` on the X4 Pro: where a tab list puts the same tab of 4 in the same
+// ring (touch icon tabs stand 8 px in from the ring's ends).
+inline int readerToolCentre(const int width, const int tool) {
+  return barTabCentre(READER_BAR_LEFT, width - FOOT_BACK_X - READER_BAR_LEFT, READER_TOOLS, tool, 8);
+}
+#endif
 void drawBarTab(const GfxRenderer& renderer, int cx, int y, int h, const uint8_t* bits, int w, int iconH, bool chosen);
 // A ring of `thick` px just inside a round-ended bar; grey = every other pixel.
 void drawPillRing(const GfxRenderer& g, int x, int y, int w, int h, int thick, bool grey);

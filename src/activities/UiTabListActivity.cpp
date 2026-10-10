@@ -42,7 +42,6 @@ void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh
   const int slotW = (w - 2 * KHE) / count;
   // Touch icon pills leave 8 px inside the bar's ends; the centres spread evenly between them.
   const int endInset = tenorchrome::kTouchShell ? 8 : KHE;
-  const int first = x0 + endInset + PILL_ICON_W / 2, last = x0 + w - 1 - endInset - PILL_ICON_W / 2;
   fui::TextStyle label = chu;
   label.align = fui::TextAlign::Center;
   label.color = fui::Color::Black;
@@ -72,7 +71,7 @@ void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh
     int cx, pillW;
     int16_t labelW = 0;
     if (icons) {
-      cx = count > 1 ? first + (2 * (last - first) * i + (count - 1)) / (2 * (count - 1)) : x0 + w / 2;
+      cx = tenorchrome::barTabCentre(x0, w, count, i, endInset);
       pillW = PILL_ICON_W;
     } else {
       cx = spread ? textCentre[i] : x0 + KHE + slotW * i + slotW / 2;
@@ -83,7 +82,7 @@ void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh
       // The whole bar height, split halfway between neighbouring tabs: every point of the bar picks a tab.
       const auto centre = [&](const int j) {
         if (!icons) return spread ? textCentre[j] : x0 + KHE + slotW * j + slotW / 2;
-        return count > 1 ? first + (2 * (last - first) * j + (count - 1)) / (2 * (count - 1)) : x0 + w / 2;
+        return tenorchrome::barTabCentre(x0, w, count, j, endInset);
       };
       const int left = i == 0 ? thanh.x : (centre(i - 1) + cx) / 2;
       const int right = i == count - 1 ? thanh.right() : (cx + centre(i + 1)) / 2;

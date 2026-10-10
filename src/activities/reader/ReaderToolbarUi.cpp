@@ -87,10 +87,9 @@ tenorchrome::X3ScreenLayout ReaderToolbarUi::screenLayout() const {
 
 fui::Rect ReaderToolbarUi::toolRect(const int index) const {
   const auto bar = screenLayout().barRect;
-  const int first = bar.x + 8 + tenorchrome::BAR_TAB_INSET + tenorchrome::BAR_TAB_W / 2;
-  const int last = bar.x + bar.width - 9 - tenorchrome::BAR_TAB_INSET - tenorchrome::BAR_TAB_W / 2;
-  const int center = first + (2 * (last - first) * index + readermenu::X3_TAB_COUNT - 1) /
-                                (2 * (readermenu::X3_TAB_COUNT - 1));
+  // The tab list's own centres (UiTabListActivity::veThanhTheTenor): ring 8 px in from the bar's ends.
+  const int center = tenorchrome::barTabCentre(bar.x + 8, bar.width - 16, readermenu::X3_TAB_COUNT, index,
+                                               tenorchrome::BAR_TAB_INSET);
   return {static_cast<int16_t>(center - tenorchrome::BAR_TAB_W / 2), static_cast<int16_t>(bar.y),
           tenorchrome::BAR_TAB_W, static_cast<int16_t>(bar.height)};
 }
