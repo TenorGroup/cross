@@ -58,6 +58,7 @@
 #include "BlePageTurnerHost.h"
 #include "CrossPointSettings.h"
 #include "HeapMapProbe.h"
+#include "HeapBigProbe.h"
 #include "SettingsList.h"
 #include "CrossPointState.h"
 #include "KOReaderCredentialStore.h"
@@ -1473,6 +1474,9 @@ void loop() {
                      mappedInputManager.wasReleased(MappedInputManager::Button::Right) || gpio.wasTouchActivity();
     bleInputActivity = bleturner::tick(scene);
   }
+#ifdef TENOR_HEAP_BIG
+  heapBigProbeTick(bleturner::status().running);
+#endif
 #endif
 
   if (activityManager.requiresExclusiveStorageLoop()) {

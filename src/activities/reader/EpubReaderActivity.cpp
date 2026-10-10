@@ -47,6 +47,8 @@
 #include "EpubReaderUtils.h"
 #include "KOReaderCredentialStore.h"
 #include "KOReaderSyncActivity.h"
+#include "HeapBigProbe.h"
+#include "HeapFloor.h"
 #include "HeapMapProbe.h"
 #include "MappedInputManager.h"
 #include "ProgressMapper.h"
@@ -588,7 +590,7 @@ void EpubReaderActivity::openReaderMenu() {
     // go-to-percent... cancelled back to the menu), so the framebuffer holds
     // that screen, not the page: re-render the page and let renderBook() put
     // the toolbar on top. The in-reader fast path is openOverlay().
-    if (overlay == Overlay::None) stopRadioForSheet();
+    if (overlay == Overlay::None) beginSheetRadio();
     overlay = Overlay::Toolbar;
     focusedTool = kContentsTool;
     panelHoldJumped = false;
@@ -1463,7 +1465,14 @@ void EpubReaderActivity::loop() {
       // instead of on the next key (162 ms on the X3 at every step of the menu).
       if (overlayRefreshPending && !mappedInput.wasAnyPressed() && !renderer.refreshBusy()) {
         RenderLock lock(RenderLock::TryTake{});
-        if (lock.acquired()) settleOverlayRefresh();
+        if (lock.acquired()) {
+#ifdef TENOR_SHEET_TIMING
+          // The sheet's refresh is done: what the reader sees is final from here.
+          LOG_INF("SHEET_T", "shown t=%lu kept_radio=%u snapshot=%u", static_cast<unsigned long>(millis()),
+                  sheetKeptRadio ? 1u : 0u, overlayPageStored ? 1u : 0u);
+#endif
+          settleOverlayRefresh();
+        }
       }
       handleOverlayInput();
       return;
@@ -2608,6 +2617,16 @@ void EpubReaderActivity::tracePaint(const char* phase, const char* kind) const {
           currentSpineIndex, section ? section->currentPage : nextPageNumber, kind,
           static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
           static_cast<unsigned>(ESP.getMinFreeHeap()));
+#ifdef TENOR_HEAP_FLOOR
+  // One line per paint mark under the floor, for the release gate to count (grep "[HEAP_FLOOR] cross").
+  const size_t freeBytes = ESP.getFreeHeap();
+  const size_t largest = ESP.getMaxAllocHeap();
+  if (heapfloor::crosses(freeBytes, largest)) {
+    LOG_ERR("HEAP_FLOOR", "cross where=PAINT_%s kind=%s t=%lu free=%u largest=%u floor_free=%u floor_largest=%u", phase,
+            kind, now, static_cast<unsigned>(freeBytes), static_cast<unsigned>(largest),
+            static_cast<unsigned>(heapfloor::kFreeFloor), static_cast<unsigned>(heapfloor::kLargestFloorReported));
+  }
+#endif
 }
 
 void EpubReaderActivity::traceReadablePaint(const char* kind) {
@@ -3247,14 +3266,16 @@ void EpubReaderActivity::renderBook() {
   if (overlay != Overlay::None && usesToolbarMenu()) {
     // The page just re-rendered under the overlay: refresh the snapshot that
     // backs panel->toolbar restores (any previous copy is stale).
-    releaseTextCachesBeforeOverlaySnapshot();
+    if (!sheetKeptRadio) {
+      releaseTextCachesBeforeOverlaySnapshot();
 #ifdef TENOR_PRESS_PROBE
-    traceSheetHeap("STORE_BEGIN", renderer);
+      traceSheetHeap("STORE_BEGIN", renderer);
 #endif
-    overlayPageStored = renderer.storeBwBuffer();
+      overlayPageStored = renderer.storeBwBuffer();
 #ifdef TENOR_PRESS_PROBE
-    traceSheetHeap(overlayPageStored ? "STORE_OK" : "STORE_FAILED", renderer);
+      traceSheetHeap(overlayPageStored ? "STORE_OK" : "STORE_FAILED", renderer);
 #endif
+    }
     renderOverlay();
     // An open option picker rides on top of the freshly drawn panel.
     if (overlayPopup.isActive()) overlayPopup.render(renderer);
@@ -3765,6 +3786,12 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       // ~500 ms of strips, gray waveform and cleanup below would only hold the next screen back.
       const char* grayNotRun = grayStopReason();
       std::unique_ptr<uint8_t[]> scratch;
+#ifdef TENOR_HEAP_BIG
+      // Other tasks' allocations while the strip is held (heap57: when does the floor apply).
+      struct StripWindowEnd {
+        ~StripWindowEnd() { heapBigStripWindow(false); }
+      } stripWindowEnd;
+#endif
       if (!grayNotRun) {
         const auto freeHeap = ESP.getFreeHeap();
         const auto largestBlock = ESP.getMaxAllocHeap();
@@ -3775,6 +3802,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
         } else {
           scratch = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(gwBytes) * STRIP_ROWS);
           if (!scratch) grayNotRun = "scratch_oom";
+#ifdef TENOR_HEAP_BIG
+          if (scratch) heapBigStripWindow(true);
+#endif
         }
       }
       if (grayNotRun) {
@@ -4494,6 +4524,10 @@ void EpubReaderActivity::pushOverlayRefresh() {
 // shorter sheet, another level) shows the page again. One push. Caller must hold the RenderLock.
 void EpubReaderActivity::redrawSheetLocked() {
   settleOverlayRefresh();
+  if (sheetradio::redrawFromPage(sheetKeptRadio, overlayPageStored)) {
+    requestUpdate();
+    return;
+  }
   if (overlayPageStored) {
     renderer.restoreBwBuffer(/*resyncPanelBaseline=*/false);
     overlayPageStored = renderer.storeBwBuffer();
@@ -4527,6 +4561,21 @@ void EpubReaderActivity::stopRadioForSheet() {
   if (!bleturner::stopNow(1000)) LOG_ERR("ERS", "Radio still stopping under the sheet");
 }
 
+sheetradio::Plan EpubReaderActivity::beginSheetRadio() {
+#ifdef TENOR_P5B
+  const auto radio = bleturner::status();
+  const auto plan = sheetradio::planFor(true, radio.running && !radio.stopping);
+#else
+  const auto plan = sheetradio::planFor(false, false);
+#endif
+  sheetKeptRadio = !plan.stopRadio;
+  if (plan.stopRadio) stopRadioForSheet();
+#ifdef TENOR_SHEET_TIMING
+  LOG_INF("SHEET_T", "open t=%lu kept_radio=%u", static_cast<unsigned long>(millis()), sheetKeptRadio ? 1u : 0u);
+#endif
+  return plan;
+}
+
 void EpubReaderActivity::openOverlay(Overlay target) {
   if (target == Overlay::Text && tenorchrome::x3ScreenLayoutEnabled()) {
     mappedInput.resetHomeButtonInput();
@@ -4544,7 +4593,7 @@ void EpubReaderActivity::openOverlay(Overlay target) {
   mappedInput.resetHomeButtonInput();
   const Overlay previous = overlay;
   if (previous == Overlay::None) {
-    stopRadioForSheet();
+    beginSheetRadio();
     bwUnderSheet = false;
     textCloseFrame.store(0, std::memory_order_relaxed);
   }
@@ -4618,14 +4667,19 @@ void EpubReaderActivity::openOverlay(Overlay target) {
       }
       // Snapshot the clean page so stepping back from a panel to the toolbar
       // (and closing, where supported) can restore it without a re-render.
-      releaseTextCachesBeforeOverlaySnapshot();
+      if (!sheetKeptRadio) {
+        releaseTextCachesBeforeOverlaySnapshot();
 #ifdef TENOR_PRESS_PROBE
-      traceSheetHeap("STORE_BEGIN", renderer);
+        traceSheetHeap("STORE_BEGIN", renderer);
 #endif
-      overlayPageStored = renderer.storeBwBuffer();
+        overlayPageStored = renderer.storeBwBuffer();
 #ifdef TENOR_PRESS_PROBE
-      traceSheetHeap(overlayPageStored ? "STORE_OK" : "STORE_FAILED", renderer);
+        traceSheetHeap(overlayPageStored ? "STORE_OK" : "STORE_FAILED", renderer);
 #endif
+      }
+    } else if (sheetradio::redrawFromPage(sheetKeptRadio, overlayPageStored)) {
+      requestUpdate();  // no snapshot to wipe the old chrome: renderBook() draws page and sheet
+      return;
     } else if (overlayPageStored) {
       // Overlay -> overlay: wipe the previous chrome (toolbar header, sheet,
       // progress row) back to the clean page so none of it shows around or
@@ -4654,6 +4708,7 @@ void EpubReaderActivity::closeOverlayToPage() {
     tenorchrome::noteReaderFootBar(false, false, -1);
 #endif
     overlay = Overlay::None;
+    sheetKeptRadio = false;
     overlayPopup.dismiss();
     toolbarUi.reset();
     settleOverlayRefresh();
@@ -5467,14 +5522,16 @@ bool EpubReaderActivity::renderPreview(const int marginTop, const int marginRigh
   if (paintDropped) return true;
   lastRenderCompleteMs = millis();
   if (overlay != Overlay::None && usesToolbarMenu()) {
-    releaseTextCachesBeforeOverlaySnapshot();
+    if (!sheetKeptRadio) {
+      releaseTextCachesBeforeOverlaySnapshot();
 #ifdef TENOR_PRESS_PROBE
-    traceSheetHeap("STORE_BEGIN", renderer);
+      traceSheetHeap("STORE_BEGIN", renderer);
 #endif
-    overlayPageStored = renderer.storeBwBuffer();
+      overlayPageStored = renderer.storeBwBuffer();
 #ifdef TENOR_PRESS_PROBE
-    traceSheetHeap(overlayPageStored ? "STORE_OK" : "STORE_FAILED", renderer);
+      traceSheetHeap(overlayPageStored ? "STORE_OK" : "STORE_FAILED", renderer);
 #endif
+    }
     renderOverlay();
     if (overlayPopup.isActive()) overlayPopup.render(renderer);
     pushOverlayRefresh();
@@ -5517,6 +5574,10 @@ void EpubReaderActivity::enterFontLevel() {
   toolbarUi->nav().reset(panelIndex);
   if (!panelCursorShown) toolbarUi->nav().top = panelIndex;
   settleOverlayRefresh();
+  if (sheetradio::redrawFromPage(sheetKeptRadio, overlayPageStored)) {
+    requestUpdate();
+    return;
+  }
   if (overlayPageStored) {
     renderer.restoreBwBuffer(/*resyncPanelBaseline=*/false);
     overlayPageStored = renderer.storeBwBuffer();
@@ -5535,6 +5596,10 @@ void EpubReaderActivity::leaveFontLevel() {
   panelIndex = 0;
   toolbarUi->nav().reset();
   settleOverlayRefresh();
+  if (sheetradio::redrawFromPage(sheetKeptRadio, overlayPageStored)) {
+    requestUpdate();
+    return;
+  }
   if (overlayPageStored) {
     renderer.restoreBwBuffer(/*resyncPanelBaseline=*/false);
     overlayPageStored = renderer.storeBwBuffer();
@@ -5559,6 +5624,10 @@ void EpubReaderActivity::enterTextDepth(const TextDepth depth) {
   pointSizeDraft = depth == TextDepth::PointSize ? std::to_string(SETTINGS.fontPointSize) : "";
   toolbarUi->nav().reset();
   settleOverlayRefresh();
+  if (sheetradio::redrawFromPage(sheetKeptRadio, overlayPageStored)) {
+    requestUpdate();
+    return;
+  }
   if (overlayPageStored) {
     renderer.restoreBwBuffer(/*resyncPanelBaseline=*/false);
     overlayPageStored = renderer.storeBwBuffer();

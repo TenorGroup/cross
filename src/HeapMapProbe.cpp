@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <esp_heap_caps.h>
+#include <sdkconfig.h>
 
 #include <cstring>
 
@@ -17,7 +18,11 @@ struct Block {
 constexpr size_t kMaxBlocks = 512;
 constexpr size_t kMaxPeeks = 64;
 constexpr size_t kPeekMinBytes = 400;
+#if defined(CONFIG_HEAP_POISONING_DISABLED) && CONFIG_HEAP_POISONING_DISABLED
+constexpr size_t kPoisonHeaderBytes = 0;  // no poisoning: the data starts at the block
+#else
 constexpr size_t kPoisonHeaderBytes = 8;  // light poisoning: canary word + size word before the data
+#endif
 
 struct Peek {
   uintptr_t addr;

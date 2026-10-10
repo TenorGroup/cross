@@ -20,6 +20,7 @@
 #include "ReaderFontChon.h"
 #include "ReaderToolbarUi.h"
 #include "ReaderTextRelayout.h"
+#include "SheetRadioPlan.h"
 #include "TextGrayPolicy.h"
 #include "components/OptionPopup.h"
 
@@ -196,6 +197,11 @@ class EpubReaderActivity final : public ReaderActivity {
   // re-render. Discarded on close / whenever the page under the overlay changes.
   bool overlayPageStored = false;
   bool bwUnderSheet = false;
+  // The sheet opened over a running radio and kept it (TENOR_P5B measurement build): no page
+  // snapshot backs the sheet, so every redraw of it draws the page again first.
+  bool sheetKeptRadio = false;
+  // Stops the radio for the sheet, or keeps it, as sheetradio::planFor answers.
+  sheetradio::Plan beginSheetRadio();
   // True while a deferred overlay chrome refresh (pushOverlayRefresh) may still
   // be running on the panel. settleOverlayRefresh() must run before the
   // framebuffer is touched or another differential refresh is pushed.
@@ -514,7 +520,8 @@ class EpubReaderActivity final : public ReaderActivity {
   bool skipLoopDelay() override;
   bool holdsRadio() const override;
   bool yieldForRadio() override;
-  bool coversPage() const override { return overlay != Overlay::None; }
+  // A sheet that kept the radio leaves the book in front for the radio (remote keys are dropped under it).
+  bool coversPage() const override { return overlay != Overlay::None && !sheetKeptRadio; }
 
   ScreenshotInfo getScreenshotInfo() const override;
   CrossPointPosition getCurrentPosition() const;

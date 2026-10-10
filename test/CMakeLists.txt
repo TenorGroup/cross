@@ -227,6 +227,16 @@ add_subdirectory(fixed_menu_chrome)
 
 add_subdirectory(settings_v108)
 
+add_executable(heap_big_probe heap_big_probe/HeapBigProbeTest.cpp)
+target_compile_options(heap_big_probe PRIVATE -UNDEBUG)
+target_include_directories(heap_big_probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+add_test(NAME heap_big_probe COMMAND heap_big_probe)
+
+add_executable(sheet_radio_plan sheet_radio_plan/SheetRadioPlanTest.cpp)
+target_compile_options(sheet_radio_plan PRIVATE -UNDEBUG)
+target_include_directories(sheet_radio_plan PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+add_test(NAME sheet_radio_plan COMMAND sheet_radio_plan)
+
 add_executable(reader_ink_v108 reader_ink_v108/ReaderInkWeightTest.cpp)
 target_compile_options(reader_ink_v108 PRIVATE -UNDEBUG)
 target_include_directories(reader_ink_v108 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
