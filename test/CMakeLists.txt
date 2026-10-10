@@ -237,6 +237,7 @@ target_compile_options(heap_floor PRIVATE -UNDEBUG)
 target_include_directories(heap_floor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../lib/Memory)
 add_test(NAME heap_floor COMMAND heap_floor)
 
+add_test(NAME heap_floor_gate COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/../scripts/cong_san.py)
 
 add_executable(sheet_radio_plan sheet_radio_plan/SheetRadioPlanTest.cpp)
 target_compile_options(sheet_radio_plan PRIVATE -UNDEBUG)
