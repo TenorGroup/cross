@@ -84,18 +84,28 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
   const bool symbolFooter = tenorchrome::x3ScreenLayoutEnabled() && SETTINGS.tenorButtonSymbols;
   const bool largerText = normalizedUiTextSize(SETTINGS.uiTextSize) != 0;
   constexpr int captionGap = 6;  // a symbol or caption keeps 6 px from the battery and the clock
+  constexpr int clockGap = captionGap + 2;  // the clock's first digit and a caption's last glyph both carry a side bearing
   for (int i = 0; i < 4 && symbolFooter; i++) {
     if (labels[i] == nullptr || labels[i][0] == '\0') continue;
     const auto bounds = buttonSymbols::horizontalBounds(labels[i], net);
     if (bounds.left != 0 || bounds.right != 0) continue;
     const bool fits = renderer.wrappedText(SMALL_FONT_ID, labels[i], buttonWidth - 8, 2).size() == 1;
     if (!fits && !largerText) continue;
-    int lo = corners.leftEnd + captionGap, hi = corners.rightStart - captionGap;
+    int lo = corners.leftEnd + captionGap, hi = corners.rightStart - clockGap;
+    // The neighbour's own ink bounds the room: a symbol stands narrower than its 80 px cell.
     for (int j = i - 1; j >= 0; --j) {
-      if (labels[j] && *labels[j]) { lo = std::max(lo, buttonPositions[j] + buttonWidth); break; }
+      if (!labels[j] || !*labels[j]) continue;
+      const auto side = buttonSymbols::horizontalBounds(labels[j], net);
+      const bool symbol = side.left != 0 || side.right != 0;
+      lo = std::max(lo, symbol ? iconPositions[j] + side.right + captionGap : buttonPositions[j] + buttonWidth);
+      break;
     }
     for (int j = i + 1; j < 4; ++j) {
-      if (labels[j] && *labels[j]) { hi = std::min(hi, buttonPositions[j]); break; }
+      if (!labels[j] || !*labels[j]) continue;
+      const auto side = buttonSymbols::horizontalBounds(labels[j], net);
+      const bool symbol = side.left != 0 || side.right != 0;
+      hi = std::min(hi, symbol ? iconPositions[j] - side.left - captionGap : buttonPositions[j]);
+      break;
     }
     captions[i] = labels[i];
     if (renderer.getTextWidth(SMALL_FONT_ID, labels[i]) > hi - lo) {

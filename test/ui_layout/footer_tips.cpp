@@ -294,6 +294,14 @@ int main() {
       }
     }
   }
+  // A caption beside a symbol may use the room up to the symbol's ink, not up to the symbol's whole 80 px cell.
+  SETTINGS.uiTextSize = 1;
+  {
+    GfxRenderer r;
+    r.screenHeight = 792;
+    TenorTheme{}.drawButtonHints(r, "Cập nhật", "symbol", "", "");
+    check(r.paintedText == std::vector<std::string>{"Cập nhật"}, "caption beside a symbol was cut short");
+  }
   // Same production painter, with the 40px Base/Lyra and 35px Tenor boxes.
   // Small caption fonts also model Base's 10pt hint font while uiTextSize=0.
   for (int face = 0; face < 2; ++face) {
