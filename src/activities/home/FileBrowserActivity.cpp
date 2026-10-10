@@ -539,7 +539,10 @@ void FileBrowserActivity::deleteSelected() {
   };
 
   const std::string heading = tr(STR_DELETE) + std::string("? ");
-  auto confirmation = makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, heading, utf8ComposeNfc(entry));
+  auto confirmation = makeUniqueNoThrow<ConfirmationActivity>(
+      renderer, mappedInput, heading, utf8ComposeNfc(entry),
+      ConfirmationContent{tr(STR_ALERT_FILE_QUESTION), utf8ComposeNfc(entry) + " " + tr(STR_ALERT_FILE_MESSAGE_SUFFIX),
+                          tr(STR_ALERT_FILE_ACTION_SHORT), tr(STR_ALERT_FILE_ACTION_LONG), "", true});
   if (!confirmation) {
     LOG_ERR("FileBrowser", "OOM: delete confirmation");
     return;

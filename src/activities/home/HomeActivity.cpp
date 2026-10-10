@@ -583,10 +583,16 @@ bool HomeActivity::handleButtons() {
 
 void HomeActivity::confirmStatsReset(const bool all) {
   statsResetTip.reset();
+  const std::string statsQuestion = I18N.get(all ? StrId::STR_STATS_RESET_ALL : StrId::STR_STATS_RESET_HABITS);
+  std::string statsLongAction = statsQuestion;
+  if (!statsLongAction.empty() && statsLongAction.back() == '?') statsLongAction.pop_back();
   startActivityForResult(
       makeUniqueNoThrow<ConfirmationActivity>(
           renderer, mappedInput, I18N.get(all ? StrId::STR_STATS_RESET_ALL : StrId::STR_STATS_RESET_HABITS),
-          I18N.get(all ? StrId::STR_STATS_RESET_ALL_BODY : StrId::STR_STATS_RESET_HABITS_BODY)),
+          I18N.get(all ? StrId::STR_STATS_RESET_ALL_BODY : StrId::STR_STATS_RESET_HABITS_BODY),
+          ConfirmationContent{statsQuestion,
+                              I18N.get(all ? StrId::STR_STATS_RESET_ALL_BODY : StrId::STR_STATS_RESET_HABITS_BODY),
+                              tr(STR_ALERT_STATS_ACTION_SHORT), statsLongAction, "", true}),
       [this, all](const ActivityResult& result) {
         if (result.isCancelled) return;
         RenderLock lock(*this);
@@ -1149,7 +1155,11 @@ void HomeActivity::showRecentActions(const int index, const fui::Rect anchor) {
 void HomeActivity::showRecentRemovalConfirmation(RecentBook book) {
   recentRemovalFailed = false;
   const std::string body = book.title.empty() ? book.path : book.title;
-  auto confirmation = makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, tr(STR_REMOVE_FROM_RECENTS), body);
+  auto confirmation = makeUniqueNoThrow<ConfirmationActivity>(
+      renderer, mappedInput, tr(STR_REMOVE_FROM_RECENTS), body,
+      ConfirmationContent{tr(STR_ALERT_RECENT_QUESTION), body + " " + tr(STR_ALERT_RECENT_MESSAGE_SUFFIX),
+                          tr(STR_ALERT_RECENT_ACTION_SHORT), tr(STR_ALERT_RECENT_ACTION_LONG),
+                          tr(STR_ALERT_RECENT_TOUCH_MESSAGE), true});
   if (!confirmation) {
     LOG_ERR("HOME", "OOM: remove recent confirmation");
     recentRemovalFailed = true;

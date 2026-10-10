@@ -35,7 +35,8 @@ for path in (root / 'src/activities').rglob('*Activity.cpp'):
     text = path.read_text() + (sibling.read_text() if sibling.exists() else '')
     if re.search(r'x3ScreenLayout\(|x3settings::beginScreen\(', text):
         name = path.stem
-        if name in ('HomeActivity', 'EpubReaderActivity', 'UiListActivity', 'UiTabListActivity'):
+        # Confirmation centers an overlay in bodyRect and keeps the caller's navigation path.
+        if name in ('HomeActivity', 'EpubReaderActivity', 'UiListActivity', 'UiTabListActivity', 'ConfirmationActivity'):
             continue
         if args.mutate_screen and name == 'BlePageTurnerActivity':
             text += '\nvoid mutantScreen() { tenorchrome::drawPillRing(); }\n'

@@ -11,6 +11,8 @@ endif()
 
 include(FetchContent)
 
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
 FetchContent_Declare(
   googletest
   GIT_REPOSITORY https://github.com/google/googletest.git
@@ -75,6 +77,7 @@ add_subdirectory(ugly_marks)
 add_subdirectory(ugly_sleep_set)
 add_subdirectory(scribble)
 add_subdirectory(scribble_boundaries)
+add_subdirectory(confirmation)
 
 add_subdirectory(inflate_stream)
 add_subdirectory(fs_helpers)

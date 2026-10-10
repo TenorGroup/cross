@@ -6,29 +6,79 @@
 #include "HalDisplay.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
+#include "components/UiAppHelpers.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglySwitch.h"
 
 ConfirmationActivity::ConfirmationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                           const std::string& heading, const std::string& body)
-    : Activity("Confirmation", renderer, mappedInput), heading(heading), body(body) {}
+                                           const std::string& heading, const std::string& body,
+                                           ConfirmationContent content)
+    : Activity("Confirmation", renderer, mappedInput), heading(heading), body(body), content(std::move(content)) {}
 
 void ConfirmationActivity::onEnter() {
   Activity::onEnter();
   if (shell::isUgly()) ugly::ensureFonts(renderer);
 
-  // Both texts live inside the dialog: the heading as its caption and the
-  // subject (a book title) as the wrapping headline beneath it. No
-  // pre-truncation, the dialog wraps both to its own width.
-  const char* options[] = {I18N.get(StrId::STR_CANCEL), I18N.get(StrId::STR_CONFIRM)};
-  confirmPopup.show(heading.c_str(), body.c_str(), options, 2, 0, [this](int idx) {
-    ActivityResult res;
-    res.isCancelled = (idx != 1);
-    setResult(std::move(res));
-    finish();
-  });
-
   requestUpdate(true);
+}
+
+namespace {
+void centered(const GfxRenderer& r, int font, const char* text, const ConfirmationBox& box,
+              EpdFontFamily::Style style = EpdFontFamily::REGULAR) {
+  const auto ink = r.getTextInkBounds(font, text, style);
+  r.drawText(font, box.x + (box.width - ink[2] + ink[0]) / 2 - ink[0],
+             box.y + (box.height - ink[3] + ink[1]) / 2 - ink[1], text, true, style);
+}
+
+void whiteHalo(const GfxRenderer& r, const ConfirmationBox& box) {
+  r.fillRect(box.x - 8, box.y - 8, box.width + 16, box.height + 16, false);
+}
+
+// Find the top of the cut line in the existing framebuffer, without a second screen-sized buffer.
+int wholeLineTop(const GfxRenderer& r, int top) {
+  uint8_t row[800];
+  for (; top > tenorchrome::contentTop(); --top) {
+    const size_t bytes = r.getRegionByteSize(24, top, r.getScreenWidth() - 48, 1);
+    if (bytes > sizeof(row) || !r.copyRegionToBuffer(24, top, r.getScreenWidth() - 48, 1, row, sizeof(row))) break;
+    bool white = true;
+    for (size_t i = 0; i < bytes; ++i) white = white && row[i] == 0xff;
+    if (white) break;
+  }
+  return top;
+}
+}  // namespace
+
+void ConfirmationActivity::layoutCross() {
+  if (laidOut) return;
+  const bool touch = tenorchrome::kTouchShell;
+  int top = tenorchrome::contentTop();
+  int bottom = tenorchrome::footBackTop(renderer.getScreenHeight()) - 8;
+  int headerHeight = 0;
+  if (!touch) {
+    const auto bodyRect = tenorchrome::x3ScreenLayout(renderer).bodyRect;
+    top = bodyRect.y;
+    bottom = bodyRect.y + bodyRect.height;
+    questionLines = renderer.wrappedText(UI_12_FONT_ID, content.question.c_str(), 326, 4, EpdFontFamily::BOLD);
+    messageLines = renderer.wrappedText(SMALL_FONT_ID, content.message.c_str(), 326, 6);
+    headerHeight = 40 + questionLines.size() * renderer.getLineHeight(UI_12_FONT_ID) + 4 +
+                   messageLines.size() * renderer.getLineHeight(SMALL_FONT_ID);
+  }
+  layout = confirmationLayout(touch, renderer.getScreenWidth(), top, bottom, headerHeight);
+  if (touch) {
+    const int clearTop = wholeLineTop(renderer, layout.action.y - 8);
+    renderer.fillRect(0, clearTop, renderer.getScreenWidth(), bottom + 8 - clearTop, false);
+    tenorchrome::clearFootBand(renderer);
+  } else {
+    whiteHalo(renderer, layout.action);
+  }
+  laidOut = true;
+}
+
+void ConfirmationActivity::complete(bool cancelled) {
+  ActivityResult res;
+  res.isCancelled = cancelled;
+  setResult(std::move(res));
+  finish();
 }
 
 void ConfirmationActivity::render(RenderLock&& lock) {
@@ -42,9 +92,56 @@ void ConfirmationActivity::render(RenderLock&& lock) {
 #endif
     return;
   }
-  renderer.clearScreen();
-
-  if (confirmPopup.processRender(renderer, mappedInput)) return;
+  layoutCross();
+  const auto& box = layout.action;
+  renderer.fillRoundedRect(box.x, box.y, box.width, box.height, layout.radius, Color::White);
+  tenorchrome::drawRoundRing(renderer, box.x, box.y, box.width, box.height, layout.radius, 2, tenorchrome::kTouchShell);
+  if (tenorchrome::kTouchShell) {
+    const auto& cancel = layout.cancel;
+    renderer.fillRoundedRect(cancel.x, cancel.y, cancel.width, cancel.height, layout.radius, Color::White);
+    tenorchrome::drawRoundRing(renderer, cancel.x, cancel.y, cancel.width, cancel.height, layout.radius, 2, true);
+    const auto& message = content.touchMessage.empty() ? content.message : content.touchMessage;
+    const auto fitted = renderer.truncatedText(UI_10_FONT_ID, message.c_str(), box.width - 32);
+    centered(renderer, UI_10_FONT_ID, fitted.c_str(), {box.x, box.y, box.width, 52});
+    tenorchrome::drawRowRule(renderer, box.y + 52, box.x + 16, box.x + box.width - 16);
+    const auto label = renderer.truncatedText(UI_12_FONT_ID, content.longAction.c_str(),
+                                              box.width - 32 - (content.destructive ? 34 : 0));
+    const auto ink = renderer.getTextInkBounds(UI_12_FONT_ID, label.c_str(), EpdFontFamily::REGULAR);
+    const int width = ink[2] - ink[0];
+    const int left = box.x + (box.width - width - (content.destructive ? 34 : 0)) / 2;
+    const int textTop = box.y + 52 + (60 - ink[3] + ink[1]) / 2;
+    renderer.drawText(UI_12_FONT_ID, left + (content.destructive ? 34 : 0) - ink[0], textTop - ink[1], label.c_str());
+    if (content.destructive) {
+      const int iconTop = textTop + (ink[3] - ink[1] - 24) / 2;
+      tenorchrome::drawRoundRing(renderer, left, iconTop, 24, 24, 12, 2, false);
+      renderer.drawLine(left + 4, iconTop + 4, left + 19, iconTop + 19);
+      renderer.drawLine(left + 4, iconTop + 5, left + 18, iconTop + 19);
+    }
+    centered(renderer, UI_12_FONT_ID, tr(STR_CANCEL), cancel, EpdFontFamily::BOLD);
+  } else {
+    int y = box.y + 20;
+    for (const auto& line : questionLines) {
+      const int height = renderer.getLineHeight(UI_12_FONT_ID);
+      centered(renderer, UI_12_FONT_ID, line.c_str(), {box.x + 20, y, box.width - 40, height}, EpdFontFamily::BOLD);
+      y += height;
+    }
+    y += 4;
+    for (const auto& line : messageLines) {
+      const int height = renderer.getLineHeight(SMALL_FONT_ID);
+      centered(renderer, SMALL_FONT_ID, line.c_str(), {box.x + 20, y, box.width - 40, height});
+      y += height;
+    }
+    const int rowsTop = box.y + layout.messageHeight;
+    tenorchrome::drawRowRule(renderer, rowsTop, box.x + 2, box.x + box.width - 2);
+    tenorchrome::drawRowRule(renderer, rowsTop + 60, box.x + 2, box.x + box.width - 2);
+    const char* labels[] = {content.shortAction.c_str(), tr(STR_CANCEL)};
+    for (int i = 0; i < 2; ++i) {
+      const int rowY = rowsTop + i * 60;
+      if (selectedIndex == i) tenorchrome::drawPillRing(renderer, box.x + 12, rowY + 6, box.width - 24, 48, 3, false);
+      centered(renderer, UI_12_FONT_ID, labels[i], {box.x, rowY, box.width, 60},
+               i == 1 ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
+    }
+  }
 
   renderer.displayBuffer(HalDisplay::RefreshMode::FAST_REFRESH);
 }
@@ -87,11 +184,26 @@ void ConfirmationActivity::loop() {
     finish();
     return;
   }
-  if (confirmPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return;
-
-  // Popup dismissed without a selection (Back button or tap outside): cancel.
-  ActivityResult res;
-  res.isCancelled = true;
-  setResult(std::move(res));
-  finish();
+  using B = MappedInputManager::Button;
+  const auto input = touchSnapshotFrom(mappedInput);
+  const auto decision = confirmationDecision(
+      layout, tenorchrome::kTouchShell, selectedIndex, mappedInput.wasReleased(B::Back),
+      mappedInput.wasReleased(B::Confirm), mappedInput.wasPressed(B::NavPrevious) || mappedInput.wasPressed(B::NavNext),
+      laidOut && input.touchReleased, input.touchX, input.touchY);
+  switch (decision) {
+    case ConfirmationDecision::Cancel:
+      complete(true);
+      break;
+    case ConfirmationDecision::Accept:
+      complete(false);
+      break;
+    case ConfirmationDecision::Move: {
+      RenderLock lock(*this);
+      selectedIndex = 1 - selectedIndex;
+      requestUpdate();
+      break;
+    }
+    case ConfirmationDecision::Wait:
+      break;
+  }
 }

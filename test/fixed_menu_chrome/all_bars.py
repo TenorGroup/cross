@@ -34,7 +34,8 @@ for path in (root / 'src/activities').rglob('*Activity.cpp'):
     source = path.read_text() + (header.read_text() if header.exists() else '')
     if re.search(r'x3ScreenLayout\(|x3settings::beginScreen\(', source):
         bound.add(path.stem.removesuffix('Activity'))
-assert bound <= covered | {'UiList', 'UiTabList'}, sorted(bound - covered)
+# Confirmation uses the body bounds to center its overlay and preserves the caller's bar.
+assert bound <= covered | {'UiList', 'UiTabList', 'Confirmation'}, sorted(bound - covered)
 assert len(activities) == 45
 assert len(covered) == 47
 toolbar = (root / 'src/activities/reader/ReaderToolbarUi.cpp').read_text()
