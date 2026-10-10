@@ -29,8 +29,7 @@ inline OptionPopupBox optionPopupLayout(OptionPopupBox available, OptionPopupBox
                                         int height, bool touch, bool valueMenu = true, bool actionMenu = false) {
   int w = std::max(1, std::min(contentWidth, available.width));
   if (touch && actionMenu) {
-    const int rightRoom = available.x + available.width - anchor.x;
-    w = std::min(available.width, std::clamp(std::min(contentWidth, rightRoom), 200, 360));
+    w = std::min(available.width, std::clamp(contentWidth, 200, 360));
   }
   const int h = std::max(1, std::min(height, available.height));
   int x = available.x + (available.width - w) / 2;

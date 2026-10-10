@@ -62,6 +62,7 @@ struct Icon {const unsigned char* bits=tickBits;} icon_row_chosen_24;
 struct GfxRenderer {
  void tapToLogical(float nx,float ny,int&x,int&y)const{x=nx*480;y=ny*800;}
  mutable std::vector<fui::Rect> ink;
+ mutable std::vector<std::string> labels;
  int inkHeight=32,lineHeight=33;
  int getLineHeight(int)const{return lineHeight;}
  int getTextInkTop(int,const char*,EpdFontFamily::Style)const{return 0;}
@@ -71,7 +72,7 @@ struct GfxRenderer {
  void fillRoundedRect(int,int,int,int,int,Color)const{}
  void fillRect(int,int,int,int,bool)const{}
  void drawLine(int,int,int,int)const{}
- void drawText(int,int x,int y,const char*s,bool,EpdFontFamily::Style)const{ink.push_back({(int16_t)x,(int16_t)y,(int16_t)(strlen(s)*12),(int16_t)inkHeight});}
+ void drawText(int,int x,int y,const char*s,bool,EpdFontFamily::Style)const{labels.emplace_back(s);ink.push_back({(int16_t)x,(int16_t)y,(int16_t)(strlen(s)*12),(int16_t)inkHeight});}
 };
 struct Target:fui::DrawTarget {
  std::vector<fui::Rect> ink;
@@ -150,17 +151,21 @@ int main(){
  assert(!input.wasScreenHold(tx,ty,700));
  printf("GREEN hold: 699 blocked, 700 fires once, release and moved contact rejected\n");
  int scenarios=0;
- for(int sourceHeight:{100,425})for(int anchorY:{80,184,300,550})for(int tier:{0,1,2})for(int ax:{17,93,169})for(int labelWidth:{36,224,600}){
+ for(int sourceHeight:{100,425})for(int anchorY:{80,184,300,550})for(int tier:{0,1,2})for(int ax:{17,93,169,321})for(int labelWidth:{36,224,288,600}){
    Popup p;p.inFrame=false;p.anchored=p.hasAnchor=true;p.marked=false;
    p.anchor={(int16_t)ax,(int16_t)anchorY,120,(int16_t)sourceHeight};
    p.ownedStrings={"Pin",std::string(labelWidth/12,'R')};
    GfxRenderer r;r.lineHeight=33+tier*5;Target t;fui::DeviceContext d;d.width=480;d.height=800;
    p.paint(r,t,d);auto b=p.lastRenderedFrame;
+   const int expectedWidth=std::clamp(std::max(36,labelWidth/12*12)+68,200,360);
+   const int expectedX=std::min(ax,464-expectedWidth);
    const int expectedY=p.anchor.bottom()+8+b.height<=716?p.anchor.bottom()+8:p.anchor.y-8-b.height;
-   if(p.shownPitch!=60||b.width<200||b.width>360||b.y!=expectedY||b.bottom()>716||b.x!=ax||b.height!=140){
+   if(p.shownPitch!=60||b.width<200||b.width>360||b.y!=expectedY||b.bottom()>716||b.width!=expectedWidth||b.x!=expectedX||b.height!=140){
     printf("RED action geometry anchor=%d,%d row=%d box=%d,%d,%d,%d expectedY=%d\n",ax,anchorY,p.shownPitch,b.x,b.y,b.width,b.height,expectedY);return 1;
    }
    assert(b.bottom()<=p.anchor.y-8 || b.y>=p.anchor.bottom()+8);
+   assert(b.x>=16&&b.right()<=464);
+   if(labelWidth<=292)assert(r.labels==p.ownedStrings);
    int chosen=-1,refresh=0;p.onSelectCallback=[&](int n){chosen=n;};
    MappedInputManager input;input.snap.touchX=479;input.snap.touchY=40;input.snap.touchReleased=true;
    p.handleInput(input,[&]{++refresh;});assert(!p.active&&chosen==-1&&refresh==1);

@@ -462,10 +462,13 @@ class OptionPopup {
  private:
   static void drawAction(const GfxRenderer& renderer, int font, int x, int ry, int w, int ROW,
                          const char* caption, int icon) {
-    const auto label = renderer.truncatedText(font, caption, w - 68, EpdFontFamily::REGULAR);
-    const int top = renderer.getTextInkTop(font, label.c_str(), EpdFontFamily::REGULAR);
-    const int bottom = renderer.getTextInkBottom(font, label.c_str(), EpdFontFamily::REGULAR);
-    renderer.drawText(font, x + 16, ry + (ROW - top - bottom) / 2, label.c_str(), true,
+    const int top = renderer.getTextInkTop(font, caption, EpdFontFamily::REGULAR);
+    const int bottom = renderer.getTextInkBottom(font, caption, EpdFontFamily::REGULAR);
+#ifdef SIMULATOR
+    LOG_INF("MENU", "context label=%s complete=1 width=%d room=%d", caption,
+            renderer.getTextWidth(font, caption, EpdFontFamily::REGULAR), w - 68);
+#endif
+    renderer.drawText(font, x + 16, ry + (ROW - top - bottom) / 2, caption, true,
                       EpdFontFamily::REGULAR);
     tenorchrome::drawContextActionIcon(renderer, icon, x + w - 40, ry + (ROW - 24) / 2);
   }
