@@ -98,6 +98,7 @@ def x3(program, tmp, fails):
     first = bbox(a['favorites'], 0, 708, 120, 770)
     last = bbox(b['text-focus'], 400, 708, 528, 770)
     left, right = first[0], last[2]
+    x3.edges = (left, right)
     for name in ('toolbar', 'position', 'reading', 'tools'):
         cols = dotted_cols(a[name], 625 if name == 'toolbar' else 520, 675 if name == 'toolbar' else 600)
         if not cols or cols[0] != left or cols[-1] + 1 != right:
@@ -131,11 +132,58 @@ def x3(program, tmp, fails):
             fails.append(f'X3 {name}: solid black side column at {cols}, the ring is grey dots')
 
 
+def dotted_rows(ink, x0, x1, y0=0, y1=None):
+    """Top rows of 2 px dotted horizontal lines (each row half ink, the pair filling every column)."""
+    return [y for y in range(y0, (y1 or ink.shape[0]) - 1)
+            if all(abs(r[x0:x1].sum() / (x1 - x0) - .5) < .12 for r in (ink[y], ink[y + 1]))
+            and (ink[y, x0:x1] | ink[y + 1, x0:x1]).sum() / (x1 - x0) > .9 and (ink[y, x0:x1] & ink[y + 1, x0:x1]).sum() / (x1 - x0) < .1]
+
+
+def rule_rows(ink, x0, x1, y0, y1):
+    """Rows that are a 1 px grey dotted rule: every (x + y) even pixel inked, no other."""
+    rows = []
+    for y in range(y0, y1):
+        seg = ink[y, x0:x1]
+        even = np.array([(x + y) % 2 == 0 for x in range(x0, x1)])
+        if seg[even].mean() > .95 and seg[~even].mean() < .03:
+            rows.append(y)
+    return rows
+
+
+def x3_lists(program, tmp, fails):
+    """The lists of the reader menu stand in the group frame on the tab bar's edges (the X3's Danh sach, its Chon chuong and
+    Cai dat van ban), the progress line stands over the bar, the heart of a pinned row after its name, the edge arrow
+    stays readable beside the scroll bar."""
+    left, right = x3.edges
+    lists = run(program, tmp / 'l', [(2000, 'CONFIRM'), (3500, 'DOWN'), (5000, 'DOWN'), (6500, 'DOWN')], {7800: 'tools'}, style=0)
+    chapters = run(program, tmp / 'c', [(2000, 'CONFIRM'), (3500, 'CONFIRM'), (5000, 'CONFIRM')], {6500: 'chapters'}, port=29601)
+    text = run(program, tmp / 't', [(2000, 'CONFIRM'), (3500, 'DOWN'), (5000, 'DOWN'), (6500, 'DOWN'), (8000, 'DOWN'),
+                                      (9500, 'CONFIRM'), (11000, 'CONFIRM')], {12500: 'text'}, style=0, port=29602)
+    for name, shot, band in (('list', lists['tools'], (100, 400)), ('chapters', chapters['chapters'], (100, 400)),
+                             ('text settings', text['text'], (300, 560))):
+        cols = dotted_cols(shot, *band)
+        if not cols or cols[0] != left or cols[-1] + 1 != right:
+            fails.append(f'X3 {name}: frame edges {cols[:1]}..{cols[-1:]} but bar ring {left}..{right}')
+        rules = rule_rows(shot, left + 40, right - 40, 40, 690)
+        if len(rules) < 2:
+            fails.append(f'X3 {name}: {len(rules)} grey dotted rules between rows, want one under each row')
+    tools = lists['tools']
+    over = int(tools[648:690, 100:430].sum())
+    if over < 30:
+        fails.append(f'X3 list: the progress line is not over the bar (ink {over} in the band)')
+    heart = bbox(tools, 218, 64, 262, 88)
+    if heart is None:
+        fails.append('X3 list: no heart after the name of the pinned row')
+    white = int((~chapters['chapters'][188:204, 517:523]).sum())
+    if white < 6:
+        fails.append(f'X3 chapters: the scroll bar hides the right edge arrow ({white} white pixels over the thumb)')
+
+
 def x4(program, tmp, fails):
     keys = [(2500, 'CONFIRM'), (4500, 'TAP:136,754'), (6500, 'TAP:228,754'), (8500, 'TAP:412,754')]
     a = run(program, tmp / 'a', keys, {3600: 'toolbar', 5600: 'tool0', 7600: 'tool1', 9600: 'tool3'})
     b = run(program, tmp / 'b', [(2500, 'CONFIRM'), (4500, 'TAP:320,754'), (6500, 'TAP:136,754'), (8500, 'TAP:228,754'), (10500, 'TAP:412,754')],
-            {7600: 'tab0', 9600: 'tab1', 11600: 'tab3'}, port=29601)
+            {6000: 'layout', 7600: 'tab0', 9600: 'tab1', 11600: 'tab3'}, port=29601)
     # The bar the reader draws is the bar its text settings draw: same pixels outside the icons.
     for tool, tab, centre in (('tool0', 'tab0', 134), ('tool1', 'tab1', 228), ('tool3', 'tab3', 413)):
         x, y = a[tool][724:784].copy(), b[tab][724:784].copy()
@@ -149,6 +197,20 @@ def x4(program, tmp, fails):
     switch = bbox(more, 340, 470, 462, 520)
     if switch is None or (switch[2] - switch[0] + 1, switch[3] - switch[1] + 1) != (46, 26):
         fails.append(f'X4 night mode row end {switch}: want a 46 x 26 switch')
+    # One constant of air between a frame and the bar (8 px), and the chevron column of the sheet is the settings list's.
+    rows = dotted_rows(a['tool0'], 100, 380, 690, 730)
+    if 714 not in rows:
+        fails.append(f'X4 sheet foot rows {rows}: want its ring on rows 714 and 715, 8 px over the bar')
+    chevron = bbox(a['tool0'], 441, 486, 456, 520)
+    layout = bbox(b['layout'], 441, 548, 456, 588)
+    if chevron is None or layout is None or chevron[2] != layout[2]:
+        fails.append(f'X4 chevron column: sheet {chevron and chevron[2]}, text settings {layout and layout[2]}')
+    spacing = run(program, tmp / 'd', [(2500, 'CONFIRM'), (4500, 'TAP:320,754'), (6500, 'TAP:240,561')], {8200: 'spacing'}, port=29603)['spacing']
+    columns = spacing[540:636].any(axis=0)
+    marks = [64 + 351 * i // 6 for i in range(7)]
+    touching = [i for i in range(6) if columns[(marks[i] + marks[i + 1]) // 2]]
+    if touching:
+        fails.append(f'X4 line spacing ruler: the labels of marks {touching} touch the next one')
     t = a['toolbar']
     prev = bbox(t, 30, 604, 80, 664)
     if prev is None or (prev[2] - prev[0] + 1, prev[3] - prev[1] + 1) != (10, 19):
@@ -165,6 +227,7 @@ def main():
         tmp = Path(tmp)
         if args.x3:
             x3(args.x3.resolve(), tmp / 'x3', fails)
+            x3_lists(args.x3.resolve(), tmp / 'x3b', fails)
         if args.x4:
             x4(args.x4.resolve(), tmp / 'x4', fails)
     for line in fails:
