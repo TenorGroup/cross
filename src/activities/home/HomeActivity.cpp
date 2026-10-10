@@ -1689,9 +1689,15 @@ int HomeActivity::drawCardStats(const HomeCardLayout& card, HomeStatsBounds* bou
       in.labelHeights[row] = static_cast<int>(labels[row].size()) * in.labelLineHeight;
     }
     static constexpr const char* samples[] = {"15%", ">365 ngày", "10h 8m", "2h 1m/ngày", "5", "24"};
-    first[row] = in.compact && bounds ? samples[row] : cardStats.values[row];
+    first[row] = cardStats.values[row];
     const char* sizingValue = in.compact ? samples[row] : first[row].c_str();
     fonts[row] = cardStatValueWidth(renderer, valueFont, sizingValue) <= width ? valueFont : fallbackFont;
+    if (in.compact && bounds) {
+      // The frame is measured on samples so the cover keeps its size from day to day. A real value
+      // that wraps where its sample does not would overflow that frame, so it is measured as it is.
+      const bool realWraps = !first[row].empty() && cardStatValueWidth(renderer, fonts[row], first[row].c_str()) > width;
+      if (!realWraps || cardStatValueWidth(renderer, fonts[row], samples[row]) > width) first[row] = samples[row];
+    }
     if (cardStatValueWidth(renderer, fonts[row], first[row].c_str()) > width) {
       // Long durations keep every number and unit, splitting at the duration space or /day suffix.
       const auto slash = first[row].find('/');
