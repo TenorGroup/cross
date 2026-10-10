@@ -10,9 +10,10 @@
 inline ThemeMetrics uiSizedThemeMetrics(ThemeMetrics metrics, uint8_t tier) {
   if (normalizedUiTextSize(tier) == 0) return metrics;
   const auto text = uiTextSizeSpec(tier);
-  const int captionDelta = text.captionLineHeight - 21;
-  const int subtitleDelta = text.subtitleLineHeight - 26;
-  const int bodyDelta = text.bodyLineHeight - 33;
+  const auto growth = uiLayoutGrowth(tier);
+  const int captionDelta = growth.caption;
+  const int subtitleDelta = growth.subtitle;
+  const int bodyDelta = growth.body;
   metrics.batteryBarHeight += captionDelta;
   metrics.headerHeight += bodyDelta + (metrics.headerBatteryDetached ? captionDelta : 0);
   metrics.listRowHeight = std::max(metrics.listRowHeight + bodyDelta, text.bodyLineHeight + 8);

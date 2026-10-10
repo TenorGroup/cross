@@ -25,7 +25,15 @@ int main() {
     UI_CHECK(spec.captionLineHeight == lineHeightOfFace(spec.captionPointSize));
     UI_CHECK(spec.subtitleLineHeight == lineHeightOfFace(spec.subtitlePointSize));
     UI_CHECK(spec.bodyLineHeight == lineHeightOfFace(spec.bodyPointSize));
+    // A tier's layout step never reserves less than its face grows over the Small tier.
+    const auto small = uiTextSizeSpec(0);
+    const auto growth = uiLayoutGrowth(tier);
+    UI_CHECK(growth.caption >= spec.captionLineHeight - small.captionLineHeight);
+    UI_CHECK(growth.subtitle >= spec.subtitleLineHeight - small.subtitleLineHeight);
+    UI_CHECK(growth.body >= spec.bodyLineHeight - small.bodyLineHeight);
   }
+  UI_CHECK(uiLayoutGrowth(0).caption == 0 && uiLayoutGrowth(0).subtitle == 0 && uiLayoutGrowth(0).body == 0);
+  UI_CHECK(uiLayoutGrowth(255).body == 0);
   const auto small = uiTextSizeSpec(0);
   const auto medium = uiTextSizeSpec(1);
   const auto large = uiTextSizeSpec(2);

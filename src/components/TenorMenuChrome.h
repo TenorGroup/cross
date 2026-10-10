@@ -161,10 +161,10 @@ constexpr int TOUCH_STATUS_TOP_INSET = 8;
 constexpr int TOUCH_STRIP_HEIGHT = 24 + TOUCH_STATUS_TOP_INSET;
 inline int headerHeight() {
   return kTouchShell ? TOUCH_STRIP_HEIGHT - TOUCH_STATUS_TOP_INSET - HEADER_TOP
-                     : HEADER_HEIGHT + uiTextSizeSpec(SETTINGS.uiTextSize).bodyLineHeight - 33;
+                     : HEADER_HEIGHT + uiLayoutGrowth(SETTINGS.uiTextSize).body;
 }
 inline int tabTop() { return HEADER_TOP + headerHeight() + (kTouchShell ? TOUCH_STATUS_TOP_INSET : 0); }
-inline int tabHeight() { return kTouchShell ? TAB_HEIGHT : TAB_HEIGHT + uiTextSizeSpec(SETTINGS.uiTextSize).subtitleLineHeight - 26; }
+inline int tabHeight() { return kTouchShell ? TAB_HEIGHT : TAB_HEIGHT + uiLayoutGrowth(SETTINGS.uiTextSize).subtitle; }
 // Touch screens with an information line (network name, address, MAC) at the top of the content: its gap under the
 // status strip, one number for the file transfer, Calibre and Wi-Fi screens.
 constexpr int INFO_TOP_GAP = 10;
@@ -174,8 +174,8 @@ inline int contentTop() { return kTouchShell ? TOUCH_STRIP_HEIGHT + 6 : tabTop()
 inline int touchBarTop(const int screenHeight) { return touchTabBarRect(2 * FOOT_BACK_X, screenHeight).y; }
 inline int contentTopUnderTabs() { return contentTop(); }
 inline int statusTextGrowth(bool large = false) {
-  const auto text = uiTextSizeSpec(SETTINGS.uiTextSize);
-  return large ? text.bodyLineHeight - 33 : text.captionLineHeight - 21;
+  const auto growth = uiLayoutGrowth(SETTINGS.uiTextSize);
+  return large ? growth.body : growth.caption;
 }
 inline int statusHeight(bool large = false) {
   return (large ? STATUS_HEIGHT_LARGE : STATUS_HEIGHT) + statusTextGrowth(large);
