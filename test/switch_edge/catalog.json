@@ -1,0 +1,643 @@
+{
+ "x4": {
+  "0": {
+   "cai-dat": [
+    "TAP:423,754"
+   ],
+   "hien-thi": [
+    "TAP:423,754",
+    "TAP:240,178"
+   ],
+   "trinh-doc": [
+    "TAP:423,754",
+    "TAP:240,240"
+   ],
+   "dieu-khien": [
+    "TAP:423,754",
+    "TAP:240,302"
+   ],
+   "he-thong": [
+    "TAP:423,754",
+    "TAP:240,417"
+   ],
+   "thiet-bi": [
+    "TAP:423,754",
+    "TAP:240,479"
+   ],
+   "ban-phim": [
+    "TAP:423,754",
+    "TAP:240,541"
+   ],
+   "ngu": [
+    "TAP:423,754",
+    "TAP:240,656"
+   ],
+   "cai-dat-cuon": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,80"
+   ],
+   "khac": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,557"
+   ],
+   "thong-tin": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,619"
+   ],
+   "trinh-doc-0": [
+    "TAP:423,754",
+    "TAP:240,240",
+    "TAP:240,79"
+   ],
+   "trinh-doc-3": [
+    "TAP:423,754",
+    "TAP:240,240",
+    "TAP:240,477"
+   ],
+   "dieu-khien-0": [
+    "TAP:423,754",
+    "TAP:240,302",
+    "TAP:240,79"
+   ],
+   "he-thong-0": [
+    "TAP:423,754",
+    "TAP:240,417",
+    "TAP:240,79"
+   ],
+   "thiet-bi-1": [
+    "TAP:423,754",
+    "TAP:240,479",
+    "TAP:240,265"
+   ],
+   "ngu-1": [
+    "TAP:423,754",
+    "TAP:240,656",
+    "TAP:240,451"
+   ],
+   "khac-0": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,557",
+    "TAP:240,79"
+   ],
+   "khac-1": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,557",
+    "TAP:240,141"
+   ],
+   "khac-2": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,557",
+    "TAP:240,203"
+   ],
+   "thong-tin-1": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,619",
+    "TAP:240,265"
+   ],
+   "van-ban-t3": [
+    "TAP:423,754",
+    "TAP:240,240",
+    "TAP:240,79",
+    "TAP:320,775"
+   ],
+   "van-ban-t4": [
+    "TAP:423,754",
+    "TAP:240,240",
+    "TAP:240,79",
+    "TAP:400,775"
+   ]
+  },
+  "1": {
+   "cai-dat": [
+    "TAP:423,754"
+   ],
+   "hien-thi": [
+    "TAP:423,754",
+    "TAP:240,184"
+   ],
+   "trinh-doc": [
+    "TAP:423,754",
+    "TAP:240,246"
+   ],
+   "dieu-khien": [
+    "TAP:423,754",
+    "TAP:240,308"
+   ],
+   "he-thong": [
+    "TAP:423,754",
+    "TAP:240,429"
+   ],
+   "thiet-bi": [
+    "TAP:423,754",
+    "TAP:240,491"
+   ],
+   "ban-phim": [
+    "TAP:423,754",
+    "TAP:240,553"
+   ],
+   "ngu": [
+    "TAP:423,754",
+    "TAP:240,674"
+   ],
+   "cai-dat-cuon": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,80"
+   ],
+   "khac": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,569"
+   ],
+   "thong-tin": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,631"
+   ],
+   "trinh-doc-0": [
+    "TAP:423,754",
+    "TAP:240,246",
+    "TAP:240,79"
+   ],
+   "trinh-doc-3": [
+    "TAP:423,754",
+    "TAP:240,246",
+    "TAP:240,487"
+   ],
+   "dieu-khien-0": [
+    "TAP:423,754",
+    "TAP:240,308",
+    "TAP:240,79"
+   ],
+   "he-thong-0": [
+    "TAP:423,754",
+    "TAP:240,429",
+    "TAP:240,79"
+   ],
+   "thiet-bi-1": [
+    "TAP:423,754",
+    "TAP:240,491",
+    "TAP:240,265"
+   ],
+   "ngu-1": [
+    "TAP:423,754",
+    "TAP:240,674",
+    "TAP:240,559"
+   ],
+   "khac-0": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,569",
+    "TAP:240,79"
+   ],
+   "khac-1": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,569",
+    "TAP:240,141"
+   ],
+   "khac-2": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,569",
+    "TAP:240,203"
+   ],
+   "thong-tin-0": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,631",
+    "TAP:240,79"
+   ],
+   "thong-tin-1": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,631",
+    "TAP:240,265"
+   ],
+   "van-ban-t3": [
+    "TAP:423,754",
+    "TAP:240,246",
+    "TAP:240,79",
+    "TAP:320,775"
+   ],
+   "van-ban-t4": [
+    "TAP:423,754",
+    "TAP:240,246",
+    "TAP:240,79",
+    "TAP:400,775"
+   ]
+  },
+  "2": {
+   "cai-dat": [
+    "TAP:423,754"
+   ],
+   "hien-thi": [
+    "TAP:423,754",
+    "TAP:240,194"
+   ],
+   "trinh-doc": [
+    "TAP:423,754",
+    "TAP:240,259"
+   ],
+   "dieu-khien": [
+    "TAP:423,754",
+    "TAP:240,324"
+   ],
+   "he-thong": [
+    "TAP:423,754",
+    "TAP:240,453"
+   ],
+   "thiet-bi": [
+    "TAP:423,754",
+    "TAP:240,518"
+   ],
+   "ban-phim": [
+    "TAP:423,754",
+    "TAP:240,583"
+   ],
+   "ngu": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,469"
+   ],
+   "khac": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,534"
+   ],
+   "thong-tin": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,599"
+   ],
+   "trinh-doc-0": [
+    "TAP:423,754",
+    "TAP:240,259",
+    "TAP:240,81"
+   ],
+   "trinh-doc-1": [
+    "TAP:423,754",
+    "TAP:240,259",
+    "TAP:240,146"
+   ],
+   "trinh-doc-3": [
+    "TAP:423,754",
+    "TAP:240,259",
+    "TAP:240,557"
+   ],
+   "dieu-khien-0": [
+    "TAP:423,754",
+    "TAP:240,324",
+    "TAP:240,81"
+   ],
+   "he-thong-0": [
+    "TAP:423,754",
+    "TAP:240,453",
+    "TAP:240,81"
+   ],
+   "thiet-bi-0": [
+    "TAP:423,754",
+    "TAP:240,518",
+    "TAP:240,146"
+   ],
+   "thiet-bi-1": [
+    "TAP:423,754",
+    "TAP:240,518",
+    "TAP:240,276"
+   ],
+   "ngu-1": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,469",
+    "TAP:240,684"
+   ],
+   "ngu-2": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,469",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,578"
+   ],
+   "khac-0": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,534",
+    "TAP:240,81"
+   ],
+   "khac-1": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,534",
+    "TAP:240,146"
+   ],
+   "khac-2": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,534",
+    "TAP:240,211"
+   ],
+   "thong-tin-1": [
+    "TAP:423,754",
+    "SWIPE:240,650,240,150,200",
+    "TAP:240,599",
+    "TAP:240,276"
+   ],
+   "van-ban-t3": [
+    "TAP:423,754",
+    "TAP:240,259",
+    "TAP:240,81",
+    "TAP:320,775"
+   ],
+   "van-ban-t4": [
+    "TAP:423,754",
+    "TAP:240,259",
+    "TAP:240,81",
+    "TAP:400,775"
+   ]
+  }
+ },
+ "x3": {
+  "hien-thi": [
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:CONFIRM"
+  ],
+  "ngu": [
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:RIGHT",
+   "KEY:CONFIRM"
+  ],
+  "trinh-doc": [
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM"
+  ],
+  "dieu-khien": [
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM"
+  ],
+  "cu-chi": [
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM"
+  ],
+  "he-thong": [
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM"
+  ],
+  "thiet-bi": [
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM"
+  ],
+  "ban-phim": [
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM"
+  ],
+  "khac": [
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM"
+  ],
+  "van-ban-t2": [
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM",
+   "KEY:CONFIRM",
+   "KEY:DOWN",
+   "KEY:DOWN"
+  ],
+  "van-ban-t3": [
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM",
+   "KEY:CONFIRM",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN"
+  ],
+  "trang-thai": [
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM"
+  ],
+  "trang-thai-khi-doc": [
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM"
+  ],
+  "dong-ho": [
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM",
+   "KEY:CONFIRM"
+  ],
+  "bluetooth": [
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM"
+  ],
+  "gioi-thieu": [
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM"
+  ],
+  "koreader": [
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM",
+   "KEY:CONFIRM"
+  ],
+  "server-opds": [
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM",
+   "KEY:RIGHT",
+   "KEY:CONFIRM"
+  ],
+  "gan-nut": [
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:RIGHT",
+   "KEY:CONFIRM",
+   "KEY:CONFIRM"
+  ],
+  "menu-doc-t2": [
+   "KEY:CONFIRM",
+   "WAIT",
+   "WAIT",
+   "WAIT",
+   "KEY:CONFIRM",
+   "KEY:DOWN",
+   "KEY:DOWN"
+  ],
+  "menu-doc-t3": [
+   "KEY:CONFIRM",
+   "WAIT",
+   "WAIT",
+   "WAIT",
+   "KEY:CONFIRM",
+   "KEY:DOWN",
+   "KEY:DOWN",
+   "KEY:DOWN"
+  ]
+ }
+}

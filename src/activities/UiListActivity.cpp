@@ -832,7 +832,8 @@ void UiListActivity::renderUi() {
     for (int row = activeNav().top; row < listCount(); ++row) {
       const auto rect = app.publishedRect(ACTION_ROW, static_cast<int16_t>(row));
       if (rect.height > 0 && rowChoiceStyle(row) == SettingsChoiceStyle::Popup)
-        tenorchrome::drawSettingsPopupMark(renderer, rect.right() - 31, rect.y + rect.height / 2);
+        tenorchrome::drawSettingsPopupMark(renderer, activeNav().trailingInkRight - (tenorchrome::POPUP_MARK_WIDTH - 1),
+                                           rect.y + rect.height / 2);
     }
   }
   if (tenorchrome::enabled() && !tenorchrome::kTouchShell) fadeMoreBelow();

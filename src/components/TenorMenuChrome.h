@@ -224,6 +224,8 @@ void drawMoreChevron(const GfxRenderer& renderer, int x, int y, ChevronDir dir, 
 // Touch: the grey ">" at the end of a list row that opens a deeper screen, its box (x, y) as above.
 constexpr int ROW_CHEVRON_SPAN = 7;
 void drawRowChevron(const GfxRenderer& renderer, int x, int y);
+// The pop-up mark's width in columns (2 * its span + 1); it starts at x and ends at x + POPUP_MARK_WIDTH - 1.
+constexpr int POPUP_MARK_WIDTH = 13;
 void drawSettingsPopupMark(const GfxRenderer& renderer, int x, int centerY);
 
 // Mui ten chu V o giua, ngay tren dong mach nuoc chan man: bao rang danh sach
