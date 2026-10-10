@@ -320,7 +320,7 @@ class OptionPopup {
       textWidth = std::max(textWidth, renderer.getTextWidth(uiScaleSpec().bodyFontId, label.c_str()));
     const int maxWidth = std::min<int>(screen.width * 3 / 4, screen.width - metrics.optionPopupDialogSideMargin * 2);
     const auto sized = optionPopupLayout({0, 0, maxWidth, screen.height}, {},
-                                         textWidth + 4 * innerPadding, 1, false);
+                                         textWidth + 4 * innerPadding + (marked ? 36 : 0), 1, false);
     const int16_t width = fui::clampI16(sized.width);
     const int fullHeight = fui::optionDialogHeight(target, props, width);
     fui::Rect available = screen;
@@ -367,7 +367,7 @@ class OptionPopup {
     frame.hit(dialogRect, ACTION_CHROME, 0, fui::InputTouch);
     if (shell::isUgly()) renderUgly(renderer, frame, dialogRect, props);
     else {
-      CenteredText context{renderer, target};
+      CenteredText context{renderer, target, marked, marked ? ownedStrings[selectedIndex].c_str() : nullptr, &ownedStrings};
       target.setTextSink(centerOptionText, &context);
       fui::optionDialog(frame, dialogRect, props);
       target.setTextSink(nullptr, nullptr);
@@ -424,9 +424,28 @@ class OptionPopup {
   }
 
  private:
+  static void drawChoice(const GfxRenderer& renderer, int font, int x, int ry, int w, int ROW,
+                         const char* caption, bool marked, bool chosen) {
+    constexpr int TEXT_X = 16, MARK = 24, GAP = 12;
+    const int room = w - 2 * TEXT_X - (marked ? MARK + GAP : 0);
+    const auto label = renderer.truncatedText(font, caption, room, EpdFontFamily::REGULAR);
+    const int inkTop = renderer.getTextInkTop(font, label.c_str(), EpdFontFamily::REGULAR);
+    const int inkBottom = renderer.getTextInkBottom(font, label.c_str(), EpdFontFamily::REGULAR);
+    const int textY = ry + (ROW - inkTop - inkBottom) / 2;
+    renderer.drawText(font, x + TEXT_X + (marked ? MARK + GAP : 0), textY, label.c_str(), true,
+                      EpdFontFamily::REGULAR);
+    if (chosen) {
+      const int markY = textY + (inkTop + inkBottom - 1) / 2 - (MARK / 2 - 1);
+      tenorchrome::drawBarIcon(renderer, icon_row_chosen_24.bits, MARK, MARK, x + TEXT_X, markY, true);
+    }
+  }
+
   struct CenteredText {
     const GfxRenderer& renderer;
     freeink::ui::GfxRendererTarget& target;
+    bool marked;
+    const char* selected;
+    const std::vector<std::string>* values;
   };
 
   static void centerOptionText(void* context, freeink::ui::Rect rect, const char* label,
@@ -434,6 +453,12 @@ class OptionPopup {
     namespace fui = freeink::ui;
     auto& ctx = *static_cast<CenteredText*>(context);
     const int font = uiScaleSpec().bodyFontId;
+    if (ctx.marked && !style.bold &&
+        std::any_of(ctx.values->begin(), ctx.values->end(), [&](const auto& value) { return value == label; })) {
+      drawChoice(ctx.renderer, font, rect.x - 16, rect.y, rect.width + 32, rect.height, label, true,
+                 ctx.selected && std::strcmp(ctx.selected, label) == 0);
+      return;
+    }
     if (style.align != fui::TextAlign::Center || rect.height < ctx.renderer.getLineHeight(font) ||
         ctx.renderer.getTextWidth(font, label) > rect.width) {
       ctx.target.setTextSink(nullptr, nullptr);
@@ -564,9 +589,9 @@ class OptionPopup {
     const int count = static_cast<int>(ownedStrings.size());
     int textWidth = 0;
     for (const auto& label : ownedStrings)
-      textWidth = std::max(textWidth, renderer.getTextWidth(font, label.c_str(), EpdFontFamily::BOLD));
+      textWidth = std::max(textWidth, renderer.getTextWidth(font, label.c_str(), EpdFontFamily::REGULAR));
     const int maxWidth = screen.width - 2 * tenorchrome::FOOT_BACK_X;
-    const int w = inFrame ? frameRect.width : std::min(maxWidth, textWidth + 2 * TEXT_X + (marked && !narrow ? MARK + 10 : 0));
+    const int w = inFrame ? frameRect.width : std::min(maxWidth, textWidth + 2 * TEXT_X + (marked && !narrow ? MARK + 12 : 0));
     const int captionX = inFrame ? frameRect.x : tenorchrome::FOOT_BACK_X;
     // The caption and the subject of a question, wrapped inside the frame.
     fui::TextStyle head;
@@ -633,19 +658,7 @@ class OptionPopup {
       if (shell::isUgly()) uglyText(renderer, {static_cast<int16_t>(x + TEXT_X), static_cast<int16_t>(ry),
                                          static_cast<int16_t>(w - 2 * TEXT_X), static_cast<int16_t>(ROW)}, ownedStrings[i].c_str());
       else {
-        const int room = w - 2 * TEXT_X - (chosen ? MARK + 10 : 0);
-        const std::string label = renderer.truncatedText(font, ownedStrings[i].c_str(), room,
-                                                         chosen ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
-        const auto style = chosen ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
-        const int inkTop = renderer.getTextInkTop(font, label.c_str(), style);
-        const int inkBottom = renderer.getTextInkBottom(font, label.c_str(), style);
-        const int textY = ry + (ROW - inkTop - inkBottom) / 2;
-        renderer.drawText(font, x + TEXT_X, textY, label.c_str(), true, style);
-        if (chosen) {
-          // The tick's ink center is row 11 inside its 24 px bitmap.
-          const int markY = textY + (inkTop + inkBottom - 1) / 2 - (MARK / 2 - 1);
-          tenorchrome::drawBarIcon(renderer, icon_row_chosen_24.bits, MARK, MARK, x + w - TEXT_X - MARK, markY, true);
-        }
+        drawChoice(renderer, font, x, ry, w, ROW, ownedStrings[i].c_str(), marked && !narrow, chosen);
       }
       if (r + 1 < rows) tenorchrome::drawRowRule(renderer, ry + ROW - 1, x + TEXT_X, x + w - TEXT_X);
       frame.hit(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(ry), static_cast<int16_t>(w), static_cast<int16_t>(ROW)},
