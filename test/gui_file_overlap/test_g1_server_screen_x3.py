@@ -1,5 +1,5 @@
 """X3, man may chu cua luong Gui file (da noi va diem phat):
-(a) dai nut dung dung nhan cua cac man khac cho Back (ky hieu o che do Ky hieu, "« Back" o che do Chu), khong con "« Thoat";
+(a) dai nut (ca man Calibre) dung dung nhan cua cac man khac cho Back (ky hieu o che do Ky hieu, "« Back" o che do Chu), khong con "« Thoat";
 (b) chu, ma QR (va dong chi buoc) lien nhau thanh mot khoi, khoi can giua doc trong vung noi dung, cach thanh >= 8 px.
 Chay: GUIFILE_X3_PROGRAM=... python3 test/gui_file_overlap/test_g1_server_screen_x3.py"""
 import itertools
@@ -15,7 +15,7 @@ from hint_audit import bar_of
 from plan import plan, program, run_case
 
 _port = itertools.count(30400)
-SERVER_SHOTS = (('sta-server', 'p1'), ('ap', 'step1'), ('ap', 'step2'))
+SERVER_SHOTS = (('sta-server', 'p1'), ('ap', 'step1'), ('ap', 'step2'), ('calibre', 'calibre'))
 
 
 def crop(im, y0, y1, x0, x1):
@@ -27,7 +27,7 @@ def run(mode, tier, lang):
     extra = {'tenorButtonSymbols': mode}
     out = {}
     for state, script, shots, env, saved in plan('x3', tier, 0):
-        if state not in ('chooser', 'sta-server', 'ap'):
+        if state not in ('chooser', 'sta-server', 'ap', 'calibre'):
             continue
         imgs, log = run_case('x3', tier, lang, 0, 0, state, script, shots, env, saved, next(_port), extra=extra)
         for name, im in imgs.items():
@@ -52,6 +52,8 @@ class ServerScreenX3(unittest.TestCase):
                 same = (crop(im, H - 30, H - 3, 84, 165) == ref).all()
                 if not same:
                     bad.append(f'nhan Back khac cac man khac: {key} che do {mode} co chu {tier} {lang}')
+                if key[0] == 'calibre':
+                    continue  # man Calibre: chi kiem nhan Back, khoi chu khong co QR
                 # khoi noi dung: muc o tren thanh path
                 M = np.array(im.convert('L')) < 128
                 _, by, _, _ = bar

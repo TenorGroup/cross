@@ -276,7 +276,7 @@ void CalibreConnectActivity::render(RenderLock&&) {
         completed ? tr(STR_CALIBRE_RECEIVED) : nullptr, completed ? lastCompleteName.c_str() : nullptr});
     tenorchrome::drawTipInRect(renderer, tip, layout.tipRect, 8);
     x3activity::drawBar(renderer, layout.barRect, tr(STR_CALIBRE_WIRELESS), navigationPrefix.c_str());
-    const auto labels = mappedInput.mapLabels(tr(STR_EXIT), "", "", "");
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
     renderer.displayBuffer();
@@ -355,7 +355,7 @@ void CalibreConnectActivity::render(RenderLock&&) {
       renderer.drawText(SMALL_FONT_ID, metrics.contentSidePadding, y, msg.c_str());
     }
 
-    const auto labels = mappedInput.mapLabels(tr(STR_EXIT), "", "", "");
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   }
   renderer.displayBuffer();
