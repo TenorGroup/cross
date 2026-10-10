@@ -3,11 +3,14 @@
 #include <FontCacheManager.h>
 
 #include <Bitmap.h>
+#include <CoverInk.h>
 #include <Epub.h>
 #include <Epub/converters/ImageToFramebufferDecoder.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalDisplay.h>
+#include <HalGPIO.h>
+#include <HalPowerManager.h>
 #include <HalStorage.h>
 #include <HeapFloor.h>
 #include <I18n.h>
@@ -79,6 +82,16 @@ static constexpr bool kInkX3 = false;
 static constexpr bool kInkX3Gray = false;
 
 void saveAppState();  // main.cpp
+
+// The hour's budget of idle work outlives deep sleep in RTC memory, read with the RTC clock that
+// runs through it (a wake restarts the chip). A power loss leaves it unmarked: a new hour.
+#if defined(SIMULATOR)
+static uint64_t idleClockUs() { return static_cast<uint64_t>(millis()) * 1000; }
+#else
+extern "C" uint64_t esp_rtc_get_time_us(void);
+static uint64_t idleClockUs() { return esp_rtc_get_time_us(); }
+#endif
+RTC_NOINIT_ATTR static idlework::Budget idleBudget;
 
 namespace {
 constexpr const StrId (&TAB_NAMES)[homerows::PAGE_COUNT] = homerows::PAGE_TITLES;
@@ -1036,6 +1049,7 @@ void HomeActivity::render(RenderLock&&) {
   // The wake's first frame is up: the main task writes the splash setup() re-armed (onTick).
   if (cleanInitialRefresh) wakeStatePending = true;
   cleanInitialRefresh = false;
+  queueIdleCovers();
 }
 
 bool HomeActivity::storeCoverBuffer() {
@@ -2224,7 +2238,10 @@ void HomeActivity::wantThumb(const int index) {
 void HomeActivity::onTick() {
   if (wakeStatePending.exchange(false)) saveAppState();
   const int index = thumbWanted.load();
-  if (index < 0) return;
+  if (index < 0) {
+    idleStep();
+    return;
+  }
   // Any press moves the card on or opens something: the decode waits for the next idle card.
   if (mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased()) {
     thumbWanted = -1;
@@ -2302,6 +2319,139 @@ void HomeActivity::writeMissingThumb(const int index) {
     }
   }
   requestUpdate();
+}
+
+namespace {
+// The cover in the book, for the idle step: read through the book's zip, a stop asked at each piece.
+struct BookCover {
+  Epub& epub;
+  const std::string& href;
+};
+struct StopPrint : Print {
+  const idlework::Stop& stop;
+  bool stopped = false;
+  explicit StopPrint(const idlework::Stop& s) : stop(s) {}
+  size_t write(uint8_t b) override { return write(&b, 1); }
+  size_t write(const uint8_t* p, size_t n) override {
+    if (stop()) {
+      stopped = true;
+      return 0;
+    }
+    return take(p, n);
+  }
+  virtual size_t take(const uint8_t* p, size_t n) = 0;
+};
+progluma::Result sniffCover(void* user, progluma::Sniffer& sniffer, const idlework::Stop& stop) {
+  auto& c = *static_cast<BookCover*>(user);
+  if (!FsHelpers::hasJpgExtension(c.href)) return progluma::Result::Unsupported;
+  struct Sink : StopPrint {
+    progluma::Sniffer& sniffer;
+    Sink(const idlework::Stop& s, progluma::Sniffer& f) : StopPrint(s), sniffer(f) {}
+    // A short write ends the read once the frame is known.
+    size_t take(const uint8_t* p, size_t n) override { return sniffer.feed(p, n) ? 0 : n; }
+  } sink(stop, sniffer);
+  const bool whole = c.epub.readItemContentsToStream(c.href, sink, 1024, true);
+  if (sink.stopped) return progluma::Result::Stopped;
+  // Read to its end without an answer, the cover is damaged; a failed read may pass.
+  return sniffer.known() || whole ? progluma::Result::Done : progluma::Result::Io;
+}
+progluma::Result copyCover(void* user, const std::string& path, const idlework::Stop& stop) {
+  auto& c = *static_cast<BookCover*>(user);
+  HalFile file;
+  if (!Storage.openFileForWrite("HOME", path, file)) return progluma::Result::Io;
+  struct Sink : StopPrint {
+    HalFile& file;
+    Sink(const idlework::Stop& s, HalFile& f) : StopPrint(s), file(f) {}
+    size_t take(const uint8_t* p, size_t n) override { return file.write(p, n); }
+  } sink(stop, file);
+  const bool whole = c.epub.readItemContentsToStream(c.href, sink, 8192);
+  const bool closed = file.close();
+  if (sink.stopped) return progluma::Result::Stopped;
+  return whole && closed ? progluma::Result::Done : progluma::Result::Io;
+}
+}  // namespace
+
+// Every tenor/ink slot this frame showed, for the idle step. The 1 bit branch (ugly shell, X3
+// layout off) keeps its GrayThumb covers as they are.
+void HomeActivity::queueIdleCovers() {
+  if (!kInkX3) return;
+  idleQueue.clear();
+  idleQuietSince = millis();
+  if (!homeInkEnabled()) return;
+  for (int i = 0; i < inkSlotCount; ++i) {
+    const auto& slot = inkSlots[i];
+    if (slot.book < 0 || slot.book >= static_cast<int>(recentBooks.size())) continue;
+    const auto& book = recentBooks[slot.book];
+    if (book.coverBmpPath.empty() || !FsHelpers::hasEpubExtension(book.path)) continue;
+    idlework::Job job;
+    job.key = fnv(fnv(fnv(fnv(2166136261u, book.path), &slot.rect.w, sizeof(slot.rect.w)), &slot.rect.h,
+                      sizeof(slot.rect.h)), &homeGraySelected, sizeof(homeGraySelected));
+    job.run = coverStep;
+    job.owner = this;
+    job.arg[0] = static_cast<int16_t>(slot.book);
+    job.arg[1] = static_cast<int16_t>(slot.rect.w);
+    job.arg[2] = static_cast<int16_t>(slot.rect.h);
+    job.arg[3] = homeGraySelected ? 1 : 0;
+    idleQueue.push(job);
+  }
+}
+
+// On the main task, while Home stands still: one step of the queue's first job.
+void HomeActivity::idleStep() {
+  if (!kInkX3) return;
+  if (mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased()) {
+    idleQuietSince = millis();
+    return;
+  }
+  // As the reader's index step: never wait for the render task; a frame in progress skips this pass.
+  RenderLock lock(RenderLock::TryTake{});
+  if (!lock.acquired() || idleQueue.empty() || static_cast<int32_t>(millis() - idleRetryAt) < 0) return;
+  const idlework::IdleInputs in{activeTabId == Tab::RECENT ? idlework::Where::Home : idlework::Where::Elsewhere,
+                                millis() - idleQuietSince, gpio.isUsbConnected(),
+                                static_cast<int>(powerManager.getBatteryPercentage()), idleBudget.used(idleClockUs())};
+  if (idlework::verdict(in) != idlework::Why::Ok) return;
+  // The loop drops the CPU to 10 MHz after 3 s without a key, exactly when this runs.
+  HalPowerManager::Lock fullSpeed;
+  // The card's snapshot goes before the step asks for any block; the card is read from its file again.
+  freeCoverBuffer();
+  coverRendered = false;
+  idlework::Stop stop;
+  stop.keyDown = [](void*) { return gpio.rawInputActive(); };
+  stop.clockMs = [] { return static_cast<uint32_t>(millis()); };
+  stop.startedMs = millis();
+  idleOutcome = static_cast<uint8_t>(coverink::Outcome::Nothing);
+  [[maybe_unused]] const size_t freeBefore = ESP.getFreeHeap();
+  idleQueue.runFront(stop);
+  const uint32_t ran = millis() - stop.startedMs;
+  idleBudget.charge(idleClockUs(), ran);
+  LOG_INF("HOME", "Idle cover outcome=%u ms=%lu usb=%u free=%u/%u largest=%u", idleOutcome,
+          static_cast<unsigned long>(ran), in.usb ? 1u : 0u, static_cast<unsigned>(freeBefore),
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  const auto outcome = static_cast<coverink::Outcome>(idleOutcome);
+  if (outcome == coverink::Outcome::Sharp) requestUpdate();
+  if (outcome == coverink::Outcome::NoHeap) idleRetryAt = millis() + 30000;
+}
+
+idlework::Step HomeActivity::coverStep(const idlework::Job& job, const idlework::Stop& stop) {
+  auto& home = *static_cast<HomeActivity*>(job.owner);
+  if (job.arg[0] >= static_cast<int>(home.recentBooks.size())) return idlework::Step::Done;
+  const auto& book = home.recentBooks[job.arg[0]];
+  Epub epub(book.path, "/.crosspoint");
+  // Where the reader left the cover's path; a book not opened since that began waits for it.
+  std::string href;
+  if (!coverref::load(epub.getCachePath(), href)) return idlework::Step::Done;
+  BookCover cover{epub, href};
+  coverink::Source source;
+  source.sniff = sniffCover;
+  source.copy = copyCover;
+  source.user = &cover;
+  const bool four = job.arg[3] != 0;
+  const auto outcome = coverink::build(epub.getCachePath(), tenorink::cachePath(book.coverBmpPath, job.arg[1],
+                                                                                job.arg[2], four),
+                                       job.arg[1], job.arg[2], four, source, stop);
+  home.idleOutcome = static_cast<uint8_t>(outcome);
+  return outcome == coverink::Outcome::Stopped || outcome == coverink::Outcome::NoHeap ? idlework::Step::Stopped
+                                                                                         : idlework::Step::Done;
 }
 
 HomeRecentLayout HomeActivity::recentLayout() {

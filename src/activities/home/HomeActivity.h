@@ -16,6 +16,7 @@
 #include "components/HomeSettingsLayout.h"
 #include "components/HomeRecentLayout.h"
 #include <HalMemory.h>
+#include <IdleWork.h>
 
 struct Rect;
 
@@ -278,6 +279,15 @@ class HomeActivity final : public UiTabListActivity {
   struct InkSlot { HomeRecentRect rect; int book = -1; };
   std::array<InkSlot, 4> inkSlots{};
   int inkSlotCount = 0;
+  // Idle work (X3): the sharp cover of a progressive JPEG on each tenor/ink slot shown, made while
+  // Home stands still. The render task fills the queue, the main task runs it; both under RenderLock.
+  idlework::Queue<> idleQueue;
+  uint32_t idleQuietSince = 0;  // the last key or frame
+  uint32_t idleRetryAt = 0;     // after a heap floor refusal
+  uint8_t idleOutcome = 0;      // coverink::Outcome of the last step
+  void queueIdleCovers();
+  void idleStep();
+  static idlework::Step coverStep(const idlework::Job& job, const idlework::Stop& stop);
   HomeRecentLayout recentLayout();
   void drawTouchRecent(const HomeRecentLayout& layout);
   void drawTouchCover(const HomeRecentRect& rect, int book);
