@@ -621,7 +621,7 @@ STR_FILE_SIDE_ACTIONS: "Hold : Preview   : Delete"
 
 STR_FILE_NOT_FOUND: "File or folder not found. Hold  to unpin."
 
-STR_STATUS_CORNERS: "Battery and clock positions"
+STR_STATUS_CORNERS: "Battery and clock"
 STR_BATTERY_LEFT_CLOCK_RIGHT: "Battery left, clock right"
 STR_CLOCK_LEFT_BATTERY_RIGHT: "Clock left, battery right"
 
