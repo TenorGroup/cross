@@ -92,6 +92,14 @@ def shaft_top(bits, column=12):
     return next(y for y, row in enumerate(bits) if row[column])
 
 
+def enter_top(bits):
+    """Row of Enter's top, counted from Back's top row (so negative). Enter's tail climbs as far above the shaft as
+    Back's tail falls below it, measured from the bottom edge of the shaft to Back's bottom row."""
+    first = shaft_top(bits)
+    last = max(y for y, row in enumerate(bits) if row[12])
+    return first - (len(bits) - 1 - last)
+
+
 def emit_glyph(name, width, height, bits, top=0):
     assert 0 < width <= 32
     lines = [f'constexpr uint32_t k{name}Rows[] = {{']
@@ -127,16 +135,16 @@ def main():
         '};',
         emit_glyph('BackNet14', *arrow14[:2], arrow14[2]),
         emit_glyph('BackNet18', *arrow18[:2], arrow18[2]),
-        emit_glyph('SelectNet14', *select14[:2], select14[2]),
-        emit_glyph('SelectNet18', *select18[:2], select18[2]),
+        emit_glyph('SelectNet14', *select14[:2], select14[2], enter_top(arrow14[2])),
+        emit_glyph('SelectNet18', *select18[:2], select18[2], enter_top(arrow18[2])),
     ]
     for direction in ('up', 'down', 'left', 'right'):
         for net in (14, 18):
             width, height, bits = read_bitmap(SOURCE_DIR / f'CHEV-{direction}-net{net}.png')
-            # Down hangs from the top edge of Back's shaft to Back's bottom row; the others start on Back's top row.
+            # Down hangs from the top edge of Back's shaft to Back's bottom row; Up, Left and Right start on Enter's top row.
             back_bits = (arrow14 if net == 14 else arrow18)[2]
-            top = shaft_top(back_bits) if direction == 'down' else 0
-            assert top + height <= len(back_bits), direction
+            top = shaft_top(back_bits) if direction == 'down' else enter_top(back_bits)
+            assert enter_top(back_bits) <= top and top + height <= len(back_bits), direction
             parts.append(emit_glyph(f'{direction.title()}Net{net}', width, height, bits, top))
     from gen_chevron8 import header_parts
     parts.extend(header_parts())

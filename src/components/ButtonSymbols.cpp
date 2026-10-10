@@ -58,19 +58,21 @@ SymbolBounds horizontalBounds(const char* label, const int net) {
   return {0, 0};
 }
 
-// Rows to move a key symbol from the centre of its own box to where the strip puts it: every symbol of the family
-// hangs from Back's top row (Down from the top edge of Back's shaft), y being the middle of Back's box.
+// Rows to move a key symbol from the centre of its own box to where the strip puts it. The four keys share one shaft
+// (Back's), and the whole row stands from Enter's top row to Back's bottom row. Enter's top row is the first row of the
+// strip, which puts Back's top row 6 (net 14) or 8 (net 18) rows above the anchor y; every glyph then hangs from there
+// by its own `top`, counted from Back's top row.
 static int barShift(const Shape shape, const int net) {
   using namespace inlineSymbolBitmaps;
   const bool large = net >= 16;
-  const Glyph& back = large ? kBackNet18 : kBackNet14;
   const Glyph* glyph = nullptr;
+  if (shape == Shape::Back) glyph = large ? &kBackNet18 : &kBackNet14;
   if (shape == Shape::Select) glyph = large ? &kSelectNet18 : &kSelectNet14;
   if (shape == Shape::Up) glyph = large ? &kUpNet18 : &kUpNet14;
   if (shape == Shape::Down) glyph = large ? &kDownNet18 : &kDownNet14;
   if (shape == Shape::Left) glyph = large ? &kLeftNet18 : &kLeftNet14;
   if (shape == Shape::Right) glyph = large ? &kRightNet18 : &kRightNet14;
-  return glyph ? glyph->top + glyph->height / 2 - back.height / 2 : 0;
+  return glyph ? glyph->top + glyph->height / 2 - (large ? 8 : 6) : 0;
 }
 
 bool drawLabel(const GfxRenderer& renderer, const char* label, int x, int y, const int net) {
