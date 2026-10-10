@@ -15,6 +15,7 @@ enum class BidiBaseDir : signed char { AUTO = -1, LTR = 0, RTL = 1 };
 
 class GfxRenderer {
  public:
+  mutable uint64_t textAdvanceCalls = 0;
   class FrameBufferLoan {
    public:
     explicit FrameBufferLoan(GfxRenderer&) {}
@@ -46,6 +47,7 @@ class GfxRenderer {
   // parser tests measure line breaks, not the space delta.
   int getSpaceWidth(int, EpdFontFamily::Style, uint8_t = 0) const { return 4; }
   int getTextAdvanceX(int, const char* text, EpdFontFamily::Style, int spacing = 0, uint8_t = 0) const {
+    ++textAdvanceCalls;
     int width = 0;
     while (*text++) {
       if (width) width += spacing;
