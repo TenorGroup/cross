@@ -7,6 +7,7 @@
 #include <new>
 
 #include "../Memory/Memory.h"
+#include "../Memory/HeapFloor.h"
 
 struct BmpHeader;
 
@@ -100,7 +101,7 @@ class AtkinsonDitherer {
     const size_t candidateRowSize = static_cast<size_t>(width) + 4;
     if (candidateRowSize > SIZE_MAX / (3 * sizeof(int16_t))) return;
     rowSize = candidateRowSize;
-    errorRows = makeUniqueNoThrow<int16_t[]>(rowSize * 3);
+    errorRows = heapfloor::array<int16_t[]>(rowSize * 3, "ink-errors");
     if (!errorRows) return;
     errorRow0 = errorRows.get();
     errorRow1 = errorRow0 + rowSize;

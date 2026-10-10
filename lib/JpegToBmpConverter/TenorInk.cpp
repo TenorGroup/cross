@@ -1,5 +1,7 @@
 #include "TenorInk.h"
 
+#include <HeapFloor.h>
+
 #include <Print.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -17,7 +19,7 @@ bool tenorink::writeCover(const uint8_t* gray, int sw, int sh, Print& out, int w
   if (!gray || sw <= 0 || sh <= 0 || w <= 0 || h <= 0 || w > 800 || h > 800) return false;
   const int stride = four ? (w * 2 + 31) / 32 * 4 : (w + 31) / 32 * 4;
   auto row = makeUniqueNoThrow<uint8_t[]>(stride);
-  auto bounds = makeUniqueNoThrow<int[]>(2 * w);
+  auto bounds = heapfloor::array<int[]>(2 * w, "ink-bounds");
   AtkinsonDitherer dither(w, true, !four);
   if (!row || !bounds || !dither.isValid()) return false;
   const double step = std::min(double(sw) / w, double(sh) / h);
