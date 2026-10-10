@@ -1401,6 +1401,7 @@ void WifiSelectionActivity::renderConnecting(const Rect* screen, const ThemeMetr
     if (ssidInfo.length() > 25) {
       ssidInfo.replace(22, ssidInfo.length() - 22, "...");
     }
+    ssidInfo = renderer.truncatedText(UI_10_FONT_ID, ssidInfo.c_str(), statusWidth, EpdFontFamily::REGULAR);
     UITheme::drawCenteredText(renderer, *screen, UI_10_FONT_ID, top, ssidInfo.c_str());
     if (autoConnecting) {
       const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), tr(STR_SHOW_NETWORKS), "", "");
@@ -1419,6 +1420,8 @@ void WifiSelectionActivity::renderConnected(const Rect* screen, const ThemeMetri
   if (ssidInfo.length() > 28) {
     ssidInfo.replace(25, ssidInfo.length() - 25, "...");
   }
+  ssidInfo = renderer.truncatedText(UI_10_FONT_ID, ssidInfo.c_str(),
+                                    screen->width - metrics->contentSidePadding * 2, EpdFontFamily::REGULAR);
   UITheme::drawCenteredText(renderer, *screen, UI_10_FONT_ID, top + 10, ssidInfo.c_str());
 
   const std::string ipInfo = std::string(tr(STR_IP_ADDRESS_PREFIX)) + connectedIP;

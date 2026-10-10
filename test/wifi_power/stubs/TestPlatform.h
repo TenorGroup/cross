@@ -105,7 +105,7 @@ struct ThemeMetrics {
   int popupCornerRadius = 1;
 };
 
-enum class EpdFontFamily { BOLD };
+enum class EpdFontFamily { BOLD, REGULAR };
 constexpr int UI_10_FONT_ID = 10;
 constexpr int UI_12_FONT_ID = 12;
 constexpr int SMALL_FONT_ID = 8;
@@ -124,6 +124,7 @@ class GfxRenderer {
   int getScreenHeight() const { return 800; }
   int getLineHeight(int) const { return 20; }
   int getTextWidth(int, const char*) const { return 20; }
+  std::string truncatedText(int, const char* text, int, EpdFontFamily = EpdFontFamily::REGULAR) const { return text; }
   void drawText(int, int, int, const char*) const {}
   FontCacheManager* getFontCacheManager() { return &cache; }
 };
