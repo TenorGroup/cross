@@ -7,10 +7,9 @@ than luma, zero height, baseline. Damaged: cut, bad lengths, bad table ids, over
 unmatched Huffman codes, bad spectral bounds, no SOF, restart out of order, then random damage
 under the address and behaviour sanitizers. Stops within 16 blocks; a refused block holds nothing.
 """
-import io, os, random, shutil, subprocess, sys, tempfile
+import io, math, os, random, shutil, subprocess, sys, tempfile
 from pathlib import Path
-import numpy as np
-from PIL import Image
+from PIL import Image, ImageChops, ImageDraw, ImageStat
 
 HOST = sys.argv[1]
 JPEGTRAN = shutil.which('jpegtran') or '/opt/homebrew/bin/jpegtran'
@@ -34,15 +33,15 @@ def check(ok, what):
 
 
 def picture(w, h, seed=7):
-    rng = np.random.default_rng(seed)
-    y, x = np.mgrid[0:h, 0:w]
-    img = np.stack([(x * 255 // w), (y * 255 // h), ((x + y) * 3) % 256], -1).astype(np.int32)
-    img += (40 * np.sin(x / 3.0) * np.cos(y / 5.0)).astype(np.int32)[..., None]
-    for k in range(25):  # hard edges, like letters on a cover
-        x0, y0 = rng.integers(0, w - 12), rng.integers(0, h - 6)
-        img[y0:y0 + rng.integers(2, 6), x0:x0 + rng.integers(4, 12)] = rng.integers(0, 256, 3)
-    img += rng.integers(-12, 13, img.shape)
-    return Image.fromarray(np.clip(img, 0, 255).astype(np.uint8))
+    rng = random.Random(seed)
+    across = Image.linear_gradient('L').rotate(90).resize((w, h))
+    down = Image.linear_gradient('L').resize((w, h))
+    img = Image.merge('RGB', [across, down, Image.effect_noise((w, h), 60)])
+    d = ImageDraw.Draw(img)
+    for _ in range(25):  # hard edges, like letters on a cover
+        x0, y0 = rng.randrange(0, w - 12), rng.randrange(0, h - 6)
+        d.rectangle([x0, y0, x0 + rng.randrange(4, 12), y0 + rng.randrange(2, 6)], fill=tuple(rng.randrange(256) for _ in range(3)))
+    return img
 
 
 def save(name, data):
@@ -89,13 +88,15 @@ def edit(data, marker, fn, nth=0):
     return join(segs, rest)
 
 
-def psnr(path, img):
-    a = np.asarray(Image.open(work / 'out.pgm')).astype(float)
+def psnr(path):
+    a = Image.open(work / 'out.pgm')
     ref = Image.open(path)
     ref.draft('YCbCr', ref.size)
-    y = np.asarray(ref.convert('YCbCr').getchannel(0) if ref.mode != 'L' else ref).astype(float)
-    mse = ((a - y) ** 2).mean() if a.shape == y.shape else 1e9
-    return 99.0 if mse == 0 else 10 * np.log10(255 ** 2 / mse)
+    y = ref.convert('YCbCr').getchannel(0) if ref.mode != 'L' else ref
+    if a.size != y.size:
+        return 0.0
+    mse = sum(ImageStat.Stat(ImageChops.difference(a, y)).sum2) / (a.width * a.height)
+    return 99.0 if mse == 0 else 10 * math.log10(255 ** 2 / mse)
 
 
 rgb = picture(203, 307)
@@ -120,7 +121,7 @@ right['far_sof'] = join([segs[0], (0xE1, b'Exif\0\0' + os.urandom(30000)), (0xE2
 for name, data in right.items():
     p = save(name, data)
     r = host('decode', p, work / 'out.pgm')
-    db = psnr(p, None) if r.get('run') == 'Done' else 0
+    db = psnr(p) if r.get('run') == 'Done' else 0
     check(r.get('run') == 'Done' and db >= 40, f'{name}: {r.get("open")}/{r.get("run")} {db:.1f} dB against libjpeg')
 s = host('sniff', save('far', right['far_sof']))
 check(s.get('kind') == 'Progressive' and s.get('w') == '203' and s.get('h') == '307', f'far SOF sniffed: {s}')
@@ -182,6 +183,10 @@ def scan_header(data, nth, fn):
 
 corrupt['ss_over_se'] = scan_header(p420, 1, lambda h: h[:-3] + bytes([5, 1, h[-1]]))
 corrupt['se_over_63'] = scan_header(p420, 1, lambda h: h[:-3] + bytes([1, 64, h[-1]]))
+# The band of the first luma AC scan narrowed to 1 coefficient: its runs land past the band's end.
+corrupt['ac_run_past_se'] = scan_header(p420, 1, lambda h: h[:-3] + bytes([1, 1, h[-1]]))
+# The luma band 6..63 read as 60..63: its runs reach past coefficient 63.
+corrupt['ac_run_past_63'] = scan_header(p420, 4, lambda h: h[:-3] + bytes([60, 63, h[-1]]))
 corrupt['ah_over_13'] = scan_header(p420, 1, lambda h: h[:-3] + bytes([h[-3], h[-2], 0xE0 | 13]))
 for name, data in corrupt.items():
     r = host('decode', save(name, data), work / 'out.pgm')
