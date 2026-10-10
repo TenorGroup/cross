@@ -16,8 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from measure import measure, parse_trace
 from plan import REPO, plan, program, run_case
 
-# Ban phim nhap mat khau la man dung chung (KeyboardEntry), khong thuoc luong nay: phim 1 sat mep trai X3.
-KNOWN = {('x3', 'sta-password', 'mep')}
+KNOWN = set()
 # (co chu, ngon ngu, mep, ten dai): ten dai = ten may va ten mang 31 chu W
 COMBOS = [(t, lang, tips, long) for t in (0, 1, 2) for lang, tips, long in (('VI', 0, 0), ('EN', 1, 1))]
 _port = itertools.count(29600)

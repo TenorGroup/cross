@@ -655,7 +655,9 @@ fui::Rect KeyboardEntryActivity::keyboardRect() const {
     const std::string tips = x3TipText();
     const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tips.c_str(), 8));
     const int top = layout.bodyRect.y + renderer.getLineHeight(UI_12_FONT_ID) + metrics.verticalSpacing + 16;
-    return fui::Rect{0, static_cast<int16_t>(top), static_cast<int16_t>(pageWidth),
+    // 8 px of margin on each side, so the selection ring of the first and the last key of a row keeps clear of the edge.
+    constexpr int side = 8;
+    return fui::Rect{static_cast<int16_t>(side), static_cast<int16_t>(top), static_cast<int16_t>(pageWidth - 2 * side),
         static_cast<int16_t>(layout.bodyRect.bottom() - top)};
   }
   const int gap = metrics.keyboardKeySpacing;

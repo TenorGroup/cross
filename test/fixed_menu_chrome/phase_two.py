@@ -106,7 +106,7 @@ const char* tr(StrId id) {
               const auto keys = page.rect();
               const auto tip = page.x3TipText();
               const auto layout = tenorchrome::x3ScreenLayout(target, tenorchrome::tipHeight(target, tip.c_str(), 8));
-              check(keys.x == 0 && keys.width == target.getScreenWidth(), "keyboard spans the screen");
+              check(keys.x == 8 && keys.width == target.getScreenWidth() - 16, "keyboard spans the screen but for an 8 px margin each side");
               check(keys.y >= layout.bodyRect.y && keys.y + keys.height == layout.bodyRect.bottom(), "keyboard stays in body");
               check((keys.height - 24) / 5 >= 26, "keyboard rows retain legible glyph space");
               tenorchrome::drawTipInRect(target, tip.c_str(), layout.tipRect, 8);
