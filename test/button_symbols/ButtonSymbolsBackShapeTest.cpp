@@ -146,6 +146,7 @@ int main(int argc, char** argv) {
       const auto& actual = net == 14 ? inlineSymbolBitmaps::kSelectNet14 : inlineSymbolBitmaps::kSelectNet18;
       const auto& back = net == 14 ? backV1056::kBackNet14 : backV1056::kBackNet18;
       check(actual.width == expected.width && actual.height == expected.height, "Select must use Enter dimensions");
+      check(actual.width == back.width, "Select and Back must have equal width");
       check(actual.height == back.height, "Select and Back must have equal height");
       const auto ink = [](const inlineSymbolBitmaps::Glyph& g, int x, int y) {
         return x >= 0 && y >= 0 && x < g.width && y < g.height && (g.rows[y] & (1u << (g.width - 1 - x)));
@@ -157,14 +158,14 @@ int main(int argc, char** argv) {
         backVertical += ink(back, col, net == 14 ? 9 : 12) ? 1 : 0;
       check(stroke == backVertical, "Back shaft and vertical differ in thickness");
       // Horizontal shaft: same thickness as Back at every column between head and bend.
-      const int shaftLo = net == 14 ? 8 : 10, shaftHi = net == 14 ? 15 : 20;
+      const int shaftLo = net == 14 ? 8 : 10, shaftHi = net == 14 ? 17 : 22;
       for (int col = shaftLo; col <= shaftHi; ++col) {
         int run = 0;
         for (int row = 0; row < actual.height; ++row) run += ink(actual, col, row) ? 1 : 0;
         check(run == stroke, "Enter shaft thickness differs from the Back stroke");
       }
       // Vertical stem: same thickness as Back on every row between the cap and the bend, round cap on top.
-      const int stemX = net == 14 ? 19 : 25, bendTop = net == 14 ? 5 : 6;
+      const int stemX = net == 14 ? 21 : 27, bendTop = net == 14 ? 5 : 6;
       for (int row = 1; row < bendTop; ++row) {
         int run = 0;
         for (int col = 0; col < actual.width; ++col) run += (col >= stemX && ink(actual, col, row)) ? 1 : 0;
@@ -307,12 +308,103 @@ int main(int argc, char** argv) {
     return failures ? 1 : 0;
   }
 
+  if (argc == 2 && std::strcmp(argv[1], "--key-box") == 0) {
+    // Back, Enter, Up, Down share one box (Back's: 24x15 / 31x19). Left and Right share its height. Drawn through the
+    // footer entry point on the framebuffer, one symbol at a time, all at the same anchor.
+    const char* markers[] = {"\xEE\x84\x81", "\xEE\x84\x80", "\xEE\x84\x82", "\xEE\x84\x83", "\xEE\x84\x84", "\xEE\x84\x85"};
+    using Grid = std::vector<std::vector<int>>;
+    for (const int net : {14, 18}) {
+      const int stroke = net == 14 ? 3 : 4, run = net == 14 ? 4 : 5;
+      Bounds box[6];
+      Grid grid[6];
+      for (int symbol = 0; symbol < 6; ++symbol) {
+        clear();
+        check(buttonSymbols::drawLabel(renderer, markers[symbol], kCx, kCy, net), "key marker refused");
+        box[symbol] = scanAround(kCx, kCy, kRadius);
+        check(box[symbol].any, "key symbol painted no ink");
+        if (!box[symbol].any) continue;
+        for (int y = box[symbol].minY; y <= box[symbol].maxY; ++y) {
+          grid[symbol].emplace_back();
+          for (int x = box[symbol].minX; x <= box[symbol].maxX; ++x) grid[symbol].back().push_back(isInk(x, y));
+        }
+        // Lines up with Back on the page: top ink row, bottom ink row, and the footer cell the layout reserves.
+        check(box[symbol].minY == box[0].minY && box[symbol].maxY == box[0].maxY,
+              "key symbol top or bottom differs from Back");
+        if (symbol < 4) {
+          check(box[symbol].minX == box[0].minX && box[symbol].maxX == box[0].maxX, "key symbol box differs from Back");
+          const auto cell = buttonSymbols::horizontalBounds(markers[symbol], net);
+          const auto backCell = buttonSymbols::horizontalBounds(markers[0], net);
+          check(cell.left == backCell.left && cell.right == backCell.right, "key symbol footer cell differs from Back");
+        }
+        // No stray pixel.
+        const auto& g = grid[symbol];
+        for (int y = 0; symbol > 0 && y < static_cast<int>(g.size()); ++y)
+          for (int x = 0; x < static_cast<int>(g[y].size()); ++x)
+            if (g[y][x])
+              check((x > 0 && g[y][x - 1]) || (x + 1 < static_cast<int>(g[y].size()) && g[y][x + 1]) ||
+                        (y > 0 && g[y - 1][x]) || (y + 1 < static_cast<int>(g.size()) && g[y + 1][x]),
+                    "key symbol has an isolated pixel");
+      }
+      const int height = box[0].maxY - box[0].minY + 1;
+      check(height == (net == 14 ? 15 : 19), "Back height changed");
+      // Down is Up flipped top to bottom, Right is Left mirrored; Up is symmetric left to right, Left top to bottom.
+      for (int y = 0; y < height; ++y) {
+        check(grid[3][y] == grid[2][height - 1 - y], "Down is not Up flipped");
+        check(grid[2][y] == Grid::value_type(grid[2][y].rbegin(), grid[2][y].rend()), "Up is not left-right symmetric");
+        check(grid[4][y] == grid[4][height - 1 - y], "Left is not top-bottom symmetric");
+        check(grid[5][y] == Grid::value_type(grid[4][y].rbegin(), grid[4][y].rend()), "Right is not Left mirrored");
+      }
+      // Chevron geometry, measured on a grid whose apex is the top row: Up as drawn, Left turned a quarter.
+      const auto analyse = [&](const Grid& g, const char* what, int cap) {
+        const int rows = static_cast<int>(g.size()), cols = static_cast<int>(g[0].size());
+        const auto first = [&](int y) { int x = 0; while (x < cols && !g[y][x]) ++x; return x; };
+        int firstGap = -1;
+        for (int y = 0; y < rows && firstGap < 0; ++y) {
+          int runs = 0;
+          for (int x = 0; x < cols; ++x) runs += g[y][x] && (x == 0 || !g[y][x - 1]);
+          if (runs == 2) firstGap = y;
+        }
+        check(firstGap > 0, "chevron has no gap under the apex");
+        if (firstGap <= 0) return;
+        int topWidth = 0;
+        for (int x = 0; x < cols; ++x) topWidth += g[0][x];
+        check(topWidth == cap, "chevron apex differs from the round tip of the Back head");
+        // Same stroke on every straight row, and the outer edge steps 1,1,1,0 from the apex down.
+        for (int y = firstGap; y < rows; ++y) {
+          int x = first(y), length = 0;
+          while (x + length < cols && g[y][x + length]) ++length;
+          check(length == run, "chevron arm run differs between rows");
+        }
+        for (int y = 0; y + 1 < rows; ++y)
+          check(first(y) - first(y + 1) == ((y + 1) % 4 != 0 ? 1 : 0), "chevron sides do not step evenly");
+        const double slope = double(first(firstGap) - first(rows - 1)) / (rows - 1 - firstGap);
+        const double across = run / std::sqrt(1 + slope * slope);
+        check(std::fabs(across - stroke) <= 0.25, "chevron stroke measured across the arm differs from Back");
+        std::printf("%s net=%d box=%dx%d apex=%d run=%d slope=%.3f across=%.2f stroke=%d\n", what, net, cols, rows,
+                    topWidth, run, slope, across, stroke);
+      };
+      analyse(grid[2], "Up", net == 14 ? 2 : 3);  // the cap rows of the Back head: 2 / 3 px
+      Grid turned(grid[4][0].size(), std::vector<int>(grid[4].size()));
+      for (size_t y = 0; y < grid[4].size(); ++y)
+        for (size_t x = 0; x < grid[4][y].size(); ++x) turned[x][y] = grid[4][y][x];
+      analyse(turned, "Left", 3);
+      std::printf("net=%d Back %dx%d Enter %dx%d Up %dx%d Down %dx%d Left %dx%d Right %dx%d\n", net,
+                  static_cast<int>(grid[0][0].size()), height, static_cast<int>(grid[1][0].size()),
+                  static_cast<int>(grid[1].size()), static_cast<int>(grid[2][0].size()),
+                  static_cast<int>(grid[2].size()), static_cast<int>(grid[3][0].size()),
+                  static_cast<int>(grid[3].size()), static_cast<int>(grid[4][0].size()),
+                  static_cast<int>(grid[4].size()), static_cast<int>(grid[5][0].size()),
+                  static_cast<int>(grid[5].size()));
+    }
+    std::printf("%s: Back, Enter, Up and Down share one box; chevron stroke and steps\n", failures ? "RED" : "GREEN");
+    return failures ? 1 : 0;
+  }
+
   if (argc == 2 && std::strcmp(argv[1], "--family") == 0) {
     const char* markers[] = {"\xEE\x84\x81", "\xEE\x84\x80", "\xEE\x84\x82",
                             "\xEE\x84\x83", "\xEE\x84\x84", "\xEE\x84\x85"};
     for (const int net : {14, 18}) {
-      const int span = net == 14 ? 18 : 24;
-      const int diagonalRun = net == 14 ? 4 : 6;
+      const int span = net == 14 ? 15 : 19;
       const int stroke = net == 14 ? 3 : 4;
       for (int symbol = 0; symbol < 6; ++symbol) {
         clear();
@@ -322,8 +414,8 @@ int main(int argc, char** argv) {
         if (!bounds.any) continue;
         const int width = bounds.maxX - bounds.minX + 1;
         const int height = bounds.maxY - bounds.minY + 1;
-        const int opticalHeight = symbol == 2 || symbol == 3 ? width : height;
-        check(symbol <= 1 || std::abs(opticalHeight - span) <= 1, "family optical span differs by more than 1 pixel");
+        const int opticalHeight = height;
+        check(height == span, "family symbol height differs from Back");
         check(bounds.minX + bounds.maxX == 2 * kCx - (width % 2 == 0), "family horizontal center moved");
         check(std::abs(bounds.minY + bounds.maxY - 2 * kCy) <= 1, "family vertical center moved");
         const auto cell = buttonSymbols::horizontalBounds(markers[symbol], net);
@@ -332,38 +424,13 @@ int main(int argc, char** argv) {
           for (int column = kCx - kRadius; column <= kCx + kRadius; ++column)
             if (isInk(column, row))
               check(column >= kCx - cell.left && column <= kCx + cell.right && row >= kCy - span / 2 &&
-                        row < kCy + span / 2,
+                        row <= kCy + span / 2,
                     "family ink escapes footer cell");
-        const auto rowRun = [&](int row, bool fromRight) {
-          int column = fromRight ? bounds.maxX : bounds.minX;
-          const int step = fromRight ? -1 : 1;
-          while (column >= bounds.minX && column <= bounds.maxX && !isInk(column, row)) column += step;
-          int count = 0;
-          while (column >= bounds.minX && column <= bounds.maxX && isInk(column, row)) {
-            ++count;
-            column += step;
-          }
-          return count;
-        };
-        for (int sample = 0; symbol > 1 && sample < 3; ++sample) {
-          int row = bounds.minY + (net == 14 ? (symbol == 0 ? 4 : 5) : 7) + sample;
-          if (symbol == 5) row = bounds.maxY - (net == 14 ? 5 : 7) - sample;
-          int run = rowRun(row, symbol == 1 || symbol == 5);
-          if (symbol == 2 || symbol == 3) {
-            const int column =
-                symbol == 2 ? bounds.maxX - (row - bounds.minY) : bounds.minX + (row - bounds.minY);
-            int sliceRow = bounds.minY;
-            while (sliceRow <= bounds.maxY && !isInk(column, sliceRow)) ++sliceRow;
-            run = 0;
-            while (sliceRow <= bounds.maxY && isInk(column, sliceRow++)) ++run;
-          }
-          check(run == diagonalRun, "family straight diagonal slice differs from chevron");
-        }
         std::printf("family symbol=%d net=%d width=%d height=%d optical=%d center=(%.1f,%.1f) ink=%zu stroke=%d\n",
                     symbol, net, width, height, opticalHeight, (bounds.minX + bounds.maxX) / 2.0 - kCx,
                     (bounds.minY + bounds.maxY) / 2.0 - kCy,
                     static_cast<size_t>(std::count(painted.begin(), painted.end(), 1)), stroke);
-        if (net == 14 && symbol < 2) {
+        if (net == 14) {
           renderer.fillRectDither(kCx - 40, kCy + 9, 80, 3, Color::LightGray);
           for (int row = bounds.minY; row <= bounds.maxY; ++row)
             for (int column = bounds.minX; column <= bounds.maxX; ++column)
@@ -500,8 +567,8 @@ int main(int argc, char** argv) {
     using inlineSymbolBitmaps::Glyph;
     const Glyph* selected[] = {&inlineSymbolBitmaps::kBackNet14, &inlineSymbolBitmaps::kBackNet18,
                                &inlineSymbolBitmaps::kSelectNet14, &inlineSymbolBitmaps::kSelectNet18};
-    const uint32_t hashes[] = {0x20785c88, 0x14450811, 0x9fbaa395, 0x2bf6fa4b};
-    const int widths[] = {24, 31, 22, 29};
+    const uint32_t hashes[] = {0x20785c88, 0x14450811, 0x6eda2395, 0xb6c6fa4b};
+    const int widths[] = {24, 31, 24, 31};
     const int heights[] = {15, 19, 15, 19};
     for (int index = 0; index < 4; ++index) {
       const auto& glyph = *selected[index];

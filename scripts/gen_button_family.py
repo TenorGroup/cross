@@ -6,38 +6,39 @@ from PIL import Image
 SOURCE_DIR = Path(__file__).resolve().parents[1] / 'lib/GfxRenderer/symbol-sources'
 GLYPHS = {
     # Enter: arrowhead from Back v1.0.56 mirrored about the shaft, stroke as thick as Back (3 / 4 px),
-    # quarter-ring bend symmetric about its diagonal (R5 / R7), round top cap.
-    'Enter-net14': (22, [
-        [(20, 20)],
-        [(19, 21)],
-        [(5, 6), (19, 21)],
-        [(4, 7), (19, 21)],
-        [(3, 7), (19, 21)],
-        [(2, 6), (19, 21)],
-        [(1, 5), (18, 21)],
+    # quarter-ring bend symmetric about its diagonal (R5 / R7), round top cap. Shaft 2 px longer than
+    # before so the box is as wide as Back (24 / 31 px).
+    'Enter-net14': (24, [
+        [(22, 22)],
+        [(21, 23)],
+        [(5, 6), (21, 23)],
+        [(4, 7), (21, 23)],
+        [(3, 7), (21, 23)],
+        [(2, 6), (21, 23)],
+        [(1, 5), (20, 23)],
+        [(0, 22)],
+        [(0, 21)],
         [(0, 20)],
-        [(0, 19)],
-        [(0, 18)],
         [(1, 5)],
         [(2, 6)],
         [(3, 7)],
         [(4, 7)],
         [(5, 6)],
     ]),
-    'Enter-net18': (29, [
-        [(26, 27)],
-        [(25, 28)],
-        [(7, 9), (25, 28)],
-        [(6, 9), (25, 28)],
-        [(5, 9), (25, 28)],
-        [(4, 9), (25, 28)],
-        [(3, 8), (25, 28)],
-        [(2, 7), (25, 28)],
-        [(1, 6), (24, 28)],
+    'Enter-net18': (31, [
+        [(28, 29)],
+        [(27, 30)],
+        [(7, 9), (27, 30)],
+        [(6, 9), (27, 30)],
+        [(5, 9), (27, 30)],
+        [(4, 9), (27, 30)],
+        [(3, 8), (27, 30)],
+        [(2, 7), (27, 30)],
+        [(1, 6), (26, 30)],
+        [(0, 29)],
+        [(0, 28)],
         [(0, 27)],
-        [(0, 26)],
-        [(0, 25)],
-        [(1, 24)],
+        [(1, 26)],
         [(2, 7)],
         [(3, 8)],
         [(4, 9)],
@@ -74,8 +75,114 @@ GLYPHS = {
     ]),
 }
 
+# Chevrons for the button strip, drawn by hand pixel by pixel. Every key symbol shares Back's box height (15 / 19)
+# so tops and bottoms line up, and Up / Down also share its width (24 / 31). Arm stroke measured across the arm:
+# 3.2 / 4.0 px (4 / 5 px runs on a 3-in-4 slope), as thick as the Back stroke (3 / 4 px). Each side steps the same
+# way all the way down (3 diagonal rows, 1 straight row), the apex is a round tip like the Back head, the feet are cut
+# flat. Down is Up flipped top to bottom; Right is Left mirrored.
+CHEVRONS = {
+    'up-net14': [
+        '...........##...........',
+        '..........####..........',
+        '.........######.........',
+        '........########........',
+        '........########........',
+        '.......####..####.......',
+        '......####....####......',
+        '.....####......####.....',
+        '.....####......####.....',
+        '....####........####....',
+        '...####..........####...',
+        '..####............####..',
+        '..####............####..',
+        '.####..............####.',
+        '####................####',
+    ],
+    'up-net18': [
+        '..............###..............',
+        '.............#####.............',
+        '............#######............',
+        '...........#########...........',
+        '...........#########...........',
+        '..........#####.#####..........',
+        '.........#####...#####.........',
+        '........#####.....#####........',
+        '........#####.....#####........',
+        '.......#####.......#####.......',
+        '......#####.........#####......',
+        '.....#####...........#####.....',
+        '.....#####...........#####.....',
+        '....#####.............#####....',
+        '...#####...............#####...',
+        '..#####.................#####..',
+        '..#####.................#####..',
+        '.#####...................#####.',
+        '#####.....................#####',
+    ],
+    'left-net14': [
+        '.......#',
+        '......##',
+        '.....###',
+        '...#####',
+        '..#####.',
+        '.#####..',
+        '#####...',
+        '###.....',
+        '#####...',
+        '.#####..',
+        '..#####.',
+        '...#####',
+        '.....###',
+        '......##',
+        '.......#',
+    ],
+    'left-net18': [
+        '..........#',
+        '.........##',
+        '.......####',
+        '......#####',
+        '.....######',
+        '...#######.',
+        '..#######..',
+        '.######....',
+        '######.....',
+        '#####......',
+        '######.....',
+        '.######....',
+        '..#######..',
+        '...#######.',
+        '.....######',
+        '......#####',
+        '.......####',
+        '.........##',
+        '..........#',
+    ],
+}
+
+
+def chevron_glyphs():
+    glyphs = {}
+    for net in (14, 18):
+        up, left = CHEVRONS[f'up-net{net}'], CHEVRONS[f'left-net{net}']
+        assert all(row == row[::-1] for row in up), f'up-net{net} is not left-right symmetric'
+        assert left == left[::-1], f'left-net{net} is not top-bottom symmetric'
+        for name, art in (('up', up), ('down', up[::-1]), ('left', left), ('right', [row[::-1] for row in left])):
+            rows = []
+            for line in art:
+                spans, start = [], None
+                for column, mark in enumerate(line + '.'):
+                    if mark == '#' and start is None:
+                        start = column
+                    elif mark != '#' and start is not None:
+                        spans.append((start, column - 1))
+                        start = None
+                rows.append(spans)
+            glyphs[f'CHEV-{name}-net{net}'] = (len(art[0]), rows)
+    return glyphs
+
 
 def main():
+    GLYPHS.update(chevron_glyphs())
     for name, (width, rows) in GLYPHS.items():
         image = Image.new('1', (width, len(rows)), 1)
         for row, spans in enumerate(rows):

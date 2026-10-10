@@ -54,3 +54,5 @@ add_test(NAME ButtonSymbols.InlineSpacing COMMAND ButtonSymbolsBackShapeTest --i
 add_test(NAME ButtonSymbols.BackV1056 COMMAND ButtonSymbolsBackShapeTest --back-reference)
 
 add_test(NAME ButtonSymbols.Enter COMMAND ButtonSymbolsBackShapeTest --enter-reference)
+
+add_test(NAME ButtonSymbols.KeyBox COMMAND ButtonSymbolsBackShapeTest --key-box)
