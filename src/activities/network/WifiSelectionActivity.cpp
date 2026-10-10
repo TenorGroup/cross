@@ -178,6 +178,7 @@ void WifiSelectionActivity::onEnter() {
   // Reset state
   selectedNetworkIndex = 0;
   networks.clear();
+  uglyNetworkStatuses.clear();
   networkRowItems.clear();
   realNetworkCount = 0;
   state = WifiSelectionState::SCANNING;
@@ -297,6 +298,7 @@ void WifiSelectionActivity::startWifiScan(const bool autoScan) {
   listNav.reset();
   state = WifiSelectionState::SCANNING;
   networks.clear();
+  uglyNetworkStatuses.clear();
   // The cached rows point into the cleared networks' strings; drop them too.
   networkRowItems.clear();
   requestUpdate();
@@ -461,13 +463,17 @@ void WifiSelectionActivity::appendHiddenNetworkEntry() {
 // padlock to its left on an encrypted network; a saved network out of range
 // says so in words.
 void WifiSelectionActivity::rebuildNetworkRowItems() {
+  uglyNetworkStatuses.assign(shell::isUgly() ? networks.size() : 0, std::string());
   networkRowItems.clear();
   networkRowItems.reserve(networks.size());
   for (size_t i = 0; i < networks.size(); i++) {
     const auto& network = networks[i];
     fui::ListItem item;
     item.label = network.isHiddenPlaceholder ? tr(STR_ADD_HIDDEN_NETWORK) : network.ssid.c_str();
-    if (network.isSavedOutOfRange) {
+    if (shell::isUgly()) {
+      uglyNetworkStatuses[i] = uglyStatus(network);
+      if (!uglyNetworkStatuses[i].empty()) item.value = uglyNetworkStatuses[i].c_str();
+    } else if (network.isSavedOutOfRange) {
       item.value = tr(STR_WIFI_NOT_IN_RANGE);
     } else if (!network.isHiddenPlaceholder) {
       item.valueIcons = signalMarks(signalLevel(network.rssi), network.isEncrypted);
@@ -1390,6 +1396,12 @@ void WifiSelectionActivity::renderNetworkList(const Rect* screen, const ThemeMet
     UITheme::drawCenteredText(renderer, *screen, SMALL_FONT_ID, top + height + 10, tr(STR_PRESS_OK_SCAN));
   }
 
+  if (shell::isUgly()) {
+    GUI.drawHelpText(renderer,
+                     Rect{screen->x, screen->y + screen->height - metrics->contentSidePadding - 15, screen->width, 20},
+                     tr(STR_NETWORK_LEGEND));
+  }
+
   const bool hasSavedPassword = !networks.empty() && networks[selectedNetworkIndex].hasSavedPassword;
   const char* forgetLabel = hasSavedPassword ? tr(STR_FORGET_BUTTON) : "";
 
@@ -1526,8 +1538,7 @@ void WifiSelectionActivity::renderUglyList() {
     if (box.empty()) continue;
     uglychrome::Row row;
     row.label = networkRowItems[i].label;
-    const std::string status = i < networks.size() ? uglyStatus(networks[i]) : std::string();
-    row.value = status.empty() ? nullptr : status.c_str();
+    row.value = networkRowItems[i].value;
     row.marks.selected = i == selectedNetworkIndex;
     uglychrome::row(renderer, box, row, mark_.get(selectedNetworkIndex));
   }

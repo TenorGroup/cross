@@ -164,7 +164,8 @@ class WifiSignalIcon(unittest.TestCase):
 
     def test_old_marks_gone_from_source(self):
         text = (REPO / 'src/activities/network/WifiSelectionActivity.cpp').read_text()
-        self.assertNotIn('STR_NETWORK_LEGEND', text)
+        self.assertEqual(text.count('STR_NETWORK_LEGEND'), 1)
+        self.assertRegex(text, r'if \(shell::isUgly\(\)\) \{\s*GUI.drawHelpText\([^;]*STR_NETWORK_LEGEND')
         self.assertNotIn('getSignalStrengthIndicator', text)
         ugly = re.search(r'std::string uglyStatus.*?\n}\n', text, re.S)
         outside = text.replace(ugly.group(0), '') if ugly else text

@@ -67,6 +67,7 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
 
   // Row items derived from `networks`, rebuilt only when it changes
   // (processWifiScanResults()) instead of on every repaint.
+  std::vector<std::string> uglyNetworkStatuses;
   std::vector<freeink::ui::ListItem> networkRowItems;
   void rebuildNetworkRowItems();
 
