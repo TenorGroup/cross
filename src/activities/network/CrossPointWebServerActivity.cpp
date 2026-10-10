@@ -55,24 +55,33 @@ constexpr int QR_CODE_HEIGHT = 198;
 
 // Network names are sanitised ASCII. Wrap addresses without hiding any byte
 // behind an ellipsis; a fixed scratch line avoids allocating a list of lines.
+// A line that would run past flowBottom (the foot of the code drawn beside the text) restarts under it, at wideTop,
+// from wideX across wideWidth: a long name wraps along the code, then under it, instead of a column of one letter.
 int drawNetworkText(const GfxRenderer& renderer, const int font, const char* text, const int x, int y, const int width,
-                    const bool centered = false) {
+                    const bool centered = false, const int flowBottom = 0, const int wideX = 0, const int wideTop = 0,
+                    const int wideWidth = 0) {
   const int lineHeight = renderer.getLineHeight(font);
   size_t remaining = strlen(text);
   while (remaining != 0) {
+    int lineX = x, lineWidth = width;
+    if (flowBottom && y + lineHeight > flowBottom) {
+      y = std::max(y, wideTop);
+      lineX = wideX;
+      lineWidth = wideWidth;
+    }
     char line[64];
     const size_t capacity = std::min(remaining, sizeof(line) - 1);
     memcpy(line, text, capacity);
     line[capacity] = '\0';
     size_t count = capacity;
-    if (renderer.getTextWidth(font, line) > width) {
+    if (renderer.getTextWidth(font, line) > lineWidth) {
       size_t low = 1;
       size_t high = capacity;
       while (low < high) {
         const size_t mid = (low + high + 1) / 2;
         const char saved = line[mid];
         line[mid] = '\0';
-        const bool fits = renderer.getTextWidth(font, line) <= width;
+        const bool fits = renderer.getTextWidth(font, line) <= lineWidth;
         line[mid] = saved;
         if (fits) {
           low = mid;
@@ -83,11 +92,20 @@ int drawNetworkText(const GfxRenderer& renderer, const int font, const char* tex
       count = low;
       line[count] = '\0';
     }
-    const int left = centered ? x + (width - renderer.getTextWidth(font, line)) / 2 : x;
+    const int left = centered ? lineX + (lineWidth - renderer.getTextWidth(font, line)) / 2 : lineX;
     renderer.drawText(font, left, y, line);
     text += count;
     remaining -= count;
     y += lineHeight;
+  }
+  return y;
+}
+
+// The bold line over a name or an address: wraps by words inside the column beside the code, two lines at most.
+int drawNetworkHeading(const GfxRenderer& renderer, const char* text, const int x, int y, const int width) {
+  for (const auto& line : renderer.wrappedText(UI_10_FONT_ID, text, width, 2, EpdFontFamily::BOLD)) {
+    renderer.drawText(UI_10_FONT_ID, x, y, line.c_str(), true, EpdFontFamily::BOLD);
+    y += renderer.getLineHeight(UI_10_FONT_ID);
   }
   return y;
 }
@@ -663,20 +681,22 @@ void CrossPointWebServerActivity::renderServerRunning() const {
     const int textWidth = pageWidth - left - textX;
     // Keep each instruction beside its QR code so both steps fit at large UI sizes.
     const std::string wifiConfig = std::string("WIFI:T:nopass;S:") + connectedSSID + ";;";
+    // The first frame stands 12 px under the sub-header rule, as the frame of a joined network does.
+    if (framed) startY += qrQuiet / 2;
     const Rect qrBoundsWifi(left, startY, QR_CODE_WIDTH, QR_CODE_HEIGHT);
     QrUtils::drawQrCode(renderer, qrBoundsWifi, wifiConfig);
-    renderer.drawText(UI_10_FONT_ID, textX, startY, tr(STR_CONNECT_WIFI_HINT), true, EpdFontFamily::BOLD);
-    const int nameBottom =
-        drawNetworkText(renderer, UI_12_FONT_ID, connectedSSID.c_str(), textX, startY + height10 + 8, textWidth);
+    const int nameTop = drawNetworkHeading(renderer, tr(STR_CONNECT_WIFI_HINT), textX, startY, textWidth) + 8;
+    const int nameBottom = drawNetworkText(renderer, UI_12_FONT_ID, connectedSSID.c_str(), textX, nameTop, textWidth,
+                                           false, startY + QR_CODE_HEIGHT, left, startY + QR_CODE_HEIGHT + 8, bodyWidth);
     const int firstBottom = std::max(startY + QR_CODE_HEIGHT, nameBottom);
     if (framed) tenorchrome::drawPanel(renderer, startY - qrQuiet, firstBottom - startY + 2 * qrQuiet);
-    startY = firstBottom + (framed ? 3 : 2) * qrQuiet;
+    startY = firstBottom + (framed ? 5 * qrQuiet / 2 : 2 * qrQuiet);
 
     const Rect qrBoundsUrl(left, startY, QR_CODE_WIDTH, QR_CODE_HEIGHT);
     QrUtils::drawQrCode(renderer, qrBoundsUrl, hostnameUrl);
-    renderer.drawText(UI_10_FONT_ID, textX, startY, tr(STR_OPEN_URL_HINT), true, EpdFontFamily::BOLD);
-    const int ipBottom =
-        drawNetworkText(renderer, UI_12_FONT_ID, apDisplayIp.c_str(), textX, startY + height10 + 8, textWidth);
+    const int ipTop = drawNetworkHeading(renderer, tr(STR_OPEN_URL_HINT), textX, startY, textWidth) + 8;
+    const int ipBottom = drawNetworkText(renderer, UI_12_FONT_ID, apDisplayIp.c_str(), textX, ipTop, textWidth, false,
+                                         startY + QR_CODE_HEIGHT, left, startY + QR_CODE_HEIGHT + 8, bodyWidth);
     if (framed)
       tenorchrome::drawPanel(renderer, startY - qrQuiet, std::max(startY + QR_CODE_HEIGHT, ipBottom) - startY + 2 * qrQuiet);
   } else {
