@@ -8,6 +8,7 @@ struct Glyph {
   const uint32_t* rows;  // one entry per row, bit (width-1-x) set means ink
   int width;
   int height;
+  int top;  // first row, counted from the top row of Back; the strip lines glyphs up on Back
 };
 constexpr uint32_t kBackNet14Rows[] = {
     0x00060000,
@@ -26,7 +27,7 @@ constexpr uint32_t kBackNet14Rows[] = {
     0x000007FE,
     0x000003FC,
 };
-constexpr Glyph kBackNet14{kBackNet14Rows, 24, 15};
+constexpr Glyph kBackNet14{kBackNet14Rows, 24, 15, 0};
 constexpr uint32_t kBackNet18Rows[] = {
     0x00E00000,
     0x01E00000,
@@ -48,11 +49,9 @@ constexpr uint32_t kBackNet18Rows[] = {
     0x00001FFC,
     0x00001FF8,
 };
-constexpr Glyph kBackNet18{kBackNet18Rows, 31, 19};
+constexpr Glyph kBackNet18{kBackNet18Rows, 31, 19, 0};
 constexpr uint32_t kSelectNet14Rows[] = {
-    0x00000002,
-    0x00000007,
-    0x00060007,
+    0x00060002,
     0x000F0007,
     0x001F0007,
     0x003E0007,
@@ -66,11 +65,9 @@ constexpr uint32_t kSelectNet14Rows[] = {
     0x000F0000,
     0x00060000,
 };
-constexpr Glyph kSelectNet14{kSelectNet14Rows, 24, 15};
+constexpr Glyph kSelectNet14{kSelectNet14Rows, 24, 13, 0};
 constexpr uint32_t kSelectNet18Rows[] = {
-    0x00000006,
-    0x0000000F,
-    0x00E0000F,
+    0x00E00006,
     0x01E0000F,
     0x03E0000F,
     0x07E0000F,
@@ -88,167 +85,140 @@ constexpr uint32_t kSelectNet18Rows[] = {
     0x01E00000,
     0x00E00000,
 };
-constexpr Glyph kSelectNet18{kSelectNet18Rows, 31, 19};
+constexpr Glyph kSelectNet18{kSelectNet18Rows, 31, 17, 0};
 constexpr uint32_t kUpNet14Rows[] = {
-    0x00001800,
-    0x00003C00,
-    0x00007E00,
-    0x0000FF00,
-    0x0000FF00,
-    0x0001E780,
-    0x0003C3C0,
-    0x000781E0,
-    0x000781E0,
-    0x000F00F0,
-    0x001E0078,
-    0x003C003C,
-    0x003C003C,
-    0x0078001E,
-    0x00F0000F,
+    0x00000180,
+    0x000003C0,
+    0x000007E0,
+    0x00000FF0,
+    0x00001E78,
+    0x00003C3C,
+    0x0000781E,
+    0x0000F00F,
 };
-constexpr Glyph kUpNet14{kUpNet14Rows, 24, 15};
+constexpr Glyph kUpNet14{kUpNet14Rows, 16, 8, 0};
 constexpr uint32_t kUpNet18Rows[] = {
-    0x0001C000,
-    0x0003E000,
-    0x0007F000,
-    0x000FF800,
-    0x000FF800,
-    0x001F7C00,
-    0x003E3E00,
-    0x007C1F00,
-    0x007C1F00,
-    0x00F80F80,
-    0x01F007C0,
-    0x03E003E0,
-    0x03E003E0,
-    0x07C001F0,
-    0x0F8000F8,
-    0x1F00007C,
-    0x1F00007C,
-    0x3E00003E,
-    0x7C00001F,
+    0x00001C00,
+    0x00003E00,
+    0x00007F00,
+    0x0000FF80,
+    0x0001FFC0,
+    0x0003F7E0,
+    0x0007E3F0,
+    0x000FC1F8,
+    0x001F80FC,
+    0x003F007E,
+    0x007E003F,
 };
-constexpr Glyph kUpNet18{kUpNet18Rows, 31, 19};
+constexpr Glyph kUpNet18{kUpNet18Rows, 23, 11, 0};
 constexpr uint32_t kDownNet14Rows[] = {
-    0x00F0000F,
-    0x0078001E,
-    0x003C003C,
-    0x003C003C,
-    0x001E0078,
-    0x000F00F0,
-    0x000781E0,
-    0x000781E0,
-    0x0003C3C0,
-    0x0001E780,
-    0x0000FF00,
-    0x0000FF00,
-    0x00007E00,
-    0x00003C00,
-    0x00001800,
+    0x000F000F,
+    0x0007801E,
+    0x0003C03C,
+    0x0001E078,
+    0x0000F0F0,
+    0x000079E0,
+    0x00003FC0,
+    0x00001F80,
+    0x00000F00,
+    0x00000600,
 };
-constexpr Glyph kDownNet14{kDownNet14Rows, 24, 15};
+constexpr Glyph kDownNet14{kDownNet14Rows, 20, 10, 5};
 constexpr uint32_t kDownNet18Rows[] = {
-    0x7C00001F,
-    0x3E00003E,
-    0x1F00007C,
-    0x1F00007C,
-    0x0F8000F8,
-    0x07C001F0,
-    0x03E003E0,
-    0x03E003E0,
-    0x01F007C0,
-    0x00F80F80,
-    0x007C1F00,
-    0x007C1F00,
-    0x003E3E00,
-    0x001F7C00,
-    0x000FF800,
-    0x000FF800,
-    0x0007F000,
-    0x0003E000,
-    0x0001C000,
+    0x01F8003F,
+    0x00FC007E,
+    0x007E00FC,
+    0x003F01F8,
+    0x001F83F0,
+    0x000FC7E0,
+    0x0007EFC0,
+    0x0003FF80,
+    0x0001FF00,
+    0x0000FE00,
+    0x00007C00,
+    0x00003800,
 };
-constexpr Glyph kDownNet18{kDownNet18Rows, 31, 19};
+constexpr Glyph kDownNet18{kDownNet18Rows, 25, 12, 7};
 constexpr uint32_t kLeftNet14Rows[] = {
     0x00000001,
     0x00000003,
     0x00000007,
-    0x0000001F,
-    0x0000003E,
-    0x0000007C,
-    0x000000F8,
-    0x000000E0,
-    0x000000F8,
-    0x0000007C,
-    0x0000003E,
-    0x0000001F,
+    0x0000000F,
+    0x0000001E,
+    0x0000003C,
+    0x00000078,
+    0x00000070,
+    0x00000078,
+    0x0000003C,
+    0x0000001E,
+    0x0000000F,
     0x00000007,
     0x00000003,
     0x00000001,
 };
-constexpr Glyph kLeftNet14{kLeftNet14Rows, 8, 15};
+constexpr Glyph kLeftNet14{kLeftNet14Rows, 7, 15, 0};
 constexpr uint32_t kLeftNet18Rows[] = {
     0x00000001,
     0x00000003,
+    0x00000007,
     0x0000000F,
     0x0000001F,
     0x0000003F,
-    0x000000FE,
-    0x000001FC,
-    0x000003F0,
-    0x000007E0,
-    0x000007C0,
-    0x000007E0,
-    0x000003F0,
-    0x000001FC,
-    0x000000FE,
+    0x0000007E,
+    0x000000FC,
+    0x000001F8,
+    0x000001F0,
+    0x000001F8,
+    0x000000FC,
+    0x0000007E,
     0x0000003F,
     0x0000001F,
     0x0000000F,
+    0x00000007,
     0x00000003,
     0x00000001,
 };
-constexpr Glyph kLeftNet18{kLeftNet18Rows, 11, 19};
+constexpr Glyph kLeftNet18{kLeftNet18Rows, 9, 19, 0};
 constexpr uint32_t kRightNet14Rows[] = {
-    0x00000080,
-    0x000000C0,
-    0x000000E0,
-    0x000000F8,
-    0x0000007C,
-    0x0000003E,
-    0x0000001F,
+    0x00000040,
+    0x00000060,
+    0x00000070,
+    0x00000078,
+    0x0000003C,
+    0x0000001E,
+    0x0000000F,
     0x00000007,
-    0x0000001F,
-    0x0000003E,
-    0x0000007C,
-    0x000000F8,
-    0x000000E0,
-    0x000000C0,
-    0x00000080,
+    0x0000000F,
+    0x0000001E,
+    0x0000003C,
+    0x00000078,
+    0x00000070,
+    0x00000060,
+    0x00000040,
 };
-constexpr Glyph kRightNet14{kRightNet14Rows, 8, 15};
+constexpr Glyph kRightNet14{kRightNet14Rows, 7, 15, 0};
 constexpr uint32_t kRightNet18Rows[] = {
-    0x00000400,
-    0x00000600,
-    0x00000780,
-    0x000007C0,
-    0x000007E0,
-    0x000003F8,
-    0x000001FC,
+    0x00000100,
+    0x00000180,
+    0x000001C0,
+    0x000001E0,
+    0x000001F0,
+    0x000001F8,
+    0x000000FC,
     0x0000007E,
     0x0000003F,
     0x0000001F,
     0x0000003F,
     0x0000007E,
-    0x000001FC,
-    0x000003F8,
-    0x000007E0,
-    0x000007C0,
-    0x00000780,
-    0x00000600,
-    0x00000400,
+    0x000000FC,
+    0x000001F8,
+    0x000001F0,
+    0x000001E0,
+    0x000001C0,
+    0x00000180,
+    0x00000100,
 };
-constexpr Glyph kRightNet18{kRightNet18Rows, 11, 19};
+constexpr Glyph kRightNet18{kRightNet18Rows, 9, 19, 0};
 constexpr uint32_t kLeftNet8Rows[] = {
     0x00000003,
     0x00000006,
@@ -260,7 +230,7 @@ constexpr uint32_t kLeftNet8Rows[] = {
     0x00000006,
     0x00000003,
 };
-constexpr Glyph kLeftNet8{kLeftNet8Rows, 6, 9};
+constexpr Glyph kLeftNet8{kLeftNet8Rows, 6, 9, 0};
 constexpr uint32_t kRightNet8Rows[] = {
     0x00000030,
     0x00000018,
@@ -272,7 +242,7 @@ constexpr uint32_t kRightNet8Rows[] = {
     0x00000018,
     0x00000030,
 };
-constexpr Glyph kRightNet8{kRightNet8Rows, 6, 9};
+constexpr Glyph kRightNet8{kRightNet8Rows, 6, 9, 0};
 constexpr uint32_t kUpNet8Rows[] = {
     0x00000010,
     0x00000038,
@@ -281,7 +251,7 @@ constexpr uint32_t kUpNet8Rows[] = {
     0x00000183,
     0x00000101,
 };
-constexpr Glyph kUpNet8{kUpNet8Rows, 9, 6};
+constexpr Glyph kUpNet8{kUpNet8Rows, 9, 6, 0};
 constexpr uint32_t kDownNet8Rows[] = {
     0x00000101,
     0x00000183,
@@ -290,5 +260,5 @@ constexpr uint32_t kDownNet8Rows[] = {
     0x00000038,
     0x00000010,
 };
-constexpr Glyph kDownNet8{kDownNet8Rows, 9, 6};
+constexpr Glyph kDownNet8{kDownNet8Rows, 9, 6, 0};
 }  // namespace inlineSymbolBitmaps

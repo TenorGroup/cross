@@ -1,6 +1,7 @@
 #include "ButtonSymbols.h"
 
 #include <I18n.h>
+#include <InlineSymbolBitmaps.h>
 
 #include <cstring>
 
@@ -57,12 +58,27 @@ SymbolBounds horizontalBounds(const char* label, const int net) {
   return {0, 0};
 }
 
+// Rows to move a key symbol from the centre of its own box to where the strip puts it: every symbol of the family
+// hangs from Back's top row (Down from the top edge of Back's shaft), y being the middle of Back's box.
+static int barShift(const Shape shape, const int net) {
+  using namespace inlineSymbolBitmaps;
+  const bool large = net >= 16;
+  const Glyph& back = large ? kBackNet18 : kBackNet14;
+  const Glyph* glyph = nullptr;
+  if (shape == Shape::Select) glyph = large ? &kSelectNet18 : &kSelectNet14;
+  if (shape == Shape::Up) glyph = large ? &kUpNet18 : &kUpNet14;
+  if (shape == Shape::Down) glyph = large ? &kDownNet18 : &kDownNet14;
+  if (shape == Shape::Left) glyph = large ? &kLeftNet18 : &kLeftNet14;
+  if (shape == Shape::Right) glyph = large ? &kRightNet18 : &kRightNet14;
+  return glyph ? glyph->top + glyph->height / 2 - back.height / 2 : 0;
+}
+
 bool drawLabel(const GfxRenderer& renderer, const char* label, int x, int y, const int net) {
   const int id = labelId(label);
   if (id < 0) return false;
   const auto spec = resolve(id);
   if (spec.label) return false;
-  inlineSymbols::drawShape(renderer, spec.shape, x, y, net, true);
+  inlineSymbols::drawShape(renderer, spec.shape, x, y + barShift(spec.shape, net), net, true);
   return true;
 }
 }  // namespace buttonSymbols

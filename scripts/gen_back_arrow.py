@@ -87,7 +87,12 @@ def read_bitmap(path):
     return width, height, bits
 
 
-def emit_glyph(name, width, height, bits):
+def shaft_top(bits, column=12):
+    """First row of Back's horizontal shaft, read where nothing but the shaft crosses the column."""
+    return next(y for y, row in enumerate(bits) if row[column])
+
+
+def emit_glyph(name, width, height, bits, top=0):
     assert 0 < width <= 32
     lines = [f'constexpr uint32_t k{name}Rows[] = {{']
     for row in bits:
@@ -97,7 +102,7 @@ def emit_glyph(name, width, height, bits):
                 value |= 1 << (width - 1 - x)
         lines.append(f'    0x{value:08X},')
     lines.append('};')
-    lines.append(f'constexpr Glyph k{name}{{k{name}Rows, {width}, {height}}};')
+    lines.append(f'constexpr Glyph k{name}{{k{name}Rows, {width}, {height}, {top}}};')
     return '\n'.join(lines)
 
 
@@ -118,6 +123,7 @@ def main():
         '  const uint32_t* rows;  // one entry per row, bit (width-1-x) set means ink',
         '  int width;',
         '  int height;',
+        '  int top;  // first row, counted from the top row of Back; the strip lines glyphs up on Back',
         '};',
         emit_glyph('BackNet14', *arrow14[:2], arrow14[2]),
         emit_glyph('BackNet18', *arrow18[:2], arrow18[2]),
@@ -127,7 +133,11 @@ def main():
     for direction in ('up', 'down', 'left', 'right'):
         for net in (14, 18):
             width, height, bits = read_bitmap(SOURCE_DIR / f'CHEV-{direction}-net{net}.png')
-            parts.append(emit_glyph(f'{direction.title()}Net{net}', width, height, bits))
+            # Down hangs from the top edge of Back's shaft to Back's bottom row; the others start on Back's top row.
+            back_bits = (arrow14 if net == 14 else arrow18)[2]
+            top = shaft_top(back_bits) if direction == 'down' else 0
+            assert top + height <= len(back_bits), direction
+            parts.append(emit_glyph(f'{direction.title()}Net{net}', width, height, bits, top))
     from gen_chevron8 import header_parts
     parts.extend(header_parts())
     parts.extend(['}  // namespace inlineSymbolBitmaps', ''])
