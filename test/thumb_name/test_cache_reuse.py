@@ -19,7 +19,7 @@ stubs = r'''
 #include "util/ThumbName.h"
 #include "TenorInk.h"
 int copies=0, decodes=0, writes=0, inkDecodes=0;
-struct HalFile { std::vector<unsigned char>* data=nullptr; void close() {} size_t size() const { return data?data->size():0; } };
+struct HalFile { std::vector<unsigned char>* data=nullptr; explicit operator bool() const { return data!=nullptr; } void close() {} size_t size() const { return data?data->size():0; } };
 struct Store {
   std::map<std::string,std::vector<unsigned char>> files;
   bool exists(const char* p) const { return files.count(p); }
