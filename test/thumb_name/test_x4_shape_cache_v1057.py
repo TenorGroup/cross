@@ -22,6 +22,8 @@ cpp=r'''
 #include <cstdio>
 #include "TenorInk.h"
 namespace tenorchrome { bool kTouchShell=true; }
+bool inkX3=false, gray=true;
+bool homeInkEnabled(){return tenorchrome::kTouchShell || inkX3;}
 struct HalFile { int w=0,h=0; };
 struct Store {
  std::map<std::string,std::pair<int,int>> files;
@@ -39,7 +41,7 @@ struct UITheme { struct Metrics {int homeCoverHeight=226;};static UITheme getIns
  static std::string getCoverThumbPath(std::string,int h){return "thumb2_"+std::to_string(h)+".bmp";}
  static std::string getCoverThumbPath(std::string,int w,int h){return "thumb2_"+std::to_string(w)+"x"+std::to_string(h)+".bmp";}
 };
-std::string touchCoverPath(const std::string& cover,int w,int h){return tenorink::cachePath(cover,w,h,true);}
+std::string touchCoverPath(const std::string& cover,int w,int h){return tenorink::cachePath(cover,w,h,gray);}
 struct Renderer {int exact=0,scaled=0;
  bool drawBitmap(Bitmap&,int,int,int,int){++exact;return true;}
  bool drawBitmapCover(Bitmap&,int,int,int,int){++scaled;return true;}
@@ -62,7 +64,12 @@ int main(){
  assert(Storage.opened==std::vector<std::string>{"ink2_4_232x350.bmp"});
  reset();tenorchrome::kTouchShell=false;Storage.files["thumb2_450.bmp"]={298,450};
  assert(draw());assert(renderer.scaled==1&&renderer.exact==0);
- puts("GREEN exact dimensions and 1:1 dispatch; old X4 cache ignored; X3 legacy fallback");
+ reset();inkX3=true;Storage.files["ink2_4_232x350.bmp"]={232,350};
+ assert(draw());assert(renderer.exact==1&&renderer.scaled==0);
+ reset();gray=false;Storage.files["ink2_1_232x350.bmp"]={232,350};
+ assert(draw());assert(renderer.exact==1&&renderer.scaled==0);
+ assert(Storage.opened==std::vector<std::string>{"ink2_1_232x350.bmp"});
+ puts("GREEN exact dimensions, X3 gray and mono caches, legacy button fallback");
 }
 '''.replace('@BODY@',body)
 with tempfile.TemporaryDirectory(prefix='home-shape-') as tmp:

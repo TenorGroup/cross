@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <cstdlib>
 #include <functional>
 #include <vector>
 
@@ -67,6 +68,11 @@
 #include "fontIds.h"
 
 namespace fui = freeink::ui;
+#if defined(FREEINK_DEVICE_X3) && FREEINK_DEVICE_X3
+static constexpr bool kInkX3 = true;
+#else
+static constexpr bool kInkX3 = false;
+#endif
 
 void saveAppState();  // main.cpp
 
@@ -954,6 +960,13 @@ void HomeActivity::render(RenderLock&&) {
   const uint32_t started = millis();
   clearHomeGray();
   inkSlotCount = 0;
+  const bool nextGray = homeGrayWanted();
+  if (kInkX3 && homeGraySelected != nextGray) {
+    freeCoverBuffer();
+    coverRendered = false;
+    touchThumbCount = 0;
+  }
+  homeGraySelected = nextGray;
   renderer.clearScreen();
   drawChrome();
 #ifdef TENOR_UI_ACCEPTANCE
@@ -985,8 +998,19 @@ void HomeActivity::render(RenderLock&&) {
   if (coverRedriveDue()) {
     renderer.redriveNextRefresh(HalDisplay::FAST_REFRESH);
   }
-  if (!showHomeGray())
+  const bool grayRequested = homeGraySelected;
+  if (!showHomeGray()) {
+    if (grayRequested && !homeGraySelected && kInkX3) {
+      homeGraySelected = false;
+      freeCoverBuffer();
+      coverRendered = false;
+      renderer.clearScreen();
+      drawChrome();
+      renderUi();
+      drawFooter();
+    }
     renderer.displayBuffer(cleanInitialRefresh ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
+  }
 #ifdef TENOR_UI_ACCEPTANCE
   const uint32_t displayUs = micros() - displayStartedUs;
   LOG_INF("HOME_PROBE", "frame_paint_us=%lu display_us=%lu total_us=%lu",
@@ -1885,9 +1909,14 @@ void HomeActivity::drawRecentCard() {
   cardThumbHeight = alignCover ? frame.coverH : HOME_CARD_COVER_H;
   heldCover = {static_cast<int16_t>(frame.coverX), static_cast<int16_t>(frame.coverY), static_cast<int16_t>(frame.coverW),
                static_cast<int16_t>(frame.coverH)};
+  if (kInkX3 && homeInkEnabled()) {
+    cardThumbWidth = frame.coverW;
+    cardThumbHeight = frame.coverH;
+  }
   if (homeInkEnabled()) {
     inkSlotCount = 1;
     inkSlots[0] = {{frame.coverX, frame.coverY, frame.coverW, frame.coverH}, shown};
+    LOG_INF("HOME", "tenor/ink frame cover=%d,%d,%d,%d", frame.coverX, frame.coverY, frame.coverW, frame.coverH);
   }
   const auto& book = recentBooks[shown];
   const auto title = book.title.empty() ? book.path.substr(book.path.find_last_of('/') + 1) : book.title;
@@ -1952,7 +1981,7 @@ void HomeActivity::drawRecentCard() {
   // line count do not move the cover), so the keys say whether a card file still shows this card,
   // or at least its cover.
   const std::string thumbPath = book.coverBmpPath.empty() ? std::string()
-      : (tenorchrome::kTouchShell ? touchCoverPath(book.coverBmpPath, cardThumbWidth, cardThumbHeight)
+      : (homeInkEnabled() ? touchCoverPath(book.coverBmpPath, cardThumbWidth, cardThumbHeight)
                                   : UITheme::getCoverThumbPath(book.coverBmpPath, cardThumbHeight));
   const int16_t geometry[] = {static_cast<int16_t>(frame.coverX), static_cast<int16_t>(frame.coverY),
                               static_cast<int16_t>(frame.coverW), static_cast<int16_t>(frame.coverH),
@@ -2015,11 +2044,11 @@ void HomeActivity::drawRecentCard() {
   bool image = coverKept;
   if (!coverKept) cardFileThumb = 0;
   const int fallbackHeights[] = {cardThumbHeight, HOME_CARD_COVER_H, UITheme::getInstance().getMetrics().homeCoverHeight};
-  for (int attempt = 0; attempt < (tenorchrome::kTouchShell ? 1 : 3); ++attempt) {
+  for (int attempt = 0; attempt < (homeInkEnabled() ? 1 : 3); ++attempt) {
     const int height = fallbackHeights[attempt];
     if (image || book.coverBmpPath.empty()) break;
     HalFile file;
-    const auto path = (tenorchrome::kTouchShell && attempt == 0)
+    const auto path = (homeInkEnabled() && attempt == 0)
                           ? touchCoverPath(book.coverBmpPath, cardThumbWidth, height)
                           : UITheme::getCoverThumbPath(book.coverBmpPath, height);
     if (!Storage.openFileForRead("HOME", path, file)) continue;
@@ -2030,7 +2059,7 @@ void HomeActivity::drawRecentCard() {
     const uint32_t coverStarted = millis();
 #endif
     if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0) {
-      if (tenorchrome::kTouchShell && attempt == 0) {
+      if (homeInkEnabled() && attempt == 0) {
         image = bitmap.getWidth() == card.coverW && bitmap.getHeight() == card.coverH &&
                 renderer.drawBitmap(bitmap, card.coverX, card.coverY, card.coverW, card.coverH);
         if (!image) cardFileThumb = 0;
@@ -2166,7 +2195,7 @@ HomeActivity::CardFile HomeActivity::loadCardFile(const std::string& path, const
 }
 
 void HomeActivity::wantThumb(const int index) {
-  if (tenorchrome::kTouchShell) {
+  if (homeInkEnabled()) {
     queueTouchThumb(index, cardThumbWidth, cardThumbHeight);
     return;
   }
@@ -2198,7 +2227,7 @@ void HomeActivity::onTick() {
 void HomeActivity::writeMissingThumb(const int index) {
   RenderLock lock(*this);
   if (activeTabId != Tab::RECENT || index != shownRecent()) return;
-  if (tenorchrome::kTouchShell) {
+  if (homeInkEnabled()) {
     const auto requests = touchThumbs;
     const int count = touchThumbCount;
     touchThumbCount = 0;
@@ -2207,8 +2236,8 @@ void HomeActivity::writeMissingThumb(const int index) {
     for (int slot = 0; slot < count; ++slot) {
       const auto& q = requests[slot];
       const auto& path = recentBooks[q.book].path;
-      thumbTried[thumbTriedNext++ % 5] = fnv(fnv(fnv(2166136261u, path), &q.width, sizeof(q.width)),
-                                           &q.height, sizeof(q.height));
+      thumbTried[thumbTriedNext++ % 5] = fnv(fnv(fnv(fnv(2166136261u, path), &q.width, sizeof(q.width)),
+                                               &q.height, sizeof(q.height)), &homeGraySelected, sizeof(homeGraySelected));
       Epub epub(path, "/.crosspoint");
       std::string href;
       const bool ref = coverref::load(epub.getCachePath(), href);
@@ -2217,7 +2246,7 @@ void HomeActivity::writeMissingThumb(const int index) {
       const uint32_t started = millis();
       if (ref || epub.load(false, true)) {
         epub.generateThumbBmps(ref ? href : epub.getCoverHref(), &q.width, &q.height, 1,
-                               homeInkEnabled(), homeGrayWanted());
+                               homeInkEnabled(), homeGraySelected);
       }
       LOG_INF("HOME", "Home thumb book=%d size=%dx%d ms=%lu", q.book, q.width, q.height,
               static_cast<unsigned long>(millis() - started));
@@ -2278,7 +2307,8 @@ HomeRecentLayout HomeActivity::recentLayout() {
 
 void HomeActivity::queueTouchThumb(const int index, const int width, const int height) {
   if (!FsHelpers::hasEpubExtension(recentBooks[index].path)) return;
-  const uint32_t id = fnv(fnv(fnv(2166136261u, recentBooks[index].path), &width, sizeof(width)), &height, sizeof(height));
+  const uint32_t id = fnv(fnv(fnv(fnv(2166136261u, recentBooks[index].path), &width, sizeof(width)),
+                              &height, sizeof(height)), &homeGraySelected, sizeof(homeGraySelected));
   for (const auto tried : thumbTried) if (tried == id) return;
   for (int slot = 0; slot < touchThumbCount; ++slot)
     if (touchThumbs[slot].book == index) return;
@@ -2291,17 +2321,24 @@ void HomeActivity::queueTouchThumb(const int index, const int width, const int h
 }
 
 bool HomeActivity::homeInkEnabled() const {
-  return tenorchrome::kTouchShell && !shell::isUgly() && HalMemory::getPsramHeap().totalBytes > 0;
+  return !shell::isUgly() && ((tenorchrome::kTouchShell && HalMemory::getPsramHeap().totalBytes > 0) ||
+                              (kInkX3 && tenorchrome::x3ScreenLayoutEnabled()));
 }
 
 bool HomeActivity::homeGrayWanted() const {
+  auto heap = HalMemory::getDefaultHeap();
+#ifdef SIMULATOR
+  if (std::getenv("CROSSPOINT_SIM_INK_GRAY_FAIL")) heap.largestBlockBytes = 8179;
+#endif
   return tenorink::homeGray(tenorchrome::kTouchShell, HalMemory::getPsramHeap().totalBytes > 0,
                             activeTabId == Tab::RECENT, shell::isUgly(),
-                            renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported());
+                            renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported(),
+                            TENOR_INK_HOME_LEVELS, kInkX3 && tenorchrome::x3ScreenLayoutEnabled(),
+                            heap.freeBytes, heap.largestBlockBytes);
 }
 
 std::string HomeActivity::touchCoverPath(const std::string& cover, int width, int height) const {
-  return homeInkEnabled() ? tenorink::cachePath(cover, width, height, homeGrayWanted())
+  return homeInkEnabled() ? tenorink::cachePath(cover, width, height, homeGraySelected)
                           : UITheme::getCoverThumbPath(cover, width, height);
 }
 
@@ -2314,7 +2351,7 @@ void HomeActivity::clearHomeGray() {
 }
 
 bool HomeActivity::showHomeGray() {
-  if (!homeGrayWanted() || inkSlotCount == 0) return false;
+  if (!homeGraySelected || inkSlotCount == 0) return false;
   std::array<bool, 4> present{};
   int found = 0;
   for (int i = 0; i < inkSlotCount; ++i) {
@@ -2328,6 +2365,53 @@ bool HomeActivity::showHomeGray() {
     if (present[i]) ++found;
   }
   if (!found) return false;
+  if (kInkX3) {
+    constexpr int stripRows = 120;
+    const int rowBytes = renderer.getDisplayWidthBytes();
+    const size_t bytes = size_t(rowBytes) * stripRows;
+    // Recheck immediately before allocation, then keep the same floor after it.
+    const auto before = HalMemory::getDefaultHeap();
+    if (!tenorink::homeHeapFits(before.freeBytes, before.largestBlockBytes, bytes)) { homeGraySelected = false; return false; }
+    auto scratch = makeUniqueNoThrow<uint8_t[]>(bytes);
+    const auto after = HalMemory::getDefaultHeap();
+    if (!scratch || !tenorink::homeHeapFits(after.freeBytes, after.largestBlockBytes)) { homeGraySelected = false; return false; }
+    const uint32_t started = millis();
+    if (!renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute,
+                                      cleanInitialRefresh ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH)) {
+      homeGraySelected = false;
+      return false;
+    }
+    bool ready = true;
+    for (const auto plane : {GfxRenderer::GRAYSCALE_LSB, GfxRenderer::GRAYSCALE_MSB}) {
+      renderer.setRenderMode(plane);
+      for (int y = 0; y < renderer.getDisplayHeight() && ready; y += stripRows) {
+        const int rows = std::min(stripRows, int(renderer.getDisplayHeight()) - y);
+        std::memcpy(scratch.get(), renderer.getFrameBuffer() + size_t(y) * rowBytes, size_t(rows) * rowBytes);
+        renderer.beginStripTarget(scratch.get(), y, rows);
+        for (int i = 0; i < inkSlotCount; ++i) {
+          if (!present[i]) continue;
+          const auto& slot = inkSlots[i];
+          const auto& r = slot.rect;
+          auto file = Storage.open(touchCoverPath(recentBooks[slot.book].coverBmpPath, r.w, r.h).c_str());
+          Bitmap bitmap(file);
+          if (!file || bitmap.parseHeaders() != BmpReaderError::Ok ||
+              !renderer.drawBitmap(bitmap, r.x, r.y, r.w, r.h)) { ready = false; break; }
+          homeCoverCorners(renderer, r.x, r.y, r.w, r.h);
+        }
+        renderer.endStripTarget();
+        if (ready) renderer.writeGrayscalePlaneStrip(plane == GfxRenderer::GRAYSCALE_LSB, scratch.get(), y, rows);
+      }
+      if (!ready) break;
+    }
+    if (ready) renderer.displayGrayBuffer();
+    renderer.setRenderMode(GfxRenderer::BW);
+    if (!ready) renderer.cleanupGrayscaleWithFrameBuffer();
+    homeGrayOnGlass = ready;
+    if (!ready) homeGraySelected = false;
+    LOG_INF("HOME", "tenor/ink gray covers=%d ready=%u ms=%lu internal_scratch=%u", found, ready ? 1u : 0u,
+            static_cast<unsigned long>(millis() - started), static_cast<unsigned>(bytes));
+    return ready;
+  }
   const size_t bytes = renderer.getBufferSize();
   auto bw = HalMemory::allocatePsram(bytes);
   if (!bw) return false;

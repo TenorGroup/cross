@@ -274,6 +274,7 @@ class HomeActivity final : public UiTabListActivity {
   bool showHomeGray();
   void clearHomeGray();
   bool homeGrayOnGlass = false;
+  bool homeGraySelected = false;
   struct InkSlot { HomeRecentRect rect; int book = -1; };
   std::array<InkSlot, 4> inkSlots{};
   int inkSlotCount = 0;

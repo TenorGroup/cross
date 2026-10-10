@@ -1,6 +1,7 @@
 add_executable(PngBmpAllocationTest
   PngBmpAllocationTest.cpp
   ${REPO_ROOT}/lib/GfxRenderer/BitmapHelpers.cpp
+  ${REPO_ROOT}/lib/JpegToBmpConverter/TenorInk.cpp
   ${REPO_ROOT}/lib/miniz/src/miniz_impl.c
   ${REPO_ROOT}/lib/Memory/BuildScratch.cpp
   ${REPO_ROOT}/lib/hal/HalMemory.cpp

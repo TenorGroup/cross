@@ -6,7 +6,9 @@
 // The heap a test sets: the decoders and GrayThumb::start() check it before taking buffers.
 struct EspClass {
   uint32_t freeHeap = 200000;
+  uint32_t largestHeap = 200000;
   uint32_t getFreeHeap() { return freeHeap; }
+  uint32_t getMaxAllocHeap() { return largestHeap; }
 };
 extern EspClass ESP;
 inline unsigned long millis() { return 0; }

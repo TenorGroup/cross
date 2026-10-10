@@ -16,6 +16,7 @@
 
 #include "BitmapHelpers.h"
 #include "MinizConfig.h"
+#include "../../lib/JpegToBmpConverter/TenorInk.h"
 
 namespace {
 std::array<void*, 32> arrayAllocations{};
@@ -94,10 +95,17 @@ void operator delete[](void* ptr, size_t) noexcept { operator delete[](ptr); }
 #define calloc testCalloc
 #define free testFree
 #include "../../lib/miniz/src/InflateStream.cpp"
+#define writeBmpHeader1bit pngHeader1bit
+#define writeBmpHeader2bit pngHeader2bit
 #include "../../lib/PngToBmpConverter/PngToBmpConverter.cpp"
+#undef writeBmpHeader1bit
+#undef writeBmpHeader2bit
 #undef free
 #undef calloc
 #undef malloc
+
+void writeBmpHeader1bit(Print& out, int w, int h) { pngHeader1bit(out, w, h); }
+void writeBmpHeader2bit(Print& out, int w, int h) { pngHeader2bit(out, w, h); }
 
 namespace {
 // Valid grayscale PNG, 6x4, each row [0, 0, 255, 255, 0, 255].
@@ -188,5 +196,38 @@ int main() {
     return 1;
   }
   std::puts("PASS: exact 4x3 Home PNG dimensions");
+  std::array<uint8_t, 24> gray{};
+  for (size_t y = 0; y < 4; ++y)
+    for (size_t x = 0; x < 6; ++x) gray[y * 6 + x] = (x == 2 || x == 3 || x == 5) ? 255 : 0;
+  for (bool four : {true, false}) {
+    Output expected, streamed;
+    arrayCalls = 0;
+    HalFile input(PNG, sizeof(PNG));
+    if (!PngToBmpConverter::pngFileToInkBmpStream(input, streamed, 4, 3, four) || !noLeaks()) {
+      std::puts("FAIL: tenor/ink PNG streaming or allocation cleanup");
+      return 1;
+    }
+    const size_t inkCalls = arrayCalls;
+    if (!tenorink::writeCover(gray.data(), 6, 4, expected, 4, 3, four) ||
+        expected.size != streamed.size || expected.bytes != streamed.bytes || !noLeaks()) {
+      std::puts("FAIL: tenor/ink PNG differs from the shared array kernel");
+      return 1;
+    }
+    for (size_t call = 0; call < inkCalls; ++call) {
+      arrayCalls = 0;
+      failArrayCall = call;
+      failureInjected = false;
+      HalFile retry(PNG, sizeof(PNG));
+      Output rejected;
+      const bool ok = PngToBmpConverter::pngFileToInkBmpStream(retry, rejected, 4, 3, four);
+      failArrayCall = NO_FAILURE;
+      if (!failureInjected || ok || !noLeaks()) {
+        std::puts("FAIL: tenor/ink PNG allocation failure did not unwind cleanly");
+        return 1;
+      }
+    }
+    std::printf("PASS: tenor/ink PNG levels=%d, shared kernel parity, %zu clean allocation failures\n",
+                four ? 4 : 1, inkCalls);
+  }
   return 0;
 }

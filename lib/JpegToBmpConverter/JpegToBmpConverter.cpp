@@ -17,6 +17,7 @@
 #include "GrayThumb.h"
 #include "JpegScale.h"
 #include "TenorInk.h"
+#include "InkMemory.h"
 #include "ProgressiveJpeg.h"
 #ifdef BOARD_HAS_PSRAM
 #include <HalMemory.h>
@@ -539,8 +540,49 @@ bool JpegToBmpConverter::jpegFileToInkBmpStream(HalFile& file, Print& out, int w
           static_cast<unsigned>(bytes), progressive ? 1u : 0u);
   return decoded && tenorink::writeCover(gray.get(), dw, dh, out, width, height, four);
 #else
-  (void)file; (void)out; (void)width; (void)height; (void)four;
-  return false;
+  s_jpegFile = &file;
+  auto jpeg = tenorink::internal<JPEGDEC>(sizeof(JPEGDEC));
+  struct Capture {
+    tenorink::CoverStream* stream;
+    uint8_t* rows;
+    int w, h;
+    uint8_t blocksSinceYield = 0;
+  };
+  const auto capture = [](JPEGDRAW* block) -> int {
+    auto& c = *static_cast<Capture*>(block->pUser);
+    if (block->x < 0 || block->y < 0 || block->x >= c.w || block->y >= c.h ||
+        block->iHeight > MAX_MCU_HEIGHT) return 0;
+    const int n = std::min(block->iWidthUsed, c.w - block->x);
+    const auto* pixels = reinterpret_cast<const uint8_t*>(block->pPixels);
+    for (int y = 0; y < block->iHeight; ++y)
+      std::memcpy(c.rows + y * c.w + block->x, pixels + y * block->iWidth, n);
+    yieldDuringDecodeBlock(c.blocksSinceYield);
+    if (block->x + n < c.w) return 1;
+    for (int y = 0; y < block->iHeight && block->y + y < c.h; ++y)
+      if (!c.stream->push(c.rows + y * c.w, block->y + y)) return 0;
+    return 1;
+  };
+  if (!jpeg || jpeg->open("", bmpJpegOpen, bmpJpegClose, bmpJpegRead, bmpJpegSeek, capture) != 1) return false;
+  const ScopedCleanup cleanup{[&]() { jpeg->close(); }};
+  const int sw = jpeg->getWidth(), sh = jpeg->getHeight();
+  if (sw <= 0 || sh <= 0 || sw > MAX_IMAGE_WIDTH || sh > MAX_IMAGE_HEIGHT) return false;
+  const bool progressive = jpeg->getJPEGType() == JPEG_MODE_PROGRESSIVE;
+  const int scale = progressive ? 8 : 1;
+  const int dw = (sw + scale - 1) / scale, dh = (sh + scale - 1) / scale;
+  auto rows = tenorink::internal<uint8_t[]>(MAX_MCU_HEIGHT * dw, MAX_MCU_HEIGHT * dw);
+  tenorink::CoverStream stream(dw, dh, out, width, height, four);
+  if (!rows || !stream.valid()) return false;
+#if defined(ESP_PLATFORM)
+  if (!tenorink::homeHeapFits(ESP.getFreeHeap(), ESP.getMaxAllocHeap())) return false;
+#endif
+  Capture c{&stream, rows.get(), dw, dh};
+  jpeg->setPixelType(EIGHT_BIT_GRAYSCALE);
+  jpeg->setUserPointer(&c);
+  const bool decoded = jpeg->decode(0, 0, progressive ? JPEG_SCALE_EIGHTH : 0) == 1;
+  LOG_INF("JPG", "tenor/ink stream source=%dx%d grid=%dx%d mcu=%u decoder=%u progressive=%u",
+          sw, sh, dw, dh, static_cast<unsigned>(MAX_MCU_HEIGHT * dw),
+          static_cast<unsigned>(sizeof(JPEGDEC)), progressive ? 1u : 0u);
+  return decoded && stream.complete();
 #endif
 }
 

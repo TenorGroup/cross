@@ -3,6 +3,7 @@ set(JPEGDEC_SRC "${REPO_ROOT}/.pio/libdeps/gh_release/JPEGDEC/src")
 add_executable(CoverJpegDecodeTest
   CoverJpegDecodeTest.cpp
   ${REPO_ROOT}/lib/JpegToBmpConverter/JpegToBmpConverter.cpp
+  ${REPO_ROOT}/lib/JpegToBmpConverter/TenorInk.cpp
   ${REPO_ROOT}/lib/JpegToBmpConverter/GrayThumb.cpp
   ${REPO_ROOT}/lib/GfxRenderer/BitmapHelpers.cpp
   ${JPEGDEC_SRC}/JPEGDEC.cpp
