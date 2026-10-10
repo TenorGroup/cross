@@ -152,7 +152,7 @@ fui::Rect ReaderToolbarUi::sheetRect(const fui::Rect& bounds, const int16_t heig
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   const auto span = tenorchrome::frameSpan(*renderer_);
   return {static_cast<int16_t>(span.x),
-          static_cast<int16_t>(tenorchrome::footBackTop(bounds.height) - 12 - height),
+          static_cast<int16_t>(tenorchrome::footBackTop(bounds.height) - tenorchrome::FRAME_TO_BAR_GAP - height),
           static_cast<int16_t>(span.width), height};
 #else
   return {bounds.x, static_cast<int16_t>(bounds.bottom() - height), bounds.width, height};
@@ -720,15 +720,14 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_.chosenMark = fui::bitmapFromIcon(icon_reader_tick_24);
     switchShapes(listProps_);
     listProps_.partialTrailingRow = fonts;
-    // Keep the existing text width; the shared page scrollbar is outside the frame.
-    constexpr int16_t kBarStrip = 12;
+    // The shared page scrollbar stands outside the frame, so the rows take the frame's whole width, as every list's do.
     listProps_.scrollIndicator = false;
     listProps_.rowStyles = fui::defaultListRowStyles();
     nav_.selected = std::clamp(model_.selectedIndex, -1, count - 1);
     nav_.followOnBuild = nav_.selected >= 0;
     nav_.followPending = false;
     nav_.syncToProps(listRect, 62, 0, count, listProps_);
-    const int16_t labelRoom = static_cast<int16_t>(listRect.width - kBarStrip - 2 * listProps_.sidePadding);
+    const int16_t labelRoom = static_cast<int16_t>(listRect.width - 2 * listProps_.sidePadding);
     const int windowCount = std::min({nav_.visibleRows + (fonts ? 1 : 0), count - nav_.top, kMaxWindow});
     for (int i = 0; i < windowCount; ++i) {
       const int index = nav_.top + i;
@@ -773,8 +772,7 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_.itemsWindowFirst = static_cast<uint16_t>(nav_.top);
     listProps_.itemsWindowCount = static_cast<uint16_t>(std::max(0, windowCount));
     if (count > 0) {
-      const fui::Rect rowsRect{listRect.x, listRect.y, static_cast<int16_t>(listRect.width - kBarStrip),
-                               listRect.height};
+      const fui::Rect rowsRect = listRect;
       fadeRight_ = rowsRect.right();
       fui::list(screen.frame(), rowsRect, listProps_);
       if (fonts && windowCount > nav_.visibleRows) {
@@ -791,8 +789,6 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     if (model_.rowPinned && renderer_ && uiTarget.paintingEnabled()) {
       // The heart stands before the value (and the chevron), inside the frame; on the size row, before its "-".
       const int16_t lh = screen.target().lineHeight(listProps_.labelText.font);
-      const int chevron = fui::listChevronWidth(fui::listChevronSpan(lh)) + listProps_.textGap;
-      const int strip = kBarStrip;
       for (int i = 0; i < std::min(nav_.visibleRows, windowCount); ++i) {
         const int index = nav_.top + i;
         if (!model_.rowPinned(index)) continue;
@@ -852,7 +848,7 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
         constexpr int16_t kStepperRingWidth = 52;
         constexpr int16_t kStepperRingHeight = 44;
         constexpr int16_t kStepperRingAir = 8;
-        const int16_t ringRight = static_cast<int16_t>(listRect.right() - kBarStrip - kStepperRingAir);
+        const int16_t ringRight = static_cast<int16_t>(listRect.right() - kStepperRingAir);
         const auto ringRect = [&](const fui::Rect& touchRect) {
           const int16_t centeredX = static_cast<int16_t>(touchRect.x + (touchRect.width - kStepperRingWidth) / 2);
           const int16_t x = std::min(centeredX, static_cast<int16_t>(ringRight - kStepperRingWidth));
@@ -892,8 +888,9 @@ void ReaderToolbarUi::buildX4Spacing(UiScreen& screen, const fui::Rect& frame) {
     fui::TextStyle style = tokens.smallText;
     style.bold = i == model_.spacingPlace;
     style.align = fui::TextAlign::Center;
-    style.maxLines = 2;
-    if (model_.spacingLabel) screen.target().text({static_cast<int16_t>(x - 44), static_cast<int16_t>(y + 24), 88, 100}, model_.spacingLabel(i), style);
+    style.maxLines = 3;
+    // A label is as wide as the ruler's step (58 px) less the air, so a label that is long wraps under its mark and no 2 touch.
+    if (model_.spacingLabel) screen.target().text({static_cast<int16_t>(x - 28), static_cast<int16_t>(y + 24), 56, 100}, model_.spacingLabel(i), style);
   }
   const int16_t knobX = static_cast<int16_t>(left + (width - 1) * std::clamp(model_.spacingDraftPermille, 0, 1000) / 1000);
   screen.target().fill({static_cast<int16_t>(knobX - 10), static_cast<int16_t>(y - 9), 20, 20}, ink, 10);

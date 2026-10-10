@@ -492,8 +492,8 @@ void tenorchrome::noteReaderFootBar(const bool open, const bool keypad, const in
 }
 #endif
 
-void tenorchrome::clearFootBand(const GfxRenderer& r) {
-  const int top = footBackTop(r.getScreenHeight()) - 12;
+void tenorchrome::clearFootBand(const GfxRenderer& r, const int air) {
+  const int top = footBackTop(r.getScreenHeight()) - air;
   r.fillRect(0, top, r.getScreenWidth(), r.getScreenHeight() - top, false);
 }
 
@@ -504,7 +504,7 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
   if (reader) {
     bar = FootBar::BackOnly;
     // The reader owns this band while its menu is open, including the page's status footer.
-    clearFootBand(r);
+    clearFootBand(r, FRAME_TO_BAR_GAP);
   }
 #endif
   if (bar != FootBar::Full && bar != FootBar::BackOnly) return;

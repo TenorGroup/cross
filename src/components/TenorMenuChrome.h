@@ -65,7 +65,9 @@ inline TouchBarRect touchTabBarRect(const int screenWidth, const int screenHeigh
           screenWidth - 2 * FOOT_BACK_X, FOOT_BACK_SIZE};
 }
 inline int footBackTop(const int screenHeight) { return touchTabBarRect(2 * FOOT_BACK_X, screenHeight).y; }
-inline int footBackReserve() { return TOUCH_BAR_BOTTOM_GAP + FOOT_BACK_SIZE + 8; }
+// The air between the foot of a frame (a list's, the reader menu's sheet) and the dynamic bar under it.
+constexpr int FRAME_TO_BAR_GAP = 8;
+inline int footBackReserve() { return TOUCH_BAR_BOTTOM_GAP + FOOT_BACK_SIZE + FRAME_TO_BAR_GAP; }
 // The bottom margin of a screen that lays itself out: the dynamic bar's band on touch, the hints elsewhere.
 inline int footReserve(const int buttonHintsHeight) { return kTouchShell ? footBackReserve() : buttonHintsHeight; }
 // The title a screen's header names, kept for the bar's name pill (the touch shell draws no title row).
@@ -81,7 +83,9 @@ bool bluetoothBlinkDue();
 void drawFootBar(const GfxRenderer& renderer, FootBar bar, Zone zone);
 // A screen laid over a book's page clears the band of the bar first, so "<" stands on white, not on the
 // page's last line.
-void clearFootBand(const GfxRenderer& renderer);
+// `air` px of the page above the bar are cleared with it: 12 for a screen laid over the page, FRAME_TO_BAR_GAP for the reader
+// menu, whose frames end that far over the bar.
+void clearFootBand(const GfxRenderer& renderer, int air = 12);
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
 // Reader view data for the existing pre-display hook. The reader owns its depth and drafts.
 void noteReaderFootBar(bool open, bool keypad, int activeTool);
