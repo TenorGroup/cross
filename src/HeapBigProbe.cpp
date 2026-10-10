@@ -51,10 +51,12 @@ DRAM_ATTR portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 // beyond a critical section, no allocation, no logging.
 IRAM_ATTR void note(const size_t size, const uint32_t caps, const void* result) {
   const bool isr = xPortInIsrContext();
-  const char* name = isr ? "isr" : pcTaskGetName(nullptr);
-  const bool radioTask = !isr && heapbig::radioTaskName(name);
+  // Before the scheduler runs there is no task to name (pcTaskGetName asserts).
+  const bool early = xTaskGetSchedulerState() == taskSCHEDULER_NOT_STARTED;
+  const char* name = isr ? "isr" : early ? "boot" : pcTaskGetName(nullptr);
+  const bool radioTask = !isr && !early && heapbig::radioTaskName(name);
   const TaskHandle_t holder = stripTask;
-  const bool inStrip = !isr && holder != nullptr && xTaskGetCurrentTaskHandle() != holder;
+  const bool inStrip = !isr && !early && holder != nullptr && xTaskGetCurrentTaskHandle() != holder;
   const bool keep = heapbig::record(size, inStrip, result != nullptr);
   if (!radioTask && !keep) return;
   // The heap after a big allocation, read outside the critical section and never from an ISR.
