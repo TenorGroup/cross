@@ -46,6 +46,8 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   void rebuildRows();
   void paintUglyMenu();
   freeink::ui::Rect skinTab_{}, skinProgress_{}, skinHint_{};
+  freeink::ui::TextStyle pinLabelStyle_{};
+  int16_t pinTextPad_ = 0;
 
   // --- UiTabListActivity contract ---
   int tabCount() const override {
@@ -61,6 +63,7 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   void buildScreen(UiScreen& screen) override;
   bool ownsX3Chrome() const override { return true; }
   tenorchrome::X3ScreenLayout screenLayout() const;
+  bool infoOverBar() const;
   std::string progressText() const;
   void drawX3Content() const;
   void activateIndex(int index) override;
@@ -71,6 +74,9 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   bool handleButtons() override;
   bool allowsTiltTabNavigation() const override { return !optionPopup.isActive(); }
   bool rowIsPinned(int row) const override;
+  bool pinMarkAfterName() const override { return framedByDesign(); }
+  void drawPinMarks() override;
+  bool framedOnButtons() const override { return true; }
   // Giu cap nut di-dong: trong tab Yeu thich thi day dong dang chon di mot bac.
   bool giuNutDiDong(int huong) override;
   // Header via GUI.drawHeader inside the safe area for the battery indicator.

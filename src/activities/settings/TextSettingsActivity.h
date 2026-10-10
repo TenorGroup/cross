@@ -79,6 +79,7 @@ class TextSettingsActivity final : public UiTabListActivity {
   void pollTilt() override;
   int favoriteSelectedRow() override;
   bool allowsTiltTabNavigation() const override { return !optionPopup_.isActive(); }
+  bool framedOnButtons() const override { return true; }
   ugly::QuestionSheet form_;
   struct FormEvent {
     enum class Type : uint8_t { Key, Tap, Hold, Pin, Strike } type = Type::Key;

@@ -20,6 +20,7 @@
 #include "SdCardFontSystem.h"
 #include "activities/settings/SettingsTabs.h"
 #include "components/TenorMenuChrome.h"
+#include "components/UIScale.h"
 #include "components/SettledListRender.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -524,8 +525,8 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
 
   // Progress summary under the tab band.
   const auto progressLine = progressText();
-  const fui::Rect band = screen.takeTop(
-      static_cast<int16_t>(x3 ? tenorchrome::tipHeight(renderer, progressLine.c_str()) : metrics.tabBarHeight));
+  const fui::Rect band = screen.takeTop(static_cast<int16_t>(
+      x3 ? (infoOverBar() ? 0 : tenorchrome::tipHeight(renderer, progressLine.c_str())) : metrics.tabBarHeight));
   skinProgress_ = band;
   const int16_t pad = screen.theme().headerSidePadding;
   if (x3)
@@ -571,15 +572,21 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
   if (!x3 && activeTabId == MenuTab::FAVORITES)
     skinHint_ = screen.takeBottom(static_cast<int16_t>(tenorchrome::tipHeight(renderer, tr(STR_FAVORITES_HINT), 4)));
   syncTabListViewport(screen, props);
+  pinLabelStyle_ = props.labelText;
+  pinTextPad_ = screen.resolveListProps(props).sidePadding;
   screen.list(props);
 
   if (!x3 && activeTabId == MenuTab::FAVORITES && !shell::isUgly())
     tenorchrome::drawTip(renderer, tr(STR_FAVORITES_HINT), 0, 4);
 }
 
+// The progress line stands over the bar, where the tips stand (the X3's bottom layout); tenor/ugly keeps it at the top.
+bool EpubReaderMenuActivity::infoOverBar() const { return tenorchrome::x3ScreenLayoutEnabled() && !shell::uglyParts(); }
+
 tenorchrome::X3ScreenLayout EpubReaderMenuActivity::screenLayout() const {
   return tenorchrome::x3ScreenLayout(
-      renderer, activeTabId == MenuTab::FAVORITES ? tenorchrome::tipHeight(renderer, tr(STR_FAVORITES_HINT), 4) : 0);
+      renderer, activeTabId == MenuTab::FAVORITES ? tenorchrome::tipHeight(renderer, tr(STR_FAVORITES_HINT), 4) : 0,
+      infoOverBar() ? tenorchrome::tipHeight(renderer, progressText().c_str(), 1) : 0);
 }
 
 std::string EpubReaderMenuActivity::progressText() const {
@@ -595,6 +602,15 @@ std::string EpubReaderMenuActivity::progressText() const {
 void EpubReaderMenuActivity::drawX3Content() const {
   const auto layout = screenLayout();
   const auto text = progressText();
+  if (infoOverBar()) {
+    const int infoHeight = tenorchrome::tipHeight(renderer, text.c_str(), 1);
+    auto tips = layout.tipRect;
+    tenorchrome::drawInfoInRect(renderer, text.c_str(), {tips.x, tips.y, tips.width, static_cast<int16_t>(infoHeight)}, 1);
+    tips.y = static_cast<int16_t>(tips.y + infoHeight);
+    tips.height = static_cast<int16_t>(tips.height - infoHeight);
+    if (activeTabId == MenuTab::FAVORITES) tenorchrome::drawTipInRect(renderer, tr(STR_FAVORITES_HINT), tips, 4);
+    return;
+  }
   tenorchrome::drawInfoInRect(renderer, text.c_str(), layout.bodyRect);
   if (activeTabId == MenuTab::FAVORITES)
     tenorchrome::drawTipInRect(renderer, tr(STR_FAVORITES_HINT), layout.tipRect, 4);
@@ -631,6 +647,19 @@ void EpubReaderMenuActivity::render(RenderLock&&) {
   if (handwritten) paintUglyMenu();
   drawFooter();
   renderer.displayBuffer();
+}
+
+// The pinned rows' heart stands right after the row's name, as in the toolbar panels (one mark, one place).
+void EpubReaderMenuActivity::drawPinMarks() {
+  if (!uiTarget.paintingEnabled()) return;
+  const int lineHeight = uiTarget.lineHeight(pinLabelStyle_.font);
+  for (int row = activeNav().top; row < rowCount; ++row) {
+    const auto box = app.publishedRect(ACTION_ROW, row);
+    if (box.empty() || !rowIsPinned(row)) continue;
+    const int width = uiTarget.measureText(pinLabelStyle_.font, menuRowItems[row].label, pinLabelStyle_).width;
+    tenorchrome::drawFavoriteMark(renderer, box.x + pinTextPad_ + width + 4, uiScaleSpec().bodyFontId,
+                                  box.y + (box.height - lineHeight) / 2);
+  }
 }
 
 bool EpubReaderMenuActivity::rowIsPinned(int row) const {

@@ -46,6 +46,7 @@ class EpubReaderChapterSelectionActivity final : public UiListActivity {
   }
   void buildScreen(UiScreen& screen) override;
   bool ownsX3Chrome() const override { return true; }
+  bool framedOnButtons() const override { return true; }
   tenorchrome::X3ScreenLayout screenLayout() const;
   void drawX3Content() const;
   void activateIndex(int index) override;

@@ -393,7 +393,7 @@ void UiListActivity::setPageScrollRegion(const int top, const int bottom, const 
 }
 
 void UiListActivity::measurePageScrollbar(UiScreen& screen, const fui::ListProps& props) {
-  if (!tenorchrome::kTouchShell) {
+  if (!tenorchrome::kTouchShell && !rowsFramed) {
     const int height = screen.body().height;
     const int rows = std::max(1, activeNav().pageRowsFor(listCount()));
     setPageScrollRegion(screen.body().y, screen.body().bottom(), listCount() * height / rows,
@@ -401,7 +401,7 @@ void UiListActivity::measurePageScrollbar(UiScreen& screen, const fui::ListProps
     return;
   }
   if (!rowsFramed || shell::isUgly()) return;
-  const auto lines = rowFrameLines(rowFrameGap);
+  const auto lines = rowFrameLines(rowFrameGap, rowFrameAir());
   const int headerHeight = props.headerRowHeight > 0 ? props.headerRowHeight :
                            screen.target().lineHeight(props.headerText.font) + 4;
   const int rowWidth = screen.body().width - 2 * props.rowInset;
@@ -585,7 +585,7 @@ bool UiListActivity::rowHasPopupMark(const void* list, const uint16_t row) {
 
 void UiListActivity::frameRows(fui::ListProps& props) {
   props.scrollIndicator = false;
-  rowsFramed = tenorchrome::roundFrames() && listFramed();
+  rowsFramed = framedByDesign() && listFramed();
   // A row's pop-up mark is drawn over the rows (renderUi), so list() asks which rows carry one: a value with
   // nothing after it ends on the trailing column.
   props.rowHasMarkCtx = this;
@@ -619,8 +619,13 @@ void UiListActivity::frameRows(fui::ListProps& props) {
     return;
   }
   // Touch (C1): the rows sit in a round frame 16 px in from the screen edges, their text 16 px into it.
-  props.rowInset = tenorchrome::FOOT_BACK_X;
-  props.sidePadding = 16;
+  if (tenorchrome::kTouchShell) {
+    props.rowInset = tenorchrome::FOOT_BACK_X;
+    props.sidePadding = 16;
+  } else {
+    // The cursor pill stands 16 px inside the ring, its words keep the pill's own padding.
+    props.rowInset = static_cast<int16_t>(tenorchrome::frameSpan(renderer).x + 16);
+  }
   // The value in use in a list of choices (ListItem::chosen): bold, with the tick at the row's end.
   fui::ListItem first;
   if (props.rowProvider && props.count > 0) props.rowProvider(props.rowProviderCtx, props.topIndex, first);
@@ -634,18 +639,23 @@ namespace {
 using tenorchrome::fadeBand;
 }  // namespace
 
-UiListActivity::RowFrameLines UiListActivity::rowFrameLines(const int rowGap) {
+bool UiListActivity::framedByDesign() const {
+  return tenorchrome::kTouchShell ||
+         (framedOnButtons() && tenorchrome::x3ScreenLayoutEnabled() && !shell::isUgly());
+}
+
+UiListActivity::RowFrameLines UiListActivity::rowFrameLines(const int rowGap, const int air) {
   // A 1 px rule in the gap and a 2 px ring: the rule sits `rule` px above the next row, the ring's inner edge as far
   // from the first and last rows as a rule is from the rows beside it.
   const int rule = (std::max(0, rowGap) + 1) / 2;
-  return {rule, rule + 1, std::max(0, rowGap) - rule + 2};
+  return {rule, std::max(rule + 1, air), std::max(std::max(0, rowGap) - rule + 2, air)};
 }
 
 void UiListActivity::reserveRowFrame(UiScreen& screen, const int rowGap) {
   if (rowsFramed) {
     // The gap list() lays the rows out with: on touch boards the theme's touch gap is the least (resolveListProps).
-    rowFrameGap = std::max<int>(rowGap, screen.theme().listTouchRowGap);
-    const auto lines = rowFrameLines(rowFrameGap);
+    rowFrameGap = tenorchrome::kTouchShell ? std::max<int>(rowGap, screen.theme().listTouchRowGap) : rowGap;
+    const auto lines = rowFrameLines(rowFrameGap, rowFrameAir());
     screen.takeTop(static_cast<int16_t>(lines.top));
     rowFrameFloor = screen.body().y + screen.body().height;
     screen.takeBottom(static_cast<int16_t>(lines.bottom));
@@ -660,8 +670,9 @@ void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
   fadeTopFrom = fadeTopTo = fadeFootFrom = fadeFootTo = 0;
   drawnRowFrameCount = 0;
   if (!rowsFramed) return;
-  const auto lines = rowFrameLines(rowFrameGap);
-  const bool ring = tenorchrome::roundFrames(fileList());
+  const auto lines = rowFrameLines(rowFrameGap, rowFrameAir());
+  const auto span = tenorchrome::frameSpan(renderer);
+  const bool ring = framedByDesign() && !fileList();
   // Rows on a page that scrolls under the chrome (Stats): the frame is cut to their band.
   const auto clip = renderer.getClipRect();
   if (style.clipBottom > style.clipTop)
@@ -689,17 +700,16 @@ void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
       if (ring) tenorchrome::drawPanel(renderer, groupTop, groupBottom - groupTop);
       if (drawnRowFrameCount < MAX_DRAWN_ROW_FRAMES)
         drawnRowFrames[drawnRowFrameCount++] = {ACTION_ROW, groupFirst, lastIndex,
-                                                 {static_cast<int16_t>(tenorchrome::FOOT_BACK_X),
+                                                 {static_cast<int16_t>(span.x),
                                                   static_cast<int16_t>(groupTop),
-                                                  static_cast<int16_t>(renderer.getScreenWidth() - 2 * tenorchrome::FOOT_BACK_X),
+                                                  static_cast<int16_t>(span.width),
                                                   static_cast<int16_t>(groupBottom - groupTop)}};
       groupTop = r.y - lines.top;
       groupFirst = i;
       grouped = true;
     } else if (i > n.top) {
       // Grey dotted rule from the text's edge, over every row but the first.
-      tenorchrome::drawRowRule(renderer, r.y - lines.rule, tenorchrome::FOOT_BACK_X + 16 + (rowsHaveIcons ? 41 : 0),
-                  renderer.getScreenWidth() - tenorchrome::FOOT_BACK_X - 17);
+      tenorchrome::drawRowRule(renderer, r.y - lines.rule, span.x + 16 + (rowsHaveIcons ? 41 : 0), span.x + span.width - 17);
     }
     last = r;
     lastIndex = i;
@@ -727,13 +737,13 @@ void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
   if (ring) tenorchrome::drawPanel(renderer, lastTop, ringBottom - lastTop);
   if (drawnRowFrameCount < MAX_DRAWN_ROW_FRAMES)
     drawnRowFrames[drawnRowFrameCount++] = {ACTION_ROW, grouped ? groupFirst : firstIndex, lastIndex,
-                                             {static_cast<int16_t>(tenorchrome::FOOT_BACK_X),
+                                             {static_cast<int16_t>(span.x),
                                               static_cast<int16_t>(lastTop),
-                                              static_cast<int16_t>(renderer.getScreenWidth() - 2 * tenorchrome::FOOT_BACK_X),
+                                              static_cast<int16_t>(span.width),
                                               static_cast<int16_t>(ringBottom - lastTop)}};
   if (frameGoesOn && floor > fullBottom)
-    tenorchrome::drawRowRule(renderer, last.y + last.height + rowFrameGap - lines.rule, tenorchrome::FOOT_BACK_X + 16 + (rowsHaveIcons ? 41 : 0),
-                renderer.getScreenWidth() - tenorchrome::FOOT_BACK_X - 17);
+    tenorchrome::drawRowRule(renderer, last.y + last.height + rowFrameGap - lines.rule, span.x + 16 + (rowsHaveIcons ? 41 : 0),
+                span.x + span.width - 17);
   if (pageScrollRegion.length > 0) {
     if (!more && style.clipBottom <= style.clipTop)
       pageScrollRegion.offset = pageScrollRegion.length - (pageScrollRegion.bottom - pageScrollRegion.top);
@@ -837,6 +847,7 @@ void UiListActivity::renderUi() {
   }
   if (!uiTarget.paintingEnabled()) return;
   drawRowFrame(rowFrameStyle());
+  if (pinMarkAfterName()) drawPinMarks();
   if (tenorchrome::enabled()) {
     for (int row = activeNav().top; row < listCount(); ++row) {
       const auto rect = app.publishedRect(ACTION_ROW, static_cast<int16_t>(row));
@@ -845,8 +856,8 @@ void UiListActivity::renderUi() {
                                            rect.y + rect.height / 2);
     }
   }
-  if (tenorchrome::enabled() && !tenorchrome::kTouchShell) fadeMoreBelow();
-  drawPageHints();
+  if (tenorchrome::enabled() && !tenorchrome::kTouchShell && !rowsFramed) fadeMoreBelow();
+  if (!(rowsFramed && !tenorchrome::kTouchShell)) drawPageHints();
   if (favoriteHintY >= 0) {
     if (const char* hint = favoriteHintText()) {
       if ((tabBandDrawn || shell::uglyParts()) && tenorchrome::x3ScreenLayoutEnabled()) {
@@ -861,13 +872,16 @@ void UiListActivity::renderUi() {
     }
   }
   drawPageScrollbar();
+  if (rowsFramed && !tenorchrome::kTouchShell) drawPageHints(true);
 }
 
-void UiListActivity::drawPageHints() {
+void UiListActivity::drawPageHints(const bool overScrollbar) {
   if (!tenorchrome::enabled() || tenorchrome::kTouchShell || !SETTINGS.tenorSideArrows || !showsSideArrows()) return;
   constexpr int cy = 195;
   inlineSymbols::drawShape(renderer, inlineSymbols::Shape::Left, 7, cy, 8, true);
-  inlineSymbols::drawShape(renderer, inlineSymbols::Shape::Right, renderer.getScreenWidth() - 1 - 7, cy, 8, true);
+  // The scroll bar's thumb is drawn first on a framed list and the arrow over it, white where they meet.
+  inlineSymbols::drawShape(renderer, inlineSymbols::Shape::Right, renderer.getScreenWidth() - 1 - 7, cy, 8,
+                           !(overScrollbar && PageScrollbar::instance().thumbCovers(cy)));
 }
 
 int UiListActivity::kepConTro(const int chon, const int soDong) {
@@ -1145,7 +1159,7 @@ void UiListActivity::decoratePinnedRows(fui::ListProps& props) {
   if (!props.items) return;
   const int end = props.itemsWindowCount ? props.itemsWindowFirst + props.itemsWindowCount : props.count;
   for (int i = props.itemsWindowFirst; i < end && pinDecorationCount < pinDecorations.size(); ++i) {
-    if (!rowIsPinned(i)) continue;
+    if (!rowIsPinned(i) || pinMarkAfterName()) continue;
     auto& d = pinDecorations[pinDecorationCount++];
     d.row = const_cast<fui::ListItem*>(&props.items[i - props.itemsWindowFirst]);
     d.original = d.row->label;

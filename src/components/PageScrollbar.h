@@ -80,6 +80,16 @@ class PageScrollbar {
           nav.top * viewport.height / rows, &nav);
   }
 
+  // Whether the painted thumb stands over row `y` (an arrow of the edge drawn there must turn white to be read).
+  bool thumbCovers(const int y) const {
+    if (!available.load()) return false;
+    const int height = region.bottom - region.top;
+    if (height <= 0 || region.length <= height || (tenorchrome::kTouchShell && !idle.isVisible())) return false;
+    const int start = region.top + static_cast<int>(static_cast<long>(region.offset) * height / region.length);
+    const int size = std::max(1, static_cast<int>(static_cast<long>(height) * height / region.length));
+    return y >= start && y < start + size;
+  }
+
   void noteInput(const MappedInputManager& input) {
     if (!tenorchrome::kTouchShell || !available.load()) return;
     int deltaY = 0;

@@ -99,6 +99,13 @@ class UiListActivity : public Activity, protected UiAppHost {
   // Touch (dynamic bar rule 7, C1): list rows in a round grey frame, grey dotted rules between them.
   // syncListViewport and syncTabListViewport set the rows in (frameRows); renderUi draws the frame.
   virtual bool listFramed() const { return true; }
+  // The button boards (X3) frame the rows of the screens that ask, as the touch board frames every list: the group ring
+  // across the tab bar's width, the rules between rows, the cursor pill kept inside it.
+  virtual bool framedOnButtons() const { return false; }
+  bool framedByDesign() const;
+  // The pinned row's heart stands after its name (the reader menu) rather than before it.
+  virtual bool pinMarkAfterName() const { return false; }
+  virtual void drawPinMarks() {}
   // A File screen (founder 07/10): its rows keep the framed list's rules, fades and scroll bar, without the ring
   // (tenorchrome::roundFrames).
   virtual bool fileList() const { return false; }
@@ -134,7 +141,9 @@ class UiListActivity : public Activity, protected UiAppHost {
   struct RowFrameLines {
     int rule, top, bottom;
   };
-  static RowFrameLines rowFrameLines(int rowGap);
+  // `air` is the least height kept between the ring and the first or last row (a cursor pill needs it).
+  static RowFrameLines rowFrameLines(int rowGap, int air = 0);
+  int rowFrameAir() const { return tenorchrome::kTouchShell ? 0 : 8; }
   // Keeps the room of the ring above and below the rows of a framed list; records the list body's foot.
   void reserveRowFrame(UiScreen& screen, int rowGap);
   int rowFrameGap = 0;
@@ -352,7 +361,7 @@ class UiListActivity : public Activity, protected UiAppHost {
   bool applyBoundary(bool last, bool ring);
   NavIntent popNavIntent();
 
-  void drawPageHints();
+  void drawPageHints(bool overScrollbar = false);
   const bool wantsTouchLongPress;
   std::string pendingFavorite;
   std::string favoriteOrigin;

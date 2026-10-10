@@ -1217,7 +1217,8 @@ bool tenorchrome::x3ScreenLayoutEnabled() {
   return !kTouchShell && enabled();
 }
 
-tenorchrome::X3ScreenLayout tenorchrome::x3ScreenLayout(const GfxRenderer& renderer, const int requestedTipHeight) {
+tenorchrome::X3ScreenLayout tenorchrome::x3ScreenLayout(const GfxRenderer& renderer, const int requestedTipHeight,
+                                                       const int informationHeight) {
   const int width = renderer.getScreenWidth();
   const int height = renderer.getScreenHeight();
   int bandTop = height;
@@ -1237,7 +1238,7 @@ tenorchrome::X3ScreenLayout tenorchrome::x3ScreenLayout(const GfxRenderer& rende
     barBottom = bandTop - 4;
   }
   const int barTop = barBottom - tabHeight();
-  const int tips = SETTINGS.tipsEnabled ? std::max(0, requestedTipHeight) : 0;
+  const int tips = (SETTINGS.tipsEnabled ? std::max(0, requestedTipHeight) : 0) + std::max(0, informationHeight);
   const int tipTop = tips ? barTop - 4 - tips : barTop;
   return {{0, 16, width, std::max(0, tipTop - 8 - 16)},
           {24, tipTop, width - 48, tips},

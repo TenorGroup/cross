@@ -268,7 +268,9 @@ struct X3ScreenRect {
 struct X3ScreenLayout {
   X3ScreenRect bodyRect, tipRect, barRect, buttonBandRect;
 };
-X3ScreenLayout x3ScreenLayout(const GfxRenderer& renderer, int requestedTipHeight = 0);
+// `informationHeight` is a line of information (a progress line) that stands in the tip's place, over the bar, whether tips are
+// on or not; the tips stand under it.
+X3ScreenLayout x3ScreenLayout(const GfxRenderer& renderer, int requestedTipHeight = 0, int informationHeight = 0);
 void drawTipInRect(const GfxRenderer& renderer, const char* text, X3ScreenRect rect, int maxLines = 4);
 void drawInfoInRect(const GfxRenderer& renderer, const char* text, X3ScreenRect rect, int maxLines = 4);
 void drawTip(const GfxRenderer& renderer, const char* text, int linesAbove = 0, int maxLines = 4,
