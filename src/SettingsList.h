@@ -664,6 +664,9 @@ inline void forEachBaseSetting(const std::function<void(SettingInfo&&)>& emit) {
     // ClockSettingsActivity under System settings).
     emit(SettingInfo::Enum(StrId::STR_CLOCK, &CrossPointSettings::statusBarClock, std::move(statusBarClockValues),
                           "statusBarClock", StrId::STR_CUSTOMISE_STATUS_BAR));
+    emit(SettingInfo::Enum(StrId::STR_HOME_STYLE, &CrossPointSettings::homeStyle,
+                          {StrId::STR_HOME_STYLE_STATS, StrId::STR_HOME_STYLE_LARGE, StrId::STR_HOME_STYLE_SHELF},
+                          "homeStyle", StrId::STR_CAT_DISPLAY));
     emit(SettingInfo::Toggle(StrId::STR_CLOCK_AUTO_TIMEZONE, &CrossPointSettings::clockAutoTimezone, "clockAutoTimezone",
                             StrId::STR_CUSTOMISE_STATUS_BAR));
     // LEGACY: retired quarter-hour UTC offset (biased by 48), still written so
@@ -727,6 +730,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
 // Dong nao khong thuoc ve ban may nay. Tach rieng de duong luu va duong doc soi
 // duoc tung dong ma khong phai chep ca bang ra mot vector moi.
 inline bool settingHiddenOnThisBoard(const SettingInfo& s) {
+  if (!BoardConfig::hasTouch() && s.nameId == StrId::STR_HOME_STYLE) return true;
   if (BoardConfig::hasTouch() && s.nameId == StrId::STR_TIPS) return true;
   // Touch controls and the per-direction gestures they drive need a touch
   // controller. The toolbar reader menu style does not (#3603 re-enabled it

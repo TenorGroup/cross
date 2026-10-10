@@ -467,6 +467,28 @@ int runTips() {
 int main(int argc, char** argv) {
   if (argc != 2) return 2;
   const std::string mode = argv[1];
+  if (mode == "home-style") {
+#if FREEINK_DEVICE_X4PRO
+    BoardConfig::ACTIVE = BoardConfig::XTEINK_X4_PRO;
+    JsonDocument doc;
+    bool ok = true;
+    for (int value : {0, 1, 2}) {
+      doc["homeStyle"] = value;
+      SETTINGS.fromJson(doc.as<JsonVariantConst>());
+      ok &= expect(SETTINGS.homeStyle == value && saved()["homeStyle"].as<int>() == value, "Home style round trip");
+    }
+    doc.remove("homeStyle");
+    SETTINGS.fromJson(doc.as<JsonVariantConst>());
+    ok &= expect(SETTINGS.homeStyle == 0 && saved()["homeStyle"].as<int>() == 0, "old files restore the default");
+    doc["homeStyle"] = 99;
+    SETTINGS.fromJson(doc.as<JsonVariantConst>());
+    ok &= expect(SETTINGS.homeStyle == 0, "unknown styles restore the default");
+    std::printf("settings_upgrade=home-style:%s\n", ok ? "GREEN" : "RED");
+    return ok ? 0 : 1;
+#else
+    return 2;
+#endif
+  }
   halTiltSensor.available = true;
   if (mode == "v1019") return runRealFile("settings-v1.0.19.json", "v1.0.19");
   if (mode == "v1018") return runRealFile("settings-v1.0.18.json", "v1.0.18");

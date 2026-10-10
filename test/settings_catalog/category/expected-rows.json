@@ -1247,7 +1247,8 @@
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted",
-      "STR_STATUS_CORNERS:0:statusBarClock"
+      "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HOME_STYLE:0:homeStyle"
     ],
     [
       "STR_TEXT_SETTINGS:11:",
@@ -1316,7 +1317,8 @@
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted",
-      "STR_STATUS_CORNERS:0:statusBarClock"
+      "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HOME_STYLE:0:homeStyle"
     ],
     [
       "STR_TEXT_SETTINGS:11:",
@@ -1386,7 +1388,8 @@
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted",
-      "STR_STATUS_CORNERS:0:statusBarClock"
+      "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HOME_STYLE:0:homeStyle"
     ],
     [
       "STR_TEXT_SETTINGS:11:",
@@ -1456,7 +1459,8 @@
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted",
-      "STR_STATUS_CORNERS:0:statusBarClock"
+      "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HOME_STYLE:0:homeStyle"
     ],
     [
       "STR_TEXT_SETTINGS:11:",
@@ -1527,7 +1531,8 @@
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted",
-      "STR_STATUS_CORNERS:0:statusBarClock"
+      "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HOME_STYLE:0:homeStyle"
     ],
     [
       "STR_TEXT_SETTINGS:11:",
@@ -1596,7 +1601,8 @@
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted",
-      "STR_STATUS_CORNERS:0:statusBarClock"
+      "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HOME_STYLE:0:homeStyle"
     ],
     [
       "STR_TEXT_SETTINGS:11:",
@@ -1666,7 +1672,8 @@
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted",
-      "STR_STATUS_CORNERS:0:statusBarClock"
+      "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HOME_STYLE:0:homeStyle"
     ],
     [
       "STR_TEXT_SETTINGS:11:",
@@ -1736,7 +1743,8 @@
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted",
-      "STR_STATUS_CORNERS:0:statusBarClock"
+      "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HOME_STYLE:0:homeStyle"
     ],
     [
       "STR_TEXT_SETTINGS:11:",

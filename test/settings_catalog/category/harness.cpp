@@ -206,6 +206,14 @@ int main(int argc, char** argv) {
       discovered.push_back({std::to_string(i) + " Dictionary long owned label", "book"});
   const auto& catalog = getBaseSettingsList();
   for (const auto& row : catalog) ok &= choiceSemantics(row);
+  const auto homeRow = std::find_if(catalog.begin(), catalog.end(), [](const auto& row) {
+    return row.valuePtr == &CrossPointSettings::homeStyle;
+  });
+  ok &= check(homeRow != catalog.end() && homeRow->enumLabels().size() == 3 &&
+              settingsChoiceStyle(*homeRow, true) == SettingsChoiceStyle::Popup,
+              "Home has 3 named choices in a popup");
+  if (homeRow != catalog.end())
+    ok &= check(settingHiddenOnThisBoard(*homeRow) == !BoardConfig::hasTouch(), "Home style belongs to touch boards");
   ok &= choiceSemantics(buildFontFamilySetting(nullptr));
   ok &= choiceSemantics(buildFontSizeSetting(nullptr));
   SettingInfo states = SettingInfo::Enum(StrId::STR_NIGHT_MODE, &CrossPointSettings::screenInverted,
@@ -270,8 +278,9 @@ int main(int argc, char** argv) {
     });
     if (BoardConfig::isX4Pro()) {
       ok &= check(labels == activity.displaySettings.end() &&
-                  activity.displaySettings.back().nameId == StrId::STR_STATUS_CORNERS,
-                  "touch shell omits button labels and ends with clock placement");
+                  activity.displaySettings.back().nameId == StrId::STR_HOME_STYLE &&
+                  (activity.displaySettings.end()-2)->nameId == StrId::STR_STATUS_CORNERS,
+                  "touch shell ends with clock placement and Home style");
       for (const auto* rows : {&activity.displaySettings, &activity.readerSettings})
         for (const auto& row : *rows)
           ok &= check(row.nameId != StrId::STR_SIDE_ARROW_HINTS && row.nameId != StrId::STR_READER_MENU_STYLE,

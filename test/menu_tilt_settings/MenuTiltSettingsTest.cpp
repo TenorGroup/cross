@@ -450,7 +450,9 @@ int main(int argc, char** argv) {
   // existing row kept its place. v1.0.52 then dropped the UI theme row and added the starting up notice row,
   // v1.0.53 the touch back tap zone and tap zone tip rows, the persisted-only rows of tenor/ugly
   // (uiShellClockMemo, uglyBatteryHidden) and the clock shown once (uiShellClockOnce).
-  bool ok = expect(catalog.size() == (hasImu ? 108U : 96U), "X3 descriptor count");
+  bool ok = expect(catalog.size() == (hasImu ? 109U : 97U), "X3 descriptor count");
+  const auto* homeStyle = findSetting(catalog, "homeStyle");
+  ok &= expect(homeStyle && settingHiddenOnThisBoard(*homeStyle), "X3 hides the Home style descriptor");
   const SettingInfo* tips = findSetting(catalog, "tipsEnabled");
   ok = expect(tips && tips->type == SettingType::TOGGLE && tips->category == StrId::STR_CAT_DISPLAY &&
                   tips->nameId == StrId::STR_TIPS && tips->valuePtr == &CrossPointSettings::tipsEnabled &&
