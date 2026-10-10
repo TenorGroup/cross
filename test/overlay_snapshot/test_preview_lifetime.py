@@ -75,6 +75,7 @@ struct EpubReaderActivity {
   Renderer renderer;
   int buildViewportWidth = 518, buildViewportHeight = 759, currentSpineIndex = 1, epub = 1;
   bool preview = false, overlayPageStored = false, pageFrameUsb = false, pageFrameShown = false;
+  bool sheetKeptRadio = false;
   bool dropPaint = false;
   unsigned xemTruocDich = 4516, currentPageVisibleOffset = 0, lastRenderCompleteMs = 0;
   std::vector<int> currentPageFootnotes, currentPageLinks;

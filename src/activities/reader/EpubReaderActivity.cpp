@@ -3266,16 +3266,15 @@ void EpubReaderActivity::renderBook() {
   if (overlay != Overlay::None && usesToolbarMenu()) {
     // The page just re-rendered under the overlay: refresh the snapshot that
     // backs panel->toolbar restores (any previous copy is stale).
-    if (!sheetKeptRadio) {
-      releaseTextCachesBeforeOverlaySnapshot();
+    // A sheet that kept the radio takes no snapshot (sheetradio::planFor).
+    if (!sheetKeptRadio) releaseTextCachesBeforeOverlaySnapshot();
 #ifdef TENOR_PRESS_PROBE
-      traceSheetHeap("STORE_BEGIN", renderer);
+    if (!sheetKeptRadio) traceSheetHeap("STORE_BEGIN", renderer);
 #endif
-      overlayPageStored = renderer.storeBwBuffer();
+    overlayPageStored = !sheetKeptRadio && renderer.storeBwBuffer();
 #ifdef TENOR_PRESS_PROBE
-      traceSheetHeap(overlayPageStored ? "STORE_OK" : "STORE_FAILED", renderer);
+    if (!sheetKeptRadio) traceSheetHeap(overlayPageStored ? "STORE_OK" : "STORE_FAILED", renderer);
 #endif
-    }
     renderOverlay();
     // An open option picker rides on top of the freshly drawn panel.
     if (overlayPopup.isActive()) overlayPopup.render(renderer);
@@ -4662,16 +4661,15 @@ void EpubReaderActivity::openOverlay(Overlay target) {
       }
       // Snapshot the clean page so stepping back from a panel to the toolbar
       // (and closing, where supported) can restore it without a re-render.
-      if (!sheetKeptRadio) {
-        releaseTextCachesBeforeOverlaySnapshot();
+      // A sheet that kept the radio takes no snapshot (sheetradio::planFor).
+      if (!sheetKeptRadio) releaseTextCachesBeforeOverlaySnapshot();
 #ifdef TENOR_PRESS_PROBE
-        traceSheetHeap("STORE_BEGIN", renderer);
+      if (!sheetKeptRadio) traceSheetHeap("STORE_BEGIN", renderer);
 #endif
-        overlayPageStored = renderer.storeBwBuffer();
+      overlayPageStored = !sheetKeptRadio && renderer.storeBwBuffer();
 #ifdef TENOR_PRESS_PROBE
-        traceSheetHeap(overlayPageStored ? "STORE_OK" : "STORE_FAILED", renderer);
+      if (!sheetKeptRadio) traceSheetHeap(overlayPageStored ? "STORE_OK" : "STORE_FAILED", renderer);
 #endif
-      }
     } else if (sheetradio::redrawFromPage(sheetKeptRadio, overlayPageStored)) {
       requestUpdate();  // no snapshot to wipe the old chrome: renderBook() draws page and sheet
       return;
@@ -5517,16 +5515,15 @@ bool EpubReaderActivity::renderPreview(const int marginTop, const int marginRigh
   if (paintDropped) return true;
   lastRenderCompleteMs = millis();
   if (overlay != Overlay::None && usesToolbarMenu()) {
-    if (!sheetKeptRadio) {
-      releaseTextCachesBeforeOverlaySnapshot();
+    // A sheet that kept the radio takes no snapshot (sheetradio::planFor).
+    if (!sheetKeptRadio) releaseTextCachesBeforeOverlaySnapshot();
 #ifdef TENOR_PRESS_PROBE
-      traceSheetHeap("STORE_BEGIN", renderer);
+    if (!sheetKeptRadio) traceSheetHeap("STORE_BEGIN", renderer);
 #endif
-      overlayPageStored = renderer.storeBwBuffer();
+    overlayPageStored = !sheetKeptRadio && renderer.storeBwBuffer();
 #ifdef TENOR_PRESS_PROBE
-      traceSheetHeap(overlayPageStored ? "STORE_OK" : "STORE_FAILED", renderer);
+    if (!sheetKeptRadio) traceSheetHeap(overlayPageStored ? "STORE_OK" : "STORE_FAILED", renderer);
 #endif
-    }
     renderOverlay();
     if (overlayPopup.isActive()) overlayPopup.render(renderer);
     pushOverlayRefresh();

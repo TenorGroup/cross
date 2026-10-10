@@ -43,14 +43,16 @@ struct FontCacheManager {
 struct Renderer {
   FontCacheManager* cache;
   unsigned loans = 0;
+  int stores = 0;
   unsigned frameBufferLoanCount() { return loans; }
   FontCacheManager* getFontCacheManager() { return cache; }
-  bool storeBwBuffer() { return !cache || cache->released; }
+  bool storeBwBuffer() { ++stores; return !cache || cache->released; }
 };
 struct EpubReaderActivity {
   Renderer renderer;
   bool textSettingsDirty;
   bool overlayPageStored = false;
+  bool sheetKeptRadio = false;
   bool parkBorrowsFrame = false;
   int requests = 0;
   void suspendBackgroundBuild() { if (parkBorrowsFrame) ++renderer.loans; }
@@ -77,6 +79,17 @@ int main() {
     EpubReaderActivity reader{{nullptr}, false};
     (reader.*snapshots[route])();
     if (!reader.overlayPageStored) ++failed;
+  }
+  for (int route = 0; route < 3; ++route) {
+    // A sheet that kept the radio takes no snapshot and keeps the font caches.
+    FontCacheManager cache;
+    EpubReaderActivity reader{{&cache}, false};
+    reader.sheetKeptRadio = true;
+    (reader.*snapshots[route])();
+    if (reader.overlayPageStored || cache.released || reader.renderer.stores != 0) {
+      std::fprintf(stderr, "snapshot route=%d stored or released caches with the radio kept\n", route);
+      ++failed;
+    }
   }
   FontCacheManager cache;
   EpubReaderActivity reader{{&cache}, false};

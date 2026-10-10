@@ -113,7 +113,7 @@ struct Empty { void reset() {} void dismiss() {} void resetHomeButtonInput() {} 
 struct EpubReaderActivity {
  GfxRenderer renderer;
  int page=31,offset=917,section=1,reflows=0,updates=0,discards=0;
- bool textSettingsDirty=false,overlayPageStored=true,bwUnderSheet=false;
+ bool textSettingsDirty=false,overlayPageStored=true,bwUnderSheet=false,sheetKeptRadio=false;
  std::atomic<int> textCloseFrame{0};
  enum class Overlay { None }; Overlay overlay;
  Empty overlayPopup,toolbarUi,mappedInput;
