@@ -60,6 +60,19 @@ class InfoPages {
     }
   }
 
+  // The height draw() needs for these lines inside `available` and nothing more: a row per line (as many as the room
+  // keeps, one row short of it when the lines run to pages), plus one spare row, which draw() keeps for the page
+  // position. `paged` says whether the lines run to more than one page; when they do the spare row is the position.
+  static int fit(const GfxRenderer& renderer, const int width, const int available,
+                 const std::initializer_list<const char*> information, bool* paged = nullptr) {
+    const int lineHeight = renderer.getLineHeight(SMALL_FONT_ID);
+    const int capacity = std::max(1, available / lineHeight - 1);
+    int count = 0;
+    for (const auto* text : information) lines(renderer, text, width - 48, [&](const char*) { ++count; });
+    if (paged) *paged = count > capacity;
+    return (std::min(count, capacity) + 1) * lineHeight;
+  }
+
   void draw(const GfxRenderer& renderer, tenorchrome::X3ScreenRect body,
             const std::initializer_list<const char*> information) {
     const int lineHeight = renderer.getLineHeight(SMALL_FONT_ID);

@@ -605,19 +605,34 @@ void CrossPointWebServerActivity::render(RenderLock&&) {
     const std::string hostname = std::string("http://") + apHostname() + ".local/";
     const std::string address = "http://" + connectedIP + "/";
     auto body = layout.bodyRect;
-    if (state == WebServerActivityState::SERVER_RUNNING) body.height -= QR_CODE_HEIGHT + 32;
-    x3Info.draw(renderer, body, {state == WebServerActivityState::AP_STARTING ? tr(STR_STARTING_HOTSPOT) : nullptr,
-        connectedSSID.c_str(), address.c_str(), hostname.c_str(), isApMode ? (x3Step == 0 ? "1/2" : "2/2") : nullptr});
-    if (state == WebServerActivityState::SERVER_RUNNING) {
+    const bool showQr = state == WebServerActivityState::SERVER_RUNNING;
+    const auto information = {state == WebServerActivityState::AP_STARTING ? tr(STR_STARTING_HOTSPOT) : nullptr,
+        connectedSSID.c_str(), address.c_str(), hostname.c_str(), isApMode ? (x3Step == 0 ? "1/2" : "2/2") : nullptr};
+    if (showQr) {
+      // The words, the code and (under it) the step stand together and the whole block sits in the middle of the
+      // room above the bar, an 8 px clear gap at the top and the bottom at the least.
+      constexpr int gapToCode = 16;
+      const int lineHeight = renderer.getLineHeight(SMALL_FONT_ID);
+      bool paged = false;
+      const int fit = x3activity::InfoPages::fit(renderer, body.width, body.height - QR_CODE_HEIGHT - gapToCode, information, &paged);
+      const int used = paged ? fit : fit - lineHeight;
+      // The first row of ink, not its line box, starts the block.
+      const int slack = renderer.getTextInkTop(SMALL_FONT_ID, connectedSSID.c_str(), EpdFontFamily::REGULAR);
+      const int top = body.y + std::max(0, (body.height - (used - slack + gapToCode + QR_CODE_HEIGHT)) / 2 - slack);
+      auto text = body;
+      text.y = top;
+      text.height = fit;
+      x3Info.draw(renderer, text, information);
       const std::string payload = isApMode && x3Step == 0 ? std::string("WIFI:T:nopass;S:") + connectedSSID + ";;" :
           isApMode ? hostname : address;
-      const Rect qr{(renderer.getScreenWidth() - QR_CODE_WIDTH) / 2,
-          layout.bodyRect.bottom() - QR_CODE_HEIGHT - 16, QR_CODE_WIDTH, QR_CODE_HEIGHT};
+      const Rect qr{(renderer.getScreenWidth() - QR_CODE_WIDTH) / 2, top + used + gapToCode, QR_CODE_WIDTH, QR_CODE_HEIGHT};
       QrUtils::drawQrCode(renderer, qr, payload);
+    } else {
+      x3Info.draw(renderer, body, information);
     }
     tenorchrome::drawTipInRect(renderer, tip, layout.tipRect);
     x3activity::drawBar(renderer, layout.barRect, isApMode ? tr(STR_HOTSPOT_MODE) : tr(STR_FILE_TRANSFER), navigationPrefix.c_str());
-    const auto labels = mappedInput.mapLabels(tr(STR_EXIT), "", tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     renderer.displayBuffer();
     return;
@@ -714,7 +729,7 @@ void CrossPointWebServerActivity::renderServerRunning() const {
     if (framed) tenorchrome::drawPanel(renderer, frameTop, textBottom + qrQuiet / 2 - frameTop);
   }
 
-  const auto labels = mappedInput.mapLabels(tr(STR_EXIT), "", "", "");
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
 
