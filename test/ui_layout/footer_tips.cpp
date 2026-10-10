@@ -233,7 +233,8 @@ int main() {
     bool retained = true;
     for (size_t i = 0; i < before.size(); ++i) if (before[i] && !fallback.pixels[i]) retained = false;
     check(retained, "text fallback clear erased a legacy tip");
-    check(fallback.ys.size() == 3, "fallback did not render its two supplied wrapped lines");
+    // Tier 0 stacks the two wrapped lines in the footer box; larger text keeps one row under the path bar.
+    check(fallback.ys.size() == (tier == 0 ? 3 : 2), "fallback caption has the wrong number of rows for its size");
     SETTINGS.tenorButtonSymbols = false;
     GfxRenderer text;
     tenorchrome::drawTip(text, "g");
@@ -262,7 +263,7 @@ int main() {
               forced.ys.front() + forced.getTextInkTop(1, firstForcedLine, EpdFontFamily::REGULAR),
           "footer-tip reserve must begin at the first actual glyph row");
   }
-  assert(fallbackCalls == 3);
+  assert(fallbackCalls == 1);
   for (int tier = 0; tier < 3; ++tier) {
     SETTINGS.uiTextSize = tier;
     for (const char* label : {"Cập nhật", "Chọn mạng", "Download", "Mạng", "Tải về", "ẤN CHỌN", "ẬP ẬP"}) {
@@ -278,13 +279,15 @@ int main() {
             "fallback label ink escapes its box into panel edge or dither");
       // A two-word action wraps only when it is wider than one line holds: Geist 8 sets "Cập nhật" in 69 px.
       const bool wraps = r.getTextWidth(1, label) > 72;
-      if (wraps && (std::strcmp(label, "Cập nhật") == 0 || std::strcmp(label, "Chọn mạng") == 0))
+      if (tier == 0 && wraps && (std::strcmp(label, "Cập nhật") == 0 || std::strcmp(label, "Chọn mạng") == 0))
         check(r.ys.size() == 2, "readable two-word action lost its second line");
-      if (wraps && std::strcmp(label, "Cập nhật") == 0)
+      if (tier == 0 && wraps && std::strcmp(label, "Cập nhật") == 0)
         check(r.paintedText == std::vector<std::string>{"Cập", "nhật"}, "update action lost letters or accents");
-      if (std::strcmp(label, "Chọn mạng") == 0)
+      if (tier == 0 && std::strcmp(label, "Chọn mạng") == 0)
         check(r.paintedText == std::vector<std::string>{"Chọn", "mạng"}, "network action lost letters or accents");
-      if (r.getTextWidth(1, label) <= 72) {
+      // Larger text: one row in the empty cells beside the caption, never a second line over the path bar.
+      if (tier != 0 && label[0] != '\0') check(r.ys.size() == 1, "larger text caption must stay on one row");
+      if (r.getTextWidth(1, label) <= 72 || tier != 0) {
         const auto bar = tenorchrome::x3ScreenLayout(r).barRect;
         check(r.attemptedInkTop >= bar.bottom() && r.attemptedInkBottom <= 787,
               "symbol-mode caption touches the shared path bar");

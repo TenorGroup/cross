@@ -76,11 +76,40 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
     rightEdge = iconPositions[index] - bounds.left - cornerGap - 1;
   }
 
+  // A text caption on the symbol footer is one row. One that fits its own cell stays centred in it; one too wide
+  // for the cell (the larger text sizes) takes the empty cells beside it, and a caption that would touch the battery,
+  // the clock or the next caption slides clear of them. Only a caption that cannot fit even then is cut short.
+  std::string captions[4];
+  int captionX[4] = {};
+  const bool symbolFooter = tenorchrome::x3ScreenLayoutEnabled() && SETTINGS.tenorButtonSymbols;
+  const bool largerText = normalizedUiTextSize(SETTINGS.uiTextSize) != 0;
+  constexpr int captionGap = 6;  // a symbol or caption keeps 6 px from the battery and the clock
+  for (int i = 0; i < 4 && symbolFooter; i++) {
+    if (labels[i] == nullptr || labels[i][0] == '\0') continue;
+    const auto bounds = buttonSymbols::horizontalBounds(labels[i], net);
+    if (bounds.left != 0 || bounds.right != 0) continue;
+    const bool fits = renderer.wrappedText(SMALL_FONT_ID, labels[i], buttonWidth - 8, 2).size() == 1;
+    if (!fits && !largerText) continue;
+    int lo = corners.leftEnd + captionGap, hi = corners.rightStart - captionGap;
+    for (int j = i - 1; j >= 0; --j) {
+      if (labels[j] && *labels[j]) { lo = std::max(lo, buttonPositions[j] + buttonWidth); break; }
+    }
+    for (int j = i + 1; j < 4; ++j) {
+      if (labels[j] && *labels[j]) { hi = std::min(hi, buttonPositions[j]); break; }
+    }
+    captions[i] = labels[i];
+    if (renderer.getTextWidth(SMALL_FONT_ID, labels[i]) > hi - lo) {
+      captions[i] = renderer.truncatedText(SMALL_FONT_ID, labels[i], hi - lo, EpdFontFamily::REGULAR);
+    }
+    const int width = renderer.getTextWidth(SMALL_FONT_ID, captions[i].c_str());
+    captionX[i] = std::clamp(buttonPositions[i] + (buttonWidth - 1 - width) / 2, lo, std::max(lo, hi - width));
+  }
+
   // Clear all cells before painting symbols that may extend beyond their original cell.
   for (int i = 0; i < 4; i++) {
     if (labels[i] == nullptr || labels[i][0] == '\0') continue;
-    singleCaptions[i] = tenorchrome::x3ScreenLayoutEnabled() && SETTINGS.tenorButtonSymbols &&
-        renderer.wrappedText(SMALL_FONT_ID, labels[i], buttonWidth - 8, 2).size() == 1;
+    singleCaptions[i] = !captions[i].empty() || (symbolFooter &&
+        renderer.wrappedText(SMALL_FONT_ID, labels[i], buttonWidth - 8, 2).size() == 1);
     const auto bounds = buttonSymbols::horizontalBounds(labels[i], net);
     const bool compactSymbol = tenorchrome::compactFooterTips(bounds.left == 0 && bounds.right == 0);
     // Some screens paint their tip before the footer. Clear only the symbol
@@ -90,6 +119,11 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
                              ? tenorchrome::x3ScreenLayout(renderer).buttonBandRect.y
                              : compactSymbol ? tenorchrome::smallFooterSymbolsTopY(renderer) : pageHeight - buttonY;
     renderer.fillRect(buttonPositions[i], clearTop, buttonWidth, pageHeight - clearTop, grayscale);
+    if (!captions[i].empty()) {
+      const int left = std::min(buttonPositions[i], captionX[i]);
+      const int right = std::max(buttonPositions[i] + buttonWidth, captionX[i] + renderer.getTextWidth(SMALL_FONT_ID, captions[i].c_str()));
+      renderer.fillRect(left, clearTop, right - left, pageHeight - clearTop, grayscale);
+    }
   }
 
   for (int i = 0; i < 4; i++) {
@@ -107,8 +141,12 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
         const int bandTop = tenorchrome::x3ScreenLayout(renderer).barRect.bottom() + 3;
         const int lastInkTop = pageHeight - vachCao - 2 - inkHeight;
         const int inkY = std::clamp(iconAnchor - (inkHeight - 1) / 2, std::min(bandTop, lastInkTop), lastInkTop);
-        renderer.drawText(SMALL_FONT_ID, x + (buttonWidth - 1 - renderer.getTextWidth(SMALL_FONT_ID, labels[i])) / 2,
-                          inkY - inkTop, labels[i]);
+        if (captions[i].empty()) {
+          renderer.drawText(SMALL_FONT_ID, x + (buttonWidth - 1 - renderer.getTextWidth(SMALL_FONT_ID, labels[i])) / 2,
+                            inkY - inkTop, labels[i]);
+        } else {
+          renderer.drawText(SMALL_FONT_ID, captionX[i], inkY - inkTop, captions[i].c_str());
+        }
       } else {
         drawHintLabel(renderer, SMALL_FONT_ID, labels[i], x, buttonWidth, top, buttonHeight - vachCao - 2, textYOffset);
       }
