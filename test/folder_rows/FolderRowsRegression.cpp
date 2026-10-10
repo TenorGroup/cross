@@ -43,7 +43,8 @@ static unsigned checks = 0, failures = 0, partialChecks = 0;
 #define CHECK(expr) do { ++checks; if (!(expr)) { ++failures; \
   std::printf("FAIL line=%d %s\n", __LINE__, #expr); } } while (false)
 
-struct Settings { bool globalStatusBarHidden() const { return true; } } SETTINGS;
+static int normalizedUiTextSize(int value) { return std::clamp(value, 0, 2); }
+struct Settings { int uiTextSize = 0; bool globalStatusBarHidden() const { return true; } } SETTINGS;
 struct Metrics { int topPadding = 0, headerHeight = 80, buttonHintsHeight = 30,
   verticalSpacing = 8, contentSidePadding = 12, listWithSubtitleRowHeight = 36, listRowHeight = 36; };
 struct UITheme {

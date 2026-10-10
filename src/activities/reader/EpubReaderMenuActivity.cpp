@@ -552,7 +552,7 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
 
   for (int row = 0; row < rowCount; ++row) {
     const auto action = menuItems[rowToItem[row]].action;
-    menuRowItems[row].toggle = tenorchrome::kTouchShell && rowChoiceStyle(row) == SettingsChoiceStyle::Inline;
+    menuRowItems[row].toggle = rowChoiceStyle(row) == SettingsChoiceStyle::Inline;
     menuRowItems[row].toggleChecked = action == MenuAction::NIGHT_MODE ? SETTINGS.screenInverted
         : action == MenuAction::TILT_PAGE_TURN ? SETTINGS.tiltPageTurn : Frontlight.isOn();
   }

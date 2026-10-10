@@ -655,7 +655,7 @@ void TextSettingsActivity::buildScreen(UiScreen& screen) {
         break;
     }
     rowItems_[i].value = rowValues_[i].empty() ? nullptr : rowValues_[i].c_str();
-    rowItems_[i].toggle = tenorchrome::kTouchShell && rowChoiceStyle(i) == SettingsChoiceStyle::Inline;
+    rowItems_[i].toggle = rowChoiceStyle(i) == SettingsChoiceStyle::Inline;
     rowItems_[i].toggleChecked = rowItems_[i].toggle && formRow(this, formIndex(tab_, i)).selected;
     // Touch: the font or size in use is the chosen row (bold, a tick), no word.
     rowItems_[i].chosen = tenorchrome::kTouchShell && ((tab_ == Tab::Family && i == currentFamilyIndex_) ||

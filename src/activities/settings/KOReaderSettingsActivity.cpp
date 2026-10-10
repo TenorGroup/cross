@@ -185,8 +185,7 @@ void KOReaderSettingsActivity::buildScreen(UiScreen& screen) {
     const bool accountAction = i >= 6;
     rowItems_[i].value = accountAction || rowValues_[i].empty() ? nullptr : rowValues_[i].c_str();
     rowItems_[i].subtitle = accountAction && !rowValues_[i].empty() ? rowValues_[i].c_str() : nullptr;
-    rowItems_[i].toggle = tenorchrome::kTouchShell &&
-        rowChoiceStyle(i) == SettingsChoiceStyle::Inline && i == 4;
+    rowItems_[i].toggle = rowChoiceStyle(i) == SettingsChoiceStyle::Inline && i == 4;
     rowItems_[i].toggleChecked = i == 3 ? KOREADER_STORE.getMatchMethod() == DocumentMatchMethod::BINARY
         : i == 4 ? KOREADER_STORE.getSendMetadata() : KOREADER_STORE.getSyncBehavior() == KOReaderSyncBehavior::SMART;
   }

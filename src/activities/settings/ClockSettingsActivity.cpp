@@ -182,7 +182,7 @@ void ClockSettingsActivity::buildScreen(UiScreen& screen) {
   for (int i = 0; i < ITEM_COUNT; i++) {
     values[i] = giaTriDong(i);
     rowItems_[i].value = values[i].empty() ? nullptr : values[i].c_str();
-    rowItems_[i].toggle = tenorchrome::kTouchShell && rowChoiceStyle(i) == SettingsChoiceStyle::Inline && i == ITEM_AUTO_TIMEZONE;
+    rowItems_[i].toggle = rowChoiceStyle(i) == SettingsChoiceStyle::Inline && i == ITEM_AUTO_TIMEZONE;
     rowItems_[i].toggleChecked = i == ITEM_FORMAT ? SETTINGS.clockFormat : SETTINGS.clockAutoTimezone;
   }
   // Manual timezone picking is unreachable while auto timezone drives the zone.

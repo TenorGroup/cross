@@ -1076,7 +1076,7 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
   for (size_t i = 0; i < settings.size(); i++) {
     rowValues_[i] = settingValueText(settings[i]);
     rowItems_[i].value = rowValues_[i].empty() ? nullptr : rowValues_[i].c_str();
-    rowItems_[i].toggle = tenorchrome::kTouchShell && rowChoiceStyle(i) == SettingsChoiceStyle::Inline;
+    rowItems_[i].toggle = rowChoiceStyle(i) == SettingsChoiceStyle::Inline;
     const auto& setting = settings[i];
     const uint8_t current = setting.valuePtr ? SETTINGS.*setting.valuePtr : setting.valueGetter ? setting.valueGetter() : 0;
     const auto labels = setting.enumLabels();

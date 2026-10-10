@@ -588,6 +588,13 @@ void UiListActivity::frameRows(fui::ListProps& props) {
       props.valueText.centerInkY = true;
       break;
     }
+  const int switchScale = tenorchrome::kTouchShell ? 0 : normalizedUiTextSize(SETTINGS.uiTextSize);
+  props.toggleWidth = 46 + switchScale * 8;
+  props.toggleHeight = 26 + switchScale * 4;
+  props.toggleRadius = props.toggleHeight / 2;
+  props.toggleKnobRadius = (props.toggleHeight - 8) / 2;
+  props.toggleKnobInset = 4;
+  props.toggleBorderWidth = 2;
   if (!rowsFramed) {
     // Buttons (X3/X4): the row past the last full one shows its top, faded (fadeMoreBelow), in place of a "more"
     // chevron.
@@ -604,12 +611,6 @@ void UiListActivity::frameRows(fui::ListProps& props) {
   // Touch (C1): the rows sit in a round frame 16 px in from the screen edges, their text 16 px into it.
   props.rowInset = tenorchrome::FOOT_BACK_X;
   props.sidePadding = 16;
-  props.toggleWidth = 46;
-  props.toggleHeight = 26;
-  props.toggleRadius = 13;
-  props.toggleKnobRadius = 9;
-  props.toggleKnobInset = 4;
-  props.toggleBorderWidth = 2;
   // The value in use in a list of choices (ListItem::chosen): bold, with the tick at the row's end.
   props.chosenMark = fui::bitmapFromIcon(icon_row_chosen_24);
   fui::ListItem first;
