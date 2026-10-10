@@ -74,6 +74,9 @@ static constexpr bool kInkX3 = true;
 #else
 static constexpr bool kInkX3 = false;
 #endif
+// X3 Home draws tenor/ink 1 bit. Its 4-level pass decodes the cover once per strip and plane
+// (14 decodes, 5.7 s measured on an X3 with input held); turn it on once one decode feeds every strip.
+static constexpr bool kInkX3Gray = false;
 
 void saveAppState();  // main.cpp
 
@@ -2341,7 +2344,7 @@ bool HomeActivity::homeGrayWanted() const {
   return tenorink::homeGray(tenorchrome::kTouchShell, HalMemory::getPsramHeap().totalBytes > 0,
                             activeTabId == Tab::RECENT, shell::isUgly(),
                             renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported(),
-                            TENOR_INK_HOME_LEVELS, kInkX3 && tenorchrome::x3ScreenLayoutEnabled(),
+                            TENOR_INK_HOME_LEVELS, kInkX3 && kInkX3Gray && tenorchrome::x3ScreenLayoutEnabled(),
                             heap.freeBytes, heap.largestBlockBytes);
 }
 
