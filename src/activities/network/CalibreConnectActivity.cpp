@@ -308,7 +308,7 @@ void CalibreConnectActivity::render(RenderLock&&) {
       // A touch screen keeps only the status strip at the top: the network and the address are the first two lines
       // of the content, each cut with an ellipsis rather than run past the margins.
       const int room = pageWidth - metrics.contentSidePadding * 2;
-      y = tenorchrome::contentTop() + 10 + metrics.verticalSpacing;
+      y = tenorchrome::contentTop() + tenorchrome::INFO_TOP_GAP + metrics.verticalSpacing;
       renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, y,
                         renderer.truncatedText(UI_10_FONT_ID, connectedSSID.c_str(), room, EpdFontFamily::REGULAR).c_str());
       y += height;

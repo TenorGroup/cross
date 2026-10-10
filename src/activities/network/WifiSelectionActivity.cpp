@@ -1135,10 +1135,17 @@ void WifiSelectionActivity::render(RenderLock&&) {
   snprintf(countStr, sizeof(countStr), tr(STR_NETWORKS_FOUND), realNetworkCount);
   GUI.drawHeader(renderer, Rect{screen.x, screen.y + metrics.topPadding, screen.width, metrics.headerHeight},
                  tr(STR_WIFI_NETWORKS), countStr);
-  GUI.drawSubHeader(
-      renderer,
-      Rect{screen.x, screen.y + metrics.topPadding + metrics.headerHeight, screen.width, metrics.tabBarHeight},
-      cachedMacAddress.c_str());
+  if (tenorchrome::roundFrames()) {
+    // A touch screen keeps only the status strip at the top: the MAC address is the first line of the content.
+    renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, tenorchrome::contentTop() + tenorchrome::INFO_TOP_GAP,
+                      renderer.truncatedText(UI_10_FONT_ID, cachedMacAddress.c_str(),
+                                             screen.width - 2 * metrics.contentSidePadding, EpdFontFamily::REGULAR).c_str());
+  } else {
+    GUI.drawSubHeader(
+        renderer,
+        Rect{screen.x, screen.y + metrics.topPadding + metrics.headerHeight, screen.width, metrics.tabBarHeight},
+        cachedMacAddress.c_str());
+  }
 
   switch (state) {
     case WifiSelectionState::AUTO_CONNECTING:
@@ -1185,9 +1192,13 @@ void WifiSelectionActivity::buildListScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
   // Content below the header + MAC sub-band, above the legend line.
+  const int listTop = tenorchrome::roundFrames()
+                          ? tenorchrome::contentTop() + tenorchrome::INFO_TOP_GAP + renderer.getLineHeight(UI_10_FONT_ID) +
+                                metrics.verticalSpacing
+                          : safe.y + metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight +
+                                metrics.verticalSpacing;
   screen.setContentMarginFromScreen(fui::Insets{
-      static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight +
-                           metrics.verticalSpacing),
+      static_cast<int16_t>(listTop),
       static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
       static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height) + metrics.verticalSpacing * 2),
       static_cast<int16_t>(safe.x)});

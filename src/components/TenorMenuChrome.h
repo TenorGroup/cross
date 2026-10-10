@@ -165,6 +165,9 @@ inline int headerHeight() {
 }
 inline int tabTop() { return HEADER_TOP + headerHeight() + (kTouchShell ? TOUCH_STATUS_TOP_INSET : 0); }
 inline int tabHeight() { return kTouchShell ? TAB_HEIGHT : TAB_HEIGHT + uiTextSizeSpec(SETTINGS.uiTextSize).subtitleLineHeight - 26; }
+// Touch screens with an information line (network name, address, MAC) at the top of the content: its gap under the
+// status strip, one number for the file transfer, Calibre and Wi-Fi screens.
+constexpr int INFO_TOP_GAP = 10;
 inline int contentTop() { return kTouchShell ? TOUCH_STRIP_HEIGHT + 6 : tabTop() + tabHeight() + 16; }
 // Touch shell: the tab bar sits at the foot of the screen, 16 px above the Home key under the glass,
 // and what the button readers put under their tab band moves up by the band.

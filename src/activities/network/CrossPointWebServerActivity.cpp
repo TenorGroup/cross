@@ -707,7 +707,7 @@ void CrossPointWebServerActivity::renderServerRunning() const {
   // Touch (C1): each code and its words in a round frame; the code keeps its quiet zone inside the frame.
   const int left = framed ? tenorchrome::FOOT_BACK_X + qrQuiet : std::max<int>(metrics.contentSidePadding, qrQuiet);
   const int bodyWidth = pageWidth - 2 * left;
-  const int contentTop = framed ? tenorchrome::contentTop() + 10 : metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight;
+  const int contentTop = framed ? tenorchrome::contentTop() + tenorchrome::INFO_TOP_GAP : metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight;
   int startY = contentTop + qrQuiet;
   const int height10 = renderer.getLineHeight(UI_10_FONT_ID);
   const std::string hostnameUrl = std::string("http://") + apHostname() + ".local/";
