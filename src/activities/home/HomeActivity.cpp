@@ -54,6 +54,7 @@
 #include "util/NgayDocXong.h"
 #include "components/HomeStatsNavigation.h"
 #include "components/CompactStats.h"
+#include "components/CoverHolder.h"
 #include "components/HomeExcerptStyle.h"
 #include "components/HomeCoverCorners.h"
 #include <TenorInk.h>
@@ -62,7 +63,6 @@
 #include "HeapBigProbe.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
-#include "components/X3SleepCover.h"
 #include "components/themes/TenorRadius.h"
 #include "components/ContextMenuBackground.h"
 #include "components/icons/tenorHomeTabIcons.h"
@@ -136,6 +136,15 @@ constexpr size_t CARD_THUMB_MIN_FREE_HEAP = 96 * 1024;
 constexpr size_t CARD_THUMB_REF_MIN_FREE_HEAP = 72 * 1024;
 // Copying the cover out of the book inflates through a 32 KB window that must come in one block.
 constexpr size_t CARD_THUMB_MIN_LARGEST_BLOCK = 36 * 1024;
+// Idle time before Home writes the cover placeholder of a frame size it has none for.
+constexpr uint32_t HOLDER_IDLE_MS = 1000;
+// Frame sizes Home has tried to write a placeholder for since boot, as sized and as levels, so a
+// card that cannot be written is not tried on every visit.
+uint32_t holderTried[8] = {};
+constexpr uint32_t holderId(const int width, const int height, const bool four) {
+  return (static_cast<uint32_t>(width) << 17) | (static_cast<uint32_t>(height) << 1) | (four ? 1u : 0u);
+}
+uint8_t holderTriedNext = 0;
 }  // namespace
 
 HomeActivity::HomeActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
@@ -2076,20 +2085,7 @@ void HomeActivity::drawRecentCard() {
 #endif
     if (image) coverHeight = height;
   }
-  if (!image) {
-    // The brand placeholder, scaled up. The source column of each cover column is worked out once (the
-    // C3 has no divider worth a division per pixel: 134.100 of them took 174 ms), and the page is
-    // already white, so only the dark pixels are drawn.
-    uint8_t column[HOME_CARD_COVER_W];
-    const int columns = std::min(card.coverW, HOME_CARD_COVER_W);
-    for (int xx = 0; xx < columns; ++xx) column[xx] = static_cast<uint8_t>(xx * sleepcover::WIDTH / card.coverW);
-    for (int yy = 0; yy < card.coverH; ++yy) {
-      const uint8_t* row = sleepcover::PIXELS + (yy * sleepcover::HEIGHT / card.coverH) * (sleepcover::WIDTH / 8);
-      for (int xx = 0; xx < columns; ++xx)
-        if (!((row[column[xx] >> 3] >> (7 - (column[xx] & 7))) & 1))
-          renderer.drawPixel(card.coverX + xx, card.coverY + yy, true);
-    }
-  }
+  if (!image) drawHolder(card.coverX, card.coverY, card.coverW, card.coverH);
   // Round the cover's corners by painting the page back over them, the pixels a rounded card
   // would not cover: a few hundred pixels, no second buffer, and the cached card keeps them.
   if (!coverKept)
@@ -2214,6 +2210,7 @@ void HomeActivity::wantThumb(const int index) {
 
 void HomeActivity::onTick() {
   if (wakeStatePending.exchange(false)) saveAppState();
+  tickHolders();
   const int index = thumbWanted.load();
   if (index < 0) return;
   // Any press moves the card on or opens something: the decode waits for the next idle card.
@@ -2355,15 +2352,21 @@ void HomeActivity::clearHomeGray() {
 bool HomeActivity::showHomeGray() {
   if (!homeGraySelected || inkSlotCount == 0) return false;
   std::array<bool, 4> present{};
+  std::array<std::string, 4> paths;  // the book's own cover, else the placeholder of the frame
   int found = 0;
   for (int i = 0; i < inkSlotCount; ++i) {
     const auto& slot = inkSlots[i];
     const auto& r = slot.rect;
-    auto file = Storage.open(touchCoverPath(recentBooks[slot.book].coverBmpPath, r.w, r.h).c_str());
-    if (!file) continue;
-    Bitmap bitmap(file);
-    present[i] = bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() == r.w &&
-                 bitmap.getHeight() == r.h && bitmap.getBpp() == 2;
+    const auto& cover = recentBooks[slot.book].coverBmpPath;
+    for (int attempt = 0; attempt < 2 && !present[i]; ++attempt) {
+      if (attempt == 0 && cover.empty()) continue;
+      paths[i] = attempt == 0 ? touchCoverPath(cover, r.w, r.h) : holderPath(r.w, r.h);
+      auto file = Storage.open(paths[i].c_str());
+      if (!file) continue;
+      Bitmap bitmap(file);
+      present[i] = bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() == r.w &&
+                   bitmap.getHeight() == r.h && bitmap.getBpp() == 2;
+    }
     if (present[i]) ++found;
   }
   if (!found) return false;
@@ -2406,7 +2409,7 @@ bool HomeActivity::showHomeGray() {
           if (!present[i]) continue;
           const auto& slot = inkSlots[i];
           const auto& r = slot.rect;
-          auto file = Storage.open(touchCoverPath(recentBooks[slot.book].coverBmpPath, r.w, r.h).c_str());
+          auto file = Storage.open(paths[i].c_str());
           Bitmap bitmap(file);
           if (!file || bitmap.parseHeaders() != BmpReaderError::Ok ||
               !renderer.drawBitmap(bitmap, r.x, r.y, r.w, r.h)) { ready = false; break; }
@@ -2441,7 +2444,7 @@ bool HomeActivity::showHomeGray() {
       if (!present[i]) continue;
       const auto& slot = inkSlots[i];
       const auto& r = slot.rect;
-      auto file = Storage.open(touchCoverPath(recentBooks[slot.book].coverBmpPath, r.w, r.h).c_str());
+      auto file = Storage.open(paths[i].c_str());
       if (!file) { ready = false; break; }
       Bitmap bitmap(file);
       if (bitmap.parseHeaders() != BmpReaderError::Ok || !renderer.drawBitmap(bitmap, r.x, r.y, r.w, r.h)) {
@@ -2463,6 +2466,87 @@ bool HomeActivity::showHomeGray() {
   return ready;
 }
 
+std::string HomeActivity::holderPath(const int width, const int height) const {
+  return tenorink::cachePath(coverholder::path(), width, height, homeGraySelected);
+}
+
+// The cover frame of a book with no cover (components/CoverHolder.h): the cached picture when the card
+// has it, else a plain frame while an idle pass writes the picture. True when the picture was drawn.
+bool HomeActivity::drawHolder(const int x, const int y, const int width, const int height) {
+  LOG_INF("HOME", "Cover holder frame=%d,%d,%d,%d", x, y, width, height);
+  HalFile file;
+  if (Storage.openFileForRead("HOME", holderPath(width, height), file)) {
+    Bitmap bitmap(file);
+    // Written at the frame's size, so it is drawn 1:1 as a book's own ink cover is.
+    if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() == width && bitmap.getHeight() == height &&
+        renderer.drawBitmap(bitmap, x, y, width, height))
+      return true;
+  }
+  wantHolder(width, height);
+  renderer.fillRoundedRect(x, y, width, height, tenorradius::cover(width), Color::LightGray);
+  return false;
+}
+
+void HomeActivity::wantHolder(const int width, const int height) {
+  const uint32_t id = holderId(width, height, homeGraySelected);
+  for (const uint32_t tried : holderTried)
+    if (tried == id) return;
+  const int count = holderCount.load();
+  for (int i = 0; i < count; ++i)
+    if (holderRequests[i].width == width && holderRequests[i].height == height) return;
+  if (count >= static_cast<int>(holderRequests.size())) return;
+  holderRequests[count] = {static_cast<int16_t>(width), static_cast<int16_t>(height)};
+  holderAtMs = millis();
+  holderCount = count + 1;
+}
+
+// Main task, once the card has been idle: writes the placeholders the frames asked for.
+void HomeActivity::tickHolders() {
+  if (holderCount.load() == 0) return;
+  if (mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased()) {
+    holderAtMs = millis();
+    return;
+  }
+  if (millis() - holderAtMs.load() < HOLDER_IDLE_MS) return;
+  RenderLock lock(*this);
+  const auto requests = holderRequests;
+  const int count = holderCount.exchange(0);
+  if (activeTabId != Tab::RECENT) return;
+  bool wrote = false;
+  for (int i = 0; i < count; ++i) {
+    const int width = requests[i].width, height = requests[i].height;
+    holderTried[holderTriedNext++ % 8] = holderId(width, height, homeGraySelected);
+    const uint32_t started = millis();
+    const bool ok = writeHolder(width, height);
+    LOG_INF("HOME", "Cover holder %dx%d ms=%lu ok=%u free=%u largest=%u", width, height,
+            static_cast<unsigned long>(millis() - started), ok ? 1u : 0u, static_cast<unsigned>(ESP.getFreeHeap()),
+            static_cast<unsigned>(ESP.getMaxAllocHeap()));
+    wrote = wrote || ok;
+  }
+  if (!wrote) return;
+  freeCoverBuffer();
+  coverRendered = false;
+  requestUpdate();
+}
+
+// Written under a temporary name and renamed once whole, as every cover thumbnail is.
+bool HomeActivity::writeHolder(const int width, const int height) {
+  const std::string path = holderPath(width, height);
+  if (!Storage.ensureDirectoryExists(coverholder::dir().c_str())) return false;
+  const std::string part = path + ".tmp";
+  Storage.remove(part.c_str());
+  HalFile file;
+  bool ok = Storage.openFileForWrite("HOME", part, file);
+  if (ok) ok = coverholder::writeInk(file, width, height, homeGraySelected);
+  file.close();
+  if (ok) {
+    Storage.remove(path.c_str());
+    ok = Storage.rename(part.c_str(), path.c_str());
+  }
+  if (!ok) Storage.remove(part.c_str());
+  return ok;
+}
+
 void HomeActivity::drawTouchCover(const HomeRecentRect& rect, const int index) {
   const auto& book = recentBooks[index];
   bool image = false;
@@ -2476,15 +2560,7 @@ void HomeActivity::drawTouchCover(const HomeRecentRect& rect, const int index) {
     }
     if (!image) queueTouchThumb(index, rect.w, rect.h);
   }
-  if (!image) {
-    for (int yy = 0; yy < rect.h; ++yy) {
-      const auto* row = sleepcover::PIXELS + (yy * sleepcover::HEIGHT / rect.h) * (sleepcover::WIDTH / 8);
-      for (int xx = 0; xx < rect.w; ++xx) {
-        const int sx = xx * sleepcover::WIDTH / rect.w;
-        if (!((row[sx >> 3] >> (7 - (sx & 7))) & 1)) renderer.drawPixel(rect.x + xx, rect.y + yy, true);
-      }
-    }
-  }
+  if (!image) drawHolder(rect.x, rect.y, rect.w, rect.h);
   homeCoverCorners(renderer, rect.x, rect.y, rect.w, rect.h);
   LOG_INF("HOME", "Home cover book=%d rect=%d,%d,%d,%d native=%u", index, rect.x, rect.y, rect.w, rect.h,
           image ? 1u : 0u);

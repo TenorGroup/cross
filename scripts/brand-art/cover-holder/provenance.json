@@ -1,0 +1,10 @@
+{
+  "source_html": "branding/collateral/xteink-x3-cross-2026/260915_tenor_branding_xteink-x3-cross-muc-dang.html",
+  "source_html_sha256": "f887fc293a6e047ba1a63d57ce579cf420dadd61c8fc24e48e12fc1eca42ae10",
+  "render": "Chrome headless, device scale factor 4, window 528x792, style .lockup{display:none} appended, then Y channel (BT.601) BOX-reduced to 298x450 (tools in render.py)",
+  "gray_sha256": "52e32cd8d34ab095758368a736c83ddf37d835a64ba78e36034abe1e6b232d8c",
+  "size": [
+    298,
+    450
+  ]
+}
