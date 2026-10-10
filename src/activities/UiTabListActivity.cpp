@@ -31,8 +31,8 @@ int touchTabBarHeight(const bool touchShell, const int regularHeight) {
 
 void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh, const fui::TabItem* tabs,
                                         const int count, const fui::TextStyle& chu) {
-  constexpr int LE = 8;         // bar margin from the screen edge
-  static_assert(tenorchrome::X3_BAR_MARGIN == LE, "the button boards' bar stands where the tab list puts it");
+  // Bar margin from the band's side: the touch band is already 8 px in from the screen edge, the button board's is not.
+  constexpr int LE = tenorchrome::kTouchShell ? 8 : tenorchrome::X3_BAR_MARGIN;
   constexpr int KHE = tenorchrome::BAR_TAB_INSET;  // band top to the selected pill
   constexpr int PILL_ICON_W = tenorchrome::BAR_TAB_W;
   constexpr int INDICATOR = 6;  // sort arrow beside a label

@@ -116,13 +116,14 @@ constexpr int FAVORITE_MARK = kTouchShell ? 18 : 14;
 void drawFavoriteMark(const GfxRenderer& renderer, int x, int fontId, int lineTop);
 constexpr int BAR_TAB_W = 84;
 constexpr int BAR_TAB_INSET = 6;
-// The ring round a whole dynamic bar (grey dots 2 px, round-ended): the one function every board's bar draws it with, the
-// Home cards, a path bar and the reader's tool bar alike. The board gives the rect; the cards or pills stand
-// BAR_END_INSET in from the ring's ends and BAR_TAB_INSET from its top and bottom.
+// The ring round a dynamic bar of cards (grey dots 2 px, round-ended): the one function every board's card bar draws it
+// with, the Home cards and the reader's tool bar. A bar of a screen's path (the back, the zone icon, the name pill) has
+// no ring on any board. The board gives the rect; the cards stand BAR_END_INSET in from the ring's ends and
+// BAR_TAB_INSET from its top and bottom.
 constexpr int BAR_END_INSET = 8;
 void drawBarFrame(const GfxRenderer& g, int x, int y, int w, int h);
-// A button board's bar stands this far in from the screen's sides (the touch board's is FOOT_BACK_X, 16).
-constexpr int X3_BAR_MARGIN = 8;
+// A button board's bar stands this far in from the screen's sides, as the touch board's does.
+constexpr int X3_BAR_MARGIN = FOOT_BACK_X;
 void drawBarTab(const GfxRenderer& renderer, int cx, int y, int h, const uint8_t* bits, int w, int iconH, bool chosen);
 // A ring of `thick` px just inside a round-ended bar; grey = every other pixel.
 void drawPillRing(const GfxRenderer& g, int x, int y, int w, int h, int thick, bool grey);

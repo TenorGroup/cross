@@ -227,11 +227,10 @@ void tenorchrome::drawX3NavigationPath(const GfxRenderer& renderer, const std::v
                                       const bool file) {
   if (!x3ScreenLayoutEnabled() || shell::uglyParts()) return;
   const auto bar = x3ScreenLayout(renderer).barRect;
-  const int frameX = bar.x + X3_BAR_MARGIN, frameWidth = bar.width - 2 * X3_BAR_MARGIN;
-  const int left = frameX + BAR_END_INSET;
+  const int left = bar.x + 16;
   const int top = bar.y + BAR_TAB_INSET;
   const int height = bar.height - 2 * BAR_TAB_INSET;
-  const int available = frameWidth - 2 * BAR_END_INSET;
+  const int available = bar.width - 32;
   auto pills = layoutX3Navigation(renderer, UI_12_FONT_ID, nodes, available, height);
 #ifdef SIMULATOR
   LOG_INF("X3PATH", "screen=%s tier=%u bar=%d,%d,%d,%d titleWidth=%d nodes=%u root=%u parent=%u",
@@ -248,7 +247,6 @@ void tenorchrome::drawX3NavigationPath(const GfxRenderer& renderer, const std::v
   }
   const auto clip = renderer.getClipRect();
   renderer.setClipRect(bar.x, bar.y, bar.width, bar.height);
-  drawBarFrame(renderer, frameX, bar.y, frameWidth, bar.height);
   int leftEdge = left;
   for (const auto& pill : pills) {
 #ifdef SIMULATOR
@@ -256,7 +254,7 @@ void tenorchrome::drawX3NavigationPath(const GfxRenderer& renderer, const std::v
             pill.width, height, pill.current, static_cast<unsigned>(pill.icon),
             renderer.getTextWidth(UI_12_FONT_ID, pill.text.c_str()), pill.text.c_str());
 #endif
-    drawPillRing(renderer, leftEdge, top, pill.width, height, pill.current ? 3 : 2, !pill.current);
+    drawPillRing(renderer, leftEdge, top, pill.width, height, 2, true);
     if (!pill.text.empty()) {
       drawPillLabel(renderer, UI_12_FONT_ID, pill.text.c_str(), leftEdge, top, pill.width, height);
     } else if (!pill.current) {

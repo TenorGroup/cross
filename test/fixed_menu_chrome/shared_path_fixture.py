@@ -27,10 +27,7 @@ def extend_path(fixture, chrome, function, full_painter, root):
     fixture = includes + fixture
     declarations = '''
 namespace tenorchrome {
-constexpr int BAR_END_INSET = 8;
-constexpr int X3_BAR_MARGIN = 8;
 void drawPillRing(const GfxRenderer&, int, int, int, int, int, bool);
-void drawBarFrame(const GfxRenderer&, int, int, int, int);
 void drawPillLabel(const GfxRenderer&, int, const char*, int, int, int, int);
 void drawBarIcon(const GfxRenderer&, const uint8_t*, int, int, int, int, bool);
 void drawX3NavigationPath(const GfxRenderer&, const std::vector<X3PathNode>&, bool);
@@ -67,6 +64,5 @@ void drawPathPill(const GfxRenderer&, int, const char*, int, int, int, int, int,
         declarations += function(legacy, 'inline void ' + name + '(') + '\n'
     declarations += '}\n'
     return fixture + declarations + function(chrome, 'const freeink::Icon& x3PathIcon(') + '\n' + \
-        function(chrome, 'tenorchrome::drawBarFrame(') + '\n' + \
         function(chrome, 'tenorchrome::drawX3NavigationPath(') + '\n' + \
         function(chrome, 'tenorchrome::drawX3ActivityPath(') + '\n'

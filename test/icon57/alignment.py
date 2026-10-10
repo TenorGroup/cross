@@ -56,7 +56,7 @@ else:
     for kind, count in [('home', 5), ('text', 5), ('reader', 5 if board == 'X3' else 4), ('toolbar', 4)]:
         if board == 'Touch' and kind == 'text':
             continue
-        first, last = (58, 469) if board == 'X3' else (74, 453)
+        first, last = (66, 461) if board == 'X3' else (74, 453)
         centres = [first + (2 * (last - first) * slot + count - 1) // (2 * (count - 1))
                    for slot in range(count)]
         if kind == 'toolbar':
