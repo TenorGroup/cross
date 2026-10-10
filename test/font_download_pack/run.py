@@ -46,7 +46,7 @@ command = [os.environ.get('CXX', 'c++'), '-std=c++20', '-UNDEBUG', str(test_dir 
 if 'STR_FONT_PACK_NO_SPACE' in (args.repo / 'lib/I18n/I18nKeys.h').read_text():
     command += ['-DFONT_DOWNLOAD_PACK_IDS_PRESENT']
 for directory in [test_dir / 'stubs', args.repo / 'test/font_pack/stubs', args.repo / 'src', args.repo / 'lib/I18n', args.out,
-                  args.repo / 'freeink-sdk/libs/hardware/SDCardManager/include']:
+                  args.repo / 'freeink-sdk/libs/hardware/SDCardManager/include', args.repo / 'lib/Memory']:
     command += ['-I', str(directory)]
 subprocess.run(command, check=True)
 

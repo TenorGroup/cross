@@ -1,5 +1,6 @@
 #pragma once
 
+#include <HeapFloor.h>
 #include <FontInstaller.h>
 #include <FontPackInstaller.h>
 #include <HalStorage.h>
@@ -31,9 +32,10 @@ inline ManifestFileKind classifyManifestFile(const char* name) {
 
 inline uint64_t requiredPackSpace(const uint32_t size) { return uint64_t{size} * 2 + 4 * 1024 * 1024; }
 
+// The pack workspace and 1 KB of slack fit when the heap left after them stays on the heap floor.
 inline bool canInstallPack(const uint32_t freeHeap, const uint32_t largestBlock, const size_t workspace) {
-  return uint64_t{freeHeap} >= 10240 + uint64_t{workspace} + 1024 &&
-         uint64_t{largestBlock} >= 8192 + uint64_t{workspace} + 1024;
+  const uint64_t need = uint64_t{workspace} + 1024;
+  return need <= freeHeap && need <= largestBlock && !heapfloor::crosses(freeHeap - need, largestBlock - need);
 }
 
 inline bool packMatchesFamily(const char* name, const char* family) {

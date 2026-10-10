@@ -1,5 +1,7 @@
 #pragma once
 
+#include <HeapFloor.h>
+
 #include <cstddef>
 #include <cstdint>
 
@@ -8,8 +10,8 @@ inline bool hasTlsHeadroom(uint32_t freeHeap, uint32_t largestBlock, uint32_t mi
   return freeHeap >= minFree && largestBlock >= minLargest;
 }
 
+// The catalog fits when the heap left after it stays on the heap floor (heapfloor::crosses).
 inline bool canAllocateCatalog(uint64_t bytes, uint32_t freeHeap, uint32_t largestBlock) {
-  return bytes <= freeHeap && uint64_t{freeHeap} - bytes >= 10240 &&
-         bytes <= largestBlock && uint64_t{largestBlock} - bytes >= 8192;
+  return bytes <= freeHeap && bytes <= largestBlock && !heapfloor::crosses(freeHeap - bytes, largestBlock - bytes);
 }
 }

@@ -266,9 +266,9 @@ TEST_F(FontPack, ManifestFileClassifier) {
   EXPECT_TRUE(fontdownload::packMatchesFamily("Example.cpfontpack", "Example"));
   EXPECT_FALSE(fontdownload::packMatchesFamily("Other.cpfontpack", "Example"));
   EXPECT_EQ(fontdownload::requiredPackSpace(68363915), 140922134u);
-  EXPECT_TRUE(fontdownload::canInstallPack(10240 + 5512 + 1024, 8192 + 5512 + 1024, 5512));
-  EXPECT_FALSE(fontdownload::canInstallPack(10240 + 5512 + 1023, 8192 + 5512 + 1024, 5512));
-  EXPECT_FALSE(fontdownload::canInstallPack(10240 + 5512 + 1024, 8192 + 5512 + 1023, 5512));
+  EXPECT_TRUE(fontdownload::canInstallPack(10240 + 5512 + 1024, 8180 + 5512 + 1024, 5512));
+  EXPECT_FALSE(fontdownload::canInstallPack(10240 + 5512 + 1023, 8180 + 5512 + 1024, 5512));
+  EXPECT_FALSE(fontdownload::canInstallPack(10240 + 5512 + 1024, 8180 + 5512 + 1023, 5512));
 }
 
 TEST_F(FontPack, StreamCallsRealInstallerOnceAfterClosingTransport) {

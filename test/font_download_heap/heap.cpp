@@ -190,8 +190,9 @@ int main() {
     assert(!fontdownload::hasTlsHeadroom(40000, 19999, 40000, 20000));
     assert(fontdownload::hasTlsHeadroom(40000, 20000, 40000, 20000));
     assert(!fontdownload::canAllocateCatalog(4096, 14335, 12288));
-    assert(!fontdownload::canAllocateCatalog(4096, 14336, 12287));
-    assert(fontdownload::canAllocateCatalog(4096, 14336, 12288));
+    // The heap floor compares reported numbers: a block of 8,192 B left over reports 8,180.
+    assert(!fontdownload::canAllocateCatalog(4096, 14336, 12275));
+    assert(fontdownload::canAllocateCatalog(4096, 14336, 12276));
     auto pressure = makeUniqueNoThrow<char[]>(ESP.getFreeHeap() - 39999);
     assert(ESP.getFreeHeap() == 39999);
     assert(pressure && !activity.prepareDownloadHeap());

@@ -18,7 +18,7 @@ target_include_directories(FontPackInstallerTest BEFORE PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/stubs ${REPO_ROOT}/test/host_stubs
   ${REPO_ROOT}/test/font_installer/stubs)
 target_include_directories(FontPackInstallerTest PRIVATE
-  ${REPO_ROOT}/src ${REPO_ROOT}/lib/EpdFont ${REPO_ROOT}/lib/JsonParser
+  ${REPO_ROOT}/src ${REPO_ROOT}/lib/EpdFont ${REPO_ROOT}/lib/JsonParser ${REPO_ROOT}/lib/Memory
   ${REPO_ROOT}/lib/Serialization ${REPO_ROOT}/lib/Epub
   ${REPO_ROOT}/lib/BlePageTurner/include
   ${REPO_ROOT}/freeink-sdk/libs/hardware/SDCardManager/include
