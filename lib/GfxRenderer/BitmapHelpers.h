@@ -94,7 +94,8 @@ class FloydSteinberg1BitDitherer {
 // Less error buildup = fewer artifacts than Floyd-Steinberg
 class AtkinsonDitherer {
  public:
-  explicit AtkinsonDitherer(int width, bool originalThresholds = false) : originalThresholds(originalThresholds) {
+  explicit AtkinsonDitherer(int width, bool originalThresholds = false, bool oneBit = false)
+      : originalThresholds(originalThresholds), oneBit(oneBit) {
     if (width <= 0) return;
     const size_t candidateRowSize = static_cast<size_t>(width) + 4;
     if (candidateRowSize > SIZE_MAX / (3 * sizeof(int16_t))) return;
@@ -124,7 +125,10 @@ class AtkinsonDitherer {
     // Quantize to 4 levels
     uint8_t quantized;
     int quantizedValue;
-    if (originalThresholds) {
+    if (oneBit) {
+      quantized = adjusted >= 128 ? 3 : 0;
+      quantizedValue = quantized == 3 ? 255 : 0;
+    } else if (originalThresholds) {
       if (adjusted < 43) {
         quantized = 0;
         quantizedValue = 0;
@@ -193,6 +197,7 @@ class AtkinsonDitherer {
   int16_t* errorRow1 = nullptr;
   int16_t* errorRow2 = nullptr;
   const bool originalThresholds;
+  const bool oneBit;
 };
 
 // Floyd-Steinberg error diffusion dithering with serpentine scanning

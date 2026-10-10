@@ -17,7 +17,8 @@ stubs = r'''
 #include <string>
 #include <vector>
 #include "util/ThumbName.h"
-int copies=0, decodes=0, writes=0;
+#include "TenorInk.h"
+int copies=0, decodes=0, writes=0, inkDecodes=0;
 struct HalFile { std::vector<unsigned char>* data=nullptr; void close() {} size_t size() const { return data?data->size():0; } };
 struct Store {
   std::map<std::string,std::vector<unsigned char>> files;
@@ -34,10 +35,11 @@ struct GrayThumb { explicit GrayThumb(int) {} void alsoFeed(GrayThumb*) {} bool 
 struct FsHelpers { static bool hasJpgExtension(const std::string& s) { return s.ends_with(".jpg"); }
   static bool hasPngExtension(const std::string& s) { return s.ends_with(".png"); } };
 struct JpegToBmpConverter {
+  static bool jpegFileToInkBmpStream(HalFile&,HalFile& f,int,int,bool four) { ++decodes; ++inkDecodes; *f.data={static_cast<unsigned char>(four?4:1)}; return true; }
   static bool jpegFileToGrayThumb(HalFile&,GrayThumb&,int*) { ++decodes; return true; }
   static bool jpegFileTo1BitBmpStreamWithSize(HalFile&,HalFile& f,int,int,bool=false) { ++decodes; *f.data={1}; return true; }
 };
-struct PngToBmpConverter { static bool pngFileTo1BitBmpStreamWithSize(HalFile&,HalFile& f,int,int,bool=false) { ++decodes; *f.data={1}; return true; } };
+struct PngToBmpConverter { static bool pngFileToInkBmpStream(HalFile&,HalFile& f,int,int,bool four) { return JpegToBmpConverter::jpegFileToInkBmpStream(f,f,0,0,four); } static bool pngFileTo1BitBmpStreamWithSize(HalFile&,HalFile& f,int,int,bool=false) { ++decodes; *f.data={1}; return true; } };
 struct EspStub { unsigned getFreeHeap() const { return 1000000; } unsigned getMaxAllocHeap() const { return 1000000; } } ESP;
 unsigned long millis() { return 0; }
 int thumbWidthFor(int h) { return h*298/450; }
@@ -52,7 +54,7 @@ struct Epub {
   std::string getThumbBmpPath(int,int) const;
   bool readItemContentsToStream(const std::string&,HalFile& f,int) const { ++copies; *f.data={9}; return true; }
   void generateThumbBmps(const std::string&,const int*,int) const;
-  void generateThumbBmps(const std::string&,const int*,const int*,int) const;
+  void generateThumbBmps(const std::string&,const int*,const int*,int,bool=false,bool=true) const;
 };
 '''
 main = r'''
@@ -94,12 +96,25 @@ int main() {
   epub.generateThumbBmps("images/cover.jpg",widths,shapeHeights,2);
   assert(copies==2 && decodes==3 && writes==oldWrites && Storage.files==shapeCache);
   assert(Storage.files[epub.getThumbBmpPath(226)]==oldThumb);
-  puts("PASS legacy bytes and exact W,H cache reuse; each shape decoded once");
+  const auto legacy = Storage.files;
+  epub.generateThumbBmps("images/cover.jpg",widths,shapeHeights,2,true,true);
+  assert(inkDecodes==2);
+  const auto grayPath=tenorink::cachePath(epub.getThumbBmpPath(),232,350,true);
+  assert(Storage.files[grayPath]==std::vector<unsigned char>{4});
+  const int afterGrayCopies=copies,afterGrayWrites=writes;
+  epub.generateThumbBmps("images/cover.jpg",widths,shapeHeights,2,true,true);
+  assert(inkDecodes==2 && copies==afterGrayCopies && writes==afterGrayWrites);
+  epub.generateThumbBmps("images/cover.png",widths,shapeHeights,2,true,false);
+  const auto monoPath=tenorink::cachePath(epub.getThumbBmpPath(),232,350,false);
+  assert(inkDecodes==4 && grayPath!=monoPath);
+  assert(Storage.files[monoPath]==std::vector<unsigned char>{1});
+  for(const auto& [name,data]:legacy) assert(Storage.files[name]==data);
+  puts("PASS legacy bytes, exact shape, separate tenor/ink depths and warm cache reuse");
 }
 '''
 with tempfile.TemporaryDirectory(prefix='cover-cache-') as tmp:
     cpp=Path(tmp)/'cache.cpp'
     cpp.write_text(stubs+paths+body+main)
     exe=Path(tmp)/'cache'
-    subprocess.run(['c++','-std=c++20','-I'+str(repo/'src'),str(cpp),'-o',str(exe)],check=True)
+    subprocess.run(['c++','-std=c++20','-I'+str(repo/'src'),'-I'+str(repo/'lib/JpegToBmpConverter'),str(cpp),'-o',str(exe)],check=True)
     subprocess.run([str(exe)],check=True)

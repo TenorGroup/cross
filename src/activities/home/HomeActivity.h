@@ -268,6 +268,15 @@ class HomeActivity final : public UiTabListActivity {
   void loadCardStats(int index);
   int drawCardStats(const HomeCardLayout& card, HomeStatsBounds* bounds = nullptr);
   void drawRecentCard();
+  bool homeInkEnabled() const;
+  bool homeGrayWanted() const;
+  std::string touchCoverPath(const std::string& cover, int width, int height) const;
+  bool showHomeGray();
+  void clearHomeGray();
+  bool homeGrayOnGlass = false;
+  struct InkSlot { HomeRecentRect rect; int book = -1; };
+  std::array<InkSlot, 4> inkSlots{};
+  int inkSlotCount = 0;
   HomeRecentLayout recentLayout();
   void drawTouchRecent(const HomeRecentLayout& layout);
   void drawTouchCover(const HomeRecentRect& rect, int book);

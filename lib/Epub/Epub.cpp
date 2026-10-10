@@ -8,6 +8,7 @@
 #include <Logging.h>
 #include <Memory.h>
 #include <PngToBmpConverter.h>
+#include <TenorInk.h>
 #include <Utf8.h>
 #include <ZipFile.h>
 
@@ -1180,7 +1181,7 @@ void Epub::generateThumbBmps(const std::string& coverImageHref, const int* heigh
 }
 
 void Epub::generateThumbBmps(const std::string& coverImageHref, const int* widths, const int* heights,
-                             const int count) const {
+                             const int count, const bool ink, const bool four) const {
   const bool jpg = FsHelpers::hasJpgExtension(coverImageHref);
   const bool png = !jpg && FsHelpers::hasPngExtension(coverImageHref);
   if (!jpg && !png) return;
@@ -1201,7 +1202,8 @@ void Epub::generateThumbBmps(const std::string& coverImageHref, const int* width
   };
   for (int i = 0; i < count; ++i) {
     if (widths[i] <= 0 || heights[i] <= 0) continue;
-    const auto thumbPath = getThumbBmpPath(widths[i], heights[i]);
+    const auto thumbPath = ink ? tenorink::cachePath(getThumbBmpPath(), widths[i], heights[i], four)
+                              : getThumbBmpPath(widths[i], heights[i]);
     if (Storage.exists(thumbPath.c_str())) continue;
     const std::string partPath = thumbPath + ".tmp";
     Storage.remove(partPath.c_str());
@@ -1216,8 +1218,11 @@ void Epub::generateThumbBmps(const std::string& coverImageHref, const int* width
       thumbBmp.close();
       break;
     }
-    const bool success = jpg ? JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(cover, thumbBmp, widths[i], heights[i], true)
-                             : PngToBmpConverter::pngFileTo1BitBmpStreamWithSize(cover, thumbBmp, widths[i], heights[i], true);
+    const bool success = ink
+        ? (jpg ? JpegToBmpConverter::jpegFileToInkBmpStream(cover, thumbBmp, widths[i], heights[i], four)
+               : PngToBmpConverter::pngFileToInkBmpStream(cover, thumbBmp, widths[i], heights[i], four))
+        : (jpg ? JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(cover, thumbBmp, widths[i], heights[i], true)
+               : PngToBmpConverter::pngFileTo1BitBmpStreamWithSize(cover, thumbBmp, widths[i], heights[i], true));
     cover.close();
     thumbBmp.close();
     if (success && Storage.rename(partPath.c_str(), thumbPath.c_str())) {

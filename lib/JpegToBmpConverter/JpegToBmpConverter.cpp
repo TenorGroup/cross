@@ -16,6 +16,10 @@
 #include "BitmapHelpers.h"
 #include "GrayThumb.h"
 #include "JpegScale.h"
+#include "TenorInk.h"
+#ifdef BOARD_HAS_PSRAM
+#include <HalMemory.h>
+#endif
 
 // ============================================================================
 // IMAGE PROCESSING OPTIONS - Toggle these to test different configurations
@@ -86,7 +90,7 @@ void writeBmpHeader8bit(Print& bmpOut, const int width, const int height) {
 }
 
 // Helper function: Write BMP header with 2-bit color depth
-static void writeBmpHeader2bit(Print& bmpOut, const int width, const int height) {
+void writeBmpHeader2bit(Print& bmpOut, const int width, const int height) {
   // Calculate row padding (each row must be multiple of 4 bytes)
   const int bytesPerRow = (width * 2 + 31) / 32 * 4;  // 2 bits per pixel, round up
   const int imageSize = bytesPerRow * height;
@@ -233,9 +237,9 @@ static void yieldDuringDecode(BmpConvertCtx* ctx) {
   yieldToIdle();
 }
 
-static void yieldDuringDecodeBlock(BmpConvertCtx* ctx) {
-  if (++ctx->blocksSinceYield < 16) return;
-  ctx->blocksSinceYield = 0;
+static void yieldDuringDecodeBlock(uint8_t& blocksSinceYield) {
+  if (++blocksSinceYield < 16) return;
+  blocksSinceYield = 0;
   yieldToIdle();
 }
 
@@ -414,7 +418,7 @@ static void flushScaledRow(BmpConvertCtx* ctx) {
 int bmpDrawCallback(JPEGDRAW* pDraw) {
   auto* ctx = reinterpret_cast<BmpConvertCtx*>(pDraw->pUser);
   if (!ctx || ctx->error) return 0;
-  yieldDuringDecodeBlock(ctx);
+  yieldDuringDecodeBlock(ctx->blocksSinceYield);
 
   const uint8_t* pixels = reinterpret_cast<uint8_t*>(pDraw->pPixels);
   const int stride = pDraw->iWidth;
@@ -487,6 +491,47 @@ int bmpDrawCallback(JPEGDRAW* pDraw) {
 }
 
 }  // namespace
+
+bool JpegToBmpConverter::jpegFileToInkBmpStream(HalFile& file, Print& out, int width, int height, bool four) {
+#ifdef BOARD_HAS_PSRAM
+  s_jpegFile = &file;
+  const auto jpeg = makeUniqueNoThrow<JPEGDEC>();
+  struct Capture { uint8_t* pixels; int w, h; uint8_t blocksSinceYield; };
+  const auto capture = [](JPEGDRAW* block) -> int {
+    auto& c = *static_cast<Capture*>(block->pUser);
+    if (block->x < 0 || block->y < 0 || block->x >= c.w || block->y >= c.h) return 0;
+    const auto* src = reinterpret_cast<const uint8_t*>(block->pPixels);
+    for (int y = 0; y < block->iHeight && block->y + y < c.h; ++y)
+      std::memcpy(c.pixels + (block->y + y) * c.w + block->x, src + y * block->iWidth,
+                  std::min(block->iWidthUsed, c.w - block->x));
+    yieldDuringDecodeBlock(c.blocksSinceYield);
+    return 1;
+  };
+  if (!jpeg || jpeg->open("", bmpJpegOpen, bmpJpegClose, bmpJpegRead, bmpJpegSeek, capture) != 1) return false;
+  const ScopedCleanup cleanup{[&]() { jpeg->close(); }};
+  const int sw = jpeg->getWidth(), sh = jpeg->getHeight();
+  if (sw <= 0 || sh <= 0 || sw > MAX_IMAGE_WIDTH || sh > MAX_IMAGE_HEIGHT) return false;
+  // JPEGDEC supplies only DC for progressive streams; keep that limitation visible in the log.
+  const bool progressive = jpeg->getJPEGType() == JPEG_MODE_PROGRESSIVE;
+  const int scale = progressive ? 8 : 1;
+  const int dw = (sw + scale - 1) / scale, dh = (sh + scale - 1) / scale;
+  const size_t bytes = static_cast<size_t>(dw) * dh;
+  const auto psram = HalMemory::getPsramHeap();
+  if (psram.freeBytes < bytes + 128 * 1024 || psram.largestBlockBytes < bytes) return false;
+  auto gray = HalMemory::allocatePsram(bytes);
+  if (!gray) return false;
+  Capture c{gray.get(), dw, dh, 0};
+  jpeg->setPixelType(EIGHT_BIT_GRAYSCALE);
+  jpeg->setUserPointer(&c);
+  const bool decoded = jpeg->decode(0, 0, progressive ? JPEG_SCALE_EIGHTH : 0) == 1;
+  LOG_INF("JPG", "tenor/ink source=%dx%d grid=%dx%d psram=%u progressive=%u", sw, sh, dw, dh,
+          static_cast<unsigned>(bytes), progressive ? 1u : 0u);
+  return decoded && tenorink::writeCover(gray.get(), dw, dh, out, width, height, four);
+#else
+  (void)file; (void)out; (void)width; (void)height; (void)four;
+  return false;
+#endif
+}
 
 // Internal implementation with configurable target size and bit depth
 bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& bmpOut, int targetWidth,

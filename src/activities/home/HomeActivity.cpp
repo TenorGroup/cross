@@ -55,6 +55,7 @@
 #include "components/CompactStats.h"
 #include "components/HomeExcerptStyle.h"
 #include "components/HomeCoverCorners.h"
+#include <TenorInk.h>
 #include "components/SettledListRender.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
@@ -257,12 +258,14 @@ void HomeActivity::captureNavigation(MenuNavigationState& state) const {
 }
 
 void HomeActivity::onExit() {
+  clearHomeGray();
   freeCoverBuffer();
   UiTabListActivity::onExit();
 }
 
 void HomeActivity::onPause() {
   // The manager holds RenderLock while pausing an activity.
+  clearHomeGray();
   freeCoverBuffer();
   coverRendered = false;
 }
@@ -949,6 +952,8 @@ void HomeActivity::render(RenderLock&&) {
   const uint32_t paintStartedUs = totalStartedUs;
 #endif
   const uint32_t started = millis();
+  clearHomeGray();
+  inkSlotCount = 0;
   renderer.clearScreen();
   drawChrome();
 #ifdef TENOR_UI_ACCEPTANCE
@@ -980,7 +985,8 @@ void HomeActivity::render(RenderLock&&) {
   if (coverRedriveDue()) {
     renderer.redriveNextRefresh(HalDisplay::FAST_REFRESH);
   }
-  renderer.displayBuffer(cleanInitialRefresh ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
+  if (!showHomeGray())
+    renderer.displayBuffer(cleanInitialRefresh ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
 #ifdef TENOR_UI_ACCEPTANCE
   const uint32_t displayUs = micros() - displayStartedUs;
   LOG_INF("HOME_PROBE", "frame_paint_us=%lu display_us=%lu total_us=%lu",
@@ -1879,6 +1885,10 @@ void HomeActivity::drawRecentCard() {
   cardThumbHeight = alignCover ? frame.coverH : HOME_CARD_COVER_H;
   heldCover = {static_cast<int16_t>(frame.coverX), static_cast<int16_t>(frame.coverY), static_cast<int16_t>(frame.coverW),
                static_cast<int16_t>(frame.coverH)};
+  if (homeInkEnabled()) {
+    inkSlotCount = 1;
+    inkSlots[0] = {{frame.coverX, frame.coverY, frame.coverW, frame.coverH}, shown};
+  }
   const auto& book = recentBooks[shown];
   const auto title = book.title.empty() ? book.path.substr(book.path.find_last_of('/') + 1) : book.title;
   const char* author = book.author.empty() ? tr(STR_RECENT_NO_AUTHOR) : book.author.c_str();
@@ -1942,7 +1952,7 @@ void HomeActivity::drawRecentCard() {
   // line count do not move the cover), so the keys say whether a card file still shows this card,
   // or at least its cover.
   const std::string thumbPath = book.coverBmpPath.empty() ? std::string()
-      : (tenorchrome::kTouchShell ? UITheme::getCoverThumbPath(book.coverBmpPath, cardThumbWidth, cardThumbHeight)
+      : (tenorchrome::kTouchShell ? touchCoverPath(book.coverBmpPath, cardThumbWidth, cardThumbHeight)
                                   : UITheme::getCoverThumbPath(book.coverBmpPath, cardThumbHeight));
   const int16_t geometry[] = {static_cast<int16_t>(frame.coverX), static_cast<int16_t>(frame.coverY),
                               static_cast<int16_t>(frame.coverW), static_cast<int16_t>(frame.coverH),
@@ -2010,7 +2020,7 @@ void HomeActivity::drawRecentCard() {
     if (image || book.coverBmpPath.empty()) break;
     HalFile file;
     const auto path = (tenorchrome::kTouchShell && attempt == 0)
-                          ? UITheme::getCoverThumbPath(book.coverBmpPath, cardThumbWidth, height)
+                          ? touchCoverPath(book.coverBmpPath, cardThumbWidth, height)
                           : UITheme::getCoverThumbPath(book.coverBmpPath, height);
     if (!Storage.openFileForRead("HOME", path, file)) continue;
     if (attempt == 0) cardFileThumb = 1;
@@ -2022,7 +2032,7 @@ void HomeActivity::drawRecentCard() {
     if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0) {
       if (tenorchrome::kTouchShell && attempt == 0) {
         image = bitmap.getWidth() == card.coverW && bitmap.getHeight() == card.coverH &&
-                renderer.drawBitmap1Bit(bitmap, card.coverX, card.coverY, card.coverW, card.coverH);
+                renderer.drawBitmap(bitmap, card.coverX, card.coverY, card.coverW, card.coverH);
         if (!image) cardFileThumb = 0;
       } else if (!tenorchrome::kTouchShell) {
         image = renderer.drawBitmapCover(bitmap, card.coverX, card.coverY, card.coverW, card.coverH);
@@ -2206,7 +2216,8 @@ void HomeActivity::writeMissingThumb(const int index) {
           ESP.getMaxAllocHeap() < CARD_THUMB_MIN_LARGEST_BLOCK) continue;
       const uint32_t started = millis();
       if (ref || epub.load(false, true)) {
-        epub.generateThumbBmps(ref ? href : epub.getCoverHref(), &q.width, &q.height, 1);
+        epub.generateThumbBmps(ref ? href : epub.getCoverHref(), &q.width, &q.height, 1,
+                               homeInkEnabled(), homeGrayWanted());
       }
       LOG_INF("HOME", "Home thumb book=%d size=%dx%d ms=%lu", q.book, q.width, q.height,
               static_cast<unsigned long>(millis() - started));
@@ -2279,16 +2290,91 @@ void HomeActivity::queueTouchThumb(const int index, const int width, const int h
   }
 }
 
+bool HomeActivity::homeInkEnabled() const {
+  return tenorchrome::kTouchShell && !shell::isUgly() && HalMemory::getPsramHeap().totalBytes > 0;
+}
+
+bool HomeActivity::homeGrayWanted() const {
+  return tenorink::homeGray(tenorchrome::kTouchShell, HalMemory::getPsramHeap().totalBytes > 0,
+                            activeTabId == Tab::RECENT, shell::isUgly(),
+                            renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported());
+}
+
+std::string HomeActivity::touchCoverPath(const std::string& cover, int width, int height) const {
+  return homeInkEnabled() ? tenorink::cachePath(cover, width, height, homeGrayWanted())
+                          : UITheme::getCoverThumbPath(cover, width, height);
+}
+
+void HomeActivity::clearHomeGray() {
+  if (!homeGrayOnGlass) return;
+  // Same cleanup as reader/sleep: re-seed RAM from BW; SSD1677 keeps its gray-clear debt
+  // so the next display promotes FAST to HALF/FULL and clears the ink on the glass.
+  renderer.cleanupGrayscaleWithFrameBuffer();
+  homeGrayOnGlass = false;
+}
+
+bool HomeActivity::showHomeGray() {
+  if (!homeGrayWanted() || inkSlotCount == 0) return false;
+  std::array<bool, 4> present{};
+  int found = 0;
+  for (int i = 0; i < inkSlotCount; ++i) {
+    const auto& slot = inkSlots[i];
+    const auto& r = slot.rect;
+    auto file = Storage.open(touchCoverPath(recentBooks[slot.book].coverBmpPath, r.w, r.h).c_str());
+    if (!file) continue;
+    Bitmap bitmap(file);
+    present[i] = bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() == r.w &&
+                 bitmap.getHeight() == r.h && bitmap.getBpp() == 2;
+    if (present[i]) ++found;
+  }
+  if (!found) return false;
+  const size_t bytes = renderer.getBufferSize();
+  auto bw = HalMemory::allocatePsram(bytes);
+  if (!bw) return false;
+  std::memcpy(bw.get(), renderer.getFrameBuffer(), bytes);
+  const uint32_t started = millis();
+  if (!renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute,
+                                    cleanInitialRefresh ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH)) return false;
+  bool ready = true;
+  for (const auto plane : {GfxRenderer::GRAYSCALE_LSB, GfxRenderer::GRAYSCALE_MSB}) {
+    std::memcpy(renderer.getFrameBuffer(), bw.get(), bytes);  // identical BW UI in both absolute planes
+    renderer.setRenderMode(plane);
+    for (int i = 0; i < inkSlotCount; ++i) {
+      if (!present[i]) continue;
+      const auto& slot = inkSlots[i];
+      const auto& r = slot.rect;
+      auto file = Storage.open(touchCoverPath(recentBooks[slot.book].coverBmpPath, r.w, r.h).c_str());
+      if (!file) { ready = false; break; }
+      Bitmap bitmap(file);
+      if (bitmap.parseHeaders() != BmpReaderError::Ok || !renderer.drawBitmap(bitmap, r.x, r.y, r.w, r.h)) {
+        ready = false; break;
+      }
+      homeCoverCorners(renderer, r.x, r.y, r.w, r.h);
+    }
+    if (!ready) break;
+    if (plane == GfxRenderer::GRAYSCALE_LSB) renderer.copyGrayscaleLsbBuffers();
+    else renderer.copyGrayscaleMsbBuffers();
+  }
+  if (ready) renderer.displayGrayBuffer();
+  std::memcpy(renderer.getFrameBuffer(), bw.get(), bytes);
+  renderer.setRenderMode(GfxRenderer::BW);
+  if (!ready) renderer.cleanupGrayscaleWithFrameBuffer();
+  homeGrayOnGlass = ready;
+  LOG_INF("HOME", "tenor/ink gray covers=%d ready=%u ms=%lu psram_scratch=%u", found, ready ? 1u : 0u,
+          static_cast<unsigned long>(millis() - started), static_cast<unsigned>(bytes));
+  return ready;
+}
+
 void HomeActivity::drawTouchCover(const HomeRecentRect& rect, const int index) {
   const auto& book = recentBooks[index];
   bool image = false;
   if (!book.coverBmpPath.empty()) {
     HalFile file;
-    const auto path = UITheme::getCoverThumbPath(book.coverBmpPath, rect.w, rect.h);
+    const auto path = touchCoverPath(book.coverBmpPath, rect.w, rect.h);
     if (Storage.openFileForRead("HOME", path, file)) {
       Bitmap bitmap(file);
       image = bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() == rect.w &&
-              bitmap.getHeight() == rect.h && renderer.drawBitmap1Bit(bitmap, rect.x, rect.y, rect.w, rect.h);
+              bitmap.getHeight() == rect.h && renderer.drawBitmap(bitmap, rect.x, rect.y, rect.w, rect.h);
     }
     if (!image) queueTouchThumb(index, rect.w, rect.h);
   }
@@ -2313,6 +2399,18 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
   }
   const uint32_t started = micros();
   const int shown = shownRecent();
+  if (homeInkEnabled()) {
+    inkSlotCount = 1;
+    inkSlots[0] = {f.cover, shown};
+    for (int slot = 0; slot < f.shelfCount; ++slot) {
+      const int book = f.shelfBooks[slot];
+      const auto size = cardCoverSize(book);
+      const auto fit = homeCoverFit(f.shelf[slot].w, f.shelf[slot].h, size.width, size.height);
+      const auto& cell = f.shelf[slot];
+      inkSlots[inkSlotCount++] = {{24 + slot * 152 + (128 - fit.first) / 2,
+                                 cell.y + (cell.h - fit.second) / 2, fit.first, fit.second}, book};
+    }
+  }
   heldCover = {static_cast<int16_t>(f.cover.x), static_cast<int16_t>(f.cover.y),
                 static_cast<int16_t>(f.cover.w), static_cast<int16_t>(f.cover.h)};
   if (coverBufferStored && coverBufferBook == shown && restoreCoverBuffer()) {

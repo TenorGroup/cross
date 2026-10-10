@@ -12,7 +12,7 @@ home=(root/'src/activities/home/HomeActivity.cpp').read_text()
 start=home.index('  bool image = coverKept;')
 body=home[start:home.index('  if (!image) {',start)]
 if a.mutation:
-    body=body.replace('UITheme::getCoverThumbPath(book.coverBmpPath, cardThumbWidth, height)', 'UITheme::getCoverThumbPath(book.coverBmpPath, 450)')
+    body=body.replace('touchCoverPath(book.coverBmpPath, cardThumbWidth, height)', 'UITheme::getCoverThumbPath(book.coverBmpPath, 450)')
 cpp=r'''
 #include <cassert>
 #include <map>
@@ -20,6 +20,7 @@ cpp=r'''
 #include <vector>
 #include <utility>
 #include <cstdio>
+#include "TenorInk.h"
 namespace tenorchrome { bool kTouchShell=true; }
 struct HalFile { int w=0,h=0; };
 struct Store {
@@ -38,8 +39,9 @@ struct UITheme { struct Metrics {int homeCoverHeight=226;};static UITheme getIns
  static std::string getCoverThumbPath(std::string,int h){return "thumb2_"+std::to_string(h)+".bmp";}
  static std::string getCoverThumbPath(std::string,int w,int h){return "thumb2_"+std::to_string(w)+"x"+std::to_string(h)+".bmp";}
 };
+std::string touchCoverPath(const std::string& cover,int w,int h){return tenorink::cachePath(cover,w,h,true);}
 struct Renderer {int exact=0,scaled=0;
- bool drawBitmap1Bit(Bitmap&,int,int,int,int){++exact;return true;}
+ bool drawBitmap(Bitmap&,int,int,int,int){++exact;return true;}
  bool drawBitmapCover(Bitmap&,int,int,int,int){++scaled;return true;}
 } renderer;
 constexpr int HOME_CARD_COVER_H=450;
@@ -52,12 +54,12 @@ bool draw(){
 }
 void reset(){Storage.files.clear();Storage.opened.clear();renderer={};}
 int main(){
- reset();Storage.files["thumb2_232x350.bmp"]={232,350};Storage.files["thumb2_450.bmp"]={298,450};
+ reset();Storage.files["ink1_4_232x350.bmp"]={232,350};Storage.files["thumb2_450.bmp"]={298,450};
  assert(draw());assert(renderer.exact==1&&renderer.scaled==0);
- assert(Storage.opened==std::vector<std::string>{"thumb2_232x350.bmp"});
- reset();Storage.files["thumb2_232x350.bmp"]={233,350};assert(!draw());assert(!renderer.exact&&!renderer.scaled);
+ assert(Storage.opened==std::vector<std::string>{"ink1_4_232x350.bmp"});
+ reset();Storage.files["ink1_4_232x350.bmp"]={233,350};assert(!draw());assert(!renderer.exact&&!renderer.scaled);
  reset();Storage.files["thumb2_450.bmp"]={298,450};assert(!draw());assert(!renderer.exact&&!renderer.scaled);
- assert(Storage.opened==std::vector<std::string>{"thumb2_232x350.bmp"});
+ assert(Storage.opened==std::vector<std::string>{"ink1_4_232x350.bmp"});
  reset();tenorchrome::kTouchShell=false;Storage.files["thumb2_450.bmp"]={298,450};
  assert(draw());assert(renderer.scaled==1&&renderer.exact==0);
  puts("GREEN exact dimensions and 1:1 dispatch; old X4 cache ignored; X3 legacy fallback");
@@ -66,7 +68,7 @@ int main(){
 with tempfile.TemporaryDirectory(prefix='home-shape-') as tmp:
     src=Path(tmp)/'dispatch.cpp';src.write_text(cpp)
     exe=Path(tmp)/'dispatch'
-    subprocess.run(['c++','-std=c++20','-UNDEBUG',str(src),'-o',str(exe)],check=True)
+    subprocess.run(['c++','-std=c++20','-UNDEBUG','-I'+str(root/'lib/JpegToBmpConverter'),str(src),'-o',str(exe)],check=True)
     result=subprocess.run([str(exe)])
 if a.mutation:
     assert result.returncode != 0, 'legacy 450 mutation survived'

@@ -13,6 +13,10 @@
 #include <cstring>
 
 #include "BitmapHelpers.h"
+#include "TenorInk.h"
+#ifdef BOARD_HAS_PSRAM
+#include <HalMemory.h>
+#endif
 
 // ============================================================================
 // IMAGE PROCESSING OPTIONS - Same as JpegToBmpConverter for consistency
@@ -326,9 +330,12 @@ static bool decodeScanline(PngDecodeContext& ctx) {
 
 // Batch-convert an entire scanline to grayscale.
 // Branches once on colorType/bitDepth, then runs a tight loop for the whole row.
-static void convertScanlineToGray(const PngDecodeContext& ctx, uint8_t* grayRow) {
+static void convertScanlineToGray(const PngDecodeContext& ctx, uint8_t* grayRow, bool ink = false) {
   const uint8_t* src = ctx.currentRow;
   const uint32_t w = ctx.width;
+  const auto luma = [ink](uint8_t r, uint8_t g, uint8_t b) {
+    return ink ? tenorink::luma(r, g, b) : uint8_t((r * 25 + g * 50 + b * 25) / 100);
+  };
 
   switch (ctx.colorType) {
     case PNG_COLOR_GRAYSCALE:
@@ -351,11 +358,11 @@ static void convertScanlineToGray(const PngDecodeContext& ctx, uint8_t* grayRow)
         // Fast path: most common EPUB cover format
         for (uint32_t x = 0; x < w; x++) {
           const uint8_t* p = src + x * 3;
-          grayRow[x] = (p[0] * 25 + p[1] * 50 + p[2] * 25) / 100;
+          grayRow[x] = luma(p[0], p[1], p[2]);
         }
       } else {
         for (uint32_t x = 0; x < w; x++) {
-          grayRow[x] = (src[x * 6] * 25 + src[x * 6 + 2] * 50 + src[x * 6 + 4] * 25) / 100;
+          grayRow[x] = luma(src[x * 6], src[x * 6 + 2], src[x * 6 + 4]);
         }
       }
       break;
@@ -369,7 +376,7 @@ static void convertScanlineToGray(const PngDecodeContext& ctx, uint8_t* grayRow)
         int shift = (ppb - 1 - (x % ppb)) * ctx.bitDepth;
         uint8_t idx = (src[x / ppb] >> shift) & mask;
         if (idx >= palSize) idx = 0;
-        grayRow[x] = (pal[idx * 3] * 25 + pal[idx * 3 + 1] * 50 + pal[idx * 3 + 2] * 25) / 100;
+        grayRow[x] = luma(pal[idx * 3], pal[idx * 3 + 1], pal[idx * 3 + 2]);
       }
       break;
     }
@@ -386,11 +393,11 @@ static void convertScanlineToGray(const PngDecodeContext& ctx, uint8_t* grayRow)
       if (ctx.bitDepth == 8) {
         for (uint32_t x = 0; x < w; x++) {
           const uint8_t* p = src + x * 4;
-          grayRow[x] = (p[0] * 25 + p[1] * 50 + p[2] * 25) / 100;
+          grayRow[x] = luma(p[0], p[1], p[2]);
         }
       } else {
         for (uint32_t x = 0; x < w; x++) {
-          grayRow[x] = (src[x * 8] * 25 + src[x * 8 + 2] * 50 + src[x * 8 + 4] * 25) / 100;
+          grayRow[x] = luma(src[x * 8], src[x * 8 + 2], src[x * 8 + 4]);
         }
       }
       break;
@@ -402,7 +409,8 @@ static void convertScanlineToGray(const PngDecodeContext& ctx, uint8_t* grayRow)
 }
 
 bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpOut, int targetWidth, int targetHeight,
-                                                   bool oneBit, bool crop, bool originalThresholds, bool exactSize) {
+                                                   bool oneBit, bool crop, bool originalThresholds, bool exactSize,
+                                                   bool ink) {
   LOG_DBG("PNG", "Converting PNG to %s BMP (target: %dx%d)", oneBit ? "1-bit" : "2-bit", targetWidth, targetHeight);
 
   // Verify PNG signature
@@ -568,6 +576,28 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
   ctx.reader.setFill(pngIdatFillCallback, &ctx);
   // PNG IDAT data is zlib-wrapped (2-byte header + trailing adler32)
   ctx.reader.setZlibWrapped();
+
+  if (ink) {
+#ifdef BOARD_HAS_PSRAM
+    const size_t bytes = static_cast<size_t>(width) * height;
+    const auto psram = HalMemory::getPsramHeap();
+    if (width > 2048 || height > 3072 || psram.freeBytes < bytes + 128 * 1024 ||
+        psram.largestBlockBytes < bytes) return false;
+    auto gray = HalMemory::allocatePsram(bytes);
+    if (!gray) return false;
+    uint8_t rowsSinceYield = 0;
+    for (uint32_t y = 0; y < height; ++y) {
+      if (!decodeScanline(ctx)) return false;
+      convertScanlineToGray(ctx, gray.get() + y * width, true);
+      std::swap(ctx.previousRow, ctx.currentRow);
+      yieldDuringDecode(rowsSinceYield);
+    }
+    LOG_INF("PNG", "tenor/ink source=%ux%u psram=%u", width, height, static_cast<unsigned>(bytes));
+    return tenorink::writeCover(gray.get(), width, height, bmpOut, targetWidth, targetHeight, !oneBit);
+#else
+    return false;
+#endif
+  }
 
   // Calculate output dimensions (same logic as JpegToBmpConverter)
   int outWidth = width;
@@ -817,6 +847,10 @@ bool PngToBmpConverter::pngFileToBmpStream(HalFile& pngFile, Print& bmpOut, bool
   const int targetWidth = display.getDisplayHeight();
   const int targetHeight = display.getDisplayWidth();
   return pngFileToBmpStreamInternal(pngFile, bmpOut, targetWidth, targetHeight, oneBit, crop, originalThresholds);
+}
+
+bool PngToBmpConverter::pngFileToInkBmpStream(HalFile& file, Print& out, int width, int height, bool four) {
+  return pngFileToBmpStreamInternal(file, out, width, height, !four, true, true, true, true);
 }
 
 bool PngToBmpConverter::pngFileToBmpStreamWithSize(HalFile& pngFile, Print& bmpOut, int targetMaxWidth,

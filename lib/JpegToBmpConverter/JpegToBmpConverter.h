@@ -12,6 +12,7 @@ class JpegToBmpConverter {
                                           bool exactSize = false);
 
  public:
+  static bool jpegFileToInkBmpStream(HalFile& file, Print& out, int width, int height, bool four);
   // Screen-sized cover; `oneBit` dithers it straight to black and white (X3 sleep, folded).
   static bool jpegFileToBmpStream(HalFile& jpegFile, Print& bmpOut, bool crop = true, bool originalThresholds = false,
                                   bool oneBit = false);
