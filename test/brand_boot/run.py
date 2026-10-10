@@ -66,7 +66,7 @@ def main():
         text = (ROOT/f'lib/I18n/translations/{lang}.yaml').read_text()
         boot = re.search(r'^STR_BOOTING: "(.*)"',text,re.M).group(1)
         assert not boot.isupper(), (lang, boot)
-    assert hashlib.sha256((ROOT/'src/components/X3BrandAssets.h').read_bytes()).hexdigest() == 'e51f72cb0fb14f8d8320b7a1508493f735d5ef39016e67d0f7155087ca1ba332'
+    assert hashlib.sha256((ROOT/'src/components/X3BrandAssets.h').read_bytes()).hexdigest() == 'e48399e1cb21ed1d35781b94c552de19e7fa6f6662a1b5a752f552075fdccbd4'
     boot = (ROOT/'src/activities/boot_sleep/BootActivity.cpp').read_text()
     assert 'if (renderBrandScreen(renderer, true)) return;' in boot
     print('GREEN: X4 Pro/X3 uploads, combined/separate gray, fallback, orientation, boot strings')

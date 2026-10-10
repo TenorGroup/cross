@@ -13,8 +13,8 @@ from PIL import Image
 
 WIDTH, HEIGHT = 528, 792
 SOURCES = (
-    ("BOOT", "260915_tenor_branding_xteink-x3-cross-khoi-dong.bmp"),
-    ("SLEEP", "260915_tenor_branding_xteink-x3-cross-muc-dang.bmp"),
+    ("BOOT", "261011_tenor_branding_xteink-x3-cross-khoi-dong.bmp"),
+    ("SLEEP", "261011_tenor_branding_xteink-x3-cross-muc-dang.bmp"),
 )
 
 
