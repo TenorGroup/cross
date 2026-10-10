@@ -92,6 +92,16 @@ int drawNetworkText(const GfxRenderer& renderer, const int font, const char* tex
   return y;
 }
 
+// The network name in the sub-header stops 8 px short of the signal bars beside it (a symbol keeps 6 px or more from
+// its text at every size), so a long name ends in an ellipsis instead of running into them.
+constexpr int WIFI_BARS_WIDTH = 22;  // 4 bars of 4 px, 3 gaps of 2 px
+std::string subHeaderLabel(const GfxRenderer& renderer, const std::string& ssid, const bool withBars) {
+  if (!withBars) return ssid;
+  const int side = UITheme::getInstance().getMetrics().contentSidePadding;
+  const int room = renderer.getScreenWidth() - 2 * side - WIFI_BARS_WIDTH - 8;
+  return renderer.truncatedText(UI_10_FONT_ID, ssid.c_str(), room, EpdFontFamily::REGULAR);
+}
+
 // DNS server for captive portal (redirects all DNS queries to our IP)
 DNSServer* dnsServer = nullptr;
 constexpr uint16_t DNS_PORT = 53;
@@ -612,7 +622,7 @@ void CrossPointWebServerActivity::render(RenderLock&&) {
 
     if (state == WebServerActivityState::SERVER_RUNNING) {
       GUI.drawSubHeader(renderer, Rect{0, metrics.topPadding + metrics.headerHeight, pageWidth, metrics.tabBarHeight},
-                        connectedSSID.c_str());
+                        subHeaderLabel(renderer, connectedSSID, !isApMode).c_str());
       renderServerRunning();
     } else {
       const auto height = renderer.getLineHeight(UI_10_FONT_ID);
@@ -630,7 +640,7 @@ void CrossPointWebServerActivity::renderServerRunning() const {
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
                  isApMode ? tr(STR_HOTSPOT_MODE) : tr(STR_FILE_TRANSFER), nullptr);
   GUI.drawSubHeader(renderer, Rect{0, metrics.topPadding + metrics.headerHeight, pageWidth, metrics.tabBarHeight},
-                    connectedSSID.c_str());
+                    subHeaderLabel(renderer, connectedSSID, !isApMode).c_str());
 
   if (!isApMode) {
     renderWifiIndicator(metrics.topPadding + metrics.headerHeight);
