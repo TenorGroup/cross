@@ -1,0 +1,20 @@
+{
+  "selected": "V3",
+  "inputs": {
+    "x4pro-boot.html": "2e0f6fc3f714882316114a7ba8655fc07b06217ae08133425323de1e64b1a1a4",
+    "x4pro-boot-gray.png": "7268e3a2e308dc1dbba0cf2ceafbc6ae2dd99a43792198e5324625218962278e",
+    "render.py": "047b6e8cf76b6ecb39401105ca4fe199e73b00480f9e232a6560804620fdc29f",
+    "quantize.py": "1922ee84ae7134bc4fd90952c7a44edeaf4783ef7fc9bd06ad4e94c81ddd9073"
+  },
+  "output_sha256": "2f96b3a79873d24a89d3cfc70ea0cdbd007de10296f929f8b353080c3156c57e",
+  "brand_codes": {
+    "mark_t": 1,
+    "mark_slash": 2,
+    "mark_plus": 0,
+    "tenor": 2,
+    "slash": 2,
+    "cross": 3
+  },
+  "source_commit": "a6dcd9f7936f11d7af56bdf53c4c87ca025326da",
+  "approved_gray_sha256": "7268e3a2e308dc1dbba0cf2ceafbc6ae2dd99a43792198e5324625218962278e"
+}
