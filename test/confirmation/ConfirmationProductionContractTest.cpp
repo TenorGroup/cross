@@ -181,4 +181,11 @@ TEST(ConfirmationProductionContract, TouchMessageIsWrappedWithoutTruncatingConse
   EXPECT_NE(source.find("centeredLines(renderer, UI_10_FONT_ID"), std::string::npos);
 }
 
+TEST(ConfirmationProductionContract, ButtonDialogPaintsItsOwnFourHintsBeforeRefresh) {
+  const auto source = normalizeWhitespace(readSource("src/activities/util/ConfirmationActivity.cpp"));
+  EXPECT_NE(source.find("renderer.setRenderMode(GfxRenderer::BW); layoutCross();"), std::string::npos);
+  EXPECT_NE(source.find("mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN))"), std::string::npos);
+  EXPECT_NE(source.find("GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4)"), std::string::npos);
+}
+
 }  // namespace

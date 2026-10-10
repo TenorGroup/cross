@@ -119,6 +119,7 @@ void ConfirmationActivity::render(RenderLock&& lock) {
 #endif
     return;
   }
+  renderer.setRenderMode(GfxRenderer::BW);
   layoutCross();
   const auto& box = layout.action;
   renderer.fillRoundedRect(box.x, box.y, box.width, box.height, layout.radius, Color::White);
@@ -159,13 +160,15 @@ void ConfirmationActivity::render(RenderLock&& lock) {
     const int rowsTop = box.y + layout.messageHeight;
     tenorchrome::drawRowRule(renderer, rowsTop, box.x + 2, box.x + box.width - 2);
     tenorchrome::drawRowRule(renderer, rowsTop + 60, box.x + 2, box.x + box.width - 2);
-    const char* labels[] = {content.shortAction.c_str(), tr(STR_CANCEL)};
+    const char* actionLabels[] = {content.shortAction.c_str(), tr(STR_CANCEL)};
     for (int i = 0; i < 2; ++i) {
       const int rowY = rowsTop + i * 60;
       if (selectedIndex == i) tenorchrome::drawPillRing(renderer, box.x + 12, rowY + 6, box.width - 24, 48, 3, false);
-      centered(renderer, UI_12_FONT_ID, labels[i], {box.x, rowY, box.width, 60},
+      centered(renderer, UI_12_FONT_ID, actionLabels[i], {box.x, rowY, box.width, 60},
                i == 1 ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
     }
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   }
 
   renderer.displayBuffer(HalDisplay::RefreshMode::FAST_REFRESH);
