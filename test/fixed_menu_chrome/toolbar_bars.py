@@ -42,7 +42,7 @@ namespace tenorchrome {
 '''
 chrome = (root / 'src/components/TenorMenuChrome.h').read_text()
 fixture += re.search(r'^constexpr int BAR_TAB_W = .*?;', chrome, re.M).group()
-fixture += '\nconstexpr int BAR_TAB_INSET = 6;\n' + re.search(r'^constexpr int barTabCentre\(.*?^}\n', chrome, re.M | re.S).group()
+fixture += '\n' + re.search(r'^constexpr int barTabCentre\(.*?^}\n', chrome, re.M | re.S).group()
 fixture += '''
 }
 namespace freeink::ui { using Rect = tenorchrome::X3ScreenRect; }

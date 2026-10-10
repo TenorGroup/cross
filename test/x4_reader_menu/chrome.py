@@ -92,7 +92,7 @@ namespace tenorchrome {
 enum class FootBar { None,Tabs,Full,BackOnly };
 enum class Zone { Recent,Book };
 constexpr int FOOT_BACK_SIZE=60,FOOT_BACK_X=16,FOOT_PILL_GAP=8,READER_TOOLS=4,TOUCH_BAR_BOTTOM_GAP=16;
-''' + '\n'.join(re.findall(r'^constexpr int (?:READER_BAR_LEFT|READER_TOOL_END_AIR) = .*?;', header, re.M)) + r'''
+''' + '\n'.join(re.findall(r'^constexpr int (?:READER_BAR_LEFT|READER_TOOL_END_AIR|BAR_TAB_W) = .*?;', header, re.M)) + '\n' + method(header, 'constexpr int barTabCentre(') + '\n' + method(header, 'inline int readerToolCentre(') + r'''
 int footBackTop(int h) { return h-76; }
 void drawPillRing(const GfxRenderer&,int,int,int,int,int,bool) { ++rings; }
 void drawBarTab(const GfxRenderer&,int,int,int,const unsigned char*,int,int,bool) { ++icons; }

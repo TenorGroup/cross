@@ -44,7 +44,7 @@ legacy = '' if shared else function(u, 'fui::Rect touchTabBarRect(')
 bar_band = re.search(r'const int16_t tabBand = .*?;', u, re.S).group()
 centres = function(u, 'void UiTabListActivity::veThanhTheTenor(')
 # Use the same placement statements as the painter, with the full bar as its input.
-centre_expression = re.search(r'cx = count > 1[^;]+;', centres).group().replace('cx =', 'const int cx =')
+centre_expression = re.search(r'cx = tenorchrome::barTabCentre[^;]+;', centres).group().replace('cx =', 'const int cx =')
 placement = centres[centres.index('  const int endInset'):centres.index('  fui::TextStyle label')]
 size_constants = '\n'.join(re.findall(r'constexpr int (?:LE|KHE|PILL_ICON_W) = [^;]+;', centres))
 code = r'''
