@@ -21,6 +21,13 @@ int main() {
   assert(!stands(61440, 1732, 1000));
   // Below 4 KB the door does not judge.
   assert(stands(4095, 0, 0));
+#ifndef HEAP_FLOOR_BASELINE
+  // The grayscale strip Home and reader share: 80 rows of the X3's 99 B rows, 7,920 B, inside the kept block.
+  assert(heapfloor::kGrayStripRows == 80 && heapfloor::kGrayStripRows * heapfloor::kWidestPanelRowBytes == 7920);
+  assert(heapfloor::kGrayStripRows * heapfloor::kWidestPanelRowBytes <= heapfloor::kLargestFloorReported);
+  std::puts("heap_floor: 7 checks passed");
+#else
   std::puts("heap_floor: 5 checks passed");
+#endif
   return 0;
 }
