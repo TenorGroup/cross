@@ -65,11 +65,8 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   // Number of real (scanned) networks, excluding the synthetic hidden-network entry
   size_t realNetworkCount = 0;
 
-  // Row buffers derived from `networks`, rebuilt only when it changes
-  // (processWifiScanResults()) instead of on every repaint - buildListScreen()
-  // used to re-derive a "+ * ||||" status string per network on every render
-  // (cursor move, tap flash, ...).
-  std::vector<std::string> networkStatuses;
+  // Row items derived from `networks`, rebuilt only when it changes
+  // (processWifiScanResults()) instead of on every repaint.
   std::vector<freeink::ui::ListItem> networkRowItems;
   void rebuildNetworkRowItems();
 
@@ -174,7 +171,6 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   void handleAutoConnectFailure();
   void showNetworkListFromAutoConnect();
   bool hasAttemptedAutoSsid(const std::string& ssid) const;
-  static std::string getSignalStrengthIndicator(int32_t rssi);
 
   // True when this caller must not show the network list or the keyboard: the
   // picker reports "not connected" so the parent can start its own hotspot.

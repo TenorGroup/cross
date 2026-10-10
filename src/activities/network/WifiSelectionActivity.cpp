@@ -2,6 +2,7 @@
 #include "activities/X3ActivityLayout.h"
 
 #include "components/PageScrollbar.h"
+#include "components/icons/tenorSignalIcons.h"
 
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
@@ -37,6 +38,39 @@ namespace {
 constexpr fui::ActionId ACTION_ROW = 1;
 constexpr fui::ActionId ACTION_SCAN = 2;
 constexpr fui::ActionId ACTION_PROMPT = 3;
+
+int signalLevel(const int32_t rssi) {
+  if (rssi >= -50) return 4;  // Excellent
+  if (rssi >= -60) return 3;  // Good
+  if (rssi >= -70) return 2;  // Fair
+  return 1;                   // Very weak
+}
+
+constexpr fui::BitmapRef mark(const freeink::Icon& icon) {
+  return {icon.bits, icon.w, icon.h, fui::BitmapFormat::Mask1};
+}
+
+// The value slot of a row: the padlock (or nothing) left of the signal mark of `level`.
+const fui::BitmapRef* signalMarks(const int level, const bool locked) {
+  static constexpr fui::BitmapRef none{};
+  static constexpr fui::BitmapRef marks[2][5][2] = {
+      {{none, mark(icon_wifi_signal_0)}, {none, mark(icon_wifi_signal_1)}, {none, mark(icon_wifi_signal_2)},
+       {none, mark(icon_wifi_signal_3)}, {none, mark(icon_wifi_signal_4)}},
+      {{mark(icon_wifi_lock), mark(icon_wifi_signal_0)}, {mark(icon_wifi_lock), mark(icon_wifi_signal_1)},
+       {mark(icon_wifi_lock), mark(icon_wifi_signal_2)}, {mark(icon_wifi_lock), mark(icon_wifi_signal_3)},
+       {mark(icon_wifi_lock), mark(icon_wifi_signal_4)}}};
+  return marks[locked][level];
+}
+
+// The ugly shell keeps its own text marks: "+" saved, "*" encrypted, one bar per signal level.
+std::string uglyStatus(const WifiNetworkInfo& network) {
+  if (network.isHiddenPlaceholder) return std::string();
+  std::string status = network.hasSavedPassword ? "+ " : "";
+  if (network.isSavedOutOfRange) return status + tr(STR_WIFI_NOT_IN_RANGE);
+  if (network.isEncrypted) status += "* ";
+  const int level = signalLevel(network.rssi);
+  return status + std::string(4 - level, ' ') + std::string(level, '|');
+}
 }  // namespace
 
 WifiSelectionActivity::WifiSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
@@ -144,7 +178,6 @@ void WifiSelectionActivity::onEnter() {
   // Reset state
   selectedNetworkIndex = 0;
   networks.clear();
-  networkStatuses.clear();
   networkRowItems.clear();
   realNetworkCount = 0;
   state = WifiSelectionState::SCANNING;
@@ -265,7 +298,6 @@ void WifiSelectionActivity::startWifiScan(const bool autoScan) {
   state = WifiSelectionState::SCANNING;
   networks.clear();
   // The cached rows point into the cleared networks' strings; drop them too.
-  networkStatuses.clear();
   networkRowItems.clear();
   requestUpdate();
 
@@ -423,25 +455,23 @@ void WifiSelectionActivity::appendHiddenNetworkEntry() {
   networks.push_back(std::move(placeholder));
 }
 
-// Derives networkStatuses/networkRowItems from `networks`. Called whenever
-// `networks` changes (both branches of processWifiScanResults()) so
-// buildListScreen() reuses the cached rows on every repaint instead of
-// re-deriving a "+ * ||||" status string per network each time.
+// Derives networkRowItems from `networks`. Called whenever `networks` changes
+// (both branches of processWifiScanResults()) so buildListScreen() reuses the
+// cached rows on every repaint. The value slot holds the signal mark, with the
+// padlock to its left on an encrypted network; a saved network out of range
+// says so in words.
 void WifiSelectionActivity::rebuildNetworkRowItems() {
-  networkStatuses.assign(networks.size(), std::string());
   networkRowItems.clear();
   networkRowItems.reserve(networks.size());
   for (size_t i = 0; i < networks.size(); i++) {
     const auto& network = networks[i];
-    if (!network.isHiddenPlaceholder) {
-      networkStatuses[i] = std::string(network.hasSavedPassword ? "+ " : "") +
-                           (network.isSavedOutOfRange ? "" : (network.isEncrypted ? "* " : "")) +
-                           (network.isSavedOutOfRange ? tr(STR_WIFI_NOT_IN_RANGE)
-                                                      : getSignalStrengthIndicator(network.rssi));
-    }
     fui::ListItem item;
     item.label = network.isHiddenPlaceholder ? tr(STR_ADD_HIDDEN_NETWORK) : network.ssid.c_str();
-    if (!networkStatuses[i].empty()) item.value = networkStatuses[i].c_str();
+    if (network.isSavedOutOfRange) {
+      item.value = tr(STR_WIFI_NOT_IN_RANGE);
+    } else if (!network.isHiddenPlaceholder) {
+      item.valueIcons = signalMarks(signalLevel(network.rssi), network.isEncrypted);
+    }
     item.actionValue = static_cast<int16_t>(i);
     networkRowItems.push_back(item);
   }
@@ -1053,20 +1083,6 @@ void WifiSelectionActivity::loop() {
   }
 }
 
-std::string WifiSelectionActivity::getSignalStrengthIndicator(const int32_t rssi) {
-  // Convert RSSI to signal bars representation
-  if (rssi >= -50) {
-    return "||||";  // Excellent
-  }
-  if (rssi >= -60) {
-    return " |||";  // Good
-  }
-  if (rssi >= -70) {
-    return "  ||";  // Fair
-  }
-  return "   |";  // Very weak
-}
-
 void WifiSelectionActivity::render(RenderLock&&) {
   if (tenorchrome::x3ScreenLayoutEnabled() && !shell::uglyParts()) {
     if (state == WifiSelectionState::PASSWORD_ENTRY || state == WifiSelectionState::HIDDEN_SSID_ENTRY) return;
@@ -1088,8 +1104,6 @@ void WifiSelectionActivity::render(RenderLock&&) {
       } else {
         renderUi();
       }
-      if (list) tenorchrome::drawInfoInRect(renderer, tr(STR_NETWORK_LEGEND),
-          {0, layout.bodyRect.bottom() - height * 2, layout.bodyRect.width, height * 2}, 2);
     } else {
       const char* status = state == WifiSelectionState::CONNECTED ? tr(STR_CONNECTED) :
           state == WifiSelectionState::CONNECTION_FAILED ? tr(STR_CONNECTION_FAILED) :
@@ -1376,10 +1390,6 @@ void WifiSelectionActivity::renderNetworkList(const Rect* screen, const ThemeMet
     UITheme::drawCenteredText(renderer, *screen, SMALL_FONT_ID, top + height + 10, tr(STR_PRESS_OK_SCAN));
   }
 
-  GUI.drawHelpText(renderer,
-                   Rect{screen->x, screen->y + screen->height - metrics->contentSidePadding - 15, screen->width, 20},
-                   tr(STR_NETWORK_LEGEND));
-
   const bool hasSavedPassword = !networks.empty() && networks[selectedNetworkIndex].hasSavedPassword;
   const char* forgetLabel = hasSavedPassword ? tr(STR_FORGET_BUTTON) : "";
 
@@ -1516,7 +1526,8 @@ void WifiSelectionActivity::renderUglyList() {
     if (box.empty()) continue;
     uglychrome::Row row;
     row.label = networkRowItems[i].label;
-    row.value = networkRowItems[i].value;
+    const std::string status = i < networks.size() ? uglyStatus(networks[i]) : std::string();
+    row.value = status.empty() ? nullptr : status.c_str();
     row.marks.selected = i == selectedNetworkIndex;
     uglychrome::row(renderer, box, row, mark_.get(selectedNetworkIndex));
   }
