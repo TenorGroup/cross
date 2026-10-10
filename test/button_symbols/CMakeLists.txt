@@ -50,3 +50,5 @@ add_test(NAME ButtonSymbols.Chevrons COMMAND ButtonSymbolsBackShapeTest --chevro
 add_test(NAME ButtonSymbols.EdgeChevrons COMMAND ButtonSymbolsBackShapeTest --edge-chevrons)
 add_test(NAME ButtonSymbols.Family COMMAND ButtonSymbolsBackShapeTest --family)
 add_test(NAME ButtonSymbols.InlineSpacing COMMAND ButtonSymbolsBackShapeTest --inline-spacing)
+
+add_test(NAME ButtonSymbols.BackV1056 COMMAND ButtonSymbolsBackShapeTest --back-reference)

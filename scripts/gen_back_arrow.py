@@ -16,7 +16,7 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 SOURCE_DIR = REPO / 'lib/GfxRenderer/symbol-sources'
 OUTPUT = REPO / 'lib/GfxRenderer/InlineSymbolBitmaps.h'
 
-ARROW_VARIANT = 'D'
+ARROW_VARIANT = 'B'
 TICK_VARIANT = 'T3'
 
 
