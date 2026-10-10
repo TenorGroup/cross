@@ -76,5 +76,23 @@ int main(int argc, char**) {
       for (int x = line.x; x < line.right(); ++x) assert(!rectInk(x, y));
   }
   assert(rectInk(300, 190));
+  // A label, wrapped value and progress bar form 1 cell, whichever part the halo touches.
+  for (int menuY : {210, 270, 335}) {
+    renderer.clearScreen();
+    std::array<Rect, 4> cells{{{276, 218, 139, 25}, {276, 274, 18, 21},
+                              {276, 301, 50, 21}, {276, 390, 154, 23}}};
+    const Rect progress{276, 333, 220, 8};
+    for (const auto& cell : cells) renderer.fillRect(cell.x, cell.y, cell.width, cell.height, true);
+    renderer.fillRect(progress.x, progress.y, progress.width, progress.height, true);
+    size_t count = 3;
+    if (argc != 4) mergeContextMenuTextRects(cells.data(), count, size_t{0}, progress);
+    cells[count++] = {276, 390, 154, 23};
+    clearContextMenuTextRects(renderer, Rect{100, menuY, 250, 20}, cells.data(), count);
+    assert(!rectInk(280, 225));
+    assert(!rectInk(280, 280));
+    assert(!rectInk(280, 310));
+    assert(!rectInk(450, 337));
+    assert(rectInk(280, 400));
+  }
   printf("GREEN %d complete text-band clears, cover art retained, 3 orientations\n",cases);
 }

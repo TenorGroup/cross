@@ -1210,6 +1210,12 @@ void HomeActivity::rememberContextLine(int font, int x, int y, const char* text,
 #endif
 }
 
+void HomeActivity::rememberContextStatGroup(size_t first, int x, int barY, int width) {
+  const fui::Rect bar{fui::clampI16(x), fui::clampI16(barY), fui::clampI16(width),
+                      static_cast<int16_t>(barY >= 0 ? HOME_STATS_BAR_H : 0)};
+  mergeContextMenuTextRects(contextTextLines.data(), contextTextLineCount, first, bar);
+}
+
 void HomeActivity::drawContextBackground(const fui::Rect menu) {
   if (!tenorchrome::kTouchShell) {
     clearContextMenuTextRects(renderer, menu, contextTextLines.data(), contextTextLineCount);
@@ -1717,6 +1723,7 @@ int HomeActivity::drawCardStats(const HomeCardLayout& card, HomeStatsBounds* bou
   }
   for (int row = 0; row < HOME_STAT_COUNT; ++row) {
     if (!(column.rows & (1u << row))) continue;
+    const size_t groupStart = contextTextLineCount;
     if (labels[row].empty()) {
       rememberContextLine(labelFont, card.statsX, column.labelY[row], I18N.get(CARD_STAT_LABELS[row]));
       renderer.drawText(labelFont, card.statsX, column.labelY[row], I18N.get(CARD_STAT_LABELS[row]));
@@ -1739,6 +1746,8 @@ int HomeActivity::drawCardStats(const HomeCardLayout& card, HomeStatsBounds* bou
     };
     drawValue(first[row], column.valueY[row]);
     if (!second[row].empty()) drawValue(second[row], column.valueY[row] + renderer.getLineHeight(fonts[row]));
+    rememberContextStatGroup(groupStart, card.statsX,
+                             row == HOME_STAT_READ && cardStats.recorded ? column.barY : -1, width);
   }
   if (column.barY >= 0 && cardStats.recorded) {
     // A round track with a 2 px edge; the part read is black inside it, round at both ends.

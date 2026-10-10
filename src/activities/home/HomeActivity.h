@@ -100,6 +100,7 @@ class HomeActivity final : public UiTabListActivity {
   size_t contextTextLineCount = 0;
   void rememberContextLine(int font, int x, int y, const char* text,
                            EpdFontFamily::Style style = EpdFontFamily::REGULAR);
+  void rememberContextStatGroup(size_t first, int x, int barY, int width);
   std::optional<RecentBook> pendingRecentRemoval;
   bool recentRemovalFailed = false;
   bool touchRowMovesRing() const override { return activeTabId == Tab::RECENT; }

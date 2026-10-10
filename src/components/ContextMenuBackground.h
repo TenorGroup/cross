@@ -59,6 +59,25 @@ void clearContextMenuLines(const Renderer& renderer, Rect menu, const std::array
 }
 
 // Home supplies measured line rectangles, including cached card text.
+template <typename Rect>
+void mergeContextMenuTextRects(Rect* lines, size_t& count, size_t first, Rect extra = {}) {
+  if (first >= count) return;
+  auto group = lines[first];
+  const auto include = [&](const Rect& part) {
+    if (part.width <= 0 || part.height <= 0) return;
+    const int right = std::max(int(group.right()), int(part.right()));
+    const int bottom = std::max(int(group.bottom()), int(part.bottom()));
+    group.x = std::min(group.x, part.x);
+    group.y = std::min(group.y, part.y);
+    group.width = right - group.x;
+    group.height = bottom - group.y;
+  };
+  for (size_t i = first + 1; i < count; ++i) include(lines[i]);
+  include(extra);
+  lines[first] = group;
+  count = first + 1;
+}
+
 template <typename Renderer, typename Rect>
 void clearContextMenuTextRects(const Renderer& renderer, Rect menu, const Rect* lines, size_t count) {
   for (size_t i = 0; i < count; ++i) {
