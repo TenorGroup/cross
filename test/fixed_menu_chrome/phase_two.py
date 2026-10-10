@@ -213,7 +213,7 @@ const char* tr(StrId id) {
             for (const auto& qr : QrUtils::bounds) {{
               check(qr.y >= home.bodyRect.y && qr.y + qr.height <= bodyEnd, "{name}: QR within body and above tip");
               for (const auto& ink : tenorchrome::phaseInk)
-                check(ink.tip || ink.rect.bottom() <= qr.y, "{name}: information ends before QR");
+                check(ink.tip || ink.rect.bottom() <= qr.y || ink.rect.y >= qr.y + qr.height, "{name}: information never overlaps the QR (the step line stands under it)");
             }}
 '''
         if name == 'ButtonRemap':
