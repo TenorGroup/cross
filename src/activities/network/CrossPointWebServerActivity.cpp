@@ -11,6 +11,7 @@
 #include <Memory.h>
 #include <WiFi.h>
 
+#include <cctype>
 #include <cstddef>
 
 #include "CrossPointSettings.h"
@@ -90,6 +91,22 @@ int drawNetworkText(const GfxRenderer& renderer, const int font, const char* tex
         }
       }
       count = low;
+      // Break where an address breaks: after a "/" or a "-", before a ".", in the later half of the line; and never leave
+      // a line of punctuation alone, the next line carries at least 2 letters or digits.
+      if (count < remaining) {
+        for (size_t i = count; i > count / 2; --i) {
+          if (text[i - 1] == '/' || text[i - 1] == '-' || text[i] == '.') {
+            count = i;
+            break;
+          }
+        }
+        const auto carries = [&](const size_t from) {
+          int letters = 0;
+          for (size_t i = from; i < remaining; ++i) letters += std::isalnum(static_cast<unsigned char>(text[i])) ? 1 : 0;
+          return letters;
+        };
+        while (count > 1 && carries(count) < 2) --count;
+      }
       line[count] = '\0';
     }
     const int left = centered ? lineX + (lineWidth - renderer.getTextWidth(font, line)) / 2 : lineX;
