@@ -92,6 +92,31 @@ int main(int argc, char** argv) {
   const uint64_t expected = name.find("thinking") != std::string::npos ? 0xc6f08681b08da06aULL
     : name.find("deep-work") != std::string::npos ? 0x8acc0f77c9e25269ULL : 0xabacd5cb260c44bbULL;
   assert(hash == expected);  // Ugly Home and the legacy thumbnail path retain their pixels.
+  // A progressive cover the full decoder refuses (here its first PSRAM block fails, as when the image is too
+  // large for PSRAM) keeps the 1/8 cover of v1.0.56 on both PSRAM paths: the tenor/ink Home cache and the screen
+  // cover. Without PSRAM the same files take that 1/8 path, so its output is the expected one.
+  const size_t held = live;
+  for (bool four : {false, true}) {
+    Output reduced, kept;
+    hasPsram = false;
+    assert(JpegToBmpConverter::jpegFileToInkBmpStream(file, reduced, 232, 350, four));
+    hasPsram = true; calls = 0; failAt = 0;
+    assert(JpegToBmpConverter::jpegFileToInkBmpStream(file, kept, 232, 350, four));
+    failAt = -1;
+    assert(!kept.bytes.empty() && kept.bytes == reduced.bytes && le32(kept.bytes, 18) == 232);
+    assert(std::abs(le32(kept.bytes, 22)) == 350 && live == held);
+  }
+  {
+    Output reduced, kept;
+    hasPsram = false;
+    assert(JpegToBmpConverter::jpegFileToBmpStreamWithSize(file, reduced, 0, 0));
+    hasPsram = true; calls = 0; failAt = 0;
+    assert(JpegToBmpConverter::jpegFileToBmpStreamWithSize(file, kept, 0, 0));
+    failAt = -1;
+    assert(kept.bytes == reduced.bytes && le32(kept.bytes, 18) == (w + 7) / 8 && le32(kept.bytes, 22) == -((h + 7) / 8));
+    assert(live == held);
+  }
+  std::puts("GREEN: a refused full decode keeps the 1/8 cover, Home tenor/ink 2 depths and the screen cover");
   gray.reset(); assert(live == 0);
   for (int fail = 0; fail < count; ++fail) {
     calls = 0; failAt = fail;

@@ -3,6 +3,7 @@
 #include <JPEGDEC.h>
 #include <JpegToBmpConverter.h>
 #include "TenorInk.h"
+#include "GrayThumb.h"
 #include <HeapFloor.h>
 #include <cassert>
 #include <cstdio>
@@ -139,6 +140,27 @@ int main(int argc,char** argv) {
     ESP.freeHeap=ESP.largestHeap=200000;
   }
   std::printf("GREEN clean allocation failures=%zu, post-floor=2, pre-floor=2\n",allocations);
+  // The JPEG decoder of the screen cover (jpeg-decoder) and of the Home thumbnail (jpeg-thumb) goes through the
+  // heap floor door: refused, the conversion returns false and frees everything. The thumbnail is 40 px high,
+  // under the fixture's 1/8 progressive grid (a thumbnail does not upscale).
+  {
+    call=live=peak=0;doors.clear();measuring=true;
+    bool ok;
+    { HalFile file(bytes);Output bmp;ok=JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(file,bmp,w,h); }
+    { HalFile file(bytes);GrayThumb thumb(40);int scale=0;ok=ok&&JpegToBmpConverter::jpegFileToGrayThumb(file,thumb,&scale); }
+    measuring=false;
+    assert(ok && doors.count("jpeg-decoder") && doors.count("jpeg-thumb") && live==0);
+    for (const char* who : {"jpeg-decoder","jpeg-thumb"}) {
+      const bool decoderRefused=std::strcmp(who,"jpeg-decoder")==0;
+      call=live=peak=0;refuseWho=who;refused=false;measuring=true;
+      bool cover,thumbOk;
+      { HalFile file(bytes);Output bmp;cover=JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(file,bmp,w,h); }
+      { HalFile file(bytes);GrayThumb thumb(40);int scale=0;thumbOk=JpegToBmpConverter::jpegFileToGrayThumb(file,thumb,&scale); }
+      measuring=false;refuseWho=nullptr;
+      assert(refused && cover!=decoderRefused && thumbOk==decoderRefused && live==0);
+    }
+    std::puts("GREEN jpeg-decoder and jpeg-thumb pass the heap floor door and unwind when refused");
+  }
   if(argc>2) {
     std::ofstream out(argv[2],std::ios::binary);out.write(reinterpret_cast<char*>(actual.b.data()),actual.b.size());
     std::ofstream pgm(std::string(argv[2])+".pgm",std::ios::binary);
