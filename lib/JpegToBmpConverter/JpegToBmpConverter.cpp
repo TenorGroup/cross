@@ -518,9 +518,12 @@ bool JpegToBmpConverter::jpegFileToInkBmpStream(HalFile& file, Print& out, int w
   if (sw <= 0 || sh <= 0 || sw > MAX_IMAGE_WIDTH || sh > MAX_IMAGE_HEIGHT) return false;
   if (jpeg->getJPEGType() == JPEG_MODE_PROGRESSIVE && progressivejpeg::supported()) {
     auto gray = progressivejpeg::decode(file, sw, sh);
-    LOG_INF("JPG", "tenor/ink progressive full source=%dx%d psram=%u", sw, sh,
-            static_cast<unsigned>(static_cast<size_t>(sw) * sh));
-    return gray && tenorink::writeCover(gray.get(), sw, sh, out, width, height, four);
+    LOG_INF("JPG", "tenor/ink progressive full source=%dx%d psram=%u ok=%d", sw, sh,
+            static_cast<unsigned>(static_cast<size_t>(sw) * sh), gray ? 1 : 0);
+    if (gray) return tenorink::writeCover(gray.get(), sw, sh, out, width, height, four);
+    // Too large for PSRAM or refused by the full decoder: keep the 1/8 cover of v1.0.56 below.
+    jpeg->close();
+    if (jpeg->open("", bmpJpegOpen, bmpJpegClose, bmpJpegRead, bmpJpegSeek, capture) != 1) return false;
   }
   // JPEGDEC retains the reduced path when full progressive decoding is unavailable.
   const bool progressive = jpeg->getJPEGType() == JPEG_MODE_PROGRESSIVE;
@@ -599,7 +602,7 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
 
   s_jpegFile = &jpegFile;
 
-  const auto jpeg = makeUniqueNoThrow<JPEGDEC>();
+  const auto jpeg = heapfloor::make<JPEGDEC>("jpeg-decoder");
   if (!jpeg) {
     LOG_ERR("JPG", "OOM: JPEG decoder");
     return false;
@@ -623,7 +626,12 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
   HalMemory::PsramBuffer fullGray;
   if (fullProgressive) {
     fullGray = progressivejpeg::decode(jpegFile, srcWidth, srcHeight);
-    if (!fullGray) return false;
+    if (!fullGray) {
+      // Too large for PSRAM or refused by the full decoder: keep the 1/8 cover of v1.0.56.
+      fullProgressive = false;
+      jpeg->close();
+      if (jpeg->open("", bmpJpegOpen, bmpJpegClose, bmpJpegRead, bmpJpegSeek, bmpDrawCallback) != 1) return false;
+    }
   }
 #endif
 
@@ -864,7 +872,7 @@ bool JpegToBmpConverter::jpegFileToGrayThumb(HalFile& jpegFile, GrayThumb& thumb
   *scale = 0;
   if (ESP.getFreeHeap() < MIN_FREE_HEAP) return false;
   s_jpegFile = &jpegFile;
-  const auto jpeg = makeUniqueNoThrow<JPEGDEC>();
+  const auto jpeg = heapfloor::make<JPEGDEC>("jpeg-thumb");
   if (!jpeg || jpeg->open("", bmpJpegOpen, bmpJpegClose, bmpJpegRead, bmpJpegSeek, grayThumbDrawCallback) != 1)
     return false;
   const ScopedCleanup cleanup{[&jpeg]() { jpeg->close(); }};
