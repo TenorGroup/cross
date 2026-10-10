@@ -5,6 +5,8 @@
 #include <memory>
 #include <string>
 
+#include "../Memory/HeapFloor.h"
+
 class Print;
 class AtkinsonDitherer;
 
@@ -13,18 +15,13 @@ class AtkinsonDitherer;
 #endif
 
 namespace tenorink {
-// Use reported heap numbers, including the 12 B poisoning overhead.
-// Replace this door with HeapFloor when that release lane is integrated.
-constexpr bool homeHeapFits(size_t free, size_t largest, size_t bytes = 0) {
-  return free >= bytes + 10240 && largest >= bytes + 8180;
-}
-
 // The single Home gray policy, including the emergency monochrome switch.
 constexpr bool homeGray(bool touch, bool psram, bool recent, bool ugly, bool absoluteSupported,
                         int levels = TENOR_INK_HOME_LEVELS, bool x3 = false,
-                        size_t free = 0, size_t largest = 0, size_t bytes = 7920) {
+                        size_t free = 0, size_t largest = 0) {
+  // X3: the heap is on the floor before the 7,920 B strip is asked for (heapfloor, reported numbers).
   return recent && !ugly && absoluteSupported && levels == 4 &&
-         ((touch && psram) || (x3 && homeHeapFits(free, largest, bytes)));
+         ((touch && psram) || (x3 && !heapfloor::crosses(free, largest)));
 }
 
 // One crop/BOX/dither kernel for both source arrays and decoded scanlines.

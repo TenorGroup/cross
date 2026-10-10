@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <BuildScratch.h>
 #include <HalDisplay.h>
 #include <HalMemory.h>
@@ -13,6 +14,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <new>
+#include <set>
+#include <string>
 
 #include "BitmapHelpers.h"
 #include "MinizConfig.h"
@@ -73,7 +76,25 @@ void testFree(void* ptr) {
   forget(rawAllocations, ptr);
   std::free(ptr);
 }
+std::set<std::string> doors;
+const char* refuseWho = nullptr;
+bool refused = false;
 }  // namespace
+
+EspClass ESP;
+// The heap floor door (built as on the device, ESP_PLATFORM): records each name, refuses one on demand.
+namespace heapfloor {
+bool judge(size_t bytes, const void*, const char* who) {
+  doors.insert(who);
+  if (refuseWho && std::strcmp(who, refuseWho) == 0) { refused = true; return false; }
+  return stands(bytes, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+}
+void* take(size_t bytes, const char* who) {
+  void* p = testMalloc(bytes);
+  if (p && !judge(bytes, p, who)) { testFree(p); return nullptr; }
+  return p;
+}
+}  // namespace heapfloor
 
 // These arrays belong only to the converter and its real ditherer. The test
 // harness uses fixed storage, so any one of them can fail precisely.
@@ -228,6 +249,29 @@ int main() {
     }
     std::printf("PASS: tenor/ink PNG levels=%d, shared kernel parity, %zu clean allocation failures\n",
                 four ? 4 : 1, inkCalls);
+    // The X3 tenor/ink buffers each pass the heap floor door under their own name, and a refusal unwinds.
+    doors.clear();
+    HalFile named(PNG, sizeof(PNG));
+    Output seen;
+    if (!PngToBmpConverter::pngFileToInkBmpStream(named, seen, 4, 3, four) || !noLeaks()) return 1;
+    for (const char* who : {"ink-png", "ink-png-row", "ink-bounds", "ink-rows", "ink-errors", "inflate-state",
+                            "inflate-window"}) {
+      if (!doors.count(who)) {
+        std::printf("FAIL: tenor/ink PNG block %s did not pass the heap floor door\n", who);
+        return 1;
+      }
+      refuseWho = who;
+      refused = false;
+      HalFile retry(PNG, sizeof(PNG));
+      Output rejected;
+      const bool ok = PngToBmpConverter::pngFileToInkBmpStream(retry, rejected, 4, 3, four);
+      refuseWho = nullptr;
+      if (!refused || ok || !noLeaks()) {
+        std::printf("FAIL: heap floor refusal of %s did not unwind cleanly\n", who);
+        return 1;
+      }
+    }
+    std::printf("PASS: tenor/ink PNG levels=%d, 7 heap floor names refused cleanly\n", four ? 4 : 1);
   }
   return 0;
 }

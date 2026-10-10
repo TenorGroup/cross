@@ -14,7 +14,6 @@
 
 #include "BitmapHelpers.h"
 #include "TenorInk.h"
-#include "InkMemory.h"
 #ifdef BOARD_HAS_PSRAM
 #include <HalMemory.h>
 #endif
@@ -524,7 +523,7 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
   ctx.paletteSize = 0;
 
   const size_t scanlineRowBytes = rawRowBytes;
-  auto scanlineRows = heapfloor::array<uint8_t[]>(scanlineRowBytes * 2, "png-scanlines");
+  auto scanlineRows = heapfloor::array<uint8_t[]>(scanlineRowBytes * 2, ink ? "ink-png" : "png-scanlines");
   if (!scanlineRows) {
     LOG_ERR("PNG", "OOM: scanline buffers (%u bytes each)", rawRowBytes);
     return false;
@@ -568,19 +567,12 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
     return false;
   }
 
-  // The existing inflater takes a 32 KiB window and an 8,364 B state.
-#if defined(ESP_PLATFORM) && !defined(BOARD_HAS_PSRAM)
-  if (ink && !tenorink::homeHeapFits(ESP.getFreeHeap(), ESP.getMaxAllocHeap(), 32768 + 8364)) return false;
-#endif
   // Initialize streaming decompressor with 32KB window for back-reference history
   if (!ctx.reader.init(true)) {
     LOG_ERR("PNG", "Failed to init inflate stream");
 
     return false;
   }
-#if defined(ESP_PLATFORM) && !defined(BOARD_HAS_PSRAM)
-  if (ink && !tenorink::homeHeapFits(ESP.getFreeHeap(), ESP.getMaxAllocHeap())) return false;
-#endif
   ctx.reader.setFill(pngIdatFillCallback, &ctx);
   // PNG IDAT data is zlib-wrapped (2-byte header + trailing adler32)
   ctx.reader.setZlibWrapped();
@@ -603,11 +595,12 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
     LOG_INF("PNG", "tenor/ink source=%ux%u psram=%u", width, height, static_cast<unsigned>(bytes));
     return tenorink::writeCover(gray.get(), width, height, bmpOut, targetWidth, targetHeight, !oneBit);
 #else
-    auto row = makeUniqueNoThrow<uint8_t[]>(width);
+    auto row = heapfloor::array<uint8_t[]>(width, "ink-png-row");
     tenorink::CoverStream stream(width, height, bmpOut, targetWidth, targetHeight, !oneBit);
     if (!row || !stream.valid()) return false;
 #if defined(ESP_PLATFORM)
-    if (!tenorink::homeHeapFits(ESP.getFreeHeap(), ESP.getMaxAllocHeap())) return false;
+    // The blocks under 4 KB skip the door: the heap left with all of them must still be on the floor.
+    if (heapfloor::crosses(ESP.getFreeHeap(), ESP.getMaxAllocHeap())) return false;
 #endif
     uint8_t rowsSinceYield = 0;
     for (uint32_t y = 0; y < height; ++y) {

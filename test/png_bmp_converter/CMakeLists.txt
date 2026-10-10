@@ -16,4 +16,6 @@ target_include_directories(PngBmpAllocationTest PRIVATE
   ${REPO_ROOT}/lib/miniz/src
   ${REPO_ROOT}/lib/hal
 )
+# Built as on the device so the converter asks the heap floor door the test defines.
+target_compile_definitions(PngBmpAllocationTest PRIVATE ESP_PLATFORM=1)
 add_test(NAME PngBmpAllocationFailures COMMAND PngBmpAllocationTest)

@@ -59,6 +59,7 @@
 #include <TenorInk.h>
 #include "components/SettledListRender.h"
 #include "components/TenorMenuChrome.h"
+#include "HeapBigProbe.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 #include "components/X3SleepCover.h"
@@ -2369,12 +2370,24 @@ bool HomeActivity::showHomeGray() {
     constexpr int stripRows = 120;
     const int rowBytes = renderer.getDisplayWidthBytes();
     const size_t bytes = size_t(rowBytes) * stripRows;
-    // Recheck immediately before allocation, then keep the same floor after it.
+    // As the reader's strip: the heap floor is measured before the strip is asked for (the floor keeps
+    // this block's room); while the strip is held only a failed allocation stops the gray pass.
     const auto before = HalMemory::getDefaultHeap();
-    if (!tenorink::homeHeapFits(before.freeBytes, before.largestBlockBytes, bytes)) { homeGraySelected = false; return false; }
+    if (heapfloor::crosses(before.freeBytes, before.largestBlockBytes)) {
+      LOG_INF("HOME", "tenor/ink gray skipped heap_floor free=%u largest=%u bytes=%u",
+              static_cast<unsigned>(before.freeBytes), static_cast<unsigned>(before.largestBlockBytes),
+              static_cast<unsigned>(bytes));
+      homeGraySelected = false;
+      return false;
+    }
+    struct StripWindowEnd {
+      bool held = false;
+      ~StripWindowEnd() { if (held) heapBigStripWindow(false); }
+    } stripWindowEnd;
     auto scratch = makeUniqueNoThrow<uint8_t[]>(bytes);
-    const auto after = HalMemory::getDefaultHeap();
-    if (!scratch || !tenorink::homeHeapFits(after.freeBytes, after.largestBlockBytes)) { homeGraySelected = false; return false; }
+    if (!scratch) { homeGraySelected = false; return false; }
+    heapBigStripWindow(true);
+    stripWindowEnd.held = true;
     const uint32_t started = millis();
     if (!renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute,
                                       cleanInitialRefresh ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH)) {

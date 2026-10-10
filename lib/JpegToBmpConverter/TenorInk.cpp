@@ -12,7 +12,6 @@
 
 #include "BitmapHelpers.h"
 #include "GrayThumb.h"
-#include "InkMemory.h"
 
 void writeBmpHeader2bit(Print& out, int width, int height);
 
@@ -23,7 +22,7 @@ tenorink::CoverStream::CoverStream(int sw, int sh, Print& output, int w, int h, 
   stride = four ? (w * 2 + 31) / 32 * 4 : (w + 31) / 32 * 4;
   packed = makeUniqueNoThrow<uint8_t[]>(stride);
   bounds = heapfloor::array<int[]>(3 * w, "ink-bounds");
-  rows = internal<int[]>(2 * h * sizeof(int), 2 * h);
+  rows = heapfloor::array<int[]>(2 * h, "ink-rows");
   sums = makeUniqueNoThrow<uint32_t[]>(w);
   dither = makeUniqueNoThrow<AtkinsonDitherer>(w, true, !four);
   if (!valid()) { failed = true; return; }

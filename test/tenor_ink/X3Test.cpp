@@ -3,6 +3,7 @@
 #include <JPEGDEC.h>
 #include <JpegToBmpConverter.h>
 #include "TenorInk.h"
+#include <HeapFloor.h>
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -10,6 +11,8 @@
 #include <fstream>
 #include <iterator>
 #include <new>
+#include <set>
+#include <string>
 #include <vector>
 
 EspClass ESP;
@@ -18,9 +21,14 @@ struct Block { void* p; size_t n; };
 Block blocks[64]{};
 bool measuring = false;
 size_t call = 0, failAt = size_t(-1), dropAt = size_t(-1), live = 0, peak = 0;
+std::multiset<size_t> bigTaken, bigJudged;
+std::set<std::string> doors;
+const char* refuseWho = nullptr;
+bool refused = false;
 void* take(size_t n) noexcept {
   if (measuring && call++ == failAt) return nullptr;
   void* p = std::malloc(n);
+  if (p && measuring && n >= heapfloor::kBigBytes) bigTaken.insert(n);
   if (p && measuring && call - 1 == dropAt) ESP.freeHeap = 10239;
   if (p && measuring) {
     for (auto& b : blocks) if (!b.p) { b = {p,n}; live += n; peak = std::max(peak,live); return p; }
@@ -44,6 +52,19 @@ int capture(JPEGDRAW* d) {
     std::memcpy(pixels.data()+size_t(d->y+y)*sw+d->x,
                 reinterpret_cast<uint8_t*>(d->pPixels)+y*d->iWidth,std::min(d->iWidthUsed,sw-d->x));
   return 1;
+}
+}
+// The heap floor door on the device reads the internal heap after the block; here it reads the stub.
+namespace heapfloor {
+bool judge(size_t bytes, const void*, const char* who) {
+  if (measuring) { doors.insert(who); if (bytes >= kBigBytes) bigJudged.insert(bytes); }
+  if (measuring && refuseWho && std::strcmp(who, refuseWho) == 0) { refused = true; return false; }
+  return stands(bytes, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+}
+void* take(size_t bytes, const char* who) {
+  void* p = std::malloc(bytes);
+  if (p && !judge(bytes, p, who)) { std::free(p); return nullptr; }
+  return p;
 }
 }
 void* operator new(size_t n,const std::nothrow_t&) noexcept { return take(n); }
@@ -77,6 +98,19 @@ int main(int argc,char** argv) {
   measuring=false;
   assert(actual.b==expected.b && live==0);
   const size_t allocations=call;
+  // Every block of 4 KB or more went through the heap floor door, each under its own name.
+  assert(bigTaken==bigJudged && !bigTaken.empty());
+  const size_t judged=bigJudged.size(), taken=bigTaken.size();
+  const char* names[]={"ink-jpeg","ink-mcu","ink-bounds","ink-rows","ink-errors"};
+  for (const char* who : names) assert(doors.count(who));
+  for (const char* who : names) {
+    call=live=peak=0;refuseWho=who;refused=false;measuring=true;
+    bool ok;
+    { HalFile file(bytes);Output rejected;ok=JpegToBmpConverter::jpegFileToInkBmpStream(file,rejected,w,h,levels==4); }
+    measuring=false;refuseWho=nullptr;
+    assert(refused && !ok && live==0);
+  }
+  std::printf("GREEN heap floor door: %zu of %zu blocks of 4 KB or more judged, 5 names refused cleanly\n",judged,taken);
   std::printf("GREEN grid=%dx%d frame=%dx%d levels=%d peak_internal_nothrow=%zu allocations=%zu\n",sw,sh,w,h,levels,peak,allocations);
   for (size_t i=0;i<allocations;++i) {
     call=live=peak=0;failAt=i;measuring=true;
@@ -93,8 +127,15 @@ int main(int argc,char** argv) {
     assert(live==0);
   }
   for (bool largest : {false,true}) {
-    ESP.freeHeap=largest?200000:10240;ESP.largestHeap=largest?8180:200000;
+    ESP.freeHeap=largest?200000:10239;ESP.largestHeap=largest?8179:200000;
     HalFile file(bytes);Output rejected;assert(!JpegToBmpConverter::jpegFileToInkBmpStream(file,rejected,w,h,levels==4));
+    ESP.freeHeap=ESP.largestHeap=200000;
+  }
+  // On the floor itself (free 10,240 B, largest reported 8,180 B) the cover is drawn.
+  {
+    ESP.freeHeap=10240;ESP.largestHeap=8180;
+    HalFile file(bytes);Output edge;assert(JpegToBmpConverter::jpegFileToInkBmpStream(file,edge,w,h,levels==4));
+    assert(edge.b==expected.b);
     ESP.freeHeap=ESP.largestHeap=200000;
   }
   std::printf("GREEN clean allocation failures=%zu, post-floor=2, pre-floor=2\n",allocations);

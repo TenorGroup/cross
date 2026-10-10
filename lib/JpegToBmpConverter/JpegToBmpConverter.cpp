@@ -17,7 +17,6 @@
 #include "GrayThumb.h"
 #include "JpegScale.h"
 #include "TenorInk.h"
-#include "InkMemory.h"
 #include "ProgressiveJpeg.h"
 #ifdef BOARD_HAS_PSRAM
 #include <HalMemory.h>
@@ -541,7 +540,7 @@ bool JpegToBmpConverter::jpegFileToInkBmpStream(HalFile& file, Print& out, int w
   return decoded && tenorink::writeCover(gray.get(), dw, dh, out, width, height, four);
 #else
   s_jpegFile = &file;
-  auto jpeg = tenorink::internal<JPEGDEC>(sizeof(JPEGDEC));
+  auto jpeg = heapfloor::make<JPEGDEC>("ink-jpeg");
   struct Capture {
     tenorink::CoverStream* stream;
     uint8_t* rows;
@@ -569,11 +568,12 @@ bool JpegToBmpConverter::jpegFileToInkBmpStream(HalFile& file, Print& out, int w
   const bool progressive = jpeg->getJPEGType() == JPEG_MODE_PROGRESSIVE;
   const int scale = progressive ? 8 : 1;
   const int dw = (sw + scale - 1) / scale, dh = (sh + scale - 1) / scale;
-  auto rows = tenorink::internal<uint8_t[]>(MAX_MCU_HEIGHT * dw, MAX_MCU_HEIGHT * dw);
+  auto rows = heapfloor::array<uint8_t[]>(MAX_MCU_HEIGHT * dw, "ink-mcu");
   tenorink::CoverStream stream(dw, dh, out, width, height, four);
   if (!rows || !stream.valid()) return false;
 #if defined(ESP_PLATFORM)
-  if (!tenorink::homeHeapFits(ESP.getFreeHeap(), ESP.getMaxAllocHeap())) return false;
+  // The blocks under 4 KB skip the door: the heap left with all of them must still be on the floor.
+  if (heapfloor::crosses(ESP.getFreeHeap(), ESP.getMaxAllocHeap())) return false;
 #endif
   Capture c{&stream, rows.get(), dw, dh};
   jpeg->setPixelType(EIGHT_BIT_GRAYSCALE);
