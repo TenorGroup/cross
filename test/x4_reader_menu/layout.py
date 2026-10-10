@@ -201,6 +201,7 @@ cpp += 'bool ReaderToolbarUi::usesX3Bar() { return false; }\nvoid ReaderToolbarU
 cpp += 'struct { int uiTextSize = 0; } SETTINGS;\nint normalizedUiTextSize(int v) { return v; }\n'
 cpp += method(source, 'struct StepperCells') + ';\n' + method(source, 'StepperCells stepperCells(') + '\n'
 cpp += method(source, 'void drawStepChevron(') + '\n'
+cpp += method(source, 'static int frameAir') + '\n'
 for name in ['sheetRect','endRow','markChoiceRows','switchShapes']:
     cpp += method(source, re.search(r'^[^\n]*ReaderToolbarUi::'+name+r'\(', source, re.M).group(0)) + '\n'
 for name in ['begin','render','route','onAction','screenFn','scrollRows','buildX4Tools','buildX4Toolbar','buildX4Panel','buildX4Spacing','buildX4Keypad','fadeMoreBelow']:
