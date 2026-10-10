@@ -146,6 +146,30 @@ int main(int argc, char** argv) {
       const auto& back = net == 14 ? backV1056::kBackNet14 : backV1056::kBackNet18;
       check(actual.width == expected.width && actual.height == expected.height, "Select must use Enter dimensions");
       check(actual.height == back.height, "Select and Back must have equal height");
+      const int column = net == 14 ? 10 : 12;
+      const int backColumn = net == 14 ? 12 : 16;
+      int first = actual.height, last = -1, count = 0;
+      int backFirst = back.height, backLast = -1;
+      for (int row = 0; row < actual.height; ++row) {
+        if (actual.rows[row] & (1u << (actual.width - 1 - column))) {
+          first = std::min(first, row); last = row; ++count;
+        }
+        if (back.rows[row] & (1u << (back.width - 1 - backColumn))) {
+          backFirst = std::min(backFirst, row); backLast = row;
+        }
+      }
+      check(count == 3 && last - first == 2, "Enter horizontal stem must be 3 pixels");
+      check(std::abs(first + last - backFirst - backLast) <= 2, "Enter stem differs from Back by more than 1 pixel");
+      const int headWidth = net == 14 ? 8 : 10;
+      for (int row = 2; row < actual.height; ++row)
+        for (int x = 0; x < headWidth; ++x)
+          check(bool(actual.rows[row] & (1u << (actual.width - 1 - x))) ==
+                    bool(back.rows[row - 2] & (1u << (back.width - 1 - x))),
+                "Enter arrowhead must preserve the v1.0.56 Back pixels");
+      check(actual.rows[0] == (1u << 1), "Enter top cap must be rounded");
+      check((actual.rows[1] & 7u) == 7u, "Enter vertical stem must be 3 pixels");
+      printf("Enter net=%d stem_offset=%.1f stroke=%d top_row=0x%08x\n", net,
+             (first + last - backFirst - backLast) / 2.0, count, actual.rows[0]);
       for (int path = 0; path < 2; ++path) {
         clear();
         if (path == 0) buttonSymbols::drawLabel(renderer, "\xEE\x84\x80", kCx, kCy, net);
@@ -420,7 +444,7 @@ int main(int argc, char** argv) {
     using inlineSymbolBitmaps::Glyph;
     const Glyph* selected[] = {&inlineSymbolBitmaps::kBackNet14, &inlineSymbolBitmaps::kBackNet18,
                                &inlineSymbolBitmaps::kSelectNet14, &inlineSymbolBitmaps::kSelectNet18};
-    const uint32_t hashes[] = {0x20785c88, 0x14450811, 0x5a176c29, 0x89027e22};
+    const uint32_t hashes[] = {0x20785c88, 0x14450811, 0x6f64b933, 0x34587548};
     const int widths[] = {24, 31, 22, 29};
     const int heights[] = {15, 19, 15, 19};
     for (int index = 0; index < 4; ++index) {
