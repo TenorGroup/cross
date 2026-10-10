@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <cstdlib>
 
 namespace ugly {
 
@@ -11,6 +12,12 @@ inline std::atomic<uint32_t> markCounter{0};
 inline void resetMarkSeed(uint32_t seed = 0) { markCounter.store(seed, std::memory_order_relaxed); }
 
 inline uint32_t markSeed() {
+#ifdef SIMULATOR
+  // A measuring run pins every mark's seed (CROSSPOINT_SIM_MARK_SEED): the count of marks drawn depends on timing, so
+  // the counter below would give two runs of one journey different hands.
+  static const char* pinned = std::getenv("CROSSPOINT_SIM_MARK_SEED");
+  if (pinned && pinned[0]) return static_cast<uint32_t>(std::atoll(pinned));
+#endif
   uint32_t seed = markCounter.fetch_add(1, std::memory_order_relaxed) + 1;
   seed ^= seed >> 16;
   seed *= 0x7feb352du;

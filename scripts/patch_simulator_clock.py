@@ -48,8 +48,13 @@ SOURCE = """#include "HalClock.h"
 HalClock halClock;
 
 namespace {
+// CROSSPOINT_SIM_NOW (epoch seconds) pins the clock, so two runs of a journey draw the same hands and digits.
+std::time_t nowSeconds() {
+  static const char *pinned = std::getenv("CROSSPOINT_SIM_NOW");
+  return pinned && pinned[0] ? static_cast<std::time_t>(std::atoll(pinned)) : std::time(nullptr);
+}
 bool readUtc(std::tm &utc) {
-  const std::time_t now = std::time(nullptr);
+  const std::time_t now = nowSeconds();
   if (now < 1735689600) return false;
 #if defined(_WIN32)
   if (gmtime_s(&utc, &now) != 0) return false;
@@ -81,7 +86,7 @@ void HalClock::setTimezone(const char *posixTz) {
 
 bool HalClock::localTime(struct tm &out) const {
   if (!hasValidTime()) return false;
-  const std::time_t now = std::time(nullptr);
+  const std::time_t now = nowSeconds();
 #if defined(_WIN32)
   return localtime_s(&out, &now) == 0;
 #else
