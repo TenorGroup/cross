@@ -14,7 +14,7 @@ CASES = {
            '2000:CONFIRM;3000:RIGHT;3400:RIGHT;3800:RIGHT;5000:CONFIRM;6000:RIGHT;7000:CONFIRM;8500:RIGHT;9500:CONFIRM;11000:QUIT',
            {5800: 'before', 10500: 'after'}),
     'x4pro': (os.environ.get('X4PRO_PROGRAM', REPO / '.pio/build/simulator_x4pro/program'),
-              '1500:RIGHT;2500:TAP:240,775;3500:TAP:321,754;5000:TAP:270,495;6500:QUIT',
+              '1500:RIGHT;2500:TAP:240,775;3500:TAP:321,754;5000:TAP:290,495;6500:QUIT',
               {4200: 'before', 5800: 'after'}),
 }
 

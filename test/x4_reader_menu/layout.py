@@ -32,8 +32,8 @@ def method(text, signature):
 source = (a.repo / 'src/activities/reader/ReaderToolbarUi.cpp').read_text()
 if a.mutate_stepper_center:
     source, removed = re.subn(
-        r'(const fui::Rect entryRect\{static_cast<int16_t>\(frame\.right\(\) - )140(\), y, 60, 62\};)',
-        r'\g<1>138\g<2>', source, count=1)
+        r'(const fui::Rect entryRect\{static_cast<int16_t>\(frame\.right\(\) - cells\.entry)(\), y, 60, 62\};)',
+        r'\g<1> - 2\g<2>', source, count=1)
     if removed != 1:
         raise SystemExit(f'stepper center mutation expected 1 match, got {removed}')
 if a.mutate_stepper_ring:
@@ -170,6 +170,12 @@ void drawFavoriteMark(const GfxRenderer&,int x,int y,int) { favoriteMarks.push_b
 // The panels' one grey ring (TenorMenuChrome): x 16, the screen's width less 32.
 std::vector<fui::Rect> panels;
 void drawPanel(const GfxRenderer&,int y,int h) { panels.push_back({16,static_cast<int16_t>(y),448,static_cast<int16_t>(h)}); }
+struct FrameSpan { int x, width; };
+FrameSpan frameSpan(const GfxRenderer&) { return {16, 448}; }
+void drawSettingsPopupMark(const GfxRenderer&,int,int) {}
+enum class ChevronDir : uint8_t { Down, Left, Right };
+constexpr int moreChevronLength(int span) { return (span * 8 + 5) / 11 + 3; }
+void drawMoreChevron(const GfxRenderer&,int,int,ChevronDir,int) {}
 int footBackTop(int h) { return h-76; }
 std::vector<std::string> rowRules;
 void drawRowRule(const GfxRenderer&,int y,int left,int right) {
@@ -192,7 +198,11 @@ for component in ('PageScrollbarIdle.h', 'PageScrollbar.h'):
 cpp += header + '\n' + constants + '\n'
 cpp += 'ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& r): UiAppHost(r), renderer_(&r) {}\n'
 cpp += 'bool ReaderToolbarUi::usesX3Bar() { return false; }\nvoid ReaderToolbarUi::buildX3Bar(UiScreen&) {}\n'
-cpp += method(source, 'fui::Rect readerFrame') + '\n'
+cpp += 'struct { int uiTextSize = 0; } SETTINGS;\nint normalizedUiTextSize(int v) { return v; }\n'
+cpp += method(source, 'struct StepperCells') + ';\n' + method(source, 'StepperCells stepperCells(') + '\n'
+cpp += method(source, 'void drawStepChevron(') + '\n'
+for name in ['sheetRect','endRow','markChoiceRows','switchShapes']:
+    cpp += method(source, re.search(r'^[^\n]*ReaderToolbarUi::'+name+r'\(', source, re.M).group(0)) + '\n'
 for name in ['begin','render','route','onAction','screenFn','scrollRows','buildX4Tools','buildX4Toolbar','buildX4Panel','buildX4Spacing','buildX4Keypad','fadeMoreBelow']:
     # Static onAction has a void signature like the other production members.
     match = re.search(r'^[^\n]*ReaderToolbarUi::'+name+r'\(', source, re.M)
@@ -240,9 +250,9 @@ int main() {
     const auto minusRect = ui.app.publishedRect(ACTION_SIZE_STEP, -1);
     const auto entryRect = ui.app.publishedRect(ACTION_SIZE_ENTRY, 0);
     const auto plusRect = ui.app.publishedRect(ACTION_SIZE_STEP, 1);
-    assert(minusRect.x == 260 && minusRect.y == 464 && minusRect.width == 60 && minusRect.height == 62);
+    assert(minusRect.x == 268 && minusRect.y == 464 && minusRect.width == 60 && minusRect.height == 62);
     if (kExpectStepperCenter) {
-      assert(entryRect.x == 324 && entryRect.y == 464 && entryRect.width == 60 && entryRect.height == 62);
+      assert(entryRect.x == 328 && entryRect.y == 464 && entryRect.width == 60 && entryRect.height == 62);
       assert(std::abs((entryRect.x + entryRect.width / 2) -
                       ((minusRect.x + minusRect.width / 2 + plusRect.x + plusRect.width / 2) / 2)) <= 1 &&
              "stepper value touch rect must be centered between minus and plus");
@@ -260,7 +270,7 @@ int main() {
     assert(sawPlus && "plus label must be drawn");
     if (kExpectStepperRing) {
       assert(tenorchrome::stepperRings.size() == 2 && "size stepper must draw 2 grey pill rings");
-      assert(tenorchrome::stepperRings[0] == "264,473,52,44,2,1" &&
+      assert(tenorchrome::stepperRings[0] == "272,473,52,44,2,1" &&
              tenorchrome::stepperRings[1] == "392,473,52,44,2,1");
       bool sawFont = false;
       for (const auto& text : ui.uiTarget.texts) {

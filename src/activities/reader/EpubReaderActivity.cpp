@@ -4867,6 +4867,8 @@ void EpubReaderActivity::renderOverlay() {
       model.rowValue = [this](int i) { return textRowValue(i); };
       model.rowPinned = [this](int i) { return readermenu::daGhim(pins, pinOfRow(i)); };
       model.rowOpens = [](int i) { return !textRowToggles(i); };  // a list (Font its fonts); on/off turns
+      model.rowEnd = [](int i) { return textRowEnd(i); };
+      model.rowOn = [](int i) { return textRowOn(i); };
     }
   }
   else if (overlay == Overlay::Favorites) {

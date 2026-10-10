@@ -609,6 +609,17 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
 }
 
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+namespace {
+// The size row's stepper: "-", the value, "+", the three cells' left edges as offsets from the frame's right side and the
+// room the label gives up. Each cell is the 60 px a thumb needs; they stand edge to edge (on tenor/ugly, whose paper reads
+// the old cells, 4 px apart), which gives the label the 8 px it was short of.
+struct StepperCells { int16_t minus, entry, plus, labelTake; };
+StepperCells stepperCells() {
+  if (shell::isUgly()) return {204, 140, 76, 236};
+  return {196, 136, 76, 228};
+}
+}  // namespace
+
 int ReaderToolbarUi::scrollRows(const MappedInputManager& input, const int count) const {
   return swipeRows(input, nav_, count, ACTION_ROW);
 }
@@ -790,7 +801,7 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
                           (model_.rowEnd && !shell::isUgly() && model_.rowEnd(index) == readermenu::RowEnd::Choice);
         int right = frame.right() - strip - listProps_.sidePadding - (slot ? chevron : 0);
         if (rows && index == 1)
-          right = frame.right() - 204;
+          right = frame.right() - stepperCells().minus;
         else if (item.toggle)
           right -= listProps_.toggleWidth;
         else if (item.value)
@@ -815,7 +826,7 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
       label.maxLines = 1;
       // A pinned size row leaves its heart the room before the "-": a long name stops short of it.
       const bool pinned = model_.rowPinned && model_.rowPinned(1);
-      const int16_t room = static_cast<int16_t>(frame.width - 236 - (pinned ? tenorchrome::FAVORITE_MARK + 8 : 0));
+      const int16_t room = static_cast<int16_t>(frame.width - stepperCells().labelTake - (pinned ? tenorchrome::FAVORITE_MARK + 8 : 0));
       screen.target().text({static_cast<int16_t>(frame.x + 16), y, room, 62}, windowLabels_[sizeSlot].c_str(), label);
       stepProps_ = fui::ButtonProps{};
       stepProps_.inputMask = fui::InputTouch;
@@ -824,12 +835,13 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
       stepProps_.action = ACTION_SIZE_STEP;
       stepProps_.label = "-";
       stepProps_.value = -1;
-      const fui::Rect minusRect{static_cast<int16_t>(frame.right() - 204), y, 60, 62};
+      const auto cells = stepperCells();
+      const fui::Rect minusRect{static_cast<int16_t>(frame.right() - cells.minus), y, 60, 62};
       screen.button(stepProps_, minusRect);
       stepProps_.label = windowValues_[sizeSlot].c_str();
       stepProps_.action = ACTION_SIZE_ENTRY;
       stepProps_.value = 0;
-      const fui::Rect entryRect{static_cast<int16_t>(frame.right() - 140), y, 60, 62};
+      const fui::Rect entryRect{static_cast<int16_t>(frame.right() - cells.entry), y, 60, 62};
       screen.button(stepProps_, entryRect);
       stepProps_.label = "+";
       stepProps_.action = ACTION_SIZE_STEP;
