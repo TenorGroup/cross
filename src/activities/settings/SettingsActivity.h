@@ -163,13 +163,13 @@ struct SettingInfo {
 };
 
 inline bool settingOpensNext(const SettingInfo& setting) {
-  if (setting.action == SettingAction::Language && tenorchrome::kTouchShell)
+  if (setting.action == SettingAction::Language)
     return settingsChoiceStyle(getLanguageCount(), true) == SettingsChoiceStyle::Page;
   if (setting.nameId == StrId::STR_TIME_TO_SLEEP) return true;
   if (setting.type == SettingType::ACTION) return setting.action != SettingAction::None;
   if (setting.type != SettingType::ENUM) return false;
   const auto style = settingsChoiceStyle(setting, tenorchrome::kTouchShell);
-  return style == SettingsChoiceStyle::Page || (!tenorchrome::kTouchShell && style == SettingsChoiceStyle::Popup);
+  return style == SettingsChoiceStyle::Page;
 }
 
 class SettingsActivity final : public UiTabListActivity {

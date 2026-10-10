@@ -173,7 +173,7 @@ static bool choiceSemantics(const SettingInfo& row) {
   bool ok = true;
   for (bool touch : {false, true}) {
     const auto expected = row.type == SettingType::TOGGLE || states ? SettingsChoiceStyle::Inline
-        : count < 2 ? SettingsChoiceStyle::None : touch && count >= 7 ? SettingsChoiceStyle::Page : SettingsChoiceStyle::Popup;
+        : count < 2 ? SettingsChoiceStyle::None : count >= 7 ? SettingsChoiceStyle::Page : SettingsChoiceStyle::Popup;
     const auto actual = settingsChoiceStyle(row, touch);
     if (actual != expected) {
       std::fprintf(stderr, "RED choice row=%d count=%d touch=%d expected=%d actual=%d\n",

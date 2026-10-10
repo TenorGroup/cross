@@ -94,6 +94,8 @@ TEST(NguongTrinhChon, GiaTriTuHaiTroLenMo) {
   EXPECT_TRUE(settingstabs::moTrinhChon(3)) << "3 choices open the picker";
   EXPECT_TRUE(settingstabs::moTrinhChon(4)) << "four choices open the picker";
   EXPECT_TRUE(settingstabs::moTrinhChon(6));
+  EXPECT_TRUE(settingstabs::moTrinhChon(7));
+  EXPECT_TRUE(settingstabs::moTrinhChon(130));
 }
 
 // Danh sach rong hay mot lua chon thi khong co gi de mo.

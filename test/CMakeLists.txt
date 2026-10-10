@@ -269,3 +269,5 @@ add_subdirectory(text_gray_policy)
 
 add_test(NAME SettingsChoiceSemantics COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/settings_semantics/run.py" --output "${CMAKE_CURRENT_BINARY_DIR}/settings-semantics")
 add_test(NAME SettingsChoicePixels COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/settings_semantics/pixels.py" --output "${CMAKE_CURRENT_BINARY_DIR}/settings-pixels")
+
+add_test(NAME SettingsChoiceCallers COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/settings_semantics/choice_cues.py" --output "${CMAKE_CURRENT_BINARY_DIR}/settings-choice-callers")

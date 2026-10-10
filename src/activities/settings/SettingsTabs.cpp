@@ -64,7 +64,7 @@ Tab nhaCua(const Action action) {
   return Tab::SYSTEM;
 }
 
-bool moTrinhChon(const int soLuaChon) { return settingsChoiceStyle(soLuaChon, false) == SettingsChoiceStyle::Popup; }
+bool moTrinhChon(const int soLuaChon) { return settingsChoiceStyle(soLuaChon, false) != SettingsChoiceStyle::None; }
 
 int dongCuaTheCaiDat(StrId* const out, const int max) {
   int n = 0;

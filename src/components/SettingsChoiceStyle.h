@@ -3,10 +3,10 @@
 enum class SettingsChoiceStyle { Inline, Popup, Page, None };
 constexpr int SETTINGS_CHOICE_PAGE_THRESHOLD = 7;
 
-constexpr SettingsChoiceStyle settingsChoiceStyle(const int count, const bool touchShell, const bool onOff = false) {
+constexpr SettingsChoiceStyle settingsChoiceStyle(const int count, const bool, const bool onOff = false) {
   if (onOff) return SettingsChoiceStyle::Inline;
   if (count < 2) return SettingsChoiceStyle::None;
-  return touchShell && count >= SETTINGS_CHOICE_PAGE_THRESHOLD ? SettingsChoiceStyle::Page
+  return count >= SETTINGS_CHOICE_PAGE_THRESHOLD ? SettingsChoiceStyle::Page
                                                               : SettingsChoiceStyle::Popup;
 }
 

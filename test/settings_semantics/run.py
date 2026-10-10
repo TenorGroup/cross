@@ -36,12 +36,12 @@ modern = 'const bool onOff' in header
 checks = []
 for name, count, onoff in rows:
     for touch in [False, True]:
-        expected = 'Inline' if onoff else 'None' if count < 2 else 'Page' if touch and count >= 7 else 'Popup'
+        expected = 'Inline' if onoff else 'None' if count < 2 else 'Page' if count >= 7 else 'Popup'
         args = f'{count}, {str(touch).lower()}' + (f', {str(onoff).lower()}' if modern else '')
         checks.append(f'if(settingsChoiceStyle({args}) != SettingsChoiceStyle::{expected}) {{printf("RED {name} touch={touch} expected={expected}\\n"); ++bad;}}')
 for touch in [False, True]:
     for count in range(0, 20):
-        expected = 'None' if count < 2 else 'Page' if touch and count >= 7 else 'Popup'
+        expected = 'None' if count < 2 else 'Page' if count >= 7 else 'Popup'
         args = f'{count}, {str(touch).lower()}'
         checks.append(f'if(settingsChoiceStyle({args}) != SettingsChoiceStyle::{expected}) ++bad;')
 cpp = '#include <cstdio>\n#include "components/SettingsChoiceStyle.h"\nint main(){int bad=0;\n' + '\n'.join(checks) + f'\nprintf("%d failures, {len(checks)} checks, {len(rows)} catalog rows\\n",bad);return bad?1:0;}}\n'

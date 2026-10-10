@@ -84,7 +84,7 @@ void EpubReaderMenuActivity::rebuildRows() {
     item.label = I18N.get(menuItems[rowToItem[r]].labelId);
     item.actionValue = static_cast<int16_t>(r);
     const auto style = rowChoiceStyle(r);
-    item.opensNext = tenorchrome::kTouchShell && style != SettingsChoiceStyle::None
+    item.opensNext = style != SettingsChoiceStyle::None
                         ? style == SettingsChoiceStyle::Page : readermenu::rowOpens(menuItems[rowToItem[r]].action);
     menuRowItems[r] = item;
   }
@@ -396,7 +396,7 @@ void EpubReaderMenuActivity::chonCoChu(const int row) {
   }
   const int cur = fontdoc::coDangDung(sizes);
   if (!settingstabs::moTrinhChon(n)) {
-    dongVoi(MenuAction::FONT_SIZE, sizes[(cur + 1) % n], -1);  // duoi 4: doi tai cho, quay vong
+    dongVoi(MenuAction::FONT_SIZE, sizes[(cur + 1) % n], -1);  // 1 lua chon: giu gia tri hien tai
     return;
   }
   std::vector<std::string> nhan;

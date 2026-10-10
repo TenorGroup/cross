@@ -145,7 +145,7 @@ struct TextSettingsActivity {
 };
 // PRODUCTION
 int main(){
- CHECK(!settingstabs::moTrinhChon(0));CHECK(!settingstabs::moTrinhChon(1));CHECK(settingstabs::moTrinhChon(2));CHECK(settingstabs::moTrinhChon(3));CHECK(settingstabs::moTrinhChon(4));
+ CHECK(!settingstabs::moTrinhChon(0));CHECK(!settingstabs::moTrinhChon(1));CHECK(settingstabs::moTrinhChon(2));CHECK(settingstabs::moTrinhChon(3));CHECK(settingstabs::moTrinhChon(4));CHECK(settingstabs::moTrinhChon(7));CHECK(settingstabs::moTrinhChon(130));
  int checked=0;
  for(auto tab:{TextSettingsActivity::Tab::Family,TextSettingsActivity::Tab::Size}){
   TextSettingsActivity s;s.tab_=tab;
@@ -155,15 +155,15 @@ int main(){
   tenorchrome::kTouchShell=touch;TextSettingsActivity screen;screen.tab_=tab;screen.rebuildRowItems();
   for(int row=0;row<screen.listCount();row++){
    auto current=TextSettingsActivity::formRow(&screen,TextSettingsActivity::formIndex(tab,row));bool picker=current.count>2;
-   bool next=touch?current.count>=7:picker;
+   bool next=current.count>=7;
    CHECK(screen.rowItems_[row].opensNext==next);screen.ring=row+1;
-   CHECK(std::string(screen.confirmLabelText())==(next?"Select":"Toggle"));
+   CHECK(std::string(screen.confirmLabelText())==(picker?"Select":"Toggle"));
    for(int initial:{0,current.count-1}){
     TextSettingsActivity s;s.tab_=tab;s.selected=initial;int top=s.top;
     if(tab==TextSettingsActivity::Tab::Layout)s.confirmLayoutRow(row);else s.confirmStyleRow(row);
     CHECK(s.selected==initial && s.top==top);
     if(picker){
-     bool page=touch&&current.count>=7;
+     bool page=current.count>=7;
      CHECK(s.optionPopup_.opened==int(!page) && bool(s.page)==page && s.applied==-1 && s.saves==0);
      int selected=s.page?s.page->current:s.optionPopup_.current;
      const auto& labels=s.page?s.page->labels:s.optionPopup_.labels;
@@ -181,11 +181,11 @@ int main(){
  for(bool touch:{false,true})for(int count:{0,1,2,3,6,7,8}){
   tenorchrome::kTouchShell=touch;
   CHECK(settingsChoiceStyle(count,touch)==(count<2?SettingsChoiceStyle::None:
-        touch&&count>=7?SettingsChoiceStyle::Page:SettingsChoiceStyle::Popup));
+        count>=7?SettingsChoiceStyle::Page:SettingsChoiceStyle::Popup));
   if(count<2)continue;
   TextSettingsActivity s;std::vector<std::string> labels(count,"choice");
   s.showSettingsChoices(s.optionPopup_,StrId::STR_ALIGNMENT,labels,count-1,0,[&s](int value){s.applyChosenValue(s.tab_,0,value);});
-  bool page=touch&&count>=7;
+  bool page=count>=7;
   CHECK(bool(s.page)==page&&s.optionPopup_.opened==int(!page)&&s.updates==1);
   CHECK(s.optionPopup_.aligned==(touch&&!page));
   CHECK((s.page?s.page->current:s.optionPopup_.current)==count-1);

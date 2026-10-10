@@ -50,8 +50,7 @@ void ClockSettingsActivity::onEnter() {
   for (int i = 0; i < ITEM_COUNT; i++) {
     rowItems_[i].label = I18N.get(menuNames[i]);
     rowItems_[i].actionValue = static_cast<int16_t>(i);
-    rowItems_[i].opensNext = tenorchrome::kTouchShell && i == ITEM_TIMEZONE &&
-        settingsChoiceStyle(static_cast<int>(timezones::count()), true) == SettingsChoiceStyle::Page;
+    rowItems_[i].opensNext = rowChoiceStyle(i) == SettingsChoiceStyle::Page;
   }
 }
 

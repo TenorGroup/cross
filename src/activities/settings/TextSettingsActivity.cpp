@@ -182,8 +182,7 @@ void TextSettingsActivity::rebuildRowItems() {
         break;
     }
     item.actionValue = static_cast<int16_t>(i);
-    item.opensNext = rowChoiceStyle(i) == SettingsChoiceStyle::Page ||
-                     (!tenorchrome::kTouchShell && rowChoiceStyle(i) == SettingsChoiceStyle::Popup);
+    item.opensNext = rowChoiceStyle(i) == SettingsChoiceStyle::Page;
     rowItems_.push_back(item);
   }
 }
@@ -682,7 +681,8 @@ const char* TextSettingsActivity::confirmLabelText() const {
   if (ringPos() == 0) return tr(STR_SELECT);
   if (tab_ == Tab::Layout || tab_ == Tab::Style) {
     const int row = ringPos() - 1;
-    return row >= 0 && row < static_cast<int>(rowItems_.size()) && rowItems_[row].opensNext
+    const auto style = rowChoiceStyle(row);
+    return style == SettingsChoiceStyle::Popup || style == SettingsChoiceStyle::Page
                ? tr(STR_SELECT) : tr(STR_TOGGLE);
   }
   return tr(STR_SELECT);

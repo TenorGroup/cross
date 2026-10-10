@@ -104,8 +104,7 @@ void OpdsServerListActivity::rebuildRowItems() {
     fui::ListItem format;
     format.label = tr(STR_OPDS_FILENAME_FORMAT);
     format.actionValue = static_cast<int16_t>(serverCount + 2);
-    format.opensNext = !tenorchrome::kTouchShell ||
-        settingsChoiceStyle(static_cast<int>(OpdsFilenameFormat::Count), true) == SettingsChoiceStyle::Page;
+    format.opensNext = rowChoiceStyle(static_cast<int>(rowItems_.size())) == SettingsChoiceStyle::Page;
     rowItems_.push_back(format);  // subtitle refreshed per render below
   }
 }

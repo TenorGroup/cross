@@ -26,10 +26,6 @@ for filename, popup in [("SettingsActivity.cpp", "optionPopup"), ("TextSettingsA
     else:
         cues = (ROOT / "src/activities/settings/SettingsActivity.h").read_text() if filename == "SettingsActivity.cpp" else source
         assert ("settingsChoiceStyle(" in cues or "rowChoiceStyle(" in cues) and "SettingsChoiceStyle::Page" in cues
-        if filename != "OpdsServerListActivity.cpp":
-            assert "!tenorchrome::kTouchShell" in cues
-        else:
-            assert "format.opensNext = !tenorchrome::kTouchShell ||" in source
 
 parent = (ROOT / "src/activities/UiListActivity.cpp").read_text()
 assert "settingsChoiceStyle(static_cast<int>(labels.size()), tenorchrome::kTouchShell) == SettingsChoiceStyle::Page" in parent

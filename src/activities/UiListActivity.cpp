@@ -581,6 +581,13 @@ void UiListActivity::navigateButtons() {
 void UiListActivity::frameRows(fui::ListProps& props) {
   props.scrollIndicator = false;
   rowsFramed = tenorchrome::roundFrames() && listFramed();
+  for (int row = 0; row < props.count; ++row)
+    if (settingsChoiceCount(row) > 0) {
+      props.chevronColumn = true;
+      props.labelText.centerInkY = true;
+      props.valueText.centerInkY = true;
+      break;
+    }
   if (!rowsFramed) {
     // Buttons (X3/X4): the row past the last full one shows its top, faded (fadeMoreBelow), in place of a "more"
     // chevron.
@@ -603,13 +610,6 @@ void UiListActivity::frameRows(fui::ListProps& props) {
   props.toggleKnobRadius = 9;
   props.toggleKnobInset = 4;
   props.toggleBorderWidth = 2;
-  for (int row = 0; row < props.count; ++row)
-    if (settingsChoiceCount(row) > 0) {
-      props.chevronColumn = true;
-      props.labelText.centerInkY = true;
-      props.valueText.centerInkY = true;
-      break;
-    }
   // The value in use in a list of choices (ListItem::chosen): bold, with the tick at the row's end.
   props.chosenMark = fui::bitmapFromIcon(icon_row_chosen_24);
   fui::ListItem first;
@@ -827,7 +827,7 @@ void UiListActivity::renderUi() {
   }
   if (!uiTarget.paintingEnabled()) return;
   drawRowFrame(rowFrameStyle());
-  if (tenorchrome::kTouchShell && rowsFramed) {
+  if (tenorchrome::enabled()) {
     for (int row = activeNav().top; row < listCount(); ++row) {
       const auto rect = app.publishedRect(ACTION_ROW, static_cast<int16_t>(row));
       if (rect.height > 0 && rowChoiceStyle(row) == SettingsChoiceStyle::Popup)

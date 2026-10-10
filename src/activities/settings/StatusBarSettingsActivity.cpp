@@ -66,8 +66,7 @@ void StatusBarSettingsActivity::onEnter() {
   for (int i = 0; i < visibleItemCount; i++) {
     rowItems_[i].label = I18N.get(TENOR_NAMES[i]);
     rowItems_[i].actionValue = static_cast<int16_t>(i);
-    rowItems_[i].opensNext = !tenorchrome::kTouchShell ||
-        settingsChoiceStyle(valueCount(i), true) == SettingsChoiceStyle::Page;
+    rowItems_[i].opensNext = rowChoiceStyle(i) == SettingsChoiceStyle::Page;
   }
   if (shell::isUgly()) {
     ugly::ensureFonts(renderer);
@@ -201,21 +200,13 @@ void StatusBarSettingsActivity::activateIndex(const int index) {
 }
 
 void StatusBarSettingsActivity::handleSelection() {
-  if (tenorchrome::x3ScreenLayoutEnabled() && !shell::uglyParts()) {
+  if (tenorchrome::enabled() && !shell::uglyParts()) {
     const int row = nav.selected;
-    std::vector<std::string> labels;
-    labels.reserve(valueCount(row));
-    for (int index = 0; index < valueCount(row); ++index) labels.emplace_back(I18N.get(valuesAt(row)[index]));
-    startActivityForResult(std::make_unique<SettingsChoiceActivity>(renderer, mappedInput, I18N.get(TENOR_NAMES[row]),
-        std::move(labels), SETTINGS.readerStatusItem(row), [this, row](const int selected) {
-          if (applyChosenValue(row, selected)) Activity::finish();
-        }), nullptr);
-    return;
-  }
-  if (tenorchrome::kTouchShell) {
-    const int row = nav.selected;
+    const bool page = rowChoiceStyle(row) == SettingsChoiceStyle::Page;
     showSettingsChoices(optionPopup_, TENOR_NAMES[row], valuesAt(row), valueCount(row), SETTINGS.readerStatusItem(row),
-                        row, [this, row](const int selected) { applyChosenValue(row, selected); });
+                        row, [this, row, page](const int selected) {
+      if (applyChosenValue(row, selected) && page && !tenorchrome::kTouchShell) Activity::finish();
+    });
     return;
   }
   RenderLock lock(*this);

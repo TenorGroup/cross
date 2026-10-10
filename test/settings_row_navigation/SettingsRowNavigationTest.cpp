@@ -26,7 +26,8 @@ SettingInfo baseSetting(const SettingType type, const StrId nameId = StrId::STR_
 void checkActions() {
   for (int value = static_cast<int>(SettingAction::None) + 1; value <= static_cast<int>(SettingAction::About); value++) {
     const auto setting = SettingInfo::Action(StrId::STR_NONE_OPT, static_cast<SettingAction>(value));
-    expect(settingOpensNext(setting), "every action must open the next screen");
+    expect(settingOpensNext(setting) == (setting.action != SettingAction::Language || getLanguageCount() >= 7),
+           "actions open their destination or the language popup");
   }
   expect(!settingOpensNext(SettingInfo::Action(StrId::STR_DISPLAY_CHIP, SettingAction::None)),
          "read-only panel chip has no next screen");
@@ -47,25 +48,25 @@ void checkDirectValues() {
 }
 
 void checkStoredEnums() {
-  const std::array<StrId, 5> labels = {StrId::STR_NONE_OPT, StrId::STR_NONE_OPT, StrId::STR_NONE_OPT,
+  const std::array<StrId, 8> labels = {StrId::STR_NONE_OPT, StrId::STR_NONE_OPT, StrId::STR_NONE_OPT,
                                       StrId::STR_NONE_OPT, StrId::STR_NONE_OPT};
   for (size_t count = 0; count <= labels.size(); count++) {
     auto dynamicLabels = SettingInfo::Enum(StrId::STR_NONE_OPT, &CrossPointSettings::value,
                                           std::vector<StrId>(count, StrId::STR_NONE_OPT));
-    expect(settingOpensNext(dynamicLabels) == (count >= 2), "stored enum vector opens a value picker");
+    expect(settingOpensNext(dynamicLabels) == (count >= 7), "stored enum vector opens a page from 7 values");
 
     auto staticLabels = baseSetting(SettingType::ENUM);
     staticLabels.valuePtr = &CrossPointSettings::value;
     staticLabels.staticEnumValues = std::span<const StrId>(labels.data(), count);
-    expect(settingOpensNext(staticLabels) == (count >= 2), "stored static enum opens a value picker");
+    expect(settingOpensNext(staticLabels) == (count >= 7), "stored static enum opens a page from 7 values");
   }
 
   auto labelsWin = SettingInfo::Enum(StrId::STR_NONE_OPT, &CrossPointSettings::value,
                                     std::vector<StrId>(3, StrId::STR_NONE_OPT));
   labelsWin.enumStringValues.assign(5, "value");
-  expect(settingOpensNext(labelsWin), "stored enum uses runtime strings as activation does");
+  expect(!settingOpensNext(labelsWin), "5 runtime strings use a popup");
   labelsWin.enumStringValues.assign(2, "value");
-  expect(settingOpensNext(labelsWin), "2 runtime strings open a value picker");
+  expect(!settingOpensNext(labelsWin), "2 runtime strings use a popup");
   const auto states = SettingInfo::Enum(StrId::STR_NONE_OPT, &CrossPointSettings::value,
                                       {StrId::STR_STATE_OFF, StrId::STR_STATE_ON});
   expect(!settingOpensNext(states), "off/on enum changes in place");
@@ -80,14 +81,14 @@ SettingInfo accessorEnum(const size_t labelCount, const size_t stringCount) {
 }
 
 void checkAccessorEnums() {
-  for (size_t count = 0; count <= 5; count++) {
-    expect(settingOpensNext(accessorEnum(count, 0)) == (count >= 2),
+  for (size_t count = 0; count <= 8; count++) {
+    expect(settingOpensNext(accessorEnum(count, 0)) == (count >= 7),
            "accessor enum falls back to translated labels");
-    expect(settingOpensNext(accessorEnum(0, count)) == (count >= 2),
+    expect(settingOpensNext(accessorEnum(0, count)) == (count >= 7),
            "accessor enum uses runtime strings");
   }
-  expect(settingOpensNext(accessorEnum(3, 5)), "runtime strings take precedence for accessor enums");
-  expect(settingOpensNext(accessorEnum(5, 3)), "3 runtime strings open the picker");
+  expect(!settingOpensNext(accessorEnum(3, 5)), "5 runtime strings use a popup for accessor enums");
+  expect(!settingOpensNext(accessorEnum(5, 3)), "3 runtime strings use a popup");
 }
 
 }  // namespace
