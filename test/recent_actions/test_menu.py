@@ -179,6 +179,12 @@ int main(){
        return 1;
      }
    }
+   for(int bx:{20,100,190,280,365,455})for(int by:{724,754,783}) {
+     p.active=true;refresh=0;chosen=-1;input.back=false;input.snap={};
+     input.snap.touchX=bx;input.snap.touchY=by;input.snap.touchReleased=true;
+     p.handleInput(input,[&]{++refresh;});
+     assert(!p.active&&chosen==-1&&refresh==1);
+   }
    ++scenarios;
  }
  printf("GREEN %d action renders, real SDK hit table, outside and Back cancel\n",scenarios);

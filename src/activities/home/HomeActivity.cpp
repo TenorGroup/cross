@@ -936,10 +936,7 @@ void HomeActivity::buildScreen(UiScreen& screen) {
 
 void HomeActivity::render(RenderLock&&) {
   if (rowMenu.isActive() && activeTabId == Tab::RECENT && !shell::isUgly()) {
-    if (tenorchrome::kTouchShell) {
-      tenorchrome::clearFootBand(renderer);
-      tenorchrome::drawFootBar(renderer, tenorchrome::FootBar::Full, tenorchrome::Zone::Recent);
-    } else if (tenorchrome::x3ScreenLayoutEnabled()) {
+    if (!tenorchrome::kTouchShell && tenorchrome::x3ScreenLayoutEnabled()) {
       const auto tip = homeScreenLayout().tipRect;
       renderer.fillRect(tip.x, tip.y, tip.width, tip.height, false);
     }
