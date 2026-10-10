@@ -7,6 +7,7 @@
 
 #include "HalDisplay.h"
 #include "components/ConfirmationText.h"
+#include "components/DestructiveActionIcon.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
@@ -139,9 +140,7 @@ void ConfirmationActivity::render(RenderLock&& lock) {
     renderer.drawText(UI_12_FONT_ID, left + (content.destructive ? 34 : 0) - ink[0], textTop - ink[1], label.c_str());
     if (content.destructive) {
       const int iconTop = textTop + (ink[3] - ink[1] - 24) / 2;
-      tenorchrome::drawRoundRing(renderer, left, iconTop, 24, 24, 12, 2, false);
-      renderer.drawLine(left + 4, iconTop + 4, left + 19, iconTop + 19);
-      renderer.drawLine(left + 4, iconTop + 5, left + 18, iconTop + 19);
+      tenorchrome::drawDestructiveActionIcon(renderer, left, iconTop);
     }
     centered(renderer, UI_12_FONT_ID, tr(STR_CANCEL), cancel, EpdFontFamily::BOLD);
   } else {
