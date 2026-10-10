@@ -1872,15 +1872,15 @@ void HomeActivity::drawRecentCard() {
   }
   auto frame = homeCardLayout(in);
   if (tenorchrome::kTouchShell) frame.textW = renderer.getScreenWidth() - 40;
+  // The full-width title above the cover needs the stats column to start below it, cover or not.
+  if (tenorchrome::kTouchShell && in.metadataAboveCover)
+    frame.statsTop = in.top + 2 * in.titleLineHeight + 2 + in.authorLineHeight + 18;
   if (alignCover) {
     frame.statsRight = renderer.getScreenWidth() - 16;
     frame.statsBottom = frame.ruleY - 15;
     frame.statsX = frame.statsRight - in.statsMinWidth;
-    if (in.metadataAboveCover) {
-      frame.statsTop = in.top + 2 * in.titleLineHeight + 2 + in.authorLineHeight + 18;
-    } else {
+    if (!in.metadataAboveCover)
       frame.statsBottom -= 18 + 2 * in.titleLineHeight + 2 + in.authorLineHeight + 7 + in.excerptLineHeight;
-    }
     HomeStatsBounds ink;
     drawCardStats(frame, &ink);
     {
@@ -1935,6 +1935,7 @@ void HomeActivity::drawRecentCard() {
   in.titleLines = std::max(1, static_cast<int>(titleLines.size()));
   in.titleDrawLineHeight = renderer.getLineHeight(titleFont);
   auto card = alignCover ? frame : homeCardLayout(in);
+  if (!alignCover) card.statsTop = frame.statsTop;
   if (alignCover) {
     card.authorY = card.titleY + in.titleLines * in.titleDrawLineHeight + 2;
     card.excerptY = card.authorY + in.authorLineHeight + 7;
