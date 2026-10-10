@@ -16,7 +16,7 @@ foreach(name geometry option_window stats_layout stats_navigation list_render ke
   add_test(NAME UiLayout.${name} COMMAND UiLayout_${name})
 endforeach()
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
-foreach(name home_authors)
+foreach(name home_authors home_psram)
   add_test(NAME UiLayout.${name} COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_${name}.py" --output "${CMAKE_CURRENT_BINARY_DIR}/${name}")
   add_test(NAME UiLayout.${name}_mutation COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_${name}.py" --output "${CMAKE_CURRENT_BINARY_DIR}/${name}_mutation" --mutation)
 endforeach()
