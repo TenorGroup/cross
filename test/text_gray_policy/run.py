@@ -271,11 +271,12 @@ int main() {
   for (bool combined : {false, true}) for (int low = 0; low < 2; ++low) {
     reset(); EpubReaderActivity lowHeap;
     if (combined) lowHeap.renderer.caps.base = HalDisplay::GrayscaleBase::Combined;
-    if (low == 0) ESP.free = 10239; else ESP.largest = 8191;
+    if (low == 0) ESP.free = 10239; else ESP.largest = 8179;
     lowHeap.paint();
     check(counts.allocations == 0 && counts.gray == 0 && counts.bw >= 1, "heap floor keeps BW with zero gray allocations");
   }
-  reset(); ESP.free = 10240; ESP.largest = 8192; EpubReaderActivity edge; edge.paint();
+  // A block of exactly 8,192 B reports 8,180 with light poisoning and serves the 7,920 B strip.
+  reset(); ESP.free = 10240; ESP.largest = 8180; EpubReaderActivity edge; edge.paint();
   check(counts.allocations == 1 && counts.gray == 1, "exact pre-scratch floor admitted");
   reset(); EpubReaderActivity preview; preview.preview = true; preview.paint();
   check(counts.allocations == 1 && counts.gray == 1, "Home preview gets one pass");
@@ -344,5 +345,6 @@ harness = harness.replace('DIRECT_HELPER_TEST', direct_helper_test)
 output = args.out / 'harness.cpp'
 output.write_text(harness)
 binary = args.out / 'text-gray-policy'
-subprocess.run(['c++', '-std=c++20', '-I', str(reader), str(output), '-o', str(binary)], check=True)
+subprocess.run(['c++', '-std=c++20', '-I', str(reader), '-I', str(args.repo / 'lib/Memory'), str(output), '-o', str(binary)],
+               check=True)
 subprocess.run([str(binary)], check=True)

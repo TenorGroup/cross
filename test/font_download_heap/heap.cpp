@@ -1,4 +1,5 @@
 #include <ArduinoJson.h>
+#include <HeapFloor.h>
 #include <Memory.h>
 #include <algorithm>
 #include <cassert>

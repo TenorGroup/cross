@@ -2,6 +2,7 @@
 
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
+#include <HeapFloor.h>
 #include <Memory.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -57,7 +58,7 @@ void DictionaryWordSelectActivity::onEnter() {
   // No null check: a failed allocation just disables the differential
   // fast path (drawHighlightWithSnapshot skips the read), keeping the
   // full-repaint path as the fallback.
-  if (!quoteMode) snapshot = makeUniqueNoThrow<uint8_t[]>(SNAPSHOT_CAPACITY);
+  if (!quoteMode) snapshot = heapfloor::array<uint8_t[]>(SNAPSHOT_CAPACITY, "word-snapshot");
   extractWords();
   // Start on the middle row's word nearest mid-screen instead of top-left:
   // any word on the page is then at most half a page of moves away.

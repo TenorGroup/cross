@@ -1,6 +1,7 @@
 #include "CssParser.h"
 
 #include <Logging.h>
+#include <HeapFloor.h>
 #include <Memory.h>
 
 #include <algorithm>
@@ -334,7 +335,7 @@ CssParser::PoolResult CssParser::ensureSelectorPoolCapacity(const size_t needed)
   size_t capacity = selectorPoolCapacity_ ? selectorPoolCapacity_ * 2u : 4096u;
   while (capacity < needed) capacity *= 2u;
   capacity = std::min(capacity, SELECTOR_POOL_CAP);
-  auto grown = makeUniqueNoThrow<char[]>(capacity);
+  auto grown = heapfloor::array<char[]>(capacity, "css-selectors");
   if (!grown) {
     LOG_ERR("CSS", "OOM: selector pool (%zu bytes)", capacity);
     return PoolResult::OutOfMemory;

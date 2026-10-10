@@ -229,8 +229,14 @@ add_subdirectory(settings_v108)
 
 add_executable(heap_big_probe heap_big_probe/HeapBigProbeTest.cpp)
 target_compile_options(heap_big_probe PRIVATE -UNDEBUG)
-target_include_directories(heap_big_probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+target_include_directories(heap_big_probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src ${CMAKE_CURRENT_SOURCE_DIR}/../lib/Memory)
 add_test(NAME heap_big_probe COMMAND heap_big_probe)
+
+add_executable(heap_floor heap_floor/HeapFloorTest.cpp)
+target_compile_options(heap_floor PRIVATE -UNDEBUG)
+target_include_directories(heap_floor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../lib/Memory)
+add_test(NAME heap_floor COMMAND heap_floor)
+
 
 add_executable(sheet_radio_plan sheet_radio_plan/SheetRadioPlanTest.cpp)
 target_compile_options(sheet_radio_plan PRIVATE -UNDEBUG)

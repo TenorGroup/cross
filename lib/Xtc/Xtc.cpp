@@ -9,6 +9,7 @@
 
 #include <Bitmap.h>
 #include <HalStorage.h>
+#include <HeapFloor.h>
 #include <Logging.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -169,7 +170,7 @@ bool Xtc::generateCoverBmp() const {
   }
   const uint32_t rowSize2 = ((static_cast<uint32_t>(pageInfo.width) * 2 + 31) / 32) * 4;
   const size_t rowBufferSize = (bitDepth == 2) ? rowSize2 : 0;
-  auto coverScratch = makeUniqueNoThrow<uint8_t[]>(bitmapSize + rowBufferSize);
+  auto coverScratch = heapfloor::array<uint8_t[]>(bitmapSize + rowBufferSize, "xtc-cover");
   if (!coverScratch) {
     LOG_ERR("XTC", "Failed to allocate cover buffers (%lu bytes)",
             static_cast<unsigned long>(bitmapSize + rowBufferSize));
@@ -352,7 +353,7 @@ bool Xtc::generateThumbBmp(int height) const {
     bitmapSize = ((pageInfo.width + 7) / 8) * pageInfo.height;
   }
   const uint32_t rowSize = (thumbWidth + 31) / 32 * 4;
-  auto thumbScratch = makeUniqueNoThrow<uint8_t[]>(bitmapSize + rowSize);
+  auto thumbScratch = heapfloor::array<uint8_t[]>(bitmapSize + rowSize, "xtc-thumb");
   if (!thumbScratch) {
     LOG_ERR("XTC", "Failed to allocate thumb buffers (%lu bytes)", static_cast<unsigned long>(bitmapSize + rowSize));
     return false;

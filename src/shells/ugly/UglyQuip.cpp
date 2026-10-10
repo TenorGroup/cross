@@ -1,6 +1,7 @@
 #include "UglyQuip.h"
 
 #include <I18n.h>
+#include <HeapFloor.h>
 #include <InflateStream.h>
 #include <Memory.h>
 
@@ -29,7 +30,7 @@ std::string lineAt(const int index) {
   const uint16_t* at = vi ? quips::VI_AT : quips::EN_AT;
   const int mark = index / quips::LINES_PER_MARK;
   const size_t need = at[mark + 1];
-  auto raw = makeUniqueNoThrow<uint8_t[]>(need);
+  auto raw = heapfloor::array<uint8_t[]>(need, "quip");
   InflateStream in;
   if (!raw || !in.init(false)) return {};
   in.setZlibWrapped();

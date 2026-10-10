@@ -1,6 +1,7 @@
 #include "LibraryIndexFile.h"
 
 #include <HalStorage.h>
+#include <HeapFloor.h>
 #include <Logging.h>
 #include <Memory.h>
 
@@ -96,7 +97,7 @@ bool LibraryIndexFile::recentRowsFor(const BookIdentity* books, const size_t cou
   if (!opened || count == 0 || count > MAX_IDENTITY_LOOKUPS || head.bookCount == 0) return opened;
 
   constexpr size_t CHUNK_RECORDS = 32;  // 4096 bytes, the aligned-tile size
-  auto chunk = makeUniqueNoThrow<uint8_t[]>(CHUNK_RECORDS * sizeof(ClixRecord));
+  auto chunk = heapfloor::array<uint8_t[]>(CHUNK_RECORDS * sizeof(ClixRecord), "library-chunk");
   if (!chunk) {
     LOG_ERR("LIBIDX", "OOM: %u-byte lookup chunk", static_cast<unsigned>(CHUNK_RECORDS * sizeof(ClixRecord)));
     return false;

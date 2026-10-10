@@ -3,6 +3,7 @@
 
 #include <ArduinoJson.h>
 #include <FontCacheManager.h>
+#include <HeapFloor.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <HalPowerManager.h>
@@ -429,7 +430,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
     errorMessage_ = tr(STR_MEMORY_ERROR);
     return false;
   }
-  stringArena_ = makeUniqueNoThrow<char[]>(arenaBytes);
+  stringArena_ = heapfloor::array<char[]>(arenaBytes, "font-catalog");
   if (!stringArena_) {
     LOG_ERR("FONT", "OOM: %zu byte string arena", arenaBytes);
     errorMessage_ = tr(STR_MEMORY_ERROR);

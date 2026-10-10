@@ -3,6 +3,7 @@
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HalMemory.h>
+#include <HeapFloor.h>
 #include <Logging.h>
 #include <Memory.h>
 #include <Serialization.h>
@@ -161,7 +162,7 @@ bool loadPxcSlot(uint64_t cacheHash, HalFile& cacheFile, uint16_t cachedWidth, u
       releasePxcSlot();
       return false;
     }
-    pxcChunks[i] = makeUniqueNoThrow<uint8_t[]>(want);
+    pxcChunks[i] = heapfloor::array<uint8_t[]>(want, "image-pixels");
     if (!pxcChunks[i] || cacheFile.read(pxcChunks[i].get(), want) != static_cast<int>(want)) {
       releasePxcSlot();
       return false;
@@ -248,7 +249,7 @@ bool renderFromCache(GfxRenderer& renderer, const std::string& cachePath, int x,
   int rowsPerRead = 4096 / bytesPerRow;
   if (rowsPerRead < 1) rowsPerRead = 1;
   if (rowsPerRead > cachedHeight) rowsPerRead = cachedHeight;
-  uint8_t* readBuffer = (uint8_t*)malloc((size_t)rowsPerRead * bytesPerRow);
+  uint8_t* readBuffer = (uint8_t*)heapfloor::take((size_t)rowsPerRead * bytesPerRow, "image-rows");
   if (!readBuffer) {
     // Fall back to a single-row buffer under memory pressure.
     rowsPerRead = 1;

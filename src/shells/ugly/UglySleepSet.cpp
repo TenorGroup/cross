@@ -1,6 +1,7 @@
 #include "UglySleepSet.h"
 
 #include <I18n.h>
+#include <HeapFloor.h>
 #include <esp_system.h>
 
 #include <cstdlib>
@@ -55,7 +56,7 @@ Context gather() {
 
 // A stream inflated into fresh heap, or null (free it). The heap holds it only while the screen is drawn.
 uint8_t* unpack(const uint8_t* packed, const size_t packedSize, const size_t raw) {
-  auto* out = static_cast<uint8_t*>(std::malloc(raw));
+  auto* out = static_cast<uint8_t*>(heapfloor::take(raw, "sleep-art"));
   if (out && !decodeX3BrandPlane(packed, packedSize, out, raw)) std::free(std::exchange(out, nullptr));
   return out;
 }

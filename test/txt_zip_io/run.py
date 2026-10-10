@@ -75,7 +75,7 @@ def main():
     declarations = [d.replace("std::vector<uint16_t>* lineY,", "std::vector<uint16_t>* lineY = nullptr,")
                     .replace("std::vector<uint16_t>* lineIndent)", "std::vector<uint16_t>* lineIndent = nullptr)")
                     for d in declarations]
-    generated = '#include "Harness.h"\n#include "Serialization.h"\n#include "Memory.h"\n#include "RecoverableFile.h"\n'
+    generated = '#include "Harness.h"\n#include "Serialization.h"\n#include "Memory.h"\n#include "HeapFloor.h"\n#include "RecoverableFile.h"\n'
     constants = reader[reader.index("namespace {"):reader.index("}  // namespace")]
     generated += constants + "}\n"
     generated += "class TxtReaderActivity { public:\n" + fields + "\n" + "\n".join(declarations)

@@ -1,5 +1,6 @@
 #pragma once
 #include <HalStorage.h>
+#include <HeapFloor.h>
 #include <Memory.h>
 #ifdef TENOR_PRESS_PROBE
 #include <Arduino.h>
@@ -29,7 +30,7 @@ namespace serialization {
 class BufferedFileWriter {
  public:
   BufferedFileWriter(HalFile& file, const size_t capacity)
-      : file(file), buf(makeUniqueNoThrow<uint8_t[]>(capacity)), cap(buf ? capacity : 0), pos(file.position()) {}
+      : file(file), buf(heapfloor::array<uint8_t[]>(capacity, "file-writer")), cap(buf ? capacity : 0), pos(file.position()) {}
   ~BufferedFileWriter() { flush(); }
   BufferedFileWriter(const BufferedFileWriter&) = delete;
   BufferedFileWriter& operator=(const BufferedFileWriter&) = delete;
@@ -97,7 +98,7 @@ class BufferedFileWriter {
 class BufferedFileReader {
  public:
   BufferedFileReader(HalFile& file, const size_t capacity)
-      : file(file), buf(makeUniqueNoThrow<uint8_t[]>(capacity)), cap(buf ? capacity : 0), bufStart(file.position()) {}
+      : file(file), buf(heapfloor::array<uint8_t[]>(capacity, "file-reader")), cap(buf ? capacity : 0), bufStart(file.position()) {}
   BufferedFileReader(const BufferedFileReader&) = delete;
   BufferedFileReader& operator=(const BufferedFileReader&) = delete;
 

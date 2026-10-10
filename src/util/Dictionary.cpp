@@ -1,6 +1,7 @@
 #include "Dictionary.h"
 
 #include <Arduino.h>
+#include <HeapFloor.h>
 #include <Logging.h>
 #include <Memory.h>
 
@@ -205,7 +206,7 @@ bool Dictionary::buildSidecar(const std::string& sourcePath, const std::string& 
   const uint32_t srcSize = static_cast<uint32_t>(src.fileSize());
 
   constexpr size_t CHUNK_BYTES = 4096;
-  auto buf = makeUniqueNoThrow<uint8_t[]>(CHUNK_BYTES);
+  auto buf = heapfloor::array<uint8_t[]>(CHUNK_BYTES, "dict-scan");
   if (!buf) {
     LOG_ERR("DICT", "OOM: %u byte index scan buffer", CHUNK_BYTES);
     return fail(IndexResult::LowMemory);

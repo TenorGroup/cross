@@ -2,6 +2,7 @@
 #include "CrossPointSettings.h"
 
 #include <HalDisplay.h>
+#include <HeapFloor.h>
 #include <I18n.h>
 #include <Logging.h>
 
@@ -86,7 +87,7 @@ void Desk::render(RenderLock&&) {
   [[maybe_unused]] const uint32_t started = millis();
   renderer.clearScreen();
   // The X3 picture is inflated once into a scratch plane (the PSRAM holds it), then each object is lifted.
-  auto plane = makeUniqueNoThrow<uint8_t[]>(logic::FRAME_BYTES);
+  auto plane = heapfloor::array<uint8_t[]>(logic::FRAME_BYTES, "desk-plane");
   if (plane && decodeX3BrandPlane(art::DESK, sizeof(art::DESK), plane.get(), logic::FRAME_BYTES)) {
     for (int i = 0; i < COUNT; ++i) {
       const Box& b = PLACES[i].box;

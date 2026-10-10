@@ -1,6 +1,7 @@
 #include "TxtReaderActivity.h"
 
 #include <BidiUtils.h>
+#include <HeapFloor.h>
 #include <Epub/ReaderSpacing.h>
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
@@ -384,7 +385,7 @@ bool TxtReaderActivity::loadPageAtOffset(const GfxRenderer& renderer, size_t off
 
   // Read a chunk from file
   size_t chunkSize = std::min(CHUNK_SIZE, fileSize - offset);
-  auto* buffer = static_cast<uint8_t*>(malloc(chunkSize + 1));
+  auto* buffer = static_cast<uint8_t*>(heapfloor::take(chunkSize + 1, "txt-chunk"));
   if (!buffer) {
     LOG_ERR("TRS", "Failed to allocate %zu bytes", chunkSize);
     return false;

@@ -1,5 +1,7 @@
 #include "InflateReader.h"
 
+#include <HeapFloor.h>
+
 #include <cstring>
 #include <type_traits>
 
@@ -17,7 +19,7 @@ bool InflateReader::init(const bool streaming) {
   deinit();  // free any previously allocated ring buffer and reset state
 
   if (streaming) {
-    ringBuffer = static_cast<uint8_t*>(malloc(INFLATE_DICT_SIZE));
+    ringBuffer = static_cast<uint8_t*>(heapfloor::take(INFLATE_DICT_SIZE, "inflate-ring"));
     if (!ringBuffer) return false;
     ownsRing = true;
     memset(ringBuffer, 0, INFLATE_DICT_SIZE);

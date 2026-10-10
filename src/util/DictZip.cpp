@@ -2,6 +2,7 @@
 
 #include <Arduino.h>  // ESP.getMaxAllocHeap for the pre-reserve heap guard
 #include <InflateReader.h>
+#include <HeapFloor.h>
 #include <Memory.h>
 
 #include <cstddef>
@@ -81,7 +82,7 @@ bool extractChunkSlice(HalFile& file, uint32_t compressedOffset, uint32_t compre
   // barely fragmented heap. Ordering by size removes that failure mode: the ring
   // gets the big block while it is still whole, and the small buffers fit in
   // what remains — or in one of the smaller free blocks.
-  auto window = makeUniqueNoThrow<uint8_t[]>(InflateReader::RING_BYTES);
+  auto window = heapfloor::array<uint8_t[]>(InflateReader::RING_BYTES, "dict-window");
   if (!window) return fail(ExtractError::LowMemory);
 
   auto src = makeUniqueNoThrow<ChunkSource>();

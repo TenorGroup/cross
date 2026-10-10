@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <HalStorage.h>
+#include <HeapFloor.h>
 #include <InflateStream.h>
 #include <Logging.h>
 
@@ -153,7 +154,7 @@ bool ZipFile::walkCentralDir(uint32_t from, const bool wrap, [[maybe_unused]] co
   const size_t cap = ESP.getFreeHeap() >= 8 * WALK_BLOCK        ? WALK_BLOCK
                      : ESP.getFreeHeap() >= 8 * WALK_BLOCK_SMALL ? WALK_BLOCK_SMALL
                                                                  : 0;
-  const auto block = cap ? std::unique_ptr<uint8_t[]>(new (std::nothrow) uint8_t[cap]) : nullptr;
+  const auto block = cap ? heapfloor::array<uint8_t[]>(cap, "zip-walk") : nullptr;
   uint8_t small[WALK_BLOCK_MIN];
   CentralReader reader(file, block ? block.get() : small, block ? cap : sizeof(small), end);
 
@@ -442,7 +443,7 @@ uint8_t* ZipFile::readFileToMemory(const char* filename, size_t* size, const boo
   const auto deflatedDataSize = fileStat.compressedSize;
   const auto inflatedDataSize = fileStat.uncompressedSize;
   const auto dataSize = trailingNullByte ? inflatedDataSize + 1 : inflatedDataSize;
-  const auto data = static_cast<uint8_t*>(malloc(dataSize));
+  const auto data = static_cast<uint8_t*>(heapfloor::take(dataSize, "zip-item"));
   if (data == nullptr) {
     LOG_ERR("ZIP", "Failed to allocate memory for output buffer (%zu bytes)", dataSize);
     return nullptr;
@@ -521,7 +522,7 @@ bool ZipFile::readFileToStream(const char* filename, Print& out, const size_t ch
 
   if (fileStat.method == ZIP_METHOD_STORED) {
     // no deflation, just read content
-    const auto buffer = static_cast<uint8_t*>(malloc(chunkSize));
+    const auto buffer = static_cast<uint8_t*>(heapfloor::take(chunkSize, "zip-stored"));
     if (!buffer) {
       LOG_ERR("ZIP", "Failed to allocate memory for buffer");
       return false;
@@ -552,13 +553,13 @@ bool ZipFile::readFileToStream(const char* filename, Print& out, const size_t ch
   }
 
   if (fileStat.method == ZIP_METHOD_DEFLATED) {
-    auto* fileReadBuffer = static_cast<uint8_t*>(malloc(chunkSize));
+    auto* fileReadBuffer = static_cast<uint8_t*>(heapfloor::take(chunkSize, "zip-read"));
     if (!fileReadBuffer) {
       LOG_ERR("ZIP", "Failed to allocate memory for zip file read buffer");
       return false;
     }
 
-    auto* outputBuffer = static_cast<uint8_t*>(malloc(chunkSize));
+    auto* outputBuffer = static_cast<uint8_t*>(heapfloor::take(chunkSize, "zip-out"));
     if (!outputBuffer) {
       LOG_ERR("ZIP", "Failed to allocate memory for output buffer");
       free(fileReadBuffer);

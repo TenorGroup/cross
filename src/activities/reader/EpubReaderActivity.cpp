@@ -48,7 +48,7 @@
 #include "KOReaderCredentialStore.h"
 #include "KOReaderSyncActivity.h"
 #include "HeapBigProbe.h"
-#include "HeapFloor.h"
+#include <HeapFloor.h>
 #include "HeapMapProbe.h"
 #include "MappedInputManager.h"
 #include "ProgressMapper.h"
@@ -3709,6 +3709,8 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       }
     };
 
+    // Decided before the allocation: the heap left after each plane keeps 60,000 B free and a 16 KB block,
+    // so the heap floor holds after it.
     constexpr size_t PLANE_BUF_HEADROOM = 60000;
     constexpr size_t PLANE_BUF_MAX_ALLOC_RESERVE = 16 * 1024;
     const auto planeBufFits = [planeBytes] {
@@ -3799,6 +3801,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
           LOG_INF("ERS", "GRAY_SKIPPED heap_floor free=%u largest=%u bytes=%d",
                   static_cast<unsigned>(freeHeap), static_cast<unsigned>(largestBlock), gwBytes * STRIP_ROWS);
         } else {
+          // The heap floor is measured before the strip (above): the floor keeps this block's room.
           scratch = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(gwBytes) * STRIP_ROWS);
           if (!scratch) grayNotRun = "scratch_oom";
 #ifdef TENOR_HEAP_BIG

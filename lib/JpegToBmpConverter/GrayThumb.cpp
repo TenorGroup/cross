@@ -1,6 +1,7 @@
 #include "GrayThumb.h"
 
 #include <Arduino.h>
+#include <HeapFloor.h>
 #include <Memory.h>
 #include <Print.h>
 
@@ -68,8 +69,8 @@ size_t GrayThumb::bufferBytes(const int height, const int srcW, const int srcH, 
 bool GrayThumb::start(const int srcW, const int srcH, const int blockRows, const size_t margin) {
   const size_t bytes = bufferBytes(height, srcW, srcH, blockRows);
   if (bytes == 0 || !plan(srcW, srcH, blockRows) || ESP.getFreeHeap() < bytes + margin) return false;
-  ring = makeUniqueNoThrow<uint16_t[]>(static_cast<size_t>(ringRows) * outWidth);
-  bits = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(rowBytes) * outHeight);
+  ring = heapfloor::array<uint16_t[]>(static_cast<size_t>(ringRows) * outWidth, "thumb-ring");
+  bits = heapfloor::array<uint8_t[]>(static_cast<size_t>(rowBytes) * outHeight, "thumb-bits");
   ditherer = makeUniqueNoThrow<FloydSteinberg1BitDitherer>(outWidth);
   if (!ring || !bits || !ditherer || !ditherer->isValid()) return false;
   memset(ring.get(), 0, static_cast<size_t>(ringRows) * outWidth * 2);

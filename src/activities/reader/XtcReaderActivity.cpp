@@ -3,6 +3,7 @@
 
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
+#include <HeapFloor.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Memory.h>
@@ -167,7 +168,7 @@ void XtcReaderActivity::renderPage() {
     pageBufferSize = ((pageWidth + 7) / 8) * pageHeight;
   }
 
-  uint8_t* pageBuffer = static_cast<uint8_t*>(malloc(pageBufferSize));
+  uint8_t* pageBuffer = static_cast<uint8_t*>(heapfloor::take(pageBufferSize, "xtc-page"));
   if (!pageBuffer) {
     LOG_ERR("XTR", "Failed to allocate page buffer (%lu bytes)", pageBufferSize);
     renderer.clearScreen();

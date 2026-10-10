@@ -1,6 +1,7 @@
 #include "EpubReaderFootnoteSelectActivity.h"
 
 #include <GfxRenderer.h>
+#include <HeapFloor.h>
 #include <I18n.h>
 
 #include <algorithm>
@@ -16,7 +17,7 @@ constexpr unsigned long WORD_REPEAT_INTERVAL_MS = 500;
 
 void EpubReaderFootnoteSelectActivity::onEnter() {
   Activity::onEnter();
-  snapshot = makeUniqueNoThrow<uint8_t[]>(SNAPSHOT_CAPACITY);
+  snapshot = heapfloor::array<uint8_t[]>(SNAPSHOT_CAPACITY, "footnote-snapshot");
   buildFootnoteLinks();
   requestUpdate();
 }

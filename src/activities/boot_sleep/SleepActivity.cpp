@@ -2,6 +2,7 @@
 
 #include <BitmapHelpers.h>
 #include <BoardConfig.h>
+#include <HeapFloor.h>
 #include <Epub.h>
 #include <Epub/converters/PngToFramebufferConverter.h>
 #include <FontCacheManager.h>
@@ -507,7 +508,7 @@ bool drawSleepPopupPreservingFrame(GfxRenderer& renderer, const char* text) {
   const int bandHeight = bandBottom - bandTop;
   const size_t bandBytes = renderer.getRegionByteSize(0, bandTop, renderer.getScreenWidth(), bandHeight);
 
-  auto savedBand = makeUniqueNoThrow<uint8_t[]>(bandBytes);
+  auto savedBand = heapfloor::array<uint8_t[]>(bandBytes, "sleep-band");
   if (!savedBand) {
     LOG_ERR("SLP", "OOM: sleep popup background (%u bytes)", static_cast<unsigned>(bandBytes));
     return false;

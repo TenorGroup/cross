@@ -9,6 +9,7 @@
 #include <GfxRenderer.h>
 #include <HalDisplay.h>
 #include <HalStorage.h>
+#include <HeapFloor.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -1017,7 +1018,7 @@ bool HomeActivity::storeCoverBuffer() {
     touchCoverBuffer = HalMemory::allocatePsram(needed);
     coverBuffer = touchCoverBuffer.get();
   } else {
-    coverBuffer = static_cast<uint8_t*>(malloc(needed));
+    coverBuffer = static_cast<uint8_t*>(heapfloor::take(needed, "home-cover"));
   }
   if (!coverBuffer) {
     LOG_ERR("HOME", "OOM: cover buffer (%u bytes)", (unsigned)needed);
@@ -2120,7 +2121,7 @@ HomeActivity::CardFile HomeActivity::loadCardFile(const std::string& path, const
     if (tenorchrome::kTouchShell) {
       touchCoverBuffer = HalMemory::allocatePsram(bytes);
       coverBuffer = touchCoverBuffer.get();
-    } else coverBuffer = static_cast<uint8_t*>(malloc(bytes));
+    } else coverBuffer = static_cast<uint8_t*>(heapfloor::take(bytes, "home-card"));
     if (!coverBuffer) return CardFile::None;
     if (file.read(coverBuffer, bytes) != static_cast<int>(bytes)) {
       freeCoverBuffer();

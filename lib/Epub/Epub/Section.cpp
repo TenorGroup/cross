@@ -6,6 +6,7 @@
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HalMemory.h>
+#include <HeapFloor.h>
 #include <HalStorage.h>
 
 #include <algorithm>
@@ -905,7 +906,7 @@ bool Section::restorePartialBuild() {
   if (!reader.seek(HEADER_SIZE)) return false;
   {
     constexpr size_t COPY_BUFFER_BYTES = 4096;
-    auto bulkBuffer = makeUniqueNoThrow<uint8_t[]>(COPY_BUFFER_BYTES);
+    auto bulkBuffer = heapfloor::array<uint8_t[]>(COPY_BUFFER_BYTES, "section-copy");
     uint8_t* const copyBuffer = bulkBuffer ? bulkBuffer.get() : buffer;
     const size_t capacity = bulkBuffer ? COPY_BUFFER_BYTES : sizeof(buffer);
 #ifdef TENOR_UI_ACCEPTANCE

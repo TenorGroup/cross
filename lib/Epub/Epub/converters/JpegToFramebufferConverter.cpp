@@ -4,6 +4,7 @@
 #include <GfxRenderer.h>
 #include <GrayThumb.h>
 #include <HalStorage.h>
+#include <HeapFloor.h>
 #include <JPEGDEC.h>
 #include <JpegScale.h>
 #include <Logging.h>
@@ -473,7 +474,7 @@ bool JpegToFramebufferConverter::getDimensionsStatic(const std::string& imagePat
     return false;
   }
 
-  std::unique_ptr<JPEGDEC> jpeg(new (std::nothrow) JPEGDEC());
+  auto jpeg = heapfloor::make<JPEGDEC>("jpeg");
   if (!jpeg) {
     LOG_ERR("JPG", "Failed to allocate JPEG decoder for dimensions");
     return false;
@@ -504,7 +505,7 @@ bool JpegToFramebufferConverter::decodeToFramebuffer(const std::string& imagePat
     return false;
   }
 
-  std::unique_ptr<JPEGDEC> jpeg(new (std::nothrow) JPEGDEC());
+  auto jpeg = heapfloor::make<JPEGDEC>("jpeg");
   if (!jpeg) {
     LOG_ERR("JPG", "Failed to allocate JPEG decoder");
     return false;

@@ -2,6 +2,7 @@
 
 #include <HalDisplay.h>
 #include <HalStorage.h>
+#include <HeapFloor.h>
 #include <JPEGDEC.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -613,7 +614,7 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
   ctx.error = false;
 
   // MCU row buffer: MAX_MCU_HEIGHT rows × decoded srcWidth columns of grayscale
-  ctx.mcuBuf = makeUniqueNoThrow<uint8_t[]>(MAX_MCU_HEIGHT * ctx.srcWidth);
+  ctx.mcuBuf = heapfloor::array<uint8_t[]>(MAX_MCU_HEIGHT * ctx.srcWidth, "jpeg-mcu");
   if (!ctx.mcuBuf) {
     LOG_ERR("JPG", "OOM: MCU buffer (%d bytes)", MAX_MCU_HEIGHT * ctx.srcWidth);
     return false;
@@ -629,7 +630,7 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
   if (smoothUpscale) {
     // One contiguous allocation avoids three heap blocks while keeping smoothing line-buffered.
     const size_t smoothRowsBytes = static_cast<size_t>(outWidth) * 3;
-    ctx.smoothRows = makeUniqueNoThrow<uint8_t[]>(smoothRowsBytes);
+    ctx.smoothRows = heapfloor::array<uint8_t[]>(smoothRowsBytes, "jpeg-smooth");
     if (!ctx.smoothRows) {
       LOG_ERR("JPG", "OOM: progressive smoothing buffers");
       return false;

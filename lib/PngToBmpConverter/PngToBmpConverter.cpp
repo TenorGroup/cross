@@ -2,6 +2,7 @@
 
 #include <HalDisplay.h>
 #include <HalStorage.h>
+#include <HeapFloor.h>
 #include <InflateStream.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -514,7 +515,7 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
   ctx.paletteSize = 0;
 
   const size_t scanlineRowBytes = rawRowBytes;
-  auto scanlineRows = makeUniqueNoThrow<uint8_t[]>(scanlineRowBytes * 2);
+  auto scanlineRows = heapfloor::array<uint8_t[]>(scanlineRowBytes * 2, "png-scanlines");
   if (!scanlineRows) {
     LOG_ERR("PNG", "OOM: scanline buffers (%u bytes each)", rawRowBytes);
     return false;
@@ -610,7 +611,7 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
   }
 
   const size_t rowScratchBytes = static_cast<size_t>(bytesPerRow) + static_cast<size_t>(width);
-  auto rowScratch = makeUniqueNoThrow<uint8_t[]>(rowScratchBytes);
+  auto rowScratch = heapfloor::array<uint8_t[]>(rowScratchBytes, "png-rows");
   if (!rowScratch) {
     LOG_ERR("PNG", "OOM: row scratch buffer (%u bytes)", static_cast<unsigned>(rowScratchBytes));
     return false;

@@ -3,6 +3,7 @@
 #include <BidiUtils.h>
 #include <GfxRenderer.h>
 #include <HalMemory.h>
+#include <HeapFloor.h>
 #include <Logging.h>
 #include <Memory.h>
 #include <MemoryManager.h>
@@ -87,12 +88,12 @@ TextBlock::TextBlock(const std::vector<std::string>& words, const std::vector<in
   textBytes = static_cast<uint16_t>(totalText);
 
   const size_t size = arenaSize(numWords, focusPresent, textBytes);
-  arena = makeUniqueNoThrow<uint8_t[]>(size);
+  arena = heapfloor::array<uint8_t[]>(size, "text-arena");
   if (!arena) {
     // Evict rebuildable caches (SD-font mini data, render glyph cache) and
     // retry once before declaring the line lost.
     freeink::MemoryManager::instance().ensureFree(size + 4 * 1024);
-    arena = makeUniqueNoThrow<uint8_t[]>(size);
+    arena = heapfloor::array<uint8_t[]>(size, "text-arena");
   }
   if (!arena) {
     LOG_ERR("TXB", "OOM: arena %u bytes", static_cast<uint32_t>(size));
@@ -425,7 +426,7 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
     // and nine int16 fields. Reject truncated records before arena allocation.
     constexpr size_t styleBytes = sizeof(CssTextAlign) + 4 * sizeof(bool) + 9 * sizeof(int16_t);
     if (!reader.has(size + static_cast<size_t>(wc) * sizeof(uint32_t) + styleBytes)) return nullptr;
-    block->arena = makeUniqueNoThrow<uint8_t[]>(size);
+    block->arena = heapfloor::array<uint8_t[]>(size, "text-arena");
     if (!block->arena) {
       LOG_ERR("TXB", "OOM: arena %u bytes", static_cast<uint32_t>(size));
       return nullptr;

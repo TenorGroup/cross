@@ -11,7 +11,7 @@ def bitmap_build_args(root, work):
                         '-c', str(source), '-o', str(target)], check=True)
         objects.append(str(target))
     return ['-I', str(root / 'test/fixed_menu_chrome'), '-I', str(root / 'test/ui_tiers/stubs'),
-            '-I', str(font_include), '-I', str(root / 'lib/InflateReader'),
+            '-I', str(font_include), '-I', str(root / 'lib/InflateReader'), '-I', str(root / 'lib/Memory'),
             '-I', str(root / 'lib/uzlib/src'), str(root / 'lib/EpdFont/FontDecompressor.cpp'),
             str(root / 'lib/InflateReader/InflateReader.cpp'), *objects, '-lz']
 

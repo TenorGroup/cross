@@ -1,5 +1,6 @@
 #include "WordStore.h"
 
+#include <HeapFloor.h>
 #include <Logging.h>
 #include <MemoryManager.h>
 
@@ -15,10 +16,10 @@ constexpr size_t RECLAIM_HEADROOM = 8 * 1024;
 // rebuildable memory; only when even that cannot satisfy the request does the
 // caller's drop/fail path run.
 std::unique_ptr<char[]> allocWithReclaim(const size_t bytes) {
-  auto data = makeUniqueNoThrow<char[]>(bytes);
+  auto data = heapfloor::array<char[]>(bytes, "word-store");
   if (data) return data;
   freeink::MemoryManager::instance().ensureFree(bytes + RECLAIM_HEADROOM);
-  data = makeUniqueNoThrow<char[]>(bytes);
+  data = heapfloor::array<char[]>(bytes, "word-store");
   if (data) {
     LOG_DBG("WST", "Cache eviction rescued a %u-byte chunk allocation", static_cast<unsigned>(bytes));
   }

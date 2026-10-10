@@ -12,6 +12,7 @@
 #include <Epub/ReaderSpacing.h>
 #include <FontDecompressor.h>
 #include <HalGPIO.h>
+#include <HeapFloor.h>
 #include <Logging.h>
 #include <Memory.h>
 #include <MemoryManager.h>
@@ -1399,7 +1400,7 @@ bool GfxRenderer::drawBitmapAbsolutePlanes(const Bitmap& bitmap) const {
     return false;
   // One optional 1bpp plane saves a second SD decode. Allocation failure keeps
   // the existing two-pass path; no full RGB or 2bpp image is retained in RAM.
-  auto lsb = makeUniqueNoThrow<uint8_t[]>(getBufferSize());
+  auto lsb = heapfloor::array<uint8_t[]>(getBufferSize(), "gray-bitmap");
   auto row = makeUniqueNoThrow<uint8_t[]>(bitmap.getRowBytes());
   auto levels = makeUniqueNoThrow<uint8_t[]>((bitmap.getWidth() + 3) / 4);
   if (!lsb || !row || !levels || bitmap.rewindToData() != BmpReaderError::Ok) return false;
@@ -2830,6 +2831,11 @@ bool GfxRenderer::storeBwBuffer() {
     }
 
     memcpy(bwBufferChunks[i], frameBuffer + offset, chunkSize);
+  }
+  // The chunks are each under 4 KB; the snapshot as a whole goes through the heap floor door.
+  if (!heapfloor::judge(frameBufferSize, bwBufferChunks[0], "snapshot")) {
+    freeBwBufferChunks();
+    return false;
   }
 
   LOG_DBG("GFX", "Stored BW buffer in %zu chunks (%zu bytes each)", bwBufferChunks.size(), BW_BUFFER_CHUNK_SIZE);

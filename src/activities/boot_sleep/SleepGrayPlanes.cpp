@@ -1,6 +1,7 @@
 #include "SleepGrayPlanes.h"
 
 #include <GfxRenderer.h>
+#include <HeapFloor.h>
 #include <Logging.h>
 
 #include <algorithm>
@@ -51,7 +52,7 @@ bool SleepGrayPlanes::keep() {
 #endif
   for (size_t at = 0, c = 0; at < size; at += size_t{1} << CHUNK_BITS, c++) {
     const size_t n = std::min(size - at, size_t{1} << CHUNK_BITS);
-    kept[c].reset(new (std::nothrow) uint8_t[n]);  // no zero fill, the copy below fills it
+    kept[c] = heapfloor::array<uint8_t[]>(n, "sleep-plane");
     if (!kept[c]) {
       for (auto& piece : kept) piece.reset();
       LOG_ERR("SLP", "Sleep frame: no heap to keep it");

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <HeapFloor.h>
+
 #include <cstddef>
 
 struct TextGrayContext {
@@ -21,6 +23,7 @@ inline bool shouldRunTextGrayscale(const TextGrayContext& context) {
          !context.pendingScreenshot && !context.backgroundWork;
 }
 
+// The heap is on the floor before the grayscale strip is asked for (heapfloor, reported numbers).
 inline bool hasGrayscaleHeapFloor(const size_t freeHeap, const size_t largestBlock) {
-  return freeHeap >= 10240 && largestBlock >= 8192;
+  return !heapfloor::crosses(freeHeap, largestBlock);
 }
