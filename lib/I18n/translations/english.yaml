@@ -4,7 +4,7 @@ _order: "0"
 _bcp47: "en"
 
 STR_CROSSPOINT: "tenor/cross"
-STR_BOOTING: "BOOTING"
+STR_BOOTING: "Booting"
 STR_SLEEPING: "SLEEPING"
 STR_ENTERING_SLEEP: "Going to sleep"
 STR_STARTING_UP: "Starting up"

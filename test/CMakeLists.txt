@@ -278,3 +278,5 @@ add_test(NAME SettingsChoiceMenuInk COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CUR
 add_test(NAME SettingsX3Switch COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/settings_semantics/x3_switch.py" --output "${CMAKE_CURRENT_BINARY_DIR}/settings-x3-switch")
 
 add_test(NAME SettingsX3Menu COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/settings_semantics/x3_menu.py" --output "${CMAKE_CURRENT_BINARY_DIR}/settings-x3-menu")
+
+add_subdirectory(brand_boot)

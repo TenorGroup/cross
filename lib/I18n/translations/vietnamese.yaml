@@ -4,7 +4,7 @@ _order: "25"
 _bcp47: "vi"
 
 STR_CROSSPOINT: "tenor/cross"
-STR_BOOTING: "ĐANG KHỞI ĐỘNG"
+STR_BOOTING: "Đang khởi động"
 STR_SLEEPING: "ĐANG NGỦ"
 STR_ENTERING_SLEEP: "Đang vào chế độ ngủ"
 STR_STARTING_UP: "Đang khởi động"

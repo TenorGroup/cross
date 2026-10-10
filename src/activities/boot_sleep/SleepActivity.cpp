@@ -805,7 +805,7 @@ void SleepActivity::onEnter() {
 // No gray plane is kept in the heap for it, so the heap a running BLE radio leaves is enough.
 void SleepActivity::renderTenorSleepScreen() const {
   releaseSdFontCachesForDecode(renderer);
-  if (!SleepGrayPlanes::wanted() && renderX3BrandScreen(renderer, false)) return;
+  if (!SleepGrayPlanes::wanted() && renderBrandScreen(renderer, false)) return;
   // X3 artwork has a fixed pixel grid. Other panels retain the text fallback.
   if (!gpio.deviceIsX3()) {
     renderDefaultSleepScreen();

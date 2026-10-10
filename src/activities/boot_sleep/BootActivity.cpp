@@ -26,7 +26,7 @@ void BootActivity::onEnter() {
       return;
     }
   }
-  if (renderX3BrandScreen(renderer, true)) return;
+  if (renderBrandScreen(renderer, true)) return;
 
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
