@@ -20,7 +20,7 @@ inline std::string cachePath(const std::string& cover, int w, int h, bool four) 
   const auto slot = cover.find("[HEIGHT]");
   if (slot == std::string::npos) return cover;
   const auto slash = cover.rfind('/', slot);
-  return cover.substr(0, slash + 1) + "ink1_" + (four ? "4_" : "1_") + std::to_string(w) + "x" +
+  return cover.substr(0, slash + 1) + "ink2_" + (four ? "4_" : "1_") + std::to_string(w) + "x" +
          std::to_string(h) + ".bmp";
 }
 

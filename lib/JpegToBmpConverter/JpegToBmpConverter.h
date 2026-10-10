@@ -9,7 +9,7 @@ class ZipFile;
 class JpegToBmpConverter {
   static bool jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& bmpOut, int targetWidth, int targetHeight,
                                           bool oneBit, bool crop = true, bool originalThresholds = false,
-                                          bool exactSize = false);
+                                          bool exactSize = false, bool fullProgressiveCover = false);
 
  public:
   static bool jpegFileToInkBmpStream(HalFile& file, Print& out, int width, int height, bool four);

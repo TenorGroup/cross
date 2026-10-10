@@ -299,3 +299,5 @@ add_test(NAME SettingsX3Menu COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SO
 add_subdirectory(brand_boot)
 
 add_subdirectory(tenor_ink)
+
+add_subdirectory(progressive_jpeg)

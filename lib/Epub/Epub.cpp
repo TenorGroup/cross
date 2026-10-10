@@ -5,6 +5,7 @@
 #include <GrayThumb.h>
 #include <HalStorage.h>
 #include <JpegToBmpConverter.h>
+#include <ProgressiveJpeg.h>
 #include <Logging.h>
 #include <Memory.h>
 #include <PngToBmpConverter.h>
@@ -934,6 +935,9 @@ std::string Epub::getCoverBmpPath(bool cropped, bool originalThresholds, const b
                               : originalThresholds ? "_original"
                                                    : "_legacy_v2") +
                              (cropped ? "_crop" : "");
+#ifdef BOARD_HAS_PSRAM
+  if (progressivejpeg::supported()) return cachePath + "/" + coverFileName + "_jpeg2.bmp";
+#endif
   return cachePath + "/" + coverFileName + ".bmp";
 }
 

@@ -54,12 +54,12 @@ bool draw(){
 }
 void reset(){Storage.files.clear();Storage.opened.clear();renderer={};}
 int main(){
- reset();Storage.files["ink1_4_232x350.bmp"]={232,350};Storage.files["thumb2_450.bmp"]={298,450};
+ reset();Storage.files["ink2_4_232x350.bmp"]={232,350};Storage.files["thumb2_450.bmp"]={298,450};
  assert(draw());assert(renderer.exact==1&&renderer.scaled==0);
- assert(Storage.opened==std::vector<std::string>{"ink1_4_232x350.bmp"});
- reset();Storage.files["ink1_4_232x350.bmp"]={233,350};assert(!draw());assert(!renderer.exact&&!renderer.scaled);
+ assert(Storage.opened==std::vector<std::string>{"ink2_4_232x350.bmp"});
+ reset();Storage.files["ink2_4_232x350.bmp"]={233,350};assert(!draw());assert(!renderer.exact&&!renderer.scaled);
  reset();Storage.files["thumb2_450.bmp"]={298,450};assert(!draw());assert(!renderer.exact&&!renderer.scaled);
- assert(Storage.opened==std::vector<std::string>{"ink1_4_232x350.bmp"});
+ assert(Storage.opened==std::vector<std::string>{"ink2_4_232x350.bmp"});
  reset();tenorchrome::kTouchShell=false;Storage.files["thumb2_450.bmp"]={298,450};
  assert(draw());assert(renderer.scaled==1&&renderer.exact==0);
  puts("GREEN exact dimensions and 1:1 dispatch; old X4 cache ignored; X3 legacy fallback");
