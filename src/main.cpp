@@ -1454,8 +1454,8 @@ void loop() {
   bool bleInputActivity = false;
   {
     bleturner::Scene scene{};
-    // A sheet over the page (the reader menu) puts the book out of front: the radio stopped before
-    // the sheet was drawn (EpubReaderActivity::stopRadioForSheet) and starts again on the page.
+    // A sheet over the page (the reader menu) puts the book out of front, unless it kept a running
+    // radio (sheetradio::planFor): then the book stays in front and the remote keeps its link.
     scene.where = activityManager.isForegroundReaderActivity() && !activityManager.foregroundReaderCoversPage()
                       ? bleturner::Where::Reader
                       : bleturner::Where::Elsewhere;

@@ -197,8 +197,8 @@ class EpubReaderActivity final : public ReaderActivity {
   // re-render. Discarded on close / whenever the page under the overlay changes.
   bool overlayPageStored = false;
   bool bwUnderSheet = false;
-  // The sheet opened over a running radio and kept it (TENOR_P5B measurement build): no page
-  // snapshot backs the sheet, so every redraw of it draws the page again first.
+  // The sheet opened over a running radio and kept it: no page snapshot backs the sheet, so every
+  // redraw of it draws the page again first.
   bool sheetKeptRadio = false;
   // Stops the radio for the sheet, or keeps it, as sheetradio::planFor answers.
   sheetradio::Plan beginSheetRadio();
