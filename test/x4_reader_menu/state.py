@@ -23,6 +23,7 @@ spacing=re.search(r'constexpr uint8_t kSpacingByPlace\[\].*?;',s,re.S).group(0)
 cpp=r'''
 #include <FreeInkApp.h>
 #include <ReaderFontSizes.h>
+#include "activities/reader/SheetRadioPlan.h"
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
@@ -130,7 +131,7 @@ class EpubReaderActivity {
  Popup overlayPopup;
  std::vector<int> moreItems;
  int focusedTool=0,panelIndex=0,currentSpineIndex=0,nextPageNumber=0;
- bool panelCursorShown=false,panelHoldJumped=false,overlayPageStored=true,bwUnderSheet=false;
+ bool panelCursorShown=false,panelHoldJumped=false,overlayPageStored=true,bwUnderSheet=false,sheetKeptRadio=false;
  std::string pendingAnchor;
  std::unique_ptr<int> section=std::make_unique<int>(1);
  int redraws=0,previews=0,requests=0;
