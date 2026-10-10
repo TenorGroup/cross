@@ -395,6 +395,7 @@ class OptionPopup {
     if (contextCross) LOG_INF("MENU", "context box=%d,%d,%d,%d row=%d source=button", dialogRect.x,
                               dialogRect.y, dialogRect.width, dialogRect.height, props.buttonHeight);
 #endif
+    if (contextCross && contextBackground) contextBackground(dialogRect);
     if (contextCross) renderer.fillRect(dialogRect.x - 8, dialogRect.y - 8,
                                         dialogRect.width + 16, dialogRect.height + 16, false);
 

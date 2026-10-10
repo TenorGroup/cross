@@ -1197,7 +1197,24 @@ fui::Rect HomeActivity::recentCoverAt(const int index) {
   return app.publishedRect(ACTION_OTHER_BOOK, 0);
 }
 
+void HomeActivity::rememberContextLine(int font, int x, int y, const char* text, EpdFontFamily::Style style) {
+  if (tenorchrome::kTouchShell || shell::isUgly() || !text || !*text) return;
+  if (contextTextLineCount >= contextTextLines.size()) return;
+  const int top = renderer.getTextInkTop(font, text, style);
+  const int bottom = renderer.getTextInkBottom(font, text, style);
+  const fui::Rect line{fui::clampI16(x), fui::clampI16(y + top),
+                       fui::clampI16(renderer.getTextWidth(font, text, style)), fui::clampI16(bottom - top)};
+  contextTextLines[contextTextLineCount++] = line;
+#ifdef SIMULATOR
+  LOG_INF("HOME", "context text=%d,%d,%d,%d", line.x, line.y, line.width, line.height);
+#endif
+}
+
 void HomeActivity::drawContextBackground(const fui::Rect menu) {
+  if (!tenorchrome::kTouchShell) {
+    clearContextMenuTextRects(renderer, menu, contextTextLines.data(), contextTextLineCount);
+    return;
+  }
   std::array<fui::Rect, 4> covers{};
   covers[0] = heldCover;
   const auto layout = recentLayout();
@@ -1701,15 +1718,18 @@ int HomeActivity::drawCardStats(const HomeCardLayout& card, HomeStatsBounds* bou
   for (int row = 0; row < HOME_STAT_COUNT; ++row) {
     if (!(column.rows & (1u << row))) continue;
     if (labels[row].empty()) {
+      rememberContextLine(labelFont, card.statsX, column.labelY[row], I18N.get(CARD_STAT_LABELS[row]));
       renderer.drawText(labelFont, card.statsX, column.labelY[row], I18N.get(CARD_STAT_LABELS[row]));
     } else {
       int y = column.labelY[row];
       for (const auto& line : labels[row]) {
+        rememberContextLine(labelFont, card.statsX, y, line.c_str());
         renderer.drawText(labelFont, card.statsX, y, line.c_str());
         y += in.labelLineHeight;
       }
     }
     const auto drawValue = [&](const std::string& value, const int y) {
+      rememberContextLine(fonts[row], card.statsX, y, value.c_str(), EpdFontFamily::BOLD);
       int x = card.statsX;
       compactstats::runs(value.c_str(), [&](const std::string& part, const bool number) {
         const auto style = number ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
@@ -1734,6 +1754,7 @@ int HomeActivity::drawCardStats(const HomeCardLayout& card, HomeStatsBounds* bou
 }
 
 void HomeActivity::drawRecentCard() {
+  contextTextLineCount = 0;
   if (coverBufferBook != shownRecent() || coverBufferStyle != SETTINGS.homeStyle) touchThumbCount = 0;
   if (touchThumbCount > 0 && thumbWanted.load() < 0) {
     thumbWantedAtMs = millis();
@@ -1848,6 +1869,45 @@ void HomeActivity::drawRecentCard() {
   cardThumbHeight = alignCover ? frame.coverH : HOME_CARD_COVER_H;
   heldCover = {static_cast<int16_t>(frame.coverX), static_cast<int16_t>(frame.coverY), static_cast<int16_t>(frame.coverW),
                static_cast<int16_t>(frame.coverH)};
+  const auto& book = recentBooks[shown];
+  const auto title = book.title.empty() ? book.path.substr(book.path.find_last_of('/') + 1) : book.title;
+  const char* author = book.author.empty() ? tr(STR_RECENT_NO_AUTHOR) : book.author.c_str();
+  // A saved quote of the book goes in curly quotes; the page excerpt the reader left on is shown
+  // as it is, as in the approved drawings.
+  bool quoted = false;
+  const auto excerpt = cardExcerpt(shown, quoted);
+  const auto quote = excerpt.empty() ? std::string(tr(STR_RECENT_NO_EXCERPT))
+                     : quoted        ? std::string("“") + excerpt + "”"
+                                     : excerpt;
+  // CJK titles stay on the body font: its SD fallback covers them, the title font has none.
+  const int titleFont = homeExcerptUsesUiFont(title.c_str()) ? UI_12_FONT_ID : UI_TITLE_FONT_ID;
+  const auto titleLines = renderer.wrappedText(titleFont, title.c_str(), frame.textW, 2, EpdFontFamily::BOLD);
+  in.titleLines = std::max(1, static_cast<int>(titleLines.size()));
+  in.titleDrawLineHeight = renderer.getLineHeight(titleFont);
+  auto card = alignCover ? frame : homeCardLayout(in);
+  if (alignCover) {
+    card.authorY = card.titleY + in.titleLines * in.titleDrawLineHeight + 2;
+    card.excerptY = card.authorY + in.authorLineHeight + 7;
+    const int bottom = in.metadataAboveCover ? card.coverY - 7 : card.ruleY - 15;
+    card.excerptLines = std::clamp((bottom - card.excerptY) / in.excerptLineHeight, 0, 1);
+  }
+  const bool cjkExcerpt = homeExcerptUsesUiFont(excerpt.c_str());
+  const int quoteFont = excerpt.empty() ? SMALL_FONT_ID : cjkExcerpt ? UI_12_FONT_ID : serifFont;
+  const auto quoteStyle = excerpt.empty() || cjkExcerpt ? EpdFontFamily::REGULAR : EpdFontFamily::ITALIC;
+  if (!tenorchrome::kTouchShell && !shell::isUgly()) {
+    int lineY = card.titleY;
+    for (const auto& line : titleLines) {
+      rememberContextLine(titleFont, card.textX, lineY, line.c_str(), EpdFontFamily::BOLD);
+      lineY += in.titleDrawLineHeight;
+    }
+    const auto authorLine = renderer.truncatedText(UI_10_FONT_ID, author, card.textW);
+    rememberContextLine(UI_10_FONT_ID, card.textX, card.authorY, authorLine.c_str());
+    lineY = card.excerptY;
+    for (const auto& line : renderer.wrappedText(quoteFont, quote.c_str(), card.textW, card.excerptLines, quoteStyle)) {
+      rememberContextLine(quoteFont, card.textX, lineY, line.c_str(), quoteStyle);
+      lineY += renderer.getLineHeight(quoteFont);
+    }
+  }
 #ifdef TENOR_UI_ACCEPTANCE
   const uint32_t restoreStartedUs = micros();
 #endif
@@ -1865,16 +1925,6 @@ void HomeActivity::drawRecentCard() {
   const uint32_t cardStartedUs = micros();
 #endif
   LOG_INF("HOME", "Home build start style=0");
-  const auto& book = recentBooks[shown];
-  const auto title = book.title.empty() ? book.path.substr(book.path.find_last_of('/') + 1) : book.title;
-  const char* author = book.author.empty() ? tr(STR_RECENT_NO_AUTHOR) : book.author.c_str();
-  // A saved quote of the book goes in curly quotes; the page excerpt the reader left on is shown
-  // as it is, as in the approved drawings.
-  bool quoted = false;
-  const auto excerpt = cardExcerpt(shown, quoted);
-  const auto quote = excerpt.empty() ? std::string(tr(STR_RECENT_NO_EXCERPT))
-                     : quoted        ? std::string("“") + excerpt + "”"
-                                     : excerpt;
 #ifdef TENOR_PRESS_PROBE
   const uint32_t quotedMs = millis();
 #endif
@@ -1918,18 +1968,6 @@ void HomeActivity::drawRecentCard() {
 #ifdef TENOR_PRESS_PROBE
   const uint32_t fileMs = millis();
 #endif
-  // CJK titles stay on the body font: its SD fallback covers them, the title font has none.
-  const int titleFont = homeExcerptUsesUiFont(title.c_str()) ? UI_12_FONT_ID : UI_TITLE_FONT_ID;
-  const auto titleLines = renderer.wrappedText(titleFont, title.c_str(), frame.textW, 2, EpdFontFamily::BOLD);
-  in.titleLines = std::max(1, static_cast<int>(titleLines.size()));
-  in.titleDrawLineHeight = renderer.getLineHeight(titleFont);
-  auto card = alignCover ? frame : homeCardLayout(in);
-  if (alignCover) {
-    card.authorY = card.titleY + in.titleLines * in.titleDrawLineHeight + 2;
-    card.excerptY = card.authorY + in.authorLineHeight + 7;
-    const int bottom = in.metadataAboveCover ? card.coverY - 7 : card.ruleY - 15;
-    card.excerptLines = std::clamp((bottom - card.excerptY) / in.excerptLineHeight, 0, 1);
-  }
   int y = card.titleY;
   for (const auto& line : titleLines) {
     renderer.drawText(titleFont, card.textX, y, line.c_str(), true, EpdFontFamily::BOLD);
@@ -1937,9 +1975,6 @@ void HomeActivity::drawRecentCard() {
   }
   renderer.drawText(UI_10_FONT_ID, card.textX, card.authorY,
                     renderer.truncatedText(UI_10_FONT_ID, author, card.textW).c_str());
-  const bool cjkExcerpt = homeExcerptUsesUiFont(excerpt.c_str());
-  const int quoteFont = excerpt.empty() ? SMALL_FONT_ID : cjkExcerpt ? UI_12_FONT_ID : serifFont;
-  const auto quoteStyle = excerpt.empty() || cjkExcerpt ? EpdFontFamily::REGULAR : EpdFontFamily::ITALIC;
   // Without a page slot every glyph miss inflates a whole font group again
   // (the decompressor keeps one hot group), which made this card cost ~620 ms
   // on the X3. Prewarm once; the slot is released after the card is cached.
@@ -2469,10 +2504,12 @@ void HomeActivity::drawOtherBookRow(const int shown, const int ruleY, const int 
   const int left = MARGIN, right = renderer.getScreenWidth() - MARGIN;
   renderer.drawLine(left, ruleY, right - 1, ruleY);
   const char* label = tr(STR_RECENT_OTHER_BOOK);
+  rememberContextLine(UI_10_FONT_ID, left, rowY, label);
   renderer.drawText(UI_10_FONT_ID, left, rowY, label);
   int y = rowY;
   for (const auto& line : titleLines) {
     const int titleWidth = renderer.getTextWidth(UI_10_FONT_ID, line.c_str(), EpdFontFamily::BOLD);
+    rememberContextLine(UI_10_FONT_ID, right - titleWidth, y, line.c_str(), EpdFontFamily::BOLD);
     renderer.drawText(UI_10_FONT_ID, right - titleWidth, y, line.c_str(), true, EpdFontFamily::BOLD);
     y += renderer.getLineHeight(UI_10_FONT_ID);
   }

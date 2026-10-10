@@ -1,5 +1,6 @@
 #pragma once
 #include <I18n.h>
+#include <EpdFontFamily.h>
 
 #include <atomic>
 #include <optional>
@@ -95,6 +96,10 @@ class HomeActivity final : public UiTabListActivity {
   freeink::ui::Rect contextCover{};
   freeink::ui::Rect recentCoverAt(int index);
   void drawContextBackground(freeink::ui::Rect menu);
+  std::array<freeink::ui::Rect, 40> contextTextLines{};
+  size_t contextTextLineCount = 0;
+  void rememberContextLine(int font, int x, int y, const char* text,
+                           EpdFontFamily::Style style = EpdFontFamily::REGULAR);
   std::optional<RecentBook> pendingRecentRemoval;
   bool recentRemovalFailed = false;
   bool touchRowMovesRing() const override { return activeTabId == Tab::RECENT; }

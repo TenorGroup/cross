@@ -60,6 +60,7 @@ struct HomeActivity {
   int cardThumbHeight=HOME_CARD_COVER_H;
   int cardThumbWidth=HOME_CARD_COVER_W;
   HomeCardLayout cardLayout(HomeCardInput in);
+  void rememberContextLine(int, int, int, const char*, EpdFontFamily::Style = EpdFontFamily::REGULAR) {}
   int drawCardStats(const HomeCardLayout& card, HomeStatsBounds* bounds=nullptr);
 };
 @@METHODS@@

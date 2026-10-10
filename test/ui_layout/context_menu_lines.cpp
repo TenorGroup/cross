@@ -43,7 +43,7 @@ int main(int argc, char**) {
       renderer.fillRect(24,menuY+128,400,22,true);
       renderer.fillRect(24,menuY-42,400,10,true);
       const Rect menu{17,menuY,290,136};
-      if(argc==1)clearContextMenuLines(renderer,menu,covers,38,650);
+      if(argc!=2)clearContextMenuLines(renderer,menu,covers,38,650);
       DirectPixelWriter pen;pen.init(renderer);int bits=pen.displayWidthBytes*8;
       auto pixel=[&](int x,int y){int bit=(pen.phyYBase+x*pen.phyYStepX+y*pen.phyYStepY)*bits+pen.phyXBase+x*pen.phyXStepX+y*pen.phyXStepY;return !(pen.fb[bit/8]&(0x80>>(bit%8)));};
       for(int y=menuY-15;y<menuY+150;++y)for(int x=16;x<renderer.getScreenWidth()-16;++x){
@@ -55,5 +55,26 @@ int main(int argc, char**) {
       ++cases;
     }
   }
+  renderer.setOrientation(GfxRenderer::Portrait);
+  renderer.clearScreen();
+  std::array<Rect, 4> lines{{{280, 218, 200, 25}, {24, 310, 480, 24},
+                            {280, 472, 160, 22}, {280, 180, 160, 22}}};
+  for (const auto& line : lines) renderer.fillRect(line.x, line.y, line.width, line.height, true);
+  // The halo cuts just 1 px of the first and third lines; the fourth stays intact.
+  const Rect dialog{70, 250, 370, 215};
+  if (argc != 3) clearContextMenuTextRects(renderer, dialog, lines.data(), lines.size());
+  DirectPixelWriter rectPen; rectPen.init(renderer);
+  const int rectBits = rectPen.displayWidthBytes * 8;
+  const auto rectInk = [&](int x, int y) {
+    const int bit = (rectPen.phyYBase + x * rectPen.phyYStepX + y * rectPen.phyYStepY) * rectBits +
+                     rectPen.phyXBase + x * rectPen.phyXStepX + y * rectPen.phyXStepY;
+    return !(rectPen.fb[bit / 8] & (0x80 >> (bit % 8)));
+  };
+  for (int i = 0; i < 3; ++i) {
+    const auto& line = lines[i];
+    for (int y = line.y; y < line.bottom(); ++y)
+      for (int x = line.x; x < line.right(); ++x) assert(!rectInk(x, y));
+  }
+  assert(rectInk(300, 190));
   printf("GREEN %d complete text-band clears, cover art retained, 3 orientations\n",cases);
 }

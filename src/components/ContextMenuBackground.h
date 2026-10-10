@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 
 #include "Epub/converters/DirectPixelWriter.h"
 
@@ -55,4 +56,15 @@ void clearContextMenuLines(const Renderer& renderer, Rect menu, const std::array
   }
   for (int y = top; y < bottom; ++y)
     spans(y, [&](int x, int w) { renderer.fillRect(x, y, w, 1, false); });
+}
+
+// Home supplies measured line rectangles, including cached card text.
+template <typename Renderer, typename Rect>
+void clearContextMenuTextRects(const Renderer& renderer, Rect menu, const Rect* lines, size_t count) {
+  for (size_t i = 0; i < count; ++i) {
+    const auto& line = lines[i];
+    if (line.x < menu.right() + 8 && line.right() > menu.x - 8 &&
+        line.y < menu.bottom() + 8 && line.bottom() > menu.y - 8)
+      renderer.fillRect(line.x, line.y, line.width, line.height, false);
+  }
 }
