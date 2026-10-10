@@ -1,5 +1,6 @@
 """X3 boot and sleep art in X3BrandAssets.h must equal the BMPs in scripts/brand-art/x3/bmp,
-and the boot lockup must carry the 100/50/30 tones (cross / tenor / slash)."""
+the boot lockup must carry the 100/50/30 tones (cross / tenor / slash), and the one bit sleep
+frame in ManNguTenor.h must equal the sleep BMP folded the way SleepGrayPlanes::show folds it."""
 import re
 import sys
 import zlib
@@ -37,6 +38,27 @@ def decode(prefix):
     return [[(lsb[(W - 1 - x) * H + y] | msb[(W - 1 - x) * H + y] << 1) * 85 for x in range(W)] for y in range(H)]
 
 
+def folded_frame():
+    """mannogu::KHUNG inflated: native 1 bit framebuffer, 528 rows of 792 pixels, bit 7 first."""
+    data = re.search(r'KHUNG\[\] = \{(.*?)\};', (ROOT / 'src/components/ManNguTenor.h').read_text(), re.S).group(1)
+    raw = zlib.decompress(bytes(int(v, 16) for v in re.findall(r'0x([0-9a-f]{2})', data)))
+    assert len(raw) == W * H // 8, len(raw)
+    return [(raw[i // 8] >> (7 - i % 8)) & 1 for i in range(len(raw) * 8)]
+
+
+def fold_diff(frame, bmp):
+    """Pixels where the frame differs from the sleep BMP folded to black and white: gray level 1
+    is white where the Bayer cell holds under 4, level 2 where it holds under 12 (the cuts of
+    SleepGrayPlanes.cpp), level 0 black and level 3 white."""
+    diff = 0
+    for y in range(H):
+        for x in range(W):
+            r, c = W - 1 - x, y  # native row and column of portrait pixel (x, y)
+            cut = (0, 4, 12, 16)[bmp[y][x] // 85]
+            diff += frame[r * H + c] != (BAYER[r & 3][c & 3] < cut)
+    return diff
+
+
 def bayer(tone):
     """Firmware four-level Bayer response of a flat tone, averaged over one 4x4 cell."""
     out = []
@@ -51,9 +73,13 @@ def main():
     bad = 0
     for prefix, name in (('BOOT', 'khoi-dong'), ('SLEEP', 'muc-dang')):
         bmp = bmp_gray(ART / f'261011_tenor_branding_xteink-x3-cross-{name}.bmp')
+        sleep = bmp if prefix == 'SLEEP' else None
         diff = sum(a != b for ra, rb in zip(decode(prefix), bmp) for a, b in zip(ra, rb))
         print(f'{prefix}: {diff} pixels differ from the BMP')
         bad += diff != 0
+    fold = fold_diff(folded_frame(), sleep)
+    print(f'KHUNG: {fold} pixels differ from the sleep BMP folded to black and white')
+    bad += fold != 0
     boot = decode('BOOT')
     # 4x4 windows fully inside one glyph stroke (any 4x4 window holds each Bayer threshold once).
     mean = {k: sum(sum(r[x:x + 4]) for r in boot[y:y + 4]) / 16 for k, (y, x) in

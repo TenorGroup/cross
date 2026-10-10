@@ -10,9 +10,10 @@
   },
   "pipeline": {
     "boot": "Chrome scale 1, firmware Bayer dither",
+    "sleep_one_bit": "src/components/ManNguTenor.h is the sleep gray planes of X3BrandAssets.h folded to black and white by the SleepGrayPlanes::show rule (scripts/sinh_man_ngu.py reads the planes, so it follows the sleep art); test/brand_boot/x3_art.py folds the sleep BMP itself and compares every pixel",
     "sleep": "background, grain, large plus: Chrome scale 1 and Bayer; lockup and mark: Chrome scale 4, BOX to 528x792, tenor/ink 4 levels, mask = pixels darker than 250 in a shot with only lockup and mark, dilated by 1 pixel",
     "tenor_ink": "tenor_ink.py reproduces lib/JpegToBmpConverter/TenorInk.cpp on the sleep shot (0 of 418176 pixels differ, measured with test/tenor_ink/Kernel.cpp)",
-    "rebuild": "scripts/brand-art/x3/build.sh (needs Google Chrome, Pillow, numpy, scipy); it runs render.py then scripts/pack_x3_brand.py"
+    "rebuild": "scripts/brand-art/x3/build.sh (needs Google Chrome, Pillow, numpy, scipy); it runs render.py, scripts/pack_x3_brand.py, then scripts/sinh_man_ngu.py (also needs 7zz) for the one bit sleep frame"
   },
   "inputs_sha256": {
     "khoi-dong.html": "b86d8c7b3cf04553be16f13c00b34f2d8bc8ace4a9c792cfe8e6455678841199",
@@ -27,7 +28,8 @@
     "261011_tenor_branding_xteink-x3-cross-muc-dang.bmp": "c9547deb2fc502a8fc3ebdd6e95ebb3f98ac62bce65c7408237dd45081de8e85"
   },
   "output_sha256": {
-    "src/components/X3BrandAssets.h": "e48399e1cb21ed1d35781b94c552de19e7fa6f6662a1b5a752f552075fdccbd4"
+    "src/components/X3BrandAssets.h": "e48399e1cb21ed1d35781b94c552de19e7fa6f6662a1b5a752f552075fdccbd4",
+    "src/components/ManNguTenor.h": "1e614ede8397d91eadf1b7d4b39d7da086d51f21758f2955fc85fe00b0ad2b18"
   },
   "lockup_mean_gray_boot": {
     "tenor": 127.5,
