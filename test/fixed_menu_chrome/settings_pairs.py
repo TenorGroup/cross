@@ -23,7 +23,7 @@ struct ScreenBoundary {
 } screen;
 const fui::TextStyle& uiMenuLabelText(const fui::ThemeTokens& theme) { return theme.bodyText; }
 void checkPairs(fui::ListProps props) {
-  assert(props.labelText.maxLines == 1);
+  assert(props.labelText.maxLines == 2);  // a label that does not fit goes to a second line
   assert(!props.balanceWrappedLabelWithValue);
   for (int tier = 0; tier < 3; ++tier) {
     Target target(tier);
@@ -37,7 +37,7 @@ void checkPairs(fui::ListProps props) {
         const auto measured = fui::measureListRow(target, nullptr, 480, props, item);
         const int fullValue = target.measureText(props.valueText.font, value, props.valueText).width;
         assert(measured.valueWidth == fullValue && measured.valueLines == 1);
-        assert(measured.labelLines == 1);
+        assert(measured.labelLines >= 1 && measured.labelLines <= 2);
         const int valueLeft = 480 - 2 * props.sidePadding - props.valueInset - fullValue;
         assert(valueLeft - measured.labelWidth >= props.textGap);
       }
@@ -54,4 +54,4 @@ sdk = root / 'freeink-sdk/libs/ui/FreeInkUI'
 subprocess.run(['c++', '-std=c++20', '-UNDEBUG', '-I', str(root), '-I', str(root / 'src'),
                 '-I', str(sdk / 'include'), str(path), str(sdk / 'src/FreeInkUI.cpp'), '-o', str(program)], check=True)
 subprocess.run([str(program)], check=True)
-print('GREEN: 2 settings recipes, 3 text sizes, label ellipsis and full values separated by ListProps.textGap')
+print('GREEN: 2 settings recipes, 3 text sizes, wrapped or cut labels and full values separated by ListProps.textGap')

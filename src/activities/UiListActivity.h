@@ -85,6 +85,8 @@ class UiListActivity : public Activity, protected UiAppHost {
                    int anchorValue);
   void renderUi();
   virtual int settingsChoiceCount(int row) const { return 0; }
+  // ListProps::rowHasMark: the row carries the pop-up mark renderUi draws after its value.
+  static bool rowHasPopupMark(const void* list, uint16_t row);
   virtual SettingsChoiceStyle rowChoiceStyle(int row) const {
     return settingsChoiceStyle(settingsChoiceCount(row), tenorchrome::kTouchShell);
   }

@@ -1092,7 +1092,7 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
   if (tenorchrome::kTouchShell) props.inputMask |= fui::InputLongPress;  // hold a row: its menu (Pin)
   props.valueInset = 8;               // air between the value and the row edge
   props.labelText = uiMenuLabelText(screen.theme());
-  props.labelText.maxLines = tenorchrome::x3ScreenLayoutEnabled() ? 1 : 2;
+  props.labelText.maxLines = 2;  // a label that does not fit goes to a second line, as on the X4 Pro
   props.balanceWrappedLabelWithValue = !tenorchrome::x3ScreenLayoutEnabled();
   // A row's note (the limited edition under Interface) wraps too, so no settings row cuts its words.
   props.subtitleText = screen.theme().smallText;

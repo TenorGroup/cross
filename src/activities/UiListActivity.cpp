@@ -417,7 +417,8 @@ void UiListActivity::measurePageScrollbar(UiScreen& screen, const fui::ListProps
     const bool heading = item.sectionHeading && item.sectionHeading[0];
     const int section = heading ? headerHeight + props.rowGap + (row > 0 ? props.sectionGap : 0) : 0;
     const int height = fui::measureListRow(screen.target(), screen.frame().assets(),
-                                          static_cast<int16_t>(rowWidth), props, item).height;
+                                          static_cast<int16_t>(rowWidth), props, item,
+                                          fui::listValueEndsRow(props, item, static_cast<uint16_t>(row))).height;
     const int span = height + section + (row + 1 < props.count ? props.rowGap : 0);
     length += span;
     if (row < activeNav().top) offset += span;
@@ -578,9 +579,17 @@ void UiListActivity::navigateButtons() {
   }
 }
 
+bool UiListActivity::rowHasPopupMark(const void* list, const uint16_t row) {
+  return static_cast<const UiListActivity*>(list)->rowChoiceStyle(row) == SettingsChoiceStyle::Popup;
+}
+
 void UiListActivity::frameRows(fui::ListProps& props) {
   props.scrollIndicator = false;
   rowsFramed = tenorchrome::roundFrames() && listFramed();
+  // A row's pop-up mark is drawn over the rows (renderUi), so list() asks which rows carry one: a value with
+  // nothing after it ends on the trailing column.
+  props.rowHasMarkCtx = this;
+  props.rowHasMark = &UiListActivity::rowHasPopupMark;
   for (int row = 0; row < props.count; ++row)
     if (settingsChoiceCount(row) > 0) {
       props.chevronColumn = true;

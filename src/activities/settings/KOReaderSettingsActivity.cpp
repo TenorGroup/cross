@@ -197,7 +197,7 @@ void KOReaderSettingsActivity::buildScreen(UiScreen& screen) {
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
   props.valueInset = 8;               // air between the value and the row edge
   props.labelText = uiMenuLabelText(screen.theme());
-  props.labelText.maxLines = tenorchrome::x3ScreenLayoutEnabled() ? 1 : 2;
+  props.labelText.maxLines = 2;  // a label that does not fit goes to a second line, as on the X4 Pro
   props.balanceWrappedLabelWithValue = !tenorchrome::x3ScreenLayoutEnabled();
   props.subtitleText = screen.theme().smallText;
   syncListViewport(screen, props);

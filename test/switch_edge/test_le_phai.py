@@ -4,6 +4,7 @@ Chay gia lap X3 (pio run -e simulator_x3_uc8279) va X4 Pro (pio run -e simulator
 trong Cai dat, Cai dat van ban, Dong ho, KOReader, OPDS, Bluetooth, menu doc, o ca 3 co chu, roi do tren anh 1 bit:
 - mep phai khoi muc cua cong tac = mep phai khoi muc cua dau ^v = mep phai khoi muc cua dau ">" (lech 0 px);
 - cot do la cot cua dau ">" cua may: X4 Pro 443 (444 o co chu 2), X3 489 (490 o vai man co chu cuon);
+- dong chi co chu gia tri (KOReader) ket thuc o cung cot; nhan dong co cong tac khong bi cat bang '...';
 - tam doc cong tac lech khong qua 0,5 px so voi tam dau ^v cua hang cung luoi (cung 1 ham dat tam hang).
 X4PRO_PROGRAM, X3_PROGRAM chon ban dung khac; LE_PHAI_DEVICES (x3,x4) va LE_PHAI_SIZES (0,1,2) thu hep lan chay.
 """
@@ -15,6 +16,8 @@ from pathlib import Path
 import le_phai as L
 
 COLUMN = {'x4': {443, 444}, 'x3': {489, 490}}
+# Man co dong chi co chu gia tri ("Chua dat", "Mac dinh: ...") va so dong toi thieu sat cot cuoi
+VALUE_ONLY = {'x4': {'khac-0': 3}, 'x3': {'koreader': 2}}
 DEVICES = os.environ.get('LE_PHAI_DEVICES', 'x4,x3').split(',')
 SIZES = [int(s) for s in os.environ.get('LE_PHAI_SIZES', '0,1,2').split(',')]
 
@@ -34,9 +37,16 @@ def check(device, size, name, folder, failures, counts):
             if e['kind'] != 'sw':
                 continue
             counts['sw'] += 1
+            if L.has_ellipsis(img, e['y0'] - 6, e['y1'] + 6, e['x0'] - 70, e['x0']):
+                failures.append(f"{where}: nhan cua cong tac y{e['cy']:.0f} bi cat bang '...'")
             if (e['x1'] - e['x0'] + 1, e['y1'] - e['y0'] + 1) not in L.SW_SIZES:
                 failures.append(f'{where}: hinh cong tac doi {e}')
         counts['ends'] += len(elements)
+        if name in VALUE_ONLY[device]:
+            flush = [y for y, x in L.value_only_edges(img, elements) if elements and x == elements[0]['x1']]
+            counts['value'] += 1
+            if k == 0 and len(flush) < VALUE_ONLY[device][name]:
+                failures.append(f'{where}: chi {len(flush)} dong chu gia tri sat cot cuoi, can {VALUE_ONLY[device][name]}')
         for e in elements:
             if e['kind'] != 'sw':
                 continue
@@ -49,7 +59,7 @@ def check(device, size, name, folder, failures, counts):
 
 
 def main():
-    failures, counts = [], dict(sw=0, ends=0, vertical=0)
+    failures, counts = [], dict(sw=0, ends=0, vertical=0, value=0)
     with tempfile.TemporaryDirectory(prefix='le-phai-') as tmp:
         jobs = [(d, s, n) for d in DEVICES for s in SIZES for n in L.screens(d, s)]
         with ThreadPoolExecutor(4) as pool:
@@ -58,6 +68,7 @@ def main():
             for f in futures:
                 f.result()
     assert counts['sw'] >= 40, f"chi do duoc {counts['sw']} cong tac: bo man hinh hong"
+    assert counts['value'] >= 2, 'khong thay man co dong chi co chu gia tri'
     assert counts['vertical'] >= 20, f"chi so duoc {counts['vertical']} cong tac voi dau ^v cung hang"
     assert not failures, f"{len(failures)} loi\n" + '\n'.join(failures[:40])
     print(f"GREEN: {counts['sw']} cong tac, {counts['ends']} phan tu cuoi dong, {len(jobs)} man tren moi cot muc phai")

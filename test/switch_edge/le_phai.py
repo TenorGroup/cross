@@ -124,7 +124,8 @@ def rule_lines(img, x0=40, x1=440):
     """X4 Pro: hang y cua ke cham giua hai dong va vong khung (50% diem den deu moi doan 50 px)."""
     a = np.array(img) < 128
     return [y for y in range(a.shape[0])
-            if all(0.3 <= a[y, x:x + 50].mean() <= 0.7 for x in range(x0, x1 - 49, 50))]
+            if all(0.3 <= a[y, x:x + 50].mean() <= 0.7 for x in range(x0, x1 - 49, 50))
+            and (a[y, x0:x1 - 1] != a[y, x0 + 1:x1]).mean() >= 0.85]   # cham xen ke, khong phai nen chu hay vanh cong tac
 
 
 def row_center(img, cy):
@@ -153,3 +154,34 @@ def vertical_offset(img, sw, elements, device):
     d = sw['cy'] - near['cy']
     r = d - round(d / pitch) * pitch
     return r if abs(r) < 5 else None
+
+
+def value_only_edges(img, elements):
+    """Chu gia tri cuoi dong khong co dau nao theo sau: mep phai chu cuoi cung cua moi hang khong co phan tu cuoi dong
+    (hang co chu o nua phai, tu cot T-40 tro di). Tra ve danh sach (y giua, x1)."""
+    W, H = img.size
+    cs = [c for c in components(img) if not (c['w'] <= 2 and c['h'] <= 2) and not (c['h'] <= 2 and c['w'] > 60)
+          and (40 if W == 480 else 8) < (c['y0'] + c['y1']) / 2 < H - 70 and c['x1'] < W - (20 if W == 480 else 12)]
+    bands = []
+    for c in sorted(cs, key=lambda c: c['y0']):
+        if bands and c['y0'] <= bands[-1][1] + 2:
+            bands[-1][1] = max(bands[-1][1], c['y1'])
+            bands[-1][2] = max(bands[-1][2], c['x1'])
+        else:
+            bands.append([c['y0'], c['y1'], c['x1']])
+    out = []
+    for y0, y1, x1 in bands:
+        if any(y0 - 4 <= e['cy'] <= y1 + 4 for e in elements):
+            continue
+        out.append(((y0 + y1) / 2, x1))
+    return out
+
+
+def has_ellipsis(img, y0, y1, x0, x1):
+    """Ba cham 2 x 2 hoac 3 x 3 thang hang cach 3..6 px o cuoi nhan: nhan bi cat bang '...'."""
+    dots = [c for c in components(img) if c['w'] <= 3 and c['h'] <= 3 and y0 <= c['y0'] <= y1 and x0 <= c['x0'] <= x1]
+    for a in dots:
+        run = [d for d in dots if d['y1'] == a['y1'] and 0 <= d['x0'] - a['x0'] <= 14]
+        if len(run) >= 3:
+            return True
+    return False

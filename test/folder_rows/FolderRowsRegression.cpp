@@ -176,6 +176,7 @@ class FileBrowserActivity {
   void keepUglyRows(const fui::ListProps& props);
   bool rowOpens(int row) const;
   int settingsChoiceCount(int) const { return 0; }
+  static bool rowHasPopupMark(const void*, uint16_t) { return false; }
   bool listFramed() const;
   void frameRows(fui::ListProps& props);
   static constexpr int ACTION_ROW = 1;
