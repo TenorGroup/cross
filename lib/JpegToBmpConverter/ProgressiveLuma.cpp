@@ -340,7 +340,7 @@ struct Decoder::State {
     r.nbits -= n;
     return v;
   }
-  int bit(Reader& r) { return bits(r, 1); }
+  int nextBit(Reader& r) { return bits(r, 1); }
   int huff(Reader& r, const Huff& h) {
     if (r.nbits < 16) fill(r);
     int32_t code = 0;
@@ -398,7 +398,7 @@ struct Decoder::State {
     if (dst) *dst = static_cast<int16_t>(*dst | shifted(r.pred[k], r.scan.al));
   }
   void dcRefine(Reader& r, int16_t* dst) {
-    if (bit(r) && dst) *dst = static_cast<int16_t>(*dst | (1 << r.scan.al));
+    if (nextBit(r) && dst) *dst = static_cast<int16_t>(*dst | (1 << r.scan.al));
   }
   void acFirst(Reader& r, int16_t* coef) {
     if (r.eobrun > 0) {
@@ -431,7 +431,7 @@ struct Decoder::State {
     int k = r.scan.ss;
     const int se = r.scan.se;
     const auto correct = [&](int16_t& t) {
-      if (bit(r) && !(t & p1)) t = static_cast<int16_t>(t + (t >= 0 ? p1 : m1));
+      if (nextBit(r) && !(t & p1)) t = static_cast<int16_t>(t + (t >= 0 ? p1 : m1));
     };
     if (r.eobrun == 0) {
       const Huff& h = table[r.table[0]];
@@ -440,7 +440,7 @@ struct Decoder::State {
         int run = rs >> 4, value = 0;
         if (fail != Result::Done) return;
         if (rs & 15) {
-          value = bit(r) ? p1 : m1;
+          value = nextBit(r) ? p1 : m1;
         } else if (run != 15) {
           r.eobrun = 1 << run;
           if (run) r.eobrun += bits(r, run);
