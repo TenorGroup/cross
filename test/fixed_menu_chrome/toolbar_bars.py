@@ -70,7 +70,7 @@ reader = (root / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
 opening = method(reader, 'EpubReaderActivity::openOverlay(')
 assert 'panelIndex = ReaderToolbarUi::usesX3Bar() ? 0 :' in opening
 assert 'target == Overlay::Contents && !ReaderToolbarUi::usesX3Bar() && waitsForIndex()' in opening
-assert 'target == Overlay::Text && tenorchrome::x3ScreenLayoutEnabled()' in opening
+assert 'TEXT_SETTINGS' not in opening
 assert 'else if (actionPanel())' in method(reader, 'EpubReaderActivity::handleOverlayInput(')
 fixture += '''
 class EpubReaderActivity {

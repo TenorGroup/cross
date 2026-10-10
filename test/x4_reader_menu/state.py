@@ -180,7 +180,7 @@ int main(){
  using D=EpubReaderActivity::TextDepth;using O=EpubReaderActivity::Overlay;using E=ReaderToolbarUi::Event;
  EpubReaderActivity r;
  assert(r.overlay==O::None&&SETTINGS.writes==0);
- r.openOverlay(O::Toolbar);event(r,E::Tool,static_cast<int>(readermenu::Tool::TEXT));assert(r.overlay==O::None&&r.textSettingsOpened==1&&r.previews==0&&r.requests==0&&!r.toolbarUi&&tenorchrome::note==0);
+ r.openOverlay(O::Toolbar);event(r,E::Tool,static_cast<int>(readermenu::Tool::TEXT));assert(r.overlay==O::Text&&r.textSettingsOpened==0&&r.previews==0);
  r.openOverlay(O::Text);
  event(r,E::Row,0);assert(r.textDepth==D::Fonts&&fontdoc::soHo(&r.sdFontSystem.registry())==7);
  event(r,E::Row,3);assert(fontdoc::family==3&&r.previews==1&&SETTINGS.writes==0);

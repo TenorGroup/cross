@@ -94,32 +94,21 @@ int main() {{
             "discardOverlayPage();" in reader_menu and "requestUpdate();" in reader_menu,
             "Reader text settings must keep the existing return invalidation contract")
 
+    # The toolbar's Text sheet changes the page behind it as you go: no tool or gesture may jump to the
+    # separate Text settings screen (that screen stays the target of the list menu row only).
     overlay_input = function(reader_source, "void EpubReaderActivity::handleOverlayInput(")
-    require("const auto openTextSettings" in overlay_input,
-            "The toolbar needs one shared TextSettingsActivity entry")
-    require(overlay_input.count("openTextSettings();") >= 3,
-            "Touch, button and panel tool routes must use the shared Text settings entry")
-    open_text = function(overlay_input, "const auto openTextSettings")
-    require("closeOverlayToPage();" not in open_text,
-            "Opening Text settings must not repaint the reader page first")
-    for statement in ("RenderLock lock;", "overlay = Overlay::None;", "overlayPopup.dismiss();",
-                      "toolbarUi.reset();", "settleOverlayRefresh();", "discardOverlayPage();",
-                      "panelClosedLocked(false, false);",
-                      "onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction::TEXT_SETTINGS, MenuResult{})"):
-        require(statement in open_text, f"Text settings transition is missing: {statement}")
-    require("displayBuffer" not in open_text and "requestUpdate" not in open_text,
-            "Text settings transition must not queue a reader frame")
+    require("openTextSettings" not in reader_source and "MenuAction::TEXT_SETTINGS" not in overlay_input,
+            "Toolbar Text tools must open the Text sheet over the page, not TextSettingsActivity")
+    open_overlay = function(reader_source, "void EpubReaderActivity::openOverlay(")
+    require("TEXT_SETTINGS" not in open_overlay, "openOverlay(Overlay::Text) must open the sheet")
 
     reader_loop = function(reader_source, "void EpubReaderActivity::loop()")
     text_zone = reader_loop[reader_loop.index("case readertap::Zone::TextMenu:"):
                             reader_loop.index("default:", reader_loop.index("case readertap::Zone::TextMenu:"))]
-    require("#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO" in text_zone and
-            "#else" in text_zone and "#endif" in text_zone,
-            "The page Text gesture needs an explicit X4 Pro compile guard")
-    require("onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction::TEXT_SETTINGS, MenuResult{})" in text_zone,
-            "The page Text gesture must open the shared TextSettingsActivity")
+    require("TEXT_SETTINGS" not in text_zone and "FREEINK_DEVICE_X4PRO" not in text_zone,
+            "The page Text gesture must open the Text sheet on every device")
     require("focusedTool = kTextTool;" in text_zone and "openOverlay(Overlay::Text);" in text_zone,
-            "The non-X4 Pro Text gesture must keep its original overlay path")
+            "The Text gesture must keep the overlay path")
 
     print("text settings touch geometry and reader flow: PASS")
 

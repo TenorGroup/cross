@@ -1666,12 +1666,8 @@ void EpubReaderActivity::loop() {
         return;
       case readertap::Zone::TextMenu:
         if (usesToolbarMenu() && section) {
-#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
-          onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction::TEXT_SETTINGS, MenuResult{});
-#else
           focusedTool = kTextTool;
           openOverlay(Overlay::Text);
-#endif
         } else {
           openReaderMenu();
         }
@@ -4579,18 +4575,6 @@ sheetradio::Plan EpubReaderActivity::beginSheetRadio() {
 }
 
 void EpubReaderActivity::openOverlay(Overlay target) {
-  if (target == Overlay::Text && tenorchrome::x3ScreenLayoutEnabled()) {
-    mappedInput.resetHomeButtonInput();
-    {
-      RenderLock lock;
-      settleOverlayRefresh();
-      overlay = Overlay::None;
-      discardOverlayPage();
-      panelClosedLocked(true, false);
-    }
-    onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction::TEXT_SETTINGS, MenuResult{});
-    return;
-  }
   if (target == Overlay::Contents && !ReaderToolbarUi::usesX3Bar() && waitsForIndex()) return;
   mappedInput.resetHomeButtonInput();
   const Overlay previous = overlay;
@@ -4978,22 +4962,6 @@ void EpubReaderActivity::handleOverlayInput() {
 #else
   constexpr int toolCount = kReaderTools;
 #endif
-#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
-  const auto openTextSettings = [this] {
-    mappedInput.resetHomeButtonInput();
-    {
-      RenderLock lock;
-      tenorchrome::noteReaderFootBar(false, false, -1);
-      overlay = Overlay::None;
-      overlayPopup.dismiss();
-      toolbarUi.reset();
-      settleOverlayRefresh();
-      discardOverlayPage();
-      panelClosedLocked(false, false);
-    }
-    onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction::TEXT_SETTINGS, MenuResult{});
-  };
-#endif
 
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   // Mapped Back includes the native button, edge gesture and chrome target.
@@ -5019,12 +4987,6 @@ void EpubReaderActivity::handleOverlayInput() {
         return;
       case ReaderToolbarUi::Event::Tool:
         focusedTool = routed.value;
-#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
-        if (focusedTool == kTextTool) {
-          openTextSettings();
-          return;
-        }
-#endif
         openOverlay(toolOverlay(focusedTool));
         return;
       case ReaderToolbarUi::Event::PrevChapter:
@@ -5060,12 +5022,6 @@ void EpubReaderActivity::handleOverlayInput() {
       return;
     }
     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
-      if (focusedTool == kTextTool) {
-        openTextSettings();
-        return;
-      }
-#endif
       openOverlay(toolOverlay(focusedTool));
       return;
     }
@@ -5250,12 +5206,6 @@ void EpubReaderActivity::handleOverlayInput() {
       return;
     case ReaderToolbarUi::Event::Tool: {
       // Sheet-bottom tool switcher: hop straight to another panel.
-#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
-      if (routed.value == kTextTool) {
-        openTextSettings();
-        return;
-      }
-#endif
       const Overlay target = toolOverlay(routed.value);
       if (target != overlay) {
         focusedTool = routed.value;
