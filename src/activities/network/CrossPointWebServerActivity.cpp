@@ -659,8 +659,6 @@ void CrossPointWebServerActivity::render(RenderLock&&) {
                    isApMode ? tr(STR_HOTSPOT_MODE) : tr(STR_FILE_TRANSFER), nullptr);
 
     if (state == WebServerActivityState::SERVER_RUNNING) {
-      GUI.drawSubHeader(renderer, Rect{0, metrics.topPadding + metrics.headerHeight, pageWidth, metrics.tabBarHeight},
-                        subHeaderLabel(renderer, connectedSSID, !isApMode).c_str());
       renderServerRunning();
     } else {
       const auto height = renderer.getLineHeight(UI_10_FONT_ID);
@@ -677,21 +675,23 @@ void CrossPointWebServerActivity::renderServerRunning() const {
 
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
                  isApMode ? tr(STR_HOTSPOT_MODE) : tr(STR_FILE_TRANSFER), nullptr);
-  GUI.drawSubHeader(renderer, Rect{0, metrics.topPadding + metrics.headerHeight, pageWidth, metrics.tabBarHeight},
-                    subHeaderLabel(renderer, connectedSSID, !isApMode).c_str());
-
-  if (!isApMode) {
-    renderWifiIndicator(metrics.topPadding + metrics.headerHeight);
+  // The top of a touch screen is the status strip alone (time, icons, battery); the network name goes inside the first
+  // frame. A screen with the sub-header row keeps it for the readers that have no frames.
+  const bool framed = tenorchrome::roundFrames();
+  if (!framed) {
+    GUI.drawSubHeader(renderer, Rect{0, metrics.topPadding + metrics.headerHeight, pageWidth, metrics.tabBarHeight},
+                      subHeaderLabel(renderer, connectedSSID, !isApMode).c_str());
+    if (!isApMode) renderWifiIndicator(metrics.topPadding + metrics.headerHeight);
   }
 
   // Version-4 QR codes have 6 px modules here. Leave four modules clear on
   // either side, including between the code and the larger address text.
   constexpr int qrQuiet = 24;
   // Touch (C1): each code and its words in a round frame; the code keeps its quiet zone inside the frame.
-  const bool framed = tenorchrome::roundFrames();
   const int left = framed ? tenorchrome::FOOT_BACK_X + qrQuiet : std::max<int>(metrics.contentSidePadding, qrQuiet);
   const int bodyWidth = pageWidth - 2 * left;
-  int startY = metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight + qrQuiet;
+  const int contentTop = framed ? tenorchrome::contentTop() + 10 : metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight;
+  int startY = contentTop + qrQuiet;
   const int height10 = renderer.getLineHeight(UI_10_FONT_ID);
   const std::string hostnameUrl = std::string("http://") + apHostname() + ".local/";
   const std::string ipUrl = "http://" + connectedIP + "/";
@@ -701,8 +701,6 @@ void CrossPointWebServerActivity::renderServerRunning() const {
     const int textWidth = pageWidth - left - textX;
     // Keep each instruction beside its QR code so both steps fit at large UI sizes.
     const std::string wifiConfig = std::string("WIFI:T:nopass;S:") + connectedSSID + ";;";
-    // The first frame stands 12 px under the sub-header rule, as the frame of a joined network does.
-    if (framed) startY += qrQuiet / 2;
     const Rect qrBoundsWifi(left, startY, QR_CODE_WIDTH, QR_CODE_HEIGHT);
     QrUtils::drawQrCode(renderer, qrBoundsWifi, wifiConfig);
     const int nameTop = drawNetworkHeading(renderer, tr(STR_CONNECT_WIFI_HINT), textX, startY, textWidth) + 8;
@@ -720,7 +718,14 @@ void CrossPointWebServerActivity::renderServerRunning() const {
     if (framed)
       tenorchrome::drawPanel(renderer, startY - qrQuiet, std::max(startY + QR_CODE_HEIGHT, ipBottom) - startY + 2 * qrQuiet);
   } else {
-    const int frameTop = startY - qrQuiet / 2;
+    const int frameTop = framed ? contentTop : startY - qrQuiet / 2;
+    if (framed) {
+      // The network joined, as the first line of the frame.
+      startY = contentTop + qrQuiet / 2;
+      const std::string name = renderer.truncatedText(UI_10_FONT_ID, connectedSSID.c_str(), bodyWidth, EpdFontFamily::REGULAR);
+      renderer.drawCenteredText(UI_10_FONT_ID, startY, name.c_str());
+      startY += height10 + 8;
+    }
     renderer.drawCenteredText(UI_10_FONT_ID, startY, tr(STR_OPEN_URL_HINT), true, EpdFontFamily::BOLD);
     startY += height10;
     renderer.drawCenteredText(UI_10_FONT_ID, startY, tr(STR_SCAN_QR_HINT), true, EpdFontFamily::BOLD);

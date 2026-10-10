@@ -13,6 +13,7 @@
 #include "CrossPointSettings.h"
 #include "UIFontTiers.h"
 #include "WifiSelectionActivity.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "shells/Shell.h"
@@ -301,10 +302,24 @@ void CalibreConnectActivity::render(RenderLock&&) {
   } else if (state == CalibreConnectState::ERROR) {
     renderer.drawCenteredText(UI_12_FONT_ID, top, tr(STR_CONNECTION_FAILED), true, EpdFontFamily::BOLD);
   } else if (state == CalibreConnectState::SERVER_RUNNING) {
-    GUI.drawSubHeader(renderer, Rect{0, metrics.topPadding + metrics.headerHeight, pageWidth, metrics.tabBarHeight},
-                      connectedSSID.c_str(), (std::string(tr(STR_IP_ADDRESS_PREFIX)) + connectedIP).c_str());
-
-    int y = metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight + metrics.verticalSpacing * 4;
+    const std::string address = std::string(tr(STR_IP_ADDRESS_PREFIX)) + connectedIP;
+    int y;
+    if (tenorchrome::roundFrames()) {
+      // A touch screen keeps only the status strip at the top: the network and the address are the first two lines
+      // of the content, each cut with an ellipsis rather than run past the margins.
+      const int room = pageWidth - metrics.contentSidePadding * 2;
+      y = tenorchrome::contentTop() + 10 + metrics.verticalSpacing;
+      renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, y,
+                        renderer.truncatedText(UI_10_FONT_ID, connectedSSID.c_str(), room, EpdFontFamily::REGULAR).c_str());
+      y += height;
+      renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, y,
+                        renderer.truncatedText(UI_10_FONT_ID, address.c_str(), room, EpdFontFamily::REGULAR).c_str());
+      y += height + metrics.verticalSpacing * 4;
+    } else {
+      GUI.drawSubHeader(renderer, Rect{0, metrics.topPadding + metrics.headerHeight, pageWidth, metrics.tabBarHeight},
+                        connectedSSID.c_str(), address.c_str());
+      y = metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight + metrics.verticalSpacing * 4;
+    }
     const auto heightText12 = renderer.getTextHeight(UI_12_FONT_ID);
     renderer.drawText(UI_12_FONT_ID, metrics.contentSidePadding, y, tr(STR_CALIBRE_SETUP), true, EpdFontFamily::BOLD);
     y += heightText12 + metrics.verticalSpacing * 2;
