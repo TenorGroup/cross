@@ -504,7 +504,7 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
   if (reader) {
     bar = FootBar::BackOnly;
     // The reader owns this band while its menu is open, including the page's status footer.
-    clearFootBand(r, FRAME_TO_BAR_GAP);
+    clearFootBand(r, shell::isUgly() ? 12 : FRAME_TO_BAR_GAP);
   }
 #endif
   if (bar != FootBar::Full && bar != FootBar::BackOnly) return;

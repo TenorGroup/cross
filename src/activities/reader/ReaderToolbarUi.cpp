@@ -143,6 +143,9 @@ void ReaderToolbarUi::switchShapes(fui::ListProps& props) const {
   }
 }
 
+// The air between the sheet and the bar: tenor/ugly's paper keeps its 12 px.
+static int frameAir() { return shell::isUgly() ? 12 : tenorchrome::FRAME_TO_BAR_GAP; }
+
 fui::Rect ReaderToolbarUi::sheetRect(const fui::Rect& bounds, const int16_t height) const {
   if (usesX3Bar()) {
     const auto span = tenorchrome::frameSpan(*renderer_);
@@ -152,7 +155,7 @@ fui::Rect ReaderToolbarUi::sheetRect(const fui::Rect& bounds, const int16_t heig
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   const auto span = tenorchrome::frameSpan(*renderer_);
   return {static_cast<int16_t>(span.x),
-          static_cast<int16_t>(tenorchrome::footBackTop(bounds.height) - tenorchrome::FRAME_TO_BAR_GAP - height),
+          static_cast<int16_t>(tenorchrome::footBackTop(bounds.height) - frameAir() - height),
           static_cast<int16_t>(span.width), height};
 #else
   return {bounds.x, static_cast<int16_t>(bounds.bottom() - height), bounds.width, height};
@@ -723,13 +726,15 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     switchShapes(listProps_);
     listProps_.partialTrailingRow = fonts;
     // The shared page scrollbar stands outside the frame, so the rows take the frame's whole width, as every list's do.
+    // tenor/ugly's paper keeps the 12 px strip its own scroll mark stood in.
+    const int16_t kBarStrip = shell::isUgly() ? 12 : 0;
     listProps_.scrollIndicator = false;
     listProps_.rowStyles = fui::defaultListRowStyles();
     nav_.selected = std::clamp(model_.selectedIndex, -1, count - 1);
     nav_.followOnBuild = nav_.selected >= 0;
     nav_.followPending = false;
     nav_.syncToProps(listRect, 62, 0, count, listProps_);
-    const int16_t labelRoom = static_cast<int16_t>(listRect.width - 2 * listProps_.sidePadding);
+    const int16_t labelRoom = static_cast<int16_t>(listRect.width - kBarStrip - 2 * listProps_.sidePadding);
     const int windowCount = std::min({nav_.visibleRows + (fonts ? 1 : 0), count - nav_.top, kMaxWindow});
     for (int i = 0; i < windowCount; ++i) {
       const int index = nav_.top + i;
@@ -774,7 +779,7 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_.itemsWindowFirst = static_cast<uint16_t>(nav_.top);
     listProps_.itemsWindowCount = static_cast<uint16_t>(std::max(0, windowCount));
     if (count > 0) {
-      const fui::Rect rowsRect = listRect;
+      const fui::Rect rowsRect{listRect.x, listRect.y, static_cast<int16_t>(listRect.width - kBarStrip), listRect.height};
       fadeRight_ = rowsRect.right();
       fui::list(screen.frame(), rowsRect, listProps_);
       if (fonts && windowCount > nav_.visibleRows) {
@@ -842,7 +847,7 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
         constexpr int16_t kStepperRingWidth = 52;
         constexpr int16_t kStepperRingHeight = 44;
         constexpr int16_t kStepperRingAir = 8;
-        const int16_t ringRight = static_cast<int16_t>(listRect.right() - kStepperRingAir);
+        const int16_t ringRight = static_cast<int16_t>(listRect.right() - kBarStrip - kStepperRingAir);
         const auto ringRect = [&](const fui::Rect& touchRect) {
           const int16_t centeredX = static_cast<int16_t>(touchRect.x + (touchRect.width - kStepperRingWidth) / 2);
           const int16_t x = std::min(centeredX, static_cast<int16_t>(ringRight - kStepperRingWidth));
