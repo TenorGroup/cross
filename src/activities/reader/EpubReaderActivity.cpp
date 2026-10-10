@@ -4556,15 +4556,20 @@ void EpubReaderActivity::settleOverlayRefresh() {
 #endif
 }
 
-// With the radio off when the sheet opens (or still starting), it is stopped for good and starts again
-// once the page is back in front (coversPage); the sheet then keeps its 52 KB page snapshot.
+// A sheet over the page needs heap a connecting radio holds: the page snapshot alone is 52 KB on the
+// X3, and the panels load lists and fonts. The radio stops before the sheet is drawn and starts again
+// once the page is back in front (coversPage). Stopping took 0 to 37 ms in the X3 transition logs.
 void EpubReaderActivity::stopRadioForSheet() {
   if (!bleturner::stopNow(1000)) LOG_ERR("ERS", "Radio still stopping under the sheet");
 }
 
 sheetradio::Plan EpubReaderActivity::beginSheetRadio() {
+#ifdef TENOR_P5B
   const auto radio = bleturner::status();
-  const auto plan = sheetradio::planFor(radio.running && !radio.stopping);
+  const auto plan = sheetradio::planFor(true, radio.running && !radio.stopping);
+#else
+  const auto plan = sheetradio::planFor(false, false);
+#endif
   sheetKeptRadio = !plan.stopRadio;
   if (plan.stopRadio) stopRadioForSheet();
 #ifdef TENOR_SHEET_TIMING
