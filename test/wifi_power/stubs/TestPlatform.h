@@ -256,10 +256,19 @@ struct Styles {
 inline Styles defaultPopupStyles() { return {}; }
 constexpr uint8_t InputTouch = 1;
 constexpr uint8_t InputLongPress = 2;
+enum class BitmapFormat : uint8_t { BW1, Mask1 };
+struct BitmapRef {
+  const uint8_t* data = nullptr;
+  uint16_t width = 0;
+  uint16_t height = 0;
+  BitmapFormat format = BitmapFormat::BW1;
+  bool progmem = true;
+};
 struct ListItem {
   const char* label = nullptr;
   const char* value = nullptr;
   int16_t actionValue = 0;
+  const BitmapRef* valueIcons = nullptr;
 };
 struct ListProps {
   bool scrollIndicator = true;
