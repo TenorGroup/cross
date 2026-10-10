@@ -179,7 +179,8 @@ struct TenorTheme {
   void drawButtonHints(GfxRenderer&, const char*, const char*, const char*, const char*) const;
   static void drawHintLabel(const GfxRenderer& r, int font, const char* label, int x, int width, int top, int height, int offset) {
     ++fallbackCalls;
-    assert(top == r.getScreenHeight() - UITheme::getInstance().getMetrics().buttonHintsHeight);
+    const int lift = SETTINGS.uiTextSize == 0 && !SETTINGS.globalStatusBarLarge() ? 1 : 0;
+    assert(top == r.getScreenHeight() - UITheme::getInstance().getMetrics().buttonHintsHeight - lift);
     assert(height == UITheme::getInstance().getMetrics().buttonHintsHeight - 5);
     assert(offset == 4);
     BaseTheme::drawHintLabel(r, font, label, x, width, top, height, offset);

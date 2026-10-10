@@ -53,7 +53,8 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
   const bool grayscale = renderer.getRenderMode() != GfxRenderer::BW && renderer.grayPlanesAreAbsolute();
   const bool lon = SETTINGS.globalStatusBarLarge();
   const int net = lon ? 18 : 14;
-  const int iconAnchor = tenorchrome::statusIconTopY(pageHeight, lon) + net / 2;
+  const int labelLift = !lon && normalizedUiTextSize(SETTINGS.uiTextSize) == 0 ? 1 : 0;
+  const int iconAnchor = tenorchrome::statusIconTopY(pageHeight, lon) + net / 2 - labelLift;
   const auto corners = tenorchrome::statusCornerBounds(renderer, lon);
   constexpr int cornerGap = 9;
   bool singleCaptions[4] = {};
@@ -210,7 +211,7 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
   for (int i = 0; i < 4; i++) {
     if (labels[i] == nullptr || labels[i][0] == '\0') continue;
     const int x = buttonPositions[i];
-    const int top = pageHeight - buttonY;
+    const int top = pageHeight - buttonY - labelLift;
     if (grayscale) continue;
     const int iconX = iconPositions[i];
     if (!SETTINGS.tenorButtonSymbols ||
