@@ -115,15 +115,26 @@ void ReaderToolbarUi::endRow(fui::ListItem& item, const int index) const {
   }
 }
 
-// The up-down mark at the end of every visible choice row, where the settings lists put it. Drawn once the frame is
-// laid out: the rows' places are those this frame published.
+// The up-down mark at the end of every visible choice row, where the settings lists put it: ending on the trailing
+// column list() drew this frame's switches and chevrons on (ListNav::trailingInkRight). Drawn once the frame is laid
+// out: the rows' places are those this frame published.
 void ReaderToolbarUi::markChoiceRows(const int firstRow, const int rowCount) const {
-  if (!model_.rowEnd || shell::isUgly() || !renderer_ || !uiTarget.paintingEnabled()) return;
+  if (!model_.rowEnd || shell::isUgly() || !renderer_ || !uiTarget.paintingEnabled() || nav_.trailingInkRight <= 0)
+    return;
   for (int index = firstRow; index < firstRow + rowCount; ++index) {
     if (model_.rowEnd(index) != readermenu::RowEnd::Choice) continue;
     const auto rect = app.publishedRect(ACTION_ROW, static_cast<int16_t>(index));
-    if (rect.height > 0) tenorchrome::drawSettingsPopupMark(*renderer_, rect.right() - 31, rect.y + rect.height / 2);
+    if (rect.height > 0)
+      tenorchrome::drawSettingsPopupMark(*renderer_, nav_.trailingInkRight - (tenorchrome::POPUP_MARK_WIDTH - 1),
+                                         rect.y + rect.height / 2);
   }
+}
+
+// list() asks which rows carry a mark drawn over them (markChoiceRows): a value with nothing after it ends on the
+// trailing column, as in the settings lists.
+bool ReaderToolbarUi::rowHasChoiceMark(const void* ui, const uint16_t row) {
+  const auto& model = static_cast<const ReaderToolbarUi*>(ui)->model_;
+  return model.rowEnd && model.rowEnd(row) == readermenu::RowEnd::Choice;
 }
 
 // The switch of an on/off row and the room kept for the mark, as the settings lists size them.
@@ -138,6 +149,8 @@ void ReaderToolbarUi::switchShapes(fui::ListProps& props) const {
   if (model_.rowEnd && !shell::isUgly()) {
     props.chevronColumn = true;
     props.valueInset = 8;  // air between a value and the mark or chevron after it, as in the settings lists
+    props.rowHasMarkCtx = this;
+    props.rowHasMark = &ReaderToolbarUi::rowHasChoiceMark;
     props.labelText.centerInkY = true;
     props.valueText.centerInkY = true;
   }

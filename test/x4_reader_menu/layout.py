@@ -172,6 +172,7 @@ std::vector<fui::Rect> panels;
 void drawPanel(const GfxRenderer&,int y,int h) { panels.push_back({16,static_cast<int16_t>(y),448,static_cast<int16_t>(h)}); }
 struct FrameSpan { int x, width; };
 FrameSpan frameSpan(const GfxRenderer&) { return {16, 448}; }
+constexpr int POPUP_MARK_WIDTH=13;
 void drawSettingsPopupMark(const GfxRenderer&,int,int) {}
 enum class ChevronDir : uint8_t { Down, Left, Right };
 constexpr int moreChevronLength(int span) { return (span * 8 + 5) / 11 + 3; }
@@ -202,7 +203,7 @@ cpp += 'struct { int uiTextSize = 0; } SETTINGS;\nint normalizedUiTextSize(int v
 cpp += method(source, 'struct StepperCells') + ';\n' + method(source, 'StepperCells stepperCells(') + '\n'
 cpp += method(source, 'void drawStepChevron(') + '\n'
 cpp += method(source, 'static int frameAir') + '\n'
-for name in ['sheetRect','endRow','markChoiceRows','switchShapes']:
+for name in ['sheetRect','endRow','markChoiceRows','rowHasChoiceMark','switchShapes']:
     cpp += method(source, re.search(r'^[^\n]*ReaderToolbarUi::'+name+r'\(', source, re.M).group(0)) + '\n'
 for name in ['begin','render','route','onAction','screenFn','scrollRows','buildX4Tools','buildX4Toolbar','buildX4Panel','buildX4Spacing','buildX4Keypad','fadeMoreBelow']:
     # Static onAction has a void signature like the other production members.

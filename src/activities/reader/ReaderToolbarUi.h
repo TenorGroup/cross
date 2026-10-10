@@ -149,6 +149,7 @@ class ReaderToolbarUi : public UiAppHost {
   // The end of row `index` in `item` by its meaning, and the shapes the list gives a switch.
   void endRow(freeink::ui::ListItem& item, int index) const;
   void markChoiceRows(int firstRow, int rowCount) const;
+  static bool rowHasChoiceMark(const void* ui, uint16_t row);
   void switchShapes(freeink::ui::ListProps& props) const;
   void buildToolRow(UiScreen& screen, freeink::ui::LayoutAnchor anchor, int16_t sideInset);
   void buildX3Bar(UiScreen& screen);

@@ -15,6 +15,7 @@ import zipfile
 from pathlib import Path
 
 import numpy as np
+from scipy import ndimage
 from PIL import Image
 
 REPO = Path(__file__).resolve().parents[2]
@@ -75,6 +76,16 @@ def bbox(ink, x0, y0, x1, y1):
     return (x0 + xs.min(), y0 + ys.min(), x0 + xs.max(), y0 + ys.max()) if len(xs) else None
 
 
+def biggest_part(ink, x0, y0, x1, y1):
+    """The widest box of a connected ink part in the window: a row end apart from the dotted rules around it."""
+    labels, count = ndimage.label(ink[y0:y1, x0:x1], structure=np.ones((3, 3)))
+    if not count:
+        return None
+    boxes = ndimage.find_objects(labels)
+    ys, xs = max(boxes, key=lambda b: (b[0].stop - b[0].start) * (b[1].stop - b[1].start))
+    return (x0 + xs.start, y0 + ys.start, x0 + xs.stop - 1, y0 + ys.stop - 1)
+
+
 def long_runs(ink, y, minimum):
     r, s = [], None
     for x in range(ink.shape[1] + 1):
@@ -119,12 +130,15 @@ def x3(program, tmp, fails):
     # A row ends by what it does: the night mode row is a 46 x 26 switch, the orientation row ends in the up-down mark.
     reading = a['reading']
     top = next(y for y in range(380, 700) if long_runs(reading, y, 200))
-    switch = bbox(reading, 380, top + 8, 470, top + 44)
+    switch = biggest_part(reading, 380, top + 4, 500, top + 48)
     if switch is None or (switch[2] - switch[0] + 1, switch[3] - switch[1] + 1) != (46, 26):
         fails.append(f'X3 night mode row end {switch}: want a 46 x 26 switch')
     mark = bbox(reading, 462, top + 112 + 8, 490, top + 112 + 44)
     if mark is None or (mark[2] - mark[0] + 1) != 13 or not 10 <= mark[3] - mark[1] + 1 <= 16:
         fails.append(f'X3 orientation row end {mark}: want the 13 px wide up-down mark')
+    # Both end on the list's trailing column (listChevronInkRight), as every row end does.
+    if switch and mark and switch[2] != mark[2]:
+        fails.append(f'X3 row ends: switch ends at {switch[2]}, up-down mark at {mark[2]}: want one column')
     # The ring is the group ring all round: the bottom edge is a dotted row pair too, and no side column is solid.
     for name in ('position', 'tools'):
         cols = [x for x in (left, left + 1, right - 2, right - 1) if a[name][480:560, x].sum() > 0.8 * 80]
