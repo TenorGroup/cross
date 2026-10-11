@@ -27,15 +27,16 @@ Job make(uint32_t key) {
 int main() {
   // The verdict: Home, quiet 3 s, then the cable, then the battery and the hour.
   struct Case { IdleInputs in; Why want; } cases[] = {
-      {{Where::Elsewhere, 60000, true, 100, 0}, Why::NotHome},
-      {{Where::Home, 2999, true, 100, 0}, Why::TooSoon},
-      {{Where::Home, 3000, false, 29, 0}, Why::BatteryLow},
-      {{Where::Home, 3000, true, 5, kHourBudgetMs}, Why::Ok},
-      {{Where::Home, 3000, false, 30, kHourBudgetMs - 1}, Why::Ok},
-      {{Where::Home, 3000, false, 80, kHourBudgetMs}, Why::HourCap},
+      {{Where::Elsewhere, 60000, true, 100, 0, 0}, Why::NotHome},
+      {{Where::Home, 2999, true, 100, 0, 0}, Why::TooSoon},
+      {{Where::Home, 3000, false, 29, 0, 0}, Why::BatteryLow},
+      {{Where::Home, 3000, true, 5, kHourBudgetMs, kHourMaxSteps - 1}, Why::Ok},
+      {{Where::Home, 3000, true, 100, 0, kHourMaxSteps}, Why::HourCap},  // steps are capped on the cable too
+      {{Where::Home, 3000, false, 30, kHourBudgetMs - 1, 0}, Why::Ok},
+      {{Where::Home, 3000, false, 80, kHourBudgetMs, 0}, Why::HourCap},
   };
   for (const auto& c : cases) assert(verdict(c.in) == c.want);
-  std::puts("GREEN verdict: Home only, 3 s of quiet, USB lifts battery and hour, battery under 30, hour spent");
+  std::puts("GREEN verdict: Home only, 3 s of quiet, USB lifts battery and hour's time but not its 120 steps");
 
   // The budget lives in memory the caller keeps across sleep, read with a clock that runs through it.
   Budget b{};  // never written (RTC memory after a power loss): nothing used
@@ -52,6 +53,7 @@ int main() {
   Budget full{};
   for (int i = 0; i < 300; ++i) full.charge(1000, 1);  // a key at every start: 300 starts
   assert(full.used(1000) == 300 * kMinChargeMs && full.used(1000) > kHourBudgetMs);
+  assert(full.stepsIn(1000) == 300 && full.stepsIn(1000 + kHourUs) == 0 && Budget{}.stepsIn(5) == 0);
   std::puts("GREEN budget: what a step ran, at least 250 ms, kept across sleep, reset after an hour or a clock reset");
 
   // The stop: a key, or the step's own time; the time cap says which.

@@ -21,6 +21,8 @@ inline constexpr int kMinBatteryPercent = 30;
 inline constexpr uint64_t kHourUs = 3600ull * 1000 * 1000;
 inline constexpr uint32_t kHourBudgetMs = 60u * 1000u;
 inline constexpr uint32_t kMinChargeMs = 250;
+// Steps an hour, on the cable too: a step that keeps ending the same way (no heap) stays rare.
+inline constexpr uint16_t kHourMaxSteps = 120;
 // A step stops after this long whatever it is doing: the loop and the sleep timer wait for it.
 inline constexpr uint32_t kStepCapMs = 6000;
 
@@ -30,12 +32,14 @@ struct IdleInputs {
   bool usb;
   int batteryPercent;
   uint32_t hourUsedMs;
+  uint16_t hourSteps;
 };
 
 // The ONE answer to "may an idle step run now".
 constexpr Why verdict(const IdleInputs& in) {
   if (in.where != Where::Home) return Why::NotHome;
   if (in.quietMs < kQuietMs) return Why::TooSoon;
+  if (in.hourSteps >= kHourMaxSteps) return Why::HourCap;
   if (in.usb) return Why::Ok;  // on the cable: neither the battery nor the hour applies
   if (in.batteryPercent < kMinBatteryPercent) return Why::BatteryLow;
   if (in.hourUsedMs >= kHourBudgetMs) return Why::HourCap;
@@ -49,16 +53,22 @@ struct Budget {
   uint32_t magic;
   uint32_t usedMs;
   uint64_t windowUs;
+  uint32_t steps;
   constexpr bool live(const uint64_t nowUs) const {
     return magic == kMagic && nowUs >= windowUs && nowUs - windowUs < kHourUs;
   }
   constexpr uint32_t used(const uint64_t nowUs) const { return live(nowUs) ? usedMs : 0; }
+  constexpr uint16_t stepsIn(const uint64_t nowUs) const {
+    return live(nowUs) ? static_cast<uint16_t>(steps < 0xFFFF ? steps : 0xFFFF) : 0;
+  }
   constexpr void charge(const uint64_t nowUs, const uint32_t ranMs) {
     if (!live(nowUs)) {
       magic = kMagic;
       usedMs = 0;
       windowUs = nowUs;
+      steps = 0;
     }
+    ++steps;
     const uint32_t ms = ranMs < kMinChargeMs ? kMinChargeMs : ranMs;
     usedMs = usedMs + ms < usedMs ? UINT32_MAX : usedMs + ms;
   }
@@ -91,7 +101,8 @@ struct Job {
 };
 
 // A fixed queue, no allocation. One job per key; a key whose job finished is not queued again
-// until clear(true) (Home calls that on a new visit), so a done job costs nothing on repaints.
+// until clear(true) (Home calls it when it comes back to the front, onResume; a new Home starts
+// with an empty queue), so a done job costs nothing on repaints.
 template <size_t N = 4, size_t Settled = 8>
 class Queue {
  public:
