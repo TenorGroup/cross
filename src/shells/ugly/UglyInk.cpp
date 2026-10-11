@@ -656,7 +656,7 @@ void statusBar(const GfxRenderer& r, const char* btn1, const char* btn2, const c
   const int levelRoom = levelWidth;
   const int batteryX = clockLeft ? w - 56 : 14;
   battery(r, batteryX, y, level, digits);
-  if (digits) text(r, Size::S22, clockLeft ? batteryX + 2 - levelWidth : batteryX + 44, y + 8, level_text);
+  if (digits) text(r, Size::S22, clockLeft ? batteryX - 1 - levelWidth : batteryX + 45, y + 8, level_text);
   char clock[12] = "", date[8];
   const bool hasClock = clockText(clock, sizeof(clock), date, sizeof(date), true);
   const int clockWidth = hasClock ? width(r, Size::S22, clock) : 0;
