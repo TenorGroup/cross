@@ -141,6 +141,25 @@ class UglyIssue3Test(unittest.TestCase):
                 count = lambda im: sum(1 for p in im.crop(box).getdata() if p < 128)
                 self.assertGreater(count(hidden), count(shown) + 20, 'the level as strokes in the body')
 
+    def test_3_the_habit_explanation_is_written_once_clear_of_the_rule_and_the_tip(self):
+        for level in (0, 1):
+            for tier in (0, 1, 2):
+                with self.subTest(level=level, tier=tier):
+                    im, acts = shot(['DOWN'] * 4 + ['CONFIRM'], tier, level, prepare=habits_stats)
+                    self.assertEqual(acts[-1], 'ReadingHabits')
+                    px = im.load()
+                    rows = [y for y in range(330, 700) if sum(1 for x in range(24, 504) if px[x, y] < 128) >= 200]
+                    self.assertTrue(rows, 'the rule above the explanation')
+                    rule = rows[-1]
+                    self.assertEqual(bands(im, 24, 504, rule + 1, rule + 5), [], 'the text touches the rule')
+                    first = bands(im, 24, 504, rule + 1, 700)[0][0]
+                    self.assertGreaterEqual(first - rule - 1, 6, 'text under the rule')
+                    # one layer starts at x 24; the pages of the X3 layout started at 0
+                    self.assertEqual(bands(im, 0, 18, rule + 1, 650), [], 'a second layer at the left edge')
+                    if level == 0:
+                        lines = bands(im, 24, 504, rule + 1, 650)
+                        self.assertGreaterEqual(len(lines), 5, lines)
+
 
 if __name__ == '__main__':
     unittest.main()
