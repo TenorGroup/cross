@@ -33,6 +33,7 @@ struct Store {
   f.w=it->second.first;f.h=it->second.second;return true;
  }
 } Storage;
+namespace coverink { bool restore(const std::string&) { return true; } }  // the ink backup: test/cover_ink
 enum class BmpReaderError { Ok };
 struct Bitmap { HalFile f;Bitmap(HalFile file):f(file){} BmpReaderError parseHeaders(){return BmpReaderError::Ok;}
  int getWidth(){return f.w;}int getHeight(){return f.h;} };

@@ -308,7 +308,8 @@ int main() {
     keys.yesAt = asksWhole - back;
     const auto before = Storage.files[ink(96, 140, true)];
     assert(step(b) == O::Stopped && Storage.files[ink(96, 140, true)] == before && status() == S::Pending);
-    assert(!coverCopy());
+    // Heard after the decode: the sharp file is whole in staging, only not put in place.
+    assert(!coverCopy() && Storage.files[ink(96, 140, true) + ".davtmp"] == sharp);
     keys.yesAt = 0;
     assert(step(b) == O::Sharp);
   }

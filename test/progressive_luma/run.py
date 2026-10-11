@@ -196,6 +196,19 @@ check(bool(r) and r.get('open') == 'Done', f'DC of category 15: decoded without 
 q16 = edit(p420, 0xDB, lambda b: bytes([0x10 | (b[0] & 15)]) + b'\xff\xff' * 64 + b[65:])
 r = host('decode', save('q16', q16), work / 'out.pgm')
 check(r.get('run') == 'Done', f'16 bit quantizers of 65.535: decoded without undefined arithmetic ({r})')
+# A smooth picture framed shorter than its scans: an end-of-band run reaches past the last block.
+smooth = io.BytesIO()
+Image.linear_gradient('L').resize((203, 307)).convert('RGB').save(smooth, 'JPEG', progressive=True, quality=88)
+corrupt['eob_run_past_end'] = edit(smooth.getvalue(), 0xC2, lambda b: b[:1] + (64).to_bytes(2, 'big') + b[3:])
+# Cut right before the last scan: the scans before it decode whole, only the missing end tells.
+corrupt['cut_at_scan'] = p420[:p420.rindex(b'\xff\xda')]
+# The DC refinement scan (1 bit a block, no codes) losing half its data, the file going on to its end:
+# only the count of bits read past the data tells.
+starts = [i for i in range(len(p420) - 1) if p420[i] == 0xFF and p420[i + 1] == 0xDA]
+s6 = starts[6] + 2 + (p420[starts[6] + 2] << 8 | p420[starts[6] + 3])
+corrupt['scan_short'] = p420[:s6] + p420[s6:(s6 + starts[7]) // 2] + p420[starts[7]:]
+# A Huffman table counting one more code than its segment holds.
+corrupt['huffman_count_past_segment'] = edit(p420, 0xC4, lambda b: b[:16] + bytes([b[16] + 1]) + b[17:])
 corrupt['ah_over_13'] = scan_header(p420, 1, lambda h: h[:-3] + bytes([h[-3], h[-2], 0xE0 | 13]))
 for name, data in corrupt.items():
     r = host('decode', save(name, data), work / 'out.pgm')
