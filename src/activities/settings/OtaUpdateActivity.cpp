@@ -479,8 +479,6 @@ void OtaUpdateActivity::runUpdateInstall() {
   }
   requestUpdateAndWait();
   recordAttempt("install", true);
-  // Hold the completion screen briefly so the user sees it, then restart.
-  delay(3000);
   {
     RenderLock lock(*this);
     state = SHUTTING_DOWN;

@@ -209,7 +209,8 @@ struct OtaUpdateActivity {
   FakeRenderer renderer;
   MappedInputManager mappedInput;
   void requestUpdate(bool = false) {}
-  void requestUpdateAndWait() {}
+  unsigned long finishedPaintAt = 0;
+  void requestUpdateAndWait() { finishedPaintAt = millis(); }
   std::vector<Recorded> recorded;
   void finish() { ++finishes; }
   void recordAttempt(const char* op, bool now = false) { recorded.push_back({op, now, updater.lastAttempt()}); }
@@ -280,6 +281,8 @@ void run(const std::string& name) {
   if (name == "no-back-installs") {
     activity.runUpdateInstall();
     require(activity.state == OtaUpdateActivity::SHUTTING_DOWN, "an untouched download did not install");
+    require(activity.finishedPaintAt > 0, "success frame was not awaited");
+    require(fixedWaitMs == 0, "success frame adds an unconditional restart wait");
     require(otaCalls.written == image.size() && otaCalls.end == 1 && otaCalls.setBoot == 1 && otaCalls.abort == 0,
             "an untouched download did not switch the boot slot");
     require(!activity.backLatch.active(), "Back sampler kept running after the install");
