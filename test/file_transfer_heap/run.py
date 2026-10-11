@@ -28,4 +28,16 @@ for name, flags in (('menu', []), ('auto-join', ['-DTENOR_UI_ACCEPTANCE'])):
     run = subprocess.run([str(binary)], capture_output=True, text=True)
     print(f'{name}: {run.stdout.strip()}')
     failed |= run.returncode
+code = (repo / 'src/activities/settings/OtaUpdateActivity.cpp').read_text()
+start = code.index('void OtaUpdateActivity::onEnter() {')
+at = code.index('{', start) + 1
+depth = 1
+while depth:
+    depth += (code[at] == '{') - (code[at] == '}')
+    at += 1
+(out / 'production-ota-enter.inc').write_text(code[start:at] + '\n')
+binary = out / 'ota-entry'
+subprocess.run([a.cxx, '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                '-I' + str(out), str(here / 'OtaEntry.cpp'), '-o', str(binary)], check=True)
+failed |= subprocess.run([str(binary)]).returncode
 raise SystemExit(failed)

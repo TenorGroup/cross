@@ -12,6 +12,7 @@
 
 #include "MappedInputManager.h"
 #include "FileTransferState.h"
+#include "SettingsList.h"
 #include "SdCardFontSystem.h"
 #include "SilentRestart.h"
 #include "activities/ActivityManager.h"
@@ -143,6 +144,10 @@ void OtaUpdateActivity::onEnter() {
 
   // Turn on WiFi immediately
   LOG_DBG("OTA", "Turning on WiFi...");
+  {
+    RenderLock lock(*this);
+    releaseBaseSettingsList();
+  }
 #ifdef TENOR_PRESS_PROBE
   const uint32_t heapBeforeWifi = ESP.getFreeHeap();
   const uint32_t largestBeforeWifi = ESP.getMaxAllocHeap();
