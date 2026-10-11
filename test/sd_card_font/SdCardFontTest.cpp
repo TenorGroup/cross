@@ -368,6 +368,23 @@ TEST(SdCardFontTest, AdvanceMetadataPreservesZeroAdvance) {
   EXPECT_EQ(1U, sdFontTestReads);
 }
 
+TEST(SdCardFontTest, ResidentSubsetSkipsCodepointBuffer) {
+  makeFont();
+  SdCardFont font;
+  ASSERT_TRUE(font.load("fixture"));
+  const auto text = page(FIRST + 17, 1);
+  ASSERT_EQ(0, font.prewarm(text.c_str(), 1, false, false, false));
+  const auto expected = inkBitmap(font, FIRST + 17);
+
+  sdFontTestReads = 0;
+  failNextArraySize = 512 * sizeof(uint32_t);
+  EXPECT_EQ(0, font.prewarm(text.c_str(), 1, false, false, false));
+  EXPECT_EQ(512 * sizeof(uint32_t), failNextArraySize);
+  EXPECT_EQ(0U, sdFontTestReads);
+  EXPECT_EQ(expected, inkBitmap(font, FIRST + 17));
+  failNextArraySize = 0;
+}
+
 TEST(SdCardFontTest, CompletePagesReplaceEarlierGlyphs) {
   makeFont();
   SdCardFont font;
