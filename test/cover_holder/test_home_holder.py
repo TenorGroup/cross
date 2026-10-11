@@ -3,7 +3,8 @@
 
 Every frame Home draws the placeholder in (3 styles x 3 text sizes on the X4 Pro, 3 text sizes on the X3;
 the frames are read from the simulator's log line "Cover holder frame=x,y,w,h") is compared with the picture
-reference.py makes of the master at that size, 4 levels. Two shots per run: the first, before the idle pass
+reference.py makes of the master at that size: 4 levels on the X4 Pro, 1 bit on the X3, whose Home draws
+tenor/ink 1 bit (kInkX3Gray in HomeActivity.cpp). Two shots per run: the first, before the idle pass
 has written the placeholder, shows a plain frame; the second shows the picture. The corners (the card's
 rounded mask) are left out of the comparison.
 Not part of ctest: it needs a simulator binary (pio run -e simulator_x4pro / simulator_x3_uc8279).
@@ -94,7 +95,7 @@ def main():
     ap.add_argument('program', type=Path)
     ap.add_argument('--out', type=Path)
     ap.add_argument('--floor-refuses', action='store_true',
-                    help='X3: the heap floor refuses the gray strip (CROSSPOINT_SIM_INK_GRAY_FAIL); the frame is 1 bit tenor/ink')
+                    help='X3: the heap floor also refuses the gray strip (CROSSPOINT_SIM_INK_GRAY_FAIL); the frame stays 1 bit tenor/ink')
     a = ap.parse_args()
     a.program = a.program.resolve()
     runs = RUNS_X4 if a.dev == 'x4' else RUNS_X3
@@ -110,7 +111,7 @@ def main():
             shots, sd, log = shoot(a.program, folder, style, tier, 29600 + style * 10 + tier,
                                    extra={'CROSSPOINT_SIM_INK_GRAY_FAIL': '1'} if a.floor_refuses else None)
             Image.fromarray(shots[1]).save(out / f'{a.dev}-s{style}-t{tier}.png')
-            four = not a.floor_refuses
+            four = a.dev == 'x4'  # X3 Home draws tenor/ink 1 bit until its gray pass is turned on
             if four:
                 shots = [levels(s) for s in shots]
             rects = sorted({tuple(map(int, m)) for m in re.findall(r'Cover holder frame=(\d+),(\d+),(\d+),(\d+)', log)})
