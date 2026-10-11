@@ -21,12 +21,28 @@ struct UITextSizeSpec {
 
 constexpr uint8_t normalizedUiTextSize(uint8_t value) { return value < 3 ? value : 0; }
 
-// Line heights are measured from the generated font data at 150 DPI.
+// Line heights are the advanceY of the generated Geist face at that point size; UIScaleTest reads them from the font data.
 constexpr UITextSizeSpec uiTextSizeSpec(uint8_t value) {
   switch (normalizedUiTextSize(value)) {
-    case 1: return {10, 12, 14, 26, 33, 38};
+    case 1: return {10, 12, 14, 27, 33, 38};
     case 2: return {12, 14, 16, 33, 38, 43};
-    default: return {8, 10, 12, 21, 26, 33};
+    default: return {8, 10, 12, 22, 27, 33};
+  }
+}
+
+// How far each tier's layout grows from the Small tier, in px. Screens were laid out with these steps, one px
+// above the real growth of the Geist faces for caption and subtitle at the larger tiers; the measured heights
+// above must not move a screen, so the steps stay their own numbers. A step never reserves less than the font grows.
+struct UILayoutGrowth {
+  uint8_t caption;
+  uint8_t subtitle;
+  uint8_t body;
+};
+constexpr UILayoutGrowth uiLayoutGrowth(uint8_t value) {
+  switch (normalizedUiTextSize(value)) {
+    case 1: return {5, 7, 5};
+    case 2: return {12, 12, 10};
+    default: return {0, 0, 0};
   }
 }
 
