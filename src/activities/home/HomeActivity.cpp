@@ -128,7 +128,10 @@ struct CardFileHead {
   uint8_t thumb;
   int16_t cover;
 };
-constexpr uint32_t CARD_FILE_MAGIC = 0x34445243;  // "CRD4": cover 298 x 450, one line of excerpt
+// "CRD5": a book without a cover keeps the placeholder of components/CoverHolder.h on its card. A card
+// an older firmware wrote under the same version string holds the former placeholder, the lockup one,
+// and is drawn again; its file is replaced at the same name.
+constexpr uint32_t CARD_FILE_MAGIC = 0x35445243;
 
 uint32_t fnv(uint32_t hash, const void* data, size_t size) {
   for (const auto* p = static_cast<const uint8_t*>(data); size--; ++p) hash = (hash ^ *p) * 16777619u;
@@ -2118,7 +2121,9 @@ void HomeActivity::drawRecentCard() {
 #endif
     if (image) coverHeight = height;
   }
-  if (!image) drawHolder(card.coverX, card.coverY, card.coverW, card.coverH);
+  // A plain frame waits for the idle pass to write the placeholder: the card is not kept, or its file
+  // would bring the plain frame back after the picture is on the card.
+  const bool plainFrame = !image && !drawHolder(card.coverX, card.coverY, card.coverW, card.coverH);
   // Round the cover's corners by painting the page back over them, the pixels a rounded card
   // would not cover: a few hundred pixels, no second buffer, and the cached card keeps them.
   if (!coverKept)
@@ -2143,7 +2148,7 @@ void HomeActivity::drawRecentCard() {
 #endif
   coverBufferBook = shown;
   coverRendered = true;
-  if (coverBufferStored && !cardPath.empty()) {
+  if (coverBufferStored && !cardPath.empty() && !plainFrame) {
     cardFilePending = cardPath;
     cardFileCoverKey = coverKey;
     cardFileKey = key;
