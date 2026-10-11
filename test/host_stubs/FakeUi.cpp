@@ -122,7 +122,7 @@ uint32_t iconFrameSeed() { return 0; }
 bool iconAsset(const GfxRenderer&, const uint8_t*, icons::Rect, uint32_t, int, int, bool) { return false; }
 Box inkBounds(const GfxRenderer&, Box area) { return area; }
 void pageHints(const GfxRenderer&, const char*, const char*, int) {}
-void pathHints(const GfxRenderer&, const char*, const char*) {}
+void pathHints(const GfxRenderer&, const char*, const char*, bool) {}
 int width(const GfxRenderer& r, Size, const char* text, bool) { return r.getTextWidth(0, text); }
 int ascent(Size) { return 16; }  // Same ascender as the renderer stub above.
 Box textBounds(const GfxRenderer& r, Size size, const char* label) {
