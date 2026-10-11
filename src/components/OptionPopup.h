@@ -394,6 +394,7 @@ class OptionPopup {
 #ifdef SIMULATOR
     if (contextCross) LOG_INF("MENU", "context box=%d,%d,%d,%d row=%d source=button", dialogRect.x,
                               dialogRect.y, dialogRect.width, dialogRect.height, props.buttonHeight);
+    else LOG_INF("DIALOG", "popup box=%d,%d,%d,%d", dialogRect.x, dialogRect.y, dialogRect.width, dialogRect.height);
 #endif
     if (contextCross && contextBackground) contextBackground(dialogRect);
     if (contextCross) renderer.fillRect(dialogRect.x - 8, dialogRect.y - 8,

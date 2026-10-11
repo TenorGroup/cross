@@ -123,6 +123,9 @@ void ConfirmationActivity::render(RenderLock&& lock) {
   renderer.setRenderMode(GfxRenderer::BW);
   layoutCross();
   const auto& box = layout.action;
+#ifdef SIMULATOR
+  LOG_INF("DIALOG", "confirm box=%d,%d,%d,%d", box.x, box.y, box.width, box.height);
+#endif
   renderer.fillRoundedRect(box.x, box.y, box.width, box.height, layout.radius, Color::White);
   tenorchrome::drawRoundRing(renderer, box.x, box.y, box.width, box.height, layout.radius, 2, tenorchrome::kTouchShell);
   if (tenorchrome::kTouchShell) {
