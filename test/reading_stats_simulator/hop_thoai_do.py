@@ -96,18 +96,21 @@ def tick_pixels(root):
 
 
 def find_ticks(image, ink, region):
-    """Top-left corners of every place inside region (x0, y0, x1, y1) where the 24 px tick is drawn exactly: its ink dark and
-    the rest of its 24 px cell white (a tick stands alone in its cell, a stroke of a bold letter does not)."""
+    """The tick inside region (x0, y0, x1, y1) as a list of its top-left corner: where the 24 px tick is drawn exactly (its ink all
+    dark) and the rest of its cell is the whitest. A tick stands alone in its cell, but when it is set against the ring
+    of its row the ring's end is in the cell too; a stroke of a bold letter has far more ink in the cell than that."""
     px = image.load()
     x0, y0, x1, y1 = region
     ink = set(ink)
     rest = [(c, r) for r in range(24) for c in range(24) if (c, r) not in ink]
-    hits = []
+    best = None
     for y in range(max(0, y0), min(image.size[1] - 24, y1 - 23)):
         for x in range(max(0, x0), min(image.size[0] - 24, x1 - 23)):
-            if all(dark(px[x + c, y + r]) for c, r in ink) and not any(dark(px[x + c, y + r]) for c, r in rest):
-                hits.append((x, y))
-    return hits
+            if all(dark(px[x + c, y + r]) for c, r in ink):
+                extra = sum(1 for c, r in rest if dark(px[x + c, y + r]))
+                if best is None or extra < best[0]:
+                    best = (extra, x, y)
+    return [(best[1], best[2])] if best and best[0] <= 60 else []
 
 
 def row_ring(image, y, x0, x1, min_run=100):
