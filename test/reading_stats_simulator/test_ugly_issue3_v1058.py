@@ -100,6 +100,47 @@ class UglyIssue3Test(unittest.TestCase):
                 ringed = bands(shot(['RIGHT', 'RIGHT', 'CONFIRM', 'DOWN'], tier)[0], 0, 260, 672, 760)
                 self.assertGreaterEqual(ringed[1][0] - ringed[0][1] - 1, 6, f'the ring touches the line at the foot: {ringed}')
 
+    def foot(self, clock_left, mode):
+        """The comps of ink (letters, marks, the battery) of the foot bar, left to right, and the battery body among them."""
+        im, _ = shot([], 0, 1, statusBarClock=2 if clock_left else 1, hideBatteryPercentage=mode)
+        parts = sorted(ink_components(im, (0, 752, 528, 792), reach=1))
+        bodies = [p for p in parts if 28 <= p[2] - p[0] + 1 <= 44 and 11 <= p[3] - p[1] + 1 <= 24 and (p[0] > 440 if clock_left else p[2] < 90)]
+        self.assertEqual(len(bodies), 1, f'the battery body among {parts}')
+        return im, parts, bodies[0]
+
+    def test_2_the_battery_level_is_written_beside_an_empty_body(self):
+        for clock_left in (True, False):
+            for mode in (0, 1):  # Hide Battery %: never, in the reader: the foot bar shows the number in both
+                with self.subTest(clock_left=clock_left, mode=mode):
+                    im, parts, body = self.foot(clock_left, mode)
+                    inside = [p for p in parts if p != body and p[0] >= body[0] and p[2] <= body[2] and p[1] >= body[1] and p[3] <= body[3]]
+                    self.assertEqual(inside, [], f'ink inside the body {body}')
+                    # the letters beside it: from the body outwards while the gap is a letter's
+                    outward = sorted((p for p in parts if p != body and (p[2] < body[0] if clock_left else p[0] > body[2])),
+                                     key=lambda p: -p[2] if clock_left else p[0])
+                    gap = lambda a, b: (a[0] - b[2] if clock_left else b[0] - a[2]) - 1
+                    block, last = [], body
+                    for p in outward:
+                        if block and gap(last, p) > 5:
+                            break
+                        if not block and gap(last, p) > 20:
+                            break
+                        block.append(p)
+                        last = p
+                    self.assertGreaterEqual(len(block), 3, f'the number beside the body {body}: {block}')
+                    top, bottom = min(p[1] for p in block), max(p[3] for p in block)
+                    self.assertGreaterEqual(bottom - top + 1, 12, f'number {top}..{bottom}')
+                    self.assertGreaterEqual(gap(body, block[0]), 6, 'number to body')
+                    beyond = [p for p in outward if p not in block]
+                    if beyond:
+                        self.assertGreaterEqual(gap(block[-1], beyond[0]), 6, f'number to the next mark {beyond[0]}')
+            with self.subTest(clock_left=clock_left, mode='hidden'):
+                shown, _, body = self.foot(clock_left, 0)
+                hidden, _, same = self.foot(clock_left, 2)
+                box = (same[0], same[1], same[2] + 1, same[3] + 1)
+                count = lambda im: sum(1 for p in im.crop(box).getdata() if p < 128)
+                self.assertGreater(count(hidden), count(shown) + 20, 'the level as strokes in the body')
+
 
 if __name__ == '__main__':
     unittest.main()

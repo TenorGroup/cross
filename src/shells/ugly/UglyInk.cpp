@@ -573,37 +573,10 @@ void penTick(const GfxRenderer& r, const int x, const int y, const int span, con
 
 void tick(const GfxRenderer& r, const int x, const int y) { penTick(r, x, y, 32, 3); }
 
-namespace {
-void batteryDigits(const GfxRenderer& renderer, const int batteryX, const int batteryY, const int level) {
-  char digits[4];
-  snprintf(digits, sizeof(digits), "%d", level);
-  constexpr logic::Warp small = {0, 4096, 65, 0, 100};
-  int minX = 100, minY = 100, maxX = -100, maxY = -100, cursor = 0;
-  for (const char* digit = digits; *digit; ++digit) {
-    const auto* glyph = FONT22.getGlyph(*digit);
-    logic::warpGlyph(FONT22.data->bitmap + glyph->dataOffset, glyph->width, glyph->height, glyph->left, glyph->top,
-                     glyph->advanceX, small, logic::NO_CLIP, [&](const int px, const int py) {
-                       minX = std::min(minX, cursor + px);
-                       maxX = std::max(maxX, cursor + px);
-                       minY = std::min(minY, py);
-                       maxY = std::max(maxY, py);
-                     });
-    cursor += logic::warpAdvance(glyph->advanceX, small) + 1;
-  }
-  cursor = batteryX + 17 - (minX + maxX) / 2;
-  const int baseline = batteryY - (minY + maxY) / 2;
-  for (const char* digit = digits; *digit; ++digit) {
-    const auto* glyph = FONT22.getGlyph(*digit);
-    drawWarped(renderer, Size::S22, {glyph, small}, cursor, baseline, true);
-    cursor += logic::warpAdvance(glyph->advanceX, small) + 1;
-  }
-}
-}
-
 void battery(const GfxRenderer& r, const int x, const int y, const int percent, const bool showNumber) {
   icon(r, icons::Id::Battery, {x, y - 14, 42, 28}, iconFrameSeed());
+  if (showNumber) return;  // the body stays empty: the level is written beside it (statusBar)
   const int level = std::clamp(percent, 0, 100);
-  if (showNumber) return batteryDigits(r, x, y, level);
   for (int px = x + 4; px < x + 4 + 26 * level / 100; px += 3) stroke(r, px, y - 6, px + 1, y + 6, 1);
 }
 
@@ -675,7 +648,16 @@ void statusBar(const GfxRenderer& r, const char* btn1, const char* btn2, const c
   const int y = h - 20;
   const int level = std::clamp(static_cast<int>(powerManager.getDisplayedBatteryPercentage()), 0, 100);
   const bool clockLeft = SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_LEFT;
-  battery(r, clockLeft ? w - 56 : 14, y, level, SETTINGS.batteryPercentShown(false));
+  // The level in the pen beside the battery, as readable as the clock: on the screen's side of the clock
+  // when the battery is on the right, to its right otherwise. The marks make room for it below.
+  const bool digits = SETTINGS.batteryPercentShown(false);
+  char level_text[6] = "";
+  if (digits) snprintf(level_text, sizeof(level_text), "%d%%", level);
+  const int levelWidth = digits ? width(r, Size::S22, level_text) : 0;
+  const int levelRoom = levelWidth;
+  const int batteryX = clockLeft ? w - 56 : 14;
+  battery(r, batteryX, y, level, digits);
+  if (digits) text(r, Size::S22, clockLeft ? batteryX + 2 - levelWidth : batteryX + 44, y + 8, level_text);
   char clock[12] = "", date[8];
   const bool hasClock = clockText(clock, sizeof(clock), date, sizeof(date), true);
   const int clockWidth = hasClock ? width(r, Size::S22, clock) : 0;
@@ -685,8 +667,8 @@ void statusBar(const GfxRenderer& r, const char* btn1, const char* btn2, const c
   static constexpr int WIDE[5] = {105, 197, 264, 331, 423}, NARROW[5] = {98, 186, 240, 294, 382};
   const int* centres = w >= 528 ? WIDE : NARROW;
   const char* words[5] = {btn1, btn2, hasClock ? date : "", btn3, btn4};
-  const int leftEnd = clockLeft ? 18 + clockWidth : 60;
-  const int rightEnd = clockLeft ? w - 60 : w - 18 - clockWidth;
+  const int leftEnd = clockLeft ? 18 + clockWidth : 60 + levelRoom;
+  const int rightEnd = clockLeft ? w - 60 - levelRoom : w - 18 - clockWidth;
   int positions[5], spans[5] = {};
   std::string fitted[5];
   int leftEdge = leftEnd + 6;

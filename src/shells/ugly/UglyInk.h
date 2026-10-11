@@ -64,7 +64,8 @@ void line(const GfxRenderer& renderer, int x0, int y0, int x1, int y1, uint32_t 
 void penStroke(const GfxRenderer& renderer, int x0, int y0, int x1, int y1, int stroke = 1);
 // A hand-drawn tick, its elbow at (x, y).
 void tick(const GfxRenderer& renderer, int x, int y);
-// A battery drawn by hand with its level as pen strokes or small digits inside its body.
+// A battery drawn by hand with its level as pen strokes inside its body, or, with showNumber, an empty body (the
+// level is written beside it, by statusBar).
 void battery(const GfxRenderer& renderer, int x, int y, int percent, bool showNumber = false);
 
 // A hand-drawn mark, one pen stroke from a baked table, about 20 px across, centred on (cx, cy).

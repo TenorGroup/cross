@@ -432,7 +432,7 @@ void drawShape(const GfxRenderer& r, Shape, int x, int y, int size, bool) {
                              [&](int px, int py) { renderer.drawPixel(left + px, baseline + py, black); });
           }
         '''
-        for signature in ('void polyline(', 'void batteryDigits(', 'void battery(', 'bool clockText('):
+        for signature in ('void polyline(', 'void battery(', 'bool clockText('):
             fixture += function(ink, signature) + '\n'
         for match in re.finditer(r'\nvoid statusBar\(', ink):
             fixture += function(ink[match.start():], 'void statusBar(') + '\n'
