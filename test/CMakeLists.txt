@@ -157,6 +157,7 @@ add_subdirectory(pngdec_window)
 add_subdirectory(cover_thumb_ram)
 add_subdirectory(cover_jpeg_decode)
 add_subdirectory(image_downscale)
+add_subdirectory(bitmap_columns)
 add_subdirectory(css_number)
 
 add_subdirectory(keyboard_sync)
