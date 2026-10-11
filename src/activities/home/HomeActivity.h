@@ -16,6 +16,7 @@
 #include "components/HomeSettingsLayout.h"
 #include "components/HomeRecentLayout.h"
 #include <HalMemory.h>
+#include <IdleWork.h>
 
 struct Rect;
 
@@ -35,6 +36,7 @@ class HomeActivity final : public UiTabListActivity {
   void captureNavigation(MenuNavigationState& state) const override;
   void onExit() override;
   void onPause() override;
+  void onResume() override;
   void onTick() override;
   void render(RenderLock&&) override;
   bool isHomeActivity() const override { return true; }
@@ -289,6 +291,18 @@ class HomeActivity final : public UiTabListActivity {
   struct InkSlot { HomeRecentRect rect; int book = -1; };
   std::array<InkSlot, 4> inkSlots{};
   int inkSlotCount = 0;
+  // Idle work (X3): the sharp cover of a progressive JPEG on each tenor/ink slot shown, made while
+  // Home stands still. The render task fills the queue, the main task runs it; both under RenderLock.
+  idlework::Queue<> idleQueue;
+  uint32_t idleQuietSince = 0;  // the last key or frame
+  uint32_t idleRetryAt = 0;         // after a heap floor refusal
+  uint32_t idleBackoffMs = 30000;   // doubles on each refusal, up to 10 minutes
+  uint8_t idleOutcome = 0;          // coverink::Outcome of the last step
+  const char* idleWhy = "";        // why it ended so (the probe build logs it)
+  void queueIdleCovers();
+  void idleStep();
+  void idleRelease();
+  static idlework::Step coverStep(const idlework::Job& job, const idlework::Stop& stop);
   HomeRecentLayout recentLayout();
   void drawTouchRecent(const HomeRecentLayout& layout);
   void drawTouchCover(const HomeRecentRect& rect, int book);

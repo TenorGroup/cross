@@ -24,6 +24,14 @@ constexpr bool homeGray(bool touch, bool psram, bool recent, bool ugly, bool abs
          ((touch && psram) || (x3 && !heapfloor::crosses(free, largest)));
 }
 
+// The frames the kernel takes, and the most it holds for one (bounds, rows, sums, a packed row, the
+// ditherer's 3 error rows): one rule for CoverStream and for a caller that asks the heap first.
+constexpr bool frameFits(int w, int h) { return w > 0 && h > 0 && w <= 800 && h <= 800; }
+constexpr size_t streamBytes(int w, int h, bool four) {
+  return size_t(four ? (w * 2 + 31) / 32 * 4 : (w + 31) / 32 * 4) + size_t(w) * 3 * sizeof(int) +
+         size_t(h) * 2 * sizeof(int) + size_t(w) * sizeof(uint32_t) + (size_t(w) + 4) * 3 * sizeof(int16_t) + 64;
+}
+
 // One crop/BOX/dither kernel for both source arrays and decoded scanlines.
 class CoverStream {
  public:

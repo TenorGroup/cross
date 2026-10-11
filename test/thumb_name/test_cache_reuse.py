@@ -28,6 +28,7 @@ struct Store {
   bool openFileForRead(const char*,const std::string& p,HalFile& f) { if(!exists(p.c_str())) return false; f.data=&files[p]; return true; }
   bool rename(const char* a,const char* b) { files[b]=files[a]; files.erase(a); return true; }
 } Storage;
+namespace coverink { bool restore(const std::string&) { return true; } }  // the ink backup: test/cover_ink
 struct GrayThumb { explicit GrayThumb(int) {} void alsoFeed(GrayThumb*) {} bool ready() const { return true; }
   bool writeTo(HalFile& f) const { *f.data={1,2,3}; return true; }
   bool writeScaled(int,HalFile& f) const { return writeTo(f); }

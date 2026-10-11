@@ -53,6 +53,13 @@ constexpr bool crosses(const size_t freeBytes, const size_t largestReported) {
   return freeBytes < kFreeFloor || largestReported < kLargestFloorReported;
 }
 
+// Before work that will take `need` bytes in all, `biggest` in one block: true when the heap now
+// (reported numbers) leaves the floor standing after them. A forecast that spares a step its
+// earlier, costly part; each block still goes through the door below.
+constexpr bool leaves(const size_t need, const size_t biggest, const size_t freeNow, const size_t largestNow) {
+  return freeNow >= need && largestNow >= biggest && !crosses(freeNow - need, largestNow - biggest);
+}
+
 // THE decision for an allocation of `bytes`, given the heap left after it (reported numbers).
 constexpr bool stands(const size_t bytes, const size_t freeAfter, const size_t largestAfterReported) {
   return bytes < kBigBytes || !crosses(freeAfter, largestAfterReported);

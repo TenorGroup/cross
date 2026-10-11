@@ -39,6 +39,12 @@ inline bool decode(const uint8_t* data, const size_t size, std::string& href) {
   return true;
 }
 
+// After a book's first frame: written when missing or naming another cover, whatever thumbnails
+// the book still owes (Home's idle cover step reads it for every book).
+inline bool saveDue(const bool loaded, const std::string& saved, const std::string& href) {
+  return !loaded || saved != href;
+}
+
 // The file itself (CoverRef.cpp): written under ".tmp" and renamed once whole.
 bool save(const std::string& cachePath, const std::string& href);
 bool load(const std::string& cachePath, std::string& href);
