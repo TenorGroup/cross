@@ -2243,10 +2243,11 @@ void HomeActivity::wantThumb(const int index) {
 
 void HomeActivity::onTick() {
   if (wakeStatePending.exchange(false)) saveAppState();
-  tickHolders();
+  // A tick that wrote a placeholder leaves the idle step for the next one: the redraw comes first.
+  const bool holderDrawn = tickHolders();
   const int index = thumbWanted.load();
   if (index < 0) {
-    idleStep();
+    if (!holderDrawn) idleStep();
     return;
   }
   // Any press moves the card on or opens something: the decode waits for the next idle card.
@@ -2698,18 +2699,19 @@ void HomeActivity::wantHolder(const int width, const int height) {
   holderCount = count + 1;
 }
 
-// Main task, once the card has been idle: writes the placeholders the frames asked for.
-void HomeActivity::tickHolders() {
-  if (holderCount.load() == 0) return;
+// Main task, once the card has been idle: writes the placeholders the frames asked for. True when one was
+// written and the card asked to be drawn again.
+bool HomeActivity::tickHolders() {
+  if (holderCount.load() == 0) return false;
   if (mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased()) {
     holderAtMs = millis();
-    return;
+    return false;
   }
-  if (millis() - holderAtMs.load() < HOLDER_IDLE_MS) return;
+  if (millis() - holderAtMs.load() < HOLDER_IDLE_MS) return false;
   RenderLock lock(*this);
   const auto requests = holderRequests;
   const int count = holderCount.exchange(0);
-  if (activeTabId != Tab::RECENT) return;
+  if (activeTabId != Tab::RECENT) return false;
   bool wrote = false;
   for (int i = 0; i < count; ++i) {
     const int width = requests[i].width, height = requests[i].height;
@@ -2721,10 +2723,11 @@ void HomeActivity::tickHolders() {
             static_cast<unsigned>(ESP.getMaxAllocHeap()));
     wrote = wrote || ok;
   }
-  if (!wrote) return;
+  if (!wrote) return false;
   freeCoverBuffer();
   coverRendered = false;
   requestUpdate();
+  return true;
 }
 
 // Written under a temporary name and renamed once whole, as every cover thumbnail is.

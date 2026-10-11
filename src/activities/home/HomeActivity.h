@@ -278,7 +278,7 @@ class HomeActivity final : public UiTabListActivity {
   std::string holderPath(int width, int height) const;
   bool drawHolder(int x, int y, int width, int height);
   void wantHolder(int width, int height);
-  void tickHolders();
+  bool tickHolders();
   bool writeHolder(int width, int height);
   struct HolderRequest { int16_t width = 0, height = 0; };
   std::array<HolderRequest, 4> holderRequests{};

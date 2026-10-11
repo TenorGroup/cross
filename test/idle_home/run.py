@@ -4,7 +4,7 @@ for quiet (a key held too), Home in front and the hour's steps, decides that bef
 render lock, never waits for the render task, holds the CPU at full speed, draws again only after a
 sharp cover, keeps the card's snapshot when it has nothing to do, backs off after a heap floor
 refusal, and is tried again when Home comes back to the front. The card restores a cut replacement
-(coverink::restore) before it opens its cover.
+(coverink::restore) before it opens its cover. A tick that wrote a cover placeholder starts no step.
 
   run.py --output <dir> [--source src/activities/home/HomeActivity.cpp]
 """
@@ -289,6 +289,51 @@ subprocess.run(['c++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-UNDEBUG', 
                 '-I', str(repo / 'lib/JpegToBmpConverter'),
                 str(args.output / 'generated.cpp'), '-o', str(args.output / 'test')], check=True)
 r = subprocess.run([str(args.output / 'test')], capture_output=True, text=True)
+print(r.stdout, end='')
+print(r.stderr, end='')
+if r.returncode:
+    raise SystemExit(r.returncode)
+
+# onTick from the production source: a tick in which the cover placeholder was written (tickHolders asked
+# for a redraw) starts no idle step, so the placeholder is drawn before a long build begins.
+tick = r'''
+#include <atomic>
+#include <cassert>
+#include <cstdint>
+#include <cstdio>
+uint32_t now = 10000;
+uint32_t millis() { return now; }
+void saveAppState() {}
+constexpr uint32_t CARD_THUMB_IDLE_MS = 1000;
+struct { bool wasAnyPressed() const { return false; } bool wasAnyReleased() const { return false; } } mappedInput;
+struct HomeActivity {
+  std::atomic<bool> wakeStatePending{false};
+  std::atomic<int> thumbWanted{-1};
+  std::atomic<uint32_t> thumbWantedAtMs{0};
+  bool holderWrote = false;
+  int steps = 0, thumbs = 0;
+  bool tickHolders() { return holderWrote; }
+  void idleStep() { ++steps; }
+  void writeMissingThumb(int) { ++thumbs; }
+  void onTick();
+};
+''' + function('void HomeActivity::onTick()') + r'''
+int main() {
+  HomeActivity h;
+  h.holderWrote = true;
+  h.onTick();
+  assert(h.steps == 0);
+  h.holderWrote = false;
+  h.onTick();
+  assert(h.steps == 1);
+  std::puts("GREEN a tick that wrote the cover placeholder starts no idle step; the next one does");
+  return 0;
+}
+'''
+(args.output / 'tick.cpp').write_text(tick)
+subprocess.run(['c++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-UNDEBUG', str(args.output / 'tick.cpp'), '-o',
+                str(args.output / 'tick')], check=True)
+r = subprocess.run([str(args.output / 'tick')], capture_output=True, text=True)
 print(r.stdout, end='')
 print(r.stderr, end='')
 raise SystemExit(r.returncode)
