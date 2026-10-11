@@ -18,7 +18,7 @@ void writeBmpHeader2bit(Print& out, int width, int height);
 tenorink::CoverStream::CoverStream(int sw, int sh, Print& output, int w, int h, bool levels)
     : out(output), sourceWidth(sw), width(w), height(h),
       stride(0), four(levels) {
-  if (sw <= 0 || sh <= 0 || w <= 0 || h <= 0 || w > 800 || h > 800) { failed = true; return; }
+  if (sw <= 0 || sh <= 0 || !frameFits(w, h)) { failed = true; return; }
   stride = four ? (w * 2 + 31) / 32 * 4 : (w + 31) / 32 * 4;
   packed = makeUniqueNoThrow<uint8_t[]>(stride);
   bounds = heapfloor::array<int[]>(3 * w, "ink-bounds");

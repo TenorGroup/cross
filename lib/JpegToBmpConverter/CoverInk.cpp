@@ -4,6 +4,7 @@
 #include <HeapFloor.h>
 #include <RecoverableFile.h>
 
+#include <algorithm>
 #include <cstring>
 
 #include "TenorInk.h"
@@ -13,7 +14,8 @@ namespace {
 
 constexpr uint8_t kMagic[4] = {'C', 'I', 'N', 'K'};
 constexpr uint8_t kVersion = 1;
-constexpr size_t kBytes = 8 + kFrames * 8;
+constexpr size_t kHead = 12;
+constexpr size_t kBytes = kHead + kFrames * 8;
 
 uint16_t le16(const uint8_t* p) { return static_cast<uint16_t>(p[0] | p[1] << 8); }
 uint32_t le32(const uint8_t* p) { return p[0] | p[1] << 8 | p[2] << 16 | static_cast<uint32_t>(p[3]) << 24; }
@@ -53,8 +55,10 @@ bool parse(const uint8_t* b, Record& out) {
   if (r.kind != Kind::Unknown && r.kind != Kind::Baseline && r.kind != Kind::Progressive && r.kind != Kind::Failed)
     return false;
   r.count = b[6];
+  r.width = le16(b + 8);
+  r.height = le16(b + 10);
   for (int i = 0; i < r.count; ++i) {
-    const uint8_t* f = b + 8 + i * 8;
+    const uint8_t* f = b + kHead + i * 8;
     r.frame[i] = {le16(f), le16(f + 2), static_cast<uint8_t>(f[4] ? 1 : 0), static_cast<Status>(f[5]), f[6]};
     if (f[5] > static_cast<uint8_t>(Status::GaveUp)) return false;
   }
@@ -107,9 +111,13 @@ bool write(const std::string& path, const Record& record) {
   b[4] = kVersion;
   b[5] = static_cast<uint8_t>(record.kind);
   b[6] = record.count;
+  b[8] = record.width & 0xFF;
+  b[9] = record.width >> 8;
+  b[10] = record.height & 0xFF;
+  b[11] = record.height >> 8;
   for (int i = 0; i < record.count; ++i) {
     const Frame& f = record.frame[i];
-    uint8_t* p = b + 8 + i * 8;
+    uint8_t* p = b + kHead + i * 8;
     p[0] = f.width & 0xFF;
     p[1] = f.width >> 8;
     p[2] = f.height & 0xFF;
@@ -133,6 +141,8 @@ bool write(const std::string& path, const Record& record) {
   return ok;
 }
 
+bool restore(const std::string& inkPath) { return freeink::recoverFile(Storage, inkPath.c_str()); }
+
 void dropCards(const std::string& inkPath) {
   for (const char kind : {'e', '0', '1', '2', '3'}) {
     const std::string card = inkPath + ".card" + kind;
@@ -145,6 +155,10 @@ void dropCards(const std::string& inkPath) {
 
 Outcome build(const std::string& cacheDir, const std::string& inkPath, const int width, const int height,
               const bool four, const Source& source, const idlework::Stop& stop) {
+  // Only a tenor/ink cover of this book's cache is ever replaced.
+  const std::string own = cacheDir + "/ink2_";
+  if (inkPath.compare(0, own.size(), own) != 0 || inkPath.find('/', own.size()) != std::string::npos)
+    return Outcome::Nothing;
   if (!settle(inkPath, [&](const std::string& p) { return wholeCover(p, width, height, four); })) return Outcome::Later;
   // The temporary cover comes first, from the usual path; this step only ever replaces it.
   if (!Storage.exists(inkPath.c_str())) return Outcome::Nothing;
@@ -168,8 +182,16 @@ Outcome build(const std::string& cacheDir, const std::string& inkPath, const int
     return Outcome::Gone;
   };
   const auto passing = [](const progluma::Result r) { return r == progluma::Result::NoHeap ? Outcome::NoHeap : Outcome::Later; };
+  // A frame the kernel cannot take never will: given up now.
+  if (!tenorink::frameFits(width, height)) {
+    record.at(width, height, four).status = Status::GaveUp;
+    write(state, record);
+    return Outcome::Failed;
+  }
+  // From here the step takes memory: Home gives its card snapshot back first.
+  if (source.release) source.release(source.user);
 
-  if (record.kind == Kind::Unknown) {
+  if (record.kind == Kind::Unknown || !record.width || !record.height) {
     progluma::Sniffer sniffer;
     const auto r = source.sniff(source.user, sniffer, stop);
     if (r == progluma::Result::Stopped) return stopped();
@@ -186,79 +208,106 @@ Outcome build(const std::string& cacheDir, const std::string& inkPath, const int
     }
     if (sniffer.kind() != progluma::Kind::Progressive) return gone();
     record.kind = Kind::Progressive;
+    record.width = static_cast<uint16_t>(sniffer.width());
+    record.height = static_cast<uint16_t>(sniffer.height());
     if (!write(state, record)) return Outcome::Later;
   }
+#if defined(ESP_PLATFORM)
+  // Asked before the cover is copied out of the book: a heap that cannot hold the decode spares
+  // the copy. The blocks still go through the door one by one below.
+  const size_t need = progluma::worstBytes(record.width) + tenorink::streamBytes(width, height, four);
+  const size_t biggest = std::max(progluma::biggestBlock(record.width), size_t(width) * 3 * sizeof(int));
+  if (!heapfloor::leaves(need, biggest, ESP.getFreeHeap(), ESP.getMaxAllocHeap())) return Outcome::NoHeap;
+#endif
 
   const std::string coverPath = cacheDir + "/.cover.jpg";
   const auto copied = source.copy(source.user, coverPath, stop);
-  if (copied == progluma::Result::Stopped) return stopped();
-  if (copied != progluma::Result::Done) return passing(copied);
-  HalFile cover;
-  if (!Storage.openFileForRead("INK", coverPath, cover)) return Outcome::Later;
-  progluma::Decoder decoder;
-  auto r = decoder.open(cover);
-  if (r != progluma::Result::Done) {
+  // The copy of the cover goes on every way out of the step.
+  const Outcome outcome = copied == progluma::Result::Stopped ? stopped()
+                          : copied != progluma::Result::Done  ? passing(copied)
+                                                              : [&]() -> Outcome {
+    HalFile cover;
+    if (!Storage.openFileForRead("INK", coverPath, cover)) return Outcome::Later;
+    HalFile out;
+    struct Feed {
+      tenorink::CoverStream* stream;
+      const idlework::Stop& stop;
+      bool refused;  // the card refused a row
+    } feed{nullptr, stop, false};
+    progluma::Sink sink;
+    sink.user = &feed;
+    sink.row = [](void* user, const uint8_t* pixels, const int y) {
+      auto& f = *static_cast<Feed*>(user);
+      const bool ok = f.stream->push(pixels, y);
+      f.refused = !ok;
+      return ok;
+    };
+    sink.stop = [](void* user) { return static_cast<Feed*>(user)->stop(); };
+    progluma::Decoder decoder;
+    auto r = decoder.open(cover, sink);
+    if (r != progluma::Result::Done) {
+      cover.close();
+      if (r == progluma::Result::Stopped) return stopped();
+      if (r == progluma::Result::Corrupt || r == progluma::Result::Unsupported) return gone();
+      return passing(r);
+    }
+    const std::string staging = inkPath + ".davtmp";
+    if (!Storage.openFileForWrite("INK", staging, out)) {
+      cover.close();
+      return counted();
+    }
+    tenorink::CoverStream stream(decoder.width(), decoder.height(), out, width, height, four);
+    feed.stream = &stream;
+    bool fits = stream.valid();
+  #if defined(ESP_PLATFORM)
+    // The blocks under 4 KB skip the door: the heap left with all of them must still be on the floor.
+    fits = fits && !heapfloor::crosses(ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  #endif
+    if (!fits) {
+      cover.close();
+      out.close();
+      Storage.remove(staging.c_str());
+      return Outcome::NoHeap;
+    }
+    r = decoder.run(sink);
     cover.close();
-    if (r == progluma::Result::Corrupt || r == progluma::Result::Unsupported) {
-      Storage.remove(coverPath.c_str());
+    if (r == progluma::Result::Stopped) {
+      out.close();  // the staging file stays: the next start truncates it
+      return stopped();
+    }
+    if (r == progluma::Result::Corrupt) {
+      out.close();
+      Storage.remove(staging.c_str());
       return gone();
     }
-    return passing(r);
-  }
-  const std::string staging = inkPath + ".davtmp";
-  HalFile out;
-  if (!Storage.openFileForWrite("INK", staging, out)) {
-    cover.close();
-    return counted();
-  }
-  tenorink::CoverStream stream(decoder.width(), decoder.height(), out, width, height, four);
-  bool fits = stream.valid();
-#if defined(ESP_PLATFORM)
-  // The blocks under 4 KB skip the door: the heap left with all of them must still be on the floor.
-  fits = fits && !heapfloor::crosses(ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-#endif
-  if (!fits) {
-    cover.close();
-    out.close();
-    Storage.remove(staging.c_str());
-    return Outcome::NoHeap;
-  }
-  struct Feed {
-    tenorink::CoverStream& stream;
-    const idlework::Stop& stop;
-  } feed{stream, stop};
-  progluma::Sink sink;
-  sink.user = &feed;
-  sink.row = [](void* user, const uint8_t* pixels, const int y) { return static_cast<Feed*>(user)->stream.push(pixels, y); };
-  sink.stop = [](void* user) { return static_cast<Feed*>(user)->stop(); };
-  r = decoder.run(sink);
-  cover.close();
-  if (r == progluma::Result::Stopped) {
-    out.close();  // the staging file stays: the next start truncates it
-    return stopped();
-  }
-  if (r == progluma::Result::Corrupt) {
-    out.close();
-    Storage.remove(staging.c_str());
-    Storage.remove(coverPath.c_str());
-    return gone();
-  }
-  const bool synced = r == progluma::Result::Done && stream.complete() && out.sync();
-  const bool closed = out.close();
-  // In order: the sharp file whole on the card, in place, the cards drawn from the old one gone,
-  // and only then the frame marked sharp. A cut anywhere leaves a readable cover and no mark.
-  if (!synced || !closed || !wholeCover(staging, width, height, four) ||
-      !freeink::replaceFile(Storage, staging.c_str(), inkPath.c_str())) {
-    Storage.remove(staging.c_str());
-    return counted();
-  }
-  dropCards(inkPath);
-  Frame& f = record.at(width, height, four);
-  f.status = Status::Sharp;
-  f.failures = 0;
+    const bool synced = r == progluma::Result::Done && stream.complete() && out.sync();
+    const bool closed = out.close();
+    if (r == progluma::Result::Io && !feed.refused) {
+      Storage.remove(staging.c_str());
+      return Outcome::Later;  // the cover could not be read: may pass
+    }
+    // In order: the sharp file whole on the card, in place, the cards drawn from the old one gone,
+    // and only then the frame marked sharp. A cut anywhere leaves a readable cover and no mark. A key
+    // is heard up to the replacement; after it the step finishes, so cover and mark agree.
+    if (synced && closed && stop()) return stopped();
+    if (!synced || !closed || !wholeCover(staging, width, height, four)) {
+      Storage.remove(staging.c_str());
+      return counted();
+    }
+    if (stop()) return stopped();
+    if (!freeink::replaceFile(Storage, staging.c_str(), inkPath.c_str())) {
+      Storage.remove(staging.c_str());
+      return counted();
+    }
+    dropCards(inkPath);
+    Frame& f = record.at(width, height, four);
+    f.status = Status::Sharp;
+    f.failures = 0;
+    write(state, record);
+    return Outcome::Sharp;
+  }();
   Storage.remove(coverPath.c_str());
-  write(state, record);
-  return Outcome::Sharp;
+  return outcome;
 }
 
 }  // namespace coverink

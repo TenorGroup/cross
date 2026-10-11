@@ -55,6 +55,9 @@ class HalStorage {
     return n;
   }
   int changes = 0, cutAt = 0, readFails = 0;
+  // Reads of one file, and the read of it that fails (0: none).
+  std::string watchPath;
+  int watchReads = 0, watchFailAt = 0;
   std::vector<std::string> log;
   // Every change counts; the cutAt-th one never happens.
   void change(const std::string& what) {
@@ -98,6 +101,7 @@ inline HalFile::HalFile(const std::vector<uint8_t>& bytes) : view(&bytes) {}
 inline size_t HalFile::size() const { return view ? view->size() : store ? store->files[path].size() : 0; }
 inline int HalFile::read(void* dst, size_t count) {
   if (store && store->readFails && --store->readFails == 0) return -1;
+  if (store && path == store->watchPath && ++store->watchReads == store->watchFailAt) return -1;
   const auto& b = view ? *view : store->files[path];
   count = std::min(count, b.size() - std::min(pos, b.size()));
   std::memcpy(dst, b.data() + pos, count);

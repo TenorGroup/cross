@@ -45,7 +45,7 @@ struct Book {
   std::vector<uint8_t> jpeg;
   bool notJpeg = false;
   progluma::Result copyFails = progluma::Result::Done;
-  int sniffs = 0, copies = 0;
+  int sniffs = 0, copies = 0, releases = 0;
   Stage stage = Stage::None;
 };
 progluma::Result sniff(void* user, progluma::Sniffer& s, const idlework::Stop& stop) {
@@ -85,7 +85,7 @@ progluma::Result copy(void* user, const std::string& path, const idlework::Stop&
 struct Keys {
   Book* book = nullptr;
   Stage at = Stage::None;
-  int asks = 0;
+  int asks = 0, yesAt = 0;  // yesAt: the key is down at that question, wherever it falls
 } keys;
 uint32_t nowMs = 0, tickMs = 0;
 uint32_t clockMs() { return nowMs += tickMs; }
@@ -94,6 +94,7 @@ idlework::Stop stopper() {
   s.keyDown = [](void* u) {
     auto& k = *static_cast<Keys*>(u);
     ++k.asks;
+    if (k.yesAt) return k.asks == k.yesAt;
     return k.at != Stage::None && k.book && k.book->stage == k.at;
   };
   s.user = &keys;
@@ -117,6 +118,9 @@ void fresh(int w = 96, int h = 140, bool four = true) {
   Storage.files.clear();
   Storage.capacity = SIZE_MAX;
   Storage.cutAt = Storage.changes = Storage.readFails = 0;
+  Storage.watchPath = dir + "/.cover.jpg";
+  Storage.watchReads = Storage.watchFailAt = 0;
+  ESP.freeHeap = ESP.largestHeap = 200000;
   Storage.files[ink(w, h, four)] = blurred(w, h, four);
   for (const char* t : cardTails) Storage.files[ink(w, h, four) + t] = {1, 2, 3};
   keys = {};
@@ -124,15 +128,17 @@ void fresh(int w = 96, int h = 140, bool four = true) {
   refuseWho = nullptr;
 }
 
-coverink::Outcome step(Book& book, int w = 96, int h = 140, bool four = true) {
+coverink::Outcome step(Book& book, int w = 96, int h = 140, bool four = true, std::string path = {}) {
+  if (path.empty()) path = ink(w, h, four);
   keys.book = &book;
   book.stage = Stage::None;
   coverink::Source src;
   src.sniff = sniff;
   src.copy = copy;
+  src.release = [](void* u) { ++static_cast<Book*>(u)->releases; };
   src.user = &book;
   const size_t before = live;
-  const auto out = coverink::build(dir, ink(w, h, four), w, h, four, src, stopper());
+  const auto out = coverink::build(dir, path, w, h, four, src, stopper());
   assert(live == before);  // every block the step took is back
   return out;
 }
@@ -157,6 +163,7 @@ bool cardsGone(int w = 96, int h = 140, bool four = true) {
     if (Storage.exists((ink(w, h, four) + t).c_str())) return false;
   return true;
 }
+bool coverCopy() { return Storage.exists((dir + "/.cover.jpg").c_str()); }
 bool leftovers() {
   for (const auto& f : Storage.files)
     if (f.first.find(".davtmp") != std::string::npos || f.first.find(".davbak") != std::string::npos ||
@@ -213,17 +220,42 @@ int main() {
   assert(step(book) == O::Sharp);
   assert(Storage.files[ink(96, 140, true)] == sharp);
   assert(record().kind == coverink::Kind::Progressive && status() == S::Sharp);
-  assert(cardsGone() && !leftovers());
-  assert(step(book) == O::Nothing && book.sniffs == 1 && book.copies == 1);
+  assert(record().width == 120 && record().height == 181);
+  assert(cardsGone() && !leftovers() && book.releases == 1);
+  const int asksWhole = keys.asks, readsWhole = Storage.watchReads;
+  assert(step(book) == O::Nothing && book.sniffs == 1 && book.copies == 1 && book.releases == 1);
   std::puts("GREEN progressive cover: sharp file equals libjpeg luma through tenor/ink, cards gone, S kept, not again");
+  std::puts("GREEN the card's snapshot is asked back once, before the step's memory; a step with nothing to do keeps it");
 
-  // The other depth and another frame are their own entries; A to B to A builds nothing again.
-  Storage.files[ink(80, 120, true)] = blurred(80, 120, true);
-  Storage.files[ink(96, 140, false)] = blurred(96, 140, false);
-  assert(step(book, 80, 120, true) == O::Sharp && step(book, 96, 140, false) == O::Sharp);
-  assert(step(book) == O::Nothing && step(book, 80, 120, true) == O::Nothing && book.copies == 3);
-  assert(Storage.files[ink(96, 140, false)] == coverOf(pgm.data() + at, 120, 181, 96, 140, false));
-  std::puts("GREEN 1 bit and 4 levels, 2 frame sizes: each its own entry, none built twice");
+  // 2 depths x 3 text sizes: 6 entries, each its own, none built twice, none pushed out.
+  const int sizes[3][2] = {{96, 140}, {80, 120}, {70, 104}};
+  fresh();
+  for (int d = 0; d < 2; ++d)
+    for (const auto& s : sizes)
+      if (!(d == 1 && s[0] == 96)) Storage.files[ink(s[0], s[1], d == 1)] = blurred(s[0], s[1], d == 1);
+  {
+    Book b{jpeg};
+    for (int d = 0; d < 2; ++d)
+      for (const auto& s : sizes) assert(step(b, s[0], s[1], d == 1) == O::Sharp);
+    for (int d = 0; d < 2; ++d)
+      for (const auto& s : sizes) assert(step(b, s[0], s[1], d == 1) == O::Nothing);
+    assert(b.copies == 6 && record().count == 6);
+    assert(Storage.files[ink(96, 140, false)] == coverOf(pgm.data() + at, 120, 181, 96, 140, false));
+  }
+  std::puts("GREEN 1 bit and 4 levels at 3 frame sizes: 6 entries kept, none built twice");
+
+  // Only a tenor/ink cover of this book's cache: anything else is left alone, nothing read.
+  {
+    fresh();
+    Book b{jpeg};
+    Storage.files[dir + "/thumb2_450.bmp"] = blurred(96, 140, true);
+    Storage.files["/.crosspoint/epub_8/ink2_4_96x140.bmp"] = blurred(96, 140, true);
+    assert(step(b, 96, 140, true, dir + "/thumb2_450.bmp") == O::Nothing);
+    assert(step(b, 96, 140, true, "/.crosspoint/epub_8/ink2_4_96x140.bmp") == O::Nothing);
+    assert(step(b, 96, 140, true, dir + "/sub/ink2_4_96x140.bmp") == O::Nothing);
+    assert(b.sniffs == 0 && b.copies == 0 && b.releases == 0);
+  }
+  std::puts("GREEN a path outside the book's cache or not a tenor/ink cover: nothing done");
 
   // Baseline and not a JPEG: B, never again; CMYK: F, never again; the temporary cover stays.
   for (const char* name : {"baseline.jpg", "png"}) {
@@ -243,18 +275,44 @@ int main() {
   }
   std::puts("GREEN baseline and PNG mark B, CMYK marks F; neither is tried again, the temporary cover stays");
 
-  // A key at each of the 3 stages: nothing is marked, the cover is untouched; the next idle moment finishes.
+  // A frame the kernel cannot take: given up at once, nothing read.
+  {
+    fresh();
+    Storage.files[ink(900, 140, true)] = {'B', 'M'};  // a cover drawn some other way
+    Book b{jpeg};
+    assert(step(b, 900, 140, true) == O::Failed && status(900, 140, true) == S::GaveUp);
+    assert(b.sniffs == 0 && b.copies == 0 && step(b, 900, 140, true) == O::Nothing);
+  }
+  std::puts("GREEN a frame too large for the kernel is given up for good, not tried for heap");
+
+  // A key at each of the 3 stages: nothing is marked, the cover is untouched, no copy left; then sharp.
   for (const Stage s : {Stage::Sniff, Stage::Copy, Stage::Decode}) {
     fresh();
     Book b{jpeg};
     const auto before = Storage.files[ink(96, 140, true)];
     keys.at = s;
-    assert(step(b) == O::Stopped);
+    assert(step(b) == O::Stopped && !coverCopy());
     assert(Storage.files[ink(96, 140, true)] == before && status() == S::Pending && failures() == 0);
+    // At the decode stage the first question is asked before the cover's first sector is read.
+    if (s == Stage::Decode) assert(Storage.watchReads == 0);
     keys.at = Stage::None;
     assert(step(b) == O::Sharp && Storage.files[ink(96, 140, true)] == sharp);
   }
-  std::puts("GREEN a key while reading the book, copying the cover or decoding: stopped, nothing marked, then sharp");
+  std::puts("GREEN a key while reading the book, copying the cover or opening it: stopped, nothing read past it, then sharp");
+
+  // A key at the last 2 questions (before the whole-file check, before the replacement): stopped,
+  // the old cover stays; after the replacement nothing asks, so cover and mark agree.
+  for (int back = 0; back < 2; ++back) {
+    fresh();
+    Book b{jpeg};
+    keys.yesAt = asksWhole - back;
+    const auto before = Storage.files[ink(96, 140, true)];
+    assert(step(b) == O::Stopped && Storage.files[ink(96, 140, true)] == before && status() == S::Pending);
+    assert(!coverCopy());
+    keys.yesAt = 0;
+    assert(step(b) == O::Sharp);
+  }
+  std::puts("GREEN a key at the end of the step, before the replacement: stopped, old cover kept");
 
   // The step's own time: counted, the third gives the frame up; the other depth still builds.
   fresh();
@@ -262,7 +320,7 @@ int main() {
   {
     Book b{jpeg};
     tickMs = 1000;
-    for (int i = 1; i <= 3; ++i) assert(step(b) == O::Failed && failures() == i);
+    for (int i = 1; i <= 3; ++i) assert(step(b) == O::Failed && failures() == i && !coverCopy());
     assert(status() == S::GaveUp && step(b) == O::Nothing);
     tickMs = 0;
     assert(step(b, 96, 140, false) == O::Sharp);
@@ -273,20 +331,21 @@ int main() {
   fresh();
   {
     Book b{jpeg};
-    Storage.capacity = Storage.used() + jpeg.size() + 2 * 40 + 1500;
+    Storage.capacity = Storage.used() + jpeg.size() + 2 * 60 + 1500;
     const auto before = Storage.files[ink(96, 140, true)];
     assert(step(b) == O::Failed && failures() == 1 && Storage.files[ink(96, 140, true)] == before);
-    assert(!Storage.exists((ink(96, 140, true) + ".davtmp").c_str()));
+    assert(!Storage.exists((ink(96, 140, true) + ".davtmp").c_str()) && !coverCopy());
     assert(step(b) == O::Failed && step(b) == O::Failed && status() == S::GaveUp && step(b) == O::Nothing);
   }
   std::puts("GREEN card full while writing: old cover kept, counted to 3, then given up");
 
-  // What may pass is not counted: the heap floor at either big block, a failed copy, a failed read.
+  // What may pass is not counted: the heap floor at either big block, a failed copy, a failed read,
+  // a read that fails in the middle of the decode.
   for (const char* who : {"ink-bounds", "pjx-band", "pjx-readers"}) {
     fresh();
     Book b{jpeg};
     refuseWho = who;
-    assert(step(b) == O::NoHeap && failures() == 0 && status() == S::Pending);
+    assert(step(b) == O::NoHeap && failures() == 0 && status() == S::Pending && !coverCopy());
     refuseWho = nullptr;
     assert(step(b) == O::Sharp);
   }
@@ -294,17 +353,31 @@ int main() {
     fresh();
     Book b{jpeg};
     b.copyFails = progluma::Result::Io;
-    assert(step(b) == O::Later && failures() == 0);
+    assert(step(b) == O::Later && failures() == 0 && !coverCopy());
     b.copyFails = progluma::Result::Done;
     Storage.readFails = 3;
     assert(step(b) == O::Later && failures() == 0);
+    Storage.watchReads = 0;
+    Storage.watchFailAt = readsWhole - 2;  // late in the decode, past the marker pass
+    assert(step(b) == O::Later && failures() == 0 && status() == S::Pending && !coverCopy());
+    Storage.watchFailAt = 0;
     assert(step(b) == O::Sharp);
   }
-  std::puts("GREEN heap floor refusal, copy and read failures: not counted, the next try makes it sharp");
+  std::puts("GREEN heap floor refusal, copy and read failures, a read failing mid decode: not counted, then sharp");
 
-  // A power cut at every change of a whole step: a whole cover is always found (as the cover's
-  // writer finds it, through recoverFile), never marked S before it is the sharp one; a later step
-  // finishes.
+  // A heap that cannot hold the decode is seen before the cover is copied out of the book.
+  {
+    fresh();
+    Book b{jpeg};
+    ESP.freeHeap = 20000;  // the decode would leave the floor short
+    assert(step(b) == O::NoHeap && b.copies == 0 && failures() == 0 && b.sniffs == 1);
+    ESP.freeHeap = 200000;
+    assert(step(b) == O::Sharp && b.copies == 1);
+  }
+  std::puts("GREEN a heap under the forecast: no copy out of the book, not counted");
+
+  // A power cut at every change of a whole step: Home's and the writer's read (coverink::restore)
+  // always finds a whole cover, never marked S before it is the sharp one; a later step finishes.
   fresh();
   Book probe{jpeg};
   assert(step(probe) == O::Sharp);
@@ -322,7 +395,7 @@ int main() {
     Storage.cutAt = 0;
     assert(threw);
     const std::string path = ink(96, 140, true);
-    assert(freeink::recoverFile(Storage, path.c_str()) && Storage.exists(path.c_str()));
+    assert(coverink::restore(path) && Storage.exists(path.c_str()));
     const auto& now = Storage.files[path];
     assert(now == sharp || now == blurred(96, 140, true));
     if (status() == S::Sharp) assert(now == sharp && cardsGone());

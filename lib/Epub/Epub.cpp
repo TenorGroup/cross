@@ -1,6 +1,7 @@
 #include "Epub.h"
 
 #include <BitmapHelpers.h>
+#include <CoverInk.h>
 #include <FsHelpers.h>
 #include <GrayThumb.h>
 #include <HalStorage.h>
@@ -1208,6 +1209,8 @@ void Epub::generateThumbBmps(const std::string& coverImageHref, const int* width
     if (widths[i] <= 0 || heights[i] <= 0) continue;
     const auto thumbPath = ink ? tenorink::cachePath(getThumbBmpPath(), widths[i], heights[i], four)
                               : getThumbBmpPath(widths[i], heights[i]);
+    // A tenor/ink cover cut between the 2 renames of its sharp replacement is in its backup.
+    if (ink) coverink::restore(thumbPath);
     if (Storage.exists(thumbPath.c_str())) continue;
     const std::string partPath = thumbPath + ".tmp";
     Storage.remove(partPath.c_str());
