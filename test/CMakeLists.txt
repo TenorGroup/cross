@@ -239,6 +239,8 @@ add_test(NAME heap_floor COMMAND heap_floor)
 
 add_test(NAME heap_floor_gate COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/../scripts/cong_san.py)
 
+add_test(NAME UiTextRules COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/ui_text_rules/check.py)
+
 add_executable(sheet_radio_plan sheet_radio_plan/SheetRadioPlanTest.cpp)
 target_compile_options(sheet_radio_plan PRIVATE -UNDEBUG)
 target_include_directories(sheet_radio_plan PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
