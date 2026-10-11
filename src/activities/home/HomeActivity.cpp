@@ -2717,6 +2717,10 @@ bool HomeActivity::tickHolders() {
   const auto requests = holderRequests;
   const int count = holderCount.exchange(0);
   if (activeTabId != Tab::RECENT) return false;
+  // A card over a plain frame keeps no file, so its snapshot is still held: it goes before the writes, as a
+  // card on file has let it go after its frame, and the card is drawn again from the files.
+  freeCoverBuffer();
+  coverRendered = false;
   bool wrote = false;
   for (int i = 0; i < count; ++i) {
     const int width = requests[i].width, height = requests[i].height;
@@ -2729,8 +2733,6 @@ bool HomeActivity::tickHolders() {
     wrote = wrote || ok;
   }
   if (!wrote) return false;
-  freeCoverBuffer();
-  coverRendered = false;
   requestUpdate();
   return true;
 }
