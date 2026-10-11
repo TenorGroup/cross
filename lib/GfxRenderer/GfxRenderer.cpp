@@ -1402,8 +1402,8 @@ bool GfxRenderer::drawBitmapAbsolutePlanes(const Bitmap& bitmap) const {
   // One optional 1bpp plane saves a second SD decode. Allocation failure keeps
   // the existing two-pass path; no full RGB or 2bpp image is retained in RAM.
   auto lsb = heapfloor::array<uint8_t[]>(getBufferSize(), "gray-bitmap");
-  auto row = makeUniqueNoThrow<uint8_t[]>(bitmap.getRowBytes());
-  auto levels = makeUniqueNoThrow<uint8_t[]>((bitmap.getWidth() + 3) / 4);
+  auto row = heapfloor::array<uint8_t[]>(bitmap.getRowBytes(), "bmp-gray-row");
+  auto levels = heapfloor::array<uint8_t[]>((bitmap.getWidth() + 3) / 4, "bmp-gray-levels");
   if (!lsb || !row || !levels || bitmap.rewindToData() != BmpReaderError::Ok) return false;
   memset(lsb.get(), 0xff, getBufferSize());
   memset(frameBuffer, 0xff, getBufferSize());
@@ -1467,8 +1467,9 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
   const int rowsW = std::min({bitmap.getWidth() - 2 * cropPixX, getScreenWidth() - x, maxWidth > 0 ? maxWidth : INT_MAX});
   const int rowsH =
       std::min({bitmap.getHeight() - 2 * cropPixY, getScreenHeight() - y, maxHeight > 0 ? maxHeight : INT_MAX});
-  if (bitmap.is1Bit() && !isScaled && !levelRows && renderMode == BW && x >= 0 && y >= 0 &&
-      drawBitmapRows(bitmap, x, y, cropPixX, cropPixY, rowsW, rowsH, false)) {
+  if (bitmap.isBlackWhite() && !isScaled && !levelRows && renderMode == BW && x >= 0 && y >= 0 &&
+      rowsW > 0 && rowsH > 0) {
+    if (!drawBitmapRows(bitmap, x, y, cropPixX, cropPixY, rowsW, rowsH, false)) return false;
     preserveImagePolarity(x, y, rowsW, rowsH);
     return true;
   }
@@ -1481,10 +1482,10 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
   // IMPORTANT: Use int, not uint8_t, to avoid overflow for images > 1020 pixels wide
   const int outputRowSize = (bitmap.getWidth() + 3) / 4;
   const auto rowBytesSize = static_cast<size_t>(bitmap.getRowBytes());
-  auto rowScratch = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(outputRowSize) + rowBytesSize);
+  auto rowScratch = heapfloor::array<uint8_t[]>(static_cast<size_t>(outputRowSize) + rowBytesSize, "bmp-row");
   // The screen column of each source column, worked out once: the float multiply and floor per
   // pixel cost more than the SD read on the X3 (no FPU), and every row repeats them.
-  auto columnTable = makeUniqueNoThrow<int16_t[]>(static_cast<size_t>(bitmap.getWidth()));
+  auto columnTable = heapfloor::array<int16_t[]>(static_cast<size_t>(bitmap.getWidth()), "bmp-columns");
   if (!rowScratch || !columnTable) {
     LOG_ERR("GFX", "!! Failed to allocate BMP row buffers");
     return false;
@@ -2550,19 +2551,19 @@ bool GfxRenderer::drawBitmapCover(const Bitmap& bitmap, int x, int y, int width,
   if (width <= 0 || height <= 0 || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0) return false;
   const int sourceW = bitmap.getWidth(), sourceH = bitmap.getHeight();
   // A thumbnail of the card's shape fills the card 1:1, cropped at the centre (v1.0.14).
-  if (sourceW >= width && sourceH >= height && (sourceW == width || sourceH == height) &&
-      drawBitmapRows(bitmap, x, y, (sourceW - width) / 2, (sourceH - height) / 2, width, height, true)) {
+  if (bitmap.isBlackWhite() && sourceW >= width && sourceH >= height && (sourceW == width || sourceH == height)) {
+    if (!drawBitmapRows(bitmap, x, y, (sourceW - width) / 2, (sourceH - height) / 2, width, height, true)) return false;
     preserveImagePolarity(x, y, width, height);
     return true;
   }
   const float scale = std::max(float(width) / sourceW, float(height) / sourceH);
   const float cropX = (sourceW - width / scale) / 2;
   const float cropY = (sourceH - height / scale) / 2;
-  auto* pixels = static_cast<uint8_t*>(malloc((sourceW + 3) / 4));
-  auto* row = static_cast<uint8_t*>(malloc(bitmap.getRowBytes()));
+  auto* pixels = static_cast<uint8_t*>(heapfloor::take((sourceW + 3) / 4, "cover-pixels"));
+  auto* row = static_cast<uint8_t*>(heapfloor::take(bitmap.getRowBytes(), "cover-row"));
   // The source column of each screen column, worked out once: without an FPU the float divide per
   // pixel cost more than the whole row decode (about 480 ms for the 237 x 356 Home card on the X3).
-  auto* columns = static_cast<int16_t*>(malloc(sizeof(int16_t) * width));
+  auto* columns = static_cast<int16_t*>(heapfloor::take(sizeof(int16_t) * width, "cover-columns"));
   if (!pixels || !row || !columns) {
     free(pixels);
     free(row);
@@ -2627,7 +2628,7 @@ bool GfxRenderer::drawBitmapRows(const Bitmap& bitmap, const int x, const int y,
   if (!bitmap.isBlackWhite() || w <= 0 || h <= 0) return false;
   const uint32_t started = micros();
   uint32_t readUs = 0;
-  auto* row = static_cast<uint8_t*>(malloc(bitmap.getRowBytes()));
+  auto* row = static_cast<uint8_t*>(heapfloor::take(bitmap.getRowBytes(), "bmp-raw-row"));
   if (!row) return false;
   bool ok = true;
   for (int r = 0; r < bitmap.getHeight(); ++r) {
@@ -2838,9 +2839,9 @@ bool GfxRenderer::storeBwBuffer() {
 
     const size_t offset = i * BW_BUFFER_CHUNK_SIZE;
     const size_t chunkSize = std::min(BW_BUFFER_CHUNK_SIZE, static_cast<size_t>(frameBufferSize - offset));
-    bwBufferChunks[i] = static_cast<uint8_t*>(malloc(chunkSize));
+    bwBufferChunks[i] = static_cast<uint8_t*>(heapfloor::take(chunkSize, "snapshot"));
 
-    if (!bwBufferChunks[i]) {
+    if (!bwBufferChunks[i] || !heapfloor::judge(frameBufferSize, bwBufferChunks[i], "snapshot")) {
       LOG_ERR("GFX", "!! Failed to allocate BW buffer chunk %zu (%zu bytes)", i, chunkSize);
       // Free previously allocated chunks
       freeBwBufferChunks();
@@ -2848,11 +2849,6 @@ bool GfxRenderer::storeBwBuffer() {
     }
 
     memcpy(bwBufferChunks[i], frameBuffer + offset, chunkSize);
-  }
-  // The chunks are each under 4 KB; the snapshot as a whole goes through the heap floor door.
-  if (!heapfloor::judge(frameBufferSize, bwBufferChunks[0], "snapshot")) {
-    freeBwBufferChunks();
-    return false;
   }
 
   LOG_DBG("GFX", "Stored BW buffer in %zu chunks (%zu bytes each)", bwBufferChunks.size(), BW_BUFFER_CHUNK_SIZE);

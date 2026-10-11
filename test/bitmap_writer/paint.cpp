@@ -24,6 +24,7 @@ struct Bitmap {
   int getRowBytes() const { return (w*bpp+31)/32*4; }
   bool isTopDown() const { return top; }
   bool is1Bit() const { return bpp==1; }
+  bool isBlackWhite() const { return false; }
   int getBpp() const { return bpp; }
   BmpReaderError readNextRow(uint8_t* out, uint8_t*) const {
     memset(out, 0, (w+3)/4);
