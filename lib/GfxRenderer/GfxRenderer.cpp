@@ -1519,7 +1519,17 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
         : grayPlanePixel(level, renderMode == GRAYSCALE_MSB, absoluteGrayPlanes);
     rowTarget.ink[level] = pixel.write ? (pixel.black ? 1 : 2) : 0;
   }
-  const auto writeRow = bitmaprow::writer(orientation);
+  if (levelRows) {
+    for (int row = 0; row < 8; ++row) for (int col = 0; col < 8; ++col) {
+      int px, py;
+      rotateCoordinates(orientation, col, row, &px, &py, panelWidth, panelHeight);
+      for (int level = 0; level < 4; ++level) {
+        if (!(levelRows[level][py & 3] & (0x80 >> (px & 7))))
+          rowTarget.dither[level][row] |= static_cast<uint8_t>(0x80 >> col);
+      }
+    }
+  }
+  const auto writeRow = bitmaprow::writer(orientation, levelRows != nullptr);
 #ifdef TENOR_PRESS_PROBE
   uint32_t rowReadBytes = 0;
 #endif
@@ -1562,35 +1572,12 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
       continue;  // the next row lands on the same screen row
     }
 
-    if (!levelRows) {
-      writeRow(rowTarget, outputRow, columns, cropPixX, endX, screenY, whiteAsTransparent);
-      continue;
-    }
-    for (int bmpX = cropPixX; bmpX < endX; bmpX++) {
-      const int screenX = columns[bmpX];
-      if (screenX < 0) {
-        continue;
-      }
-
-      const uint8_t val = outputRow[bmpX / 4] >> (6 - ((bmpX * 2) % 8)) & 0x3;
-      if (whiteAsTransparent && val == 3) continue;
-
-      if (levelRows) {
-        int phyX, phyY;
-        rotateCoordinates(orientation, screenX, screenY, &phyX, &phyY, panelWidth, panelHeight);
-        drawPixel(screenX, screenY, !((levelRows[val][phyY & 3] >> (7 - (phyX & 7))) & 1));
-      } else if (renderMode == BW && val < 3) {
-        drawPixel(screenX, screenY);
-      } else if (renderMode == GRAYSCALE_LSB || renderMode == GRAYSCALE_MSB) {
-        const auto pixel = grayPlanePixel(val, renderMode == GRAYSCALE_MSB, absoluteGrayPlanes);
-        if (pixel.write) drawPixel(screenX, screenY, pixel.black);
-      }
-    }
+    writeRow(rowTarget, outputRow, columns, cropPixX, endX, screenY, whiteAsTransparent);
   }
 
 #ifdef TENOR_PRESS_PROBE
   LOG_INF("BMP_ROWS", "ms=%lu bytes=%lu path=%s", static_cast<unsigned long>((micros() - started) / 1000),
-          static_cast<unsigned long>(rowReadBytes), levelRows ? "ref" : "writer");
+          static_cast<unsigned long>(rowReadBytes), "writer");
 #endif
   const int sourceWidth = bitmap.getWidth() - cropPixX * 2;
   const int sourceHeight = bitmap.getHeight() - cropPixY * 2;

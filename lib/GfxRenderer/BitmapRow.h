@@ -8,10 +8,11 @@ struct Target {
   int stride, width, height, origin, rows;
   int left, top, right, bottom;
   uint8_t ink[4];  // 0 leaves the bit, 1 clears it, 2 sets it.
+  uint8_t dither[4][8]{};
 };
 
 // Each orientation fixes which axis walks bytes and which axis walks masks.
-template <int Direction>
+template <int Direction, bool Dither = false>
 void write(const Target& t, const uint8_t* packed, const int16_t* columns, int from, int end, int y,
            bool transparent) {
   if (y < t.top || y >= t.bottom) return;
@@ -29,7 +30,9 @@ void write(const Target& t, const uint8_t* packed, const int16_t* columns, int f
     const int x = columns[i];
     if (x < 0 || x < t.left || x >= t.right) continue;
     const uint8_t level = (packed[i / 4] >> (6 - (i & 3) * 2)) & 3;
-    const uint8_t ink = t.ink[level];
+    uint8_t ink;
+    if constexpr (Dither) ink = (t.dither[level][y & 7] & (0x80 >> (x & 7))) ? 1 : 2;
+    else ink = t.ink[level];
     if (!ink || (transparent && level == 3)) continue;
     const int moving = Direction == 0 ? t.height - 1 - x : Direction == 1 ? t.width - 1 - x : x;
     int byte;
@@ -48,7 +51,15 @@ void write(const Target& t, const uint8_t* packed, const int16_t* columns, int f
   }
 }
 using Writer = void (*)(const Target&, const uint8_t*, const int16_t*, int, int, int, bool);
-inline Writer writer(int direction) {
+inline Writer writer(int direction, bool dither = false) {
+  if (dither) {
+    switch (direction) {
+      case 0: return write<0, true>;
+      case 1: return write<1, true>;
+      case 2: return write<2, true>;
+      default: return write<3, true>;
+    }
+  }
   switch (direction) {
     case 0: return write<0>;
     case 1: return write<1>;
