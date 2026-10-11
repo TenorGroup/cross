@@ -11,5 +11,28 @@ int main(int argc, char** argv) {
     assert(h.tickHolders());
     assert(decodes == 2 && holders == 1 && fullSpeed && powerLocks == 0);
   }
+  if (name == "queue") {
+    for (int i = 0; i < 4; ++i) h.queueTouchThumb(i, 100 + i, 150 + i);
+    h.writeMissingThumb(0);
+    assert(decodes == 1 && h.touchThumbCount == 3 && h.thumbWanted == 0 && h.updates == 0);
+    mappedInput.pressed = true;
+    h.writeMissingThumb(0);
+    assert(decodes == 1 && h.touchThumbCount == 3);
+    mappedInput.pressed = false;
+    gpio.held = true;
+    h.writeMissingThumb(0);
+    assert(decodes == 1 && h.touchThumbCount == 3);
+    gpio.held = false;
+    for (int i = 0; i < 2; ++i) h.writeMissingThumb(0);
+    assert(h.updates == 0);
+    nextWrite = false;
+    h.writeMissingThumb(0);
+    assert(decodes == 4 && h.touchThumbCount == 0 && h.updates == 1);
+    std::fill(std::begin(thumbTried), std::end(thumbTried), 0);
+    HomeActivity failed;
+    for (int i = 0; i < 4; ++i) failed.queueTouchThumb(i, 100 + i, 150 + i);
+    for (int i = 0; i < 4; ++i) failed.writeMissingThumb(0);
+    assert(failed.updates == 0);
+  }
   std::puts("GREEN");
 }

@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 int powerLocks = 0, decodes = 0, holders = 0, popups = 0;
-bool fullSpeed = true;
+bool fullSpeed = true, fileWritten = false, nextWrite = true;
 uint32_t millis() { return 10000; }
 constexpr int HOLDER_IDLE_MS = 1000;
 constexpr size_t CARD_THUMB_MIN_FREE_HEAP = 100000, CARD_THUMB_REF_MIN_FREE_HEAP = 80000;
@@ -19,14 +19,14 @@ struct { bool pressed = false, released = false; bool wasAnyPressed() { return p
 struct Gpio { bool held = false; bool rawInputActive() { return held; } };
 [[maybe_unused]] Gpio gpio;
 struct { size_t heap = 200000; size_t getFreeHeap() { return heap; } size_t getMaxAllocHeap() { return heap; } } ESP;
-struct { bool exists(const char*) { return decodes > 0; } } Storage;
+struct { bool exists(const char*) { return fileWritten; } } Storage;
 namespace coverref { bool load(const std::string&, std::string& href) { href = "cover.jpg"; return true; } }
 struct Epub {
   Epub(const std::string&, const char*) {}
   std::string getCachePath() { return "/cache"; }
   std::string getCoverHref() { return "cover.jpg"; }
   bool load(bool, bool) { return true; }
-  template<class... T> void generateThumbBmps(T...) { ++decodes; fullSpeed &= powerLocks > 0; }
+  template<class... T> void generateThumbBmps(T...) { ++decodes; fileWritten = nextWrite; fullSpeed &= powerLocks > 0; }
 };
 struct FsHelpers { static bool hasEpubExtension(const std::string&) { return true; } };
 struct { void drawPopup(int, int) { ++popups; } } GUI;
@@ -51,6 +51,7 @@ struct HomeActivity {
   struct Request { int book = 0, width = 100, height = 150; };
   std::array<Request, 4> touchThumbs{};
   int touchThumbCount = 0;
+  bool thumbBatchWrote = false;
   bool ink = true, homeGraySelected = false, coverRendered = true;
   int cardThumbWidth = 298, cardThumbHeight = 450, renderer = 0, updates = 0;
   std::atomic<int8_t> thumbWanted{-1};

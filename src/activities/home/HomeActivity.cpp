@@ -2270,10 +2270,17 @@ void HomeActivity::writeMissingThumb(const int index) {
   RenderLock lock(*this);
   HalPowerManager::Lock fullSpeed;
   if (activeTabId != Tab::RECENT || index != shownRecent()) return;
+  if (mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() || gpio.rawInputActive()) {
+    thumbWantedAtMs = millis();
+    thumbWanted = static_cast<int8_t>(index);
+    return;
+  }
   if (homeInkEnabled()) {
     const auto requests = touchThumbs;
-    const int count = touchThumbCount;
-    touchThumbCount = 0;
+    const int count = std::min(touchThumbCount, 1);
+    touchThumbCount -= count;
+    for (int slot = 0; slot < touchThumbCount; ++slot) touchThumbs[slot] = requests[slot + count];
+    if (touchThumbCount > 0) thumbWanted = static_cast<int8_t>(index);
     freeCoverBuffer();
     coverRendered = false;
     bool wrote = false;
@@ -2297,7 +2304,11 @@ void HomeActivity::writeMissingThumb(const int index) {
       wrote = Storage.exists(touchCoverPath(recentBooks[q.book].coverBmpPath, q.width, q.height).c_str()) || wrote;
     }
     // A cover that could not be made leaves the frame as it is: drawing it again is a refresh for nothing.
-    if (wrote) requestUpdate();
+    thumbBatchWrote = thumbBatchWrote || wrote;
+    if (touchThumbCount == 0 && thumbBatchWrote) {
+      thumbBatchWrote = false;
+      requestUpdate();
+    }
     return;
   }
   const std::string path = recentBooks[index].path;
@@ -2521,6 +2532,7 @@ void HomeActivity::queueTouchThumb(const int index, const int width, const int h
   for (int slot = 0; slot < touchThumbCount; ++slot)
     if (touchThumbs[slot].book == index) return;
   if (touchThumbCount >= static_cast<int>(touchThumbs.size())) return;
+  if (touchThumbCount == 0) thumbBatchWrote = false;
   touchThumbs[touchThumbCount++] = {index, width, height};
   if (thumbWanted.load() < 0) {
     thumbWantedAtMs = millis();
