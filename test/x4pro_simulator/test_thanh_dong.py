@@ -80,7 +80,7 @@ def check_back_keeps_list(tmp):
 
 def check_book_zone(tmp):
     # Inline Contents uses the common reader tool bar; foot Back returns to the book page.
-    open_book = f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,130'
+    open_book = f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,68'
     folder = fresh(tmp, 'bz')
     page, contents, back = run(folder, f'{open_book};9500:TAP:240,775;'
                               '12000:TAP:226,754;15500:TAP:46,754',
@@ -110,7 +110,7 @@ def check_keyboard_back(tmp):
 
 def check_chosen_row(tmp):
     # The chapter being read is the chosen row of the contents: a tick at its end, no "Dang doc".
-    open_book = f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,130'
+    open_book = f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,68'
     folder = fresh(tmp, 'ch')
     (contents,) = run(folder, f'{open_book};9500:TAP:240,775;12000:TAP:226,754',
                       [17000], write_books=toc_book)
@@ -155,7 +155,8 @@ def check_file_root(tmp):
 
 
 def toc_book(sach, chapters=24):
-    """a-muc-luc.epub: one short chapter per contents line, first in the folder."""
+    """a-muc-luc.epub: one short chapter per contents line, first in the folder. The list has no row above its
+    books, so the first book is the row at y 68 (a tap at y 130 opens the second book, whose contents are empty)."""
     head = '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>T</title></head><body>'
     with zipfile.ZipFile(sach / 'a-muc-luc.epub', 'w') as z:
         z.writestr(zipfile.ZipInfo('mimetype'), 'application/epub+zip')
@@ -182,7 +183,7 @@ def check_contents_page(tmp):
     # Five rows fit the approved sheet. Two swipes reach chapters 11..15; tap 15,
     # then open again: current chapter is the first row and carries the chosen tick.
     folder = fresh(tmp, 'cp')
-    open_book = f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,130'
+    open_book = f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,68'
     page3, chapter15, again = run(folder, f'{open_book};9500:TAP:240,775;12000:TAP:226,754;'
         '14500:SWIPE:240,650,240,420,150;17000:SWIPE:240,650,240,420,150;'
         '19500:TAP:240,681;22500:TAP:240,775;25000:TAP:226,754',
@@ -210,7 +211,7 @@ def toc_without_current(sach, empty=False):
 def check_contents_unmatched(tmp):
     for empty in (False,True):
         folder=fresh(tmp,'toc-empty' if empty else 'toc-unmatched')
-        (contents,)=run(folder,f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,130;'
+        (contents,)=run(folder,f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,68;'
             '9500:TAP:240,775;12000:TAP:226,754',[14500],write_books=lambda sach: toc_without_current(sach,empty))
         require_reader(folder)
         capture(folder,('contents',),(contents,))
