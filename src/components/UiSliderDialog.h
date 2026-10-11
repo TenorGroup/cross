@@ -146,6 +146,9 @@ inline void buildSliderDialogScreen(const GfxRenderer& renderer, UiAppHost::UiSc
   // buttons and slider win inside the dialog and the guard absorbs the rest -
   // same pattern as OptionPopup.
   screen.frame().hit(dialog, spec.chromeAction, 0, fui::InputTouch);
+#ifdef SIMULATOR
+  LOG_INF("DIALOG", "slider box=%d,%d,%d,%d", dialog.x, dialog.y, dialog.width, dialog.height);
+#endif
   const fui::Rect band = fui::optionDialog(screen.frame(), dialog, props);
   if (tenorchrome::roundFrames())
     tenorchrome::drawRoundRing(renderer, dialog.x, dialog.y, dialog.width, dialog.height, tenorchrome::PANEL_RADIUS, 2, true);

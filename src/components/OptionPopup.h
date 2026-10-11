@@ -325,7 +325,7 @@ class OptionPopup {
     props.styles = fui::defaultPopupStyles();
     props.styles.normal.border = fui::Paint::solid(fui::Color::Black);
     props.styles.normal.borderWidth = static_cast<uint8_t>(metrics.popupFrameThickness);
-    props.styles.normal.radius = BoardConfig::hasTouch() ? static_cast<uint8_t>(metrics.popupCornerRadius) : 0;
+    props.styles.normal.radius = static_cast<uint8_t>(metrics.popupCornerRadius);
     if (contextCross) props.styles.normal.radius = 28;
     props.styles.selected = props.styles.normal;
     props.styles.focused = props.styles.normal;
@@ -343,8 +343,11 @@ class OptionPopup {
       textWidth = std::max(textWidth, renderer.getTextWidth(uiScaleSpec().bodyFontId, label.c_str()));
     const int maxWidth = contextCross ? 396
         : std::min<int>(screen.width * 3 / 4, screen.width - metrics.optionPopupDialogSideMargin * 2);
-    const auto sized = optionPopupLayout({0, 0, maxWidth, screen.height}, {},
-                                         textWidth + 4 * innerPadding + (marked ? 36 : 0), 1, false);
+    // A row that marks its value: the tick 16 px in from the row's edge, 12 px to the label, 16 px after it (drawChoice).
+    const int rowWidth = !marked ? textWidth + 4 * innerPadding
+                         : shell::isUgly() ? textWidth + 4 * innerPadding + 36
+                                           : textWidth + 2 * innerPadding + 16 + 24 + 12 + 16;
+    const auto sized = optionPopupLayout({0, 0, maxWidth, screen.height}, {}, rowWidth, 1, false);
     const int16_t width = fui::clampI16(sized.width);
     const int fullHeight = fui::optionDialogHeight(target, props, width);
     fui::Rect available = screen;
@@ -394,6 +397,7 @@ class OptionPopup {
 #ifdef SIMULATOR
     if (contextCross) LOG_INF("MENU", "context box=%d,%d,%d,%d row=%d source=button", dialogRect.x,
                               dialogRect.y, dialogRect.width, dialogRect.height, props.buttonHeight);
+    else LOG_INF("DIALOG", "popup box=%d,%d,%d,%d", dialogRect.x, dialogRect.y, dialogRect.width, dialogRect.height);
 #endif
     if (contextCross && contextBackground) contextBackground(dialogRect);
     if (contextCross) renderer.fillRect(dialogRect.x - 8, dialogRect.y - 8,
@@ -485,7 +489,9 @@ class OptionPopup {
     renderer.drawText(font, x + TEXT_X + (marked ? MARK + GAP : 0), textY, label.c_str(), true,
                       EpdFontFamily::REGULAR);
     if (chosen) {
-      const int markY = textY + (inkTop + inkBottom - 1) / 2 - (MARK / 2 - 1);
+      // The tick's ink is 13 rows (5 to 17 of its 24): its box is centred on the row, not on the label's ink, which an
+      // odd row height and an accent above or a hook below the label moved by a row.
+      const int markY = ry + (ROW - (MARK - 1)) / 2;
       tenorchrome::drawBarIcon(renderer, icon_row_chosen_24.bits, MARK, MARK, x + TEXT_X, markY, true);
     }
   }
@@ -505,8 +511,10 @@ class OptionPopup {
     const int font = uiScaleSpec().bodyFontId;
     if (ctx.marked && !style.bold &&
         std::any_of(ctx.values->begin(), ctx.values->end(), [&](const auto& value) { return value == label; })) {
-      drawChoice(ctx.renderer, font, rect.x - 16, rect.y, rect.width + 32, rect.height, label, true,
-                 ctx.selected && std::strcmp(ctx.selected, label) == 0);
+      // The row is the whole button: the SDK hands the text the button less its padding.
+      const fui::Insets pad = fui::ButtonProps{}.padding;
+      drawChoice(ctx.renderer, font, rect.x - pad.left, rect.y - pad.top, rect.width + pad.left + pad.right,
+                 rect.height + pad.top + pad.bottom, label, true, ctx.selected && std::strcmp(ctx.selected, label) == 0);
       return;
     }
     if (style.align != fui::TextAlign::Center || rect.height < ctx.renderer.getLineHeight(font) ||

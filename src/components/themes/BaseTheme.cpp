@@ -437,6 +437,9 @@ Rect BaseTheme::drawPopup(const GfxRenderer& renderer, const char* message, cons
   const auto [x, y, w, h] = popupBox(renderer, message);
   const int textWidth = w - marginX * 2;
 
+#ifdef SIMULATOR
+  LOG_INF("DIALOG", "toast box=%d,%d,%d,%d", x, y, w, h);
+#endif
   const bool useRoundedPopup = metrics.popupCornerRadius > 0;
   if (useRoundedPopup) {
     // A one-line notice is a leaf of its own height, framed concentrically: the sheet radius

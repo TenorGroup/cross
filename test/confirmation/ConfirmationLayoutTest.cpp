@@ -7,7 +7,7 @@
 namespace {
 
 TEST(ConfirmationLayout, X4ProUsesTheLockedBottomGeometry) {
-  constexpr auto layout = confirmationLayout(true, 480, 72, 716, 0);
+  constexpr auto layout = confirmationLayout(true, 480, 72, 716, 0, 28);
 
   static_assert(layout.action.x == 16);
   static_assert(layout.action.y == 532);
@@ -22,7 +22,7 @@ TEST(ConfirmationLayout, X4ProUsesTheLockedBottomGeometry) {
 }
 
 TEST(ConfirmationLayout, X3CentersTheWholeDialogInTheContentBody) {
-  constexpr auto layout = confirmationLayout(false, 400, 84, 600, 100);
+  constexpr auto layout = confirmationLayout(false, 400, 84, 600, 100, 28);
 
   static_assert(layout.action.x == 17);
   static_assert(layout.action.y == 232);
@@ -32,7 +32,7 @@ TEST(ConfirmationLayout, X3CentersTheWholeDialogInTheContentBody) {
   static_assert(layout.cancel.y == 392);
   static_assert(layout.cancel.width == 366);
   static_assert(layout.cancel.height == 60);
-  static_assert(layout.radius == 19);
+  static_assert(layout.radius == 28);
   static_assert(layout.messageHeight == 100);
 }
 
@@ -48,7 +48,7 @@ TEST(ConfirmationLayout, RectangleContainsIncludesTopLeftAndExcludesBottomRight)
 }
 
 TEST(ConfirmationDecision, X3StartsOnCancelAndOnlyAcceptsTheActionRow) {
-  constexpr auto layout = confirmationLayout(false, 400, 84, 600, 100);
+  constexpr auto layout = confirmationLayout(false, 400, 84, 600, 100, 28);
 
   EXPECT_EQ(confirmationDecision(layout, false, 1, false, true, false, false, -1, -1),
             ConfirmationDecision::Cancel);
@@ -61,7 +61,7 @@ TEST(ConfirmationDecision, X3StartsOnCancelAndOnlyAcceptsTheActionRow) {
 }
 
 TEST(ConfirmationDecision, X4ProAcceptsOnlyTheActionAreaBelowTheMessage) {
-  constexpr auto layout = confirmationLayout(true, 480, 72, 716, 0);
+  constexpr auto layout = confirmationLayout(true, 480, 72, 716, 0, 28);
 
   EXPECT_EQ(confirmationDecision(layout, true, 0, false, false, false, false, -1, -1),
             ConfirmationDecision::Wait);
@@ -74,7 +74,7 @@ TEST(ConfirmationDecision, X4ProAcceptsOnlyTheActionAreaBelowTheMessage) {
 }
 
 TEST(ConfirmationDecision, X4ProBackAndEveryOutsideTapCancel) {
-  constexpr auto layout = confirmationLayout(true, 480, 72, 716, 0);
+  constexpr auto layout = confirmationLayout(true, 480, 72, 716, 0, 28);
 
   EXPECT_EQ(confirmationDecision(layout, true, 0, true, false, false, false, -1, -1),
             ConfirmationDecision::Cancel);
@@ -97,7 +97,7 @@ TEST(ConfirmationLayout, GeometryAndDecisionStateHaveNoDynamicOwnership) {
 TEST(ConfirmationLayout, WrappedTouchMessageGrowsUpwardAndKeepsCancelFixed) {
   for (int lines = 1; lines <= 3; ++lines) {
     const int header = 52 + (lines - 1) * 38;
-    const auto layout = confirmationLayout(true, 480, 72, 716, header);
+    const auto layout = confirmationLayout(true, 480, 72, 716, header, 28);
     EXPECT_EQ(layout.messageHeight, header);
     EXPECT_EQ(layout.action.height, header + 60);
     EXPECT_EQ(layout.action.y + layout.action.height + 12, layout.cancel.y);

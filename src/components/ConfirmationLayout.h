@@ -25,8 +25,9 @@ constexpr ConfirmationDecision confirmationDecision(const ConfirmationLayout& la
   return ConfirmationDecision::Wait;
 }
 
+// buttonBoardRadius: the corner of the box on the boards with buttons, the theme's popup radius.
 constexpr ConfirmationLayout confirmationLayout(bool touch, int screenWidth, int contentTop, int contentBottom,
-                                                int headerHeight) {
+                                                int headerHeight, int buttonBoardRadius) {
   if (touch) {
     const int messageHeight = headerHeight > 0 ? headerHeight : 52;
     return {{16, contentBottom - 132 - messageHeight, screenWidth - 32, messageHeight + 60},
@@ -35,5 +36,5 @@ constexpr ConfirmationLayout confirmationLayout(bool touch, int screenWidth, int
   const int height = headerHeight + 120;
   const int x = (screenWidth - 366) / 2;
   const int y = contentTop + (contentBottom - contentTop - height) / 2;
-  return {{x, y, 366, height}, {x, y + headerHeight + 60, 366, 60}, 19, headerHeight};
+  return {{x, y, 366, height}, {x, y + headerHeight + 60, 366, 60}, buttonBoardRadius, headerHeight};
 }

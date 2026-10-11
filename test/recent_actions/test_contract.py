@@ -67,8 +67,8 @@ for function in ("HomeActivity::onRowLongPress", "HomeActivity::showOtherBookMen
         raise AssertionError(f"{function} does not use the anchored Recent action menu")
 
 popup_source = (repo / "src/components/OptionPopup.h").read_text()
-if "props.styles.normal.radius = BoardConfig::hasTouch()" not in popup_source:
-    raise AssertionError("X3 popup outer frame must have square corners")
+if "props.styles.normal.radius = static_cast<uint8_t>(metrics.popupCornerRadius);" not in popup_source:
+    raise AssertionError("The popup outer frame takes the theme's corner radius on every board")
 
 for language, question in (("vietnamese", "Bỏ khỏi Gần đây?"),
                            ("english", "Remove from Recents?"),
