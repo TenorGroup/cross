@@ -117,6 +117,42 @@ int main(int argc, char** argv) {
     assert(live == held);
   }
   std::puts("GREEN: a refused full decode keeps the 1/8 cover, Home tenor/ink 2 depths and the screen cover");
+  // A file built from many scans costs the decoder one walk over the image per scan. The scan cap is 64 (the
+  // literal, so that the case stands without the production constant): the 1st scan repeated up to 64 scans
+  // in all decodes as before; one more and the decoder reads the file as ended, the buffer is refused, and
+  // both cover paths take the 1/8 cover as for any file the full decoder cannot take.
+  {
+    const uint8_t sos[2] = {0xff, 0xda};
+    const size_t first = std::search(bytes.begin(), bytes.end(), sos, sos + 2) - bytes.begin();
+    assert(first + 4 < bytes.size());
+    size_t end = first + 2 + (bytes[first + 2] << 8 | bytes[first + 3]);
+    while (!(bytes[end] == 0xff && bytes[end + 1] != 0 && !(bytes[end + 1] >= 0xd0 && bytes[end + 1] <= 0xd7))) ++end;
+    size_t scans = 0;
+    for (size_t i = 0; i + 1 < bytes.size(); ++i) scans += bytes[i] == 0xff && bytes[i + 1] == 0xda;
+    const auto repeated = [&](size_t total) {
+      std::vector<uint8_t> out(bytes.begin(), bytes.begin() + end);
+      for (size_t n = scans; n < total; ++n) out.insert(out.end(), bytes.begin() + first, bytes.begin() + end);
+      out.insert(out.end(), bytes.begin() + end, bytes.end());
+      return out;
+    };
+    const auto atCap = repeated(64), overCap = repeated(65), flood = repeated(4000);
+    HalFile capFile(atCap), overFile(overCap), floodFile(flood);
+    auto atCapGray = progressivejpeg::decode(capFile, w, h);
+    assert(atCapGray && std::equal(atCapGray.get(), atCapGray.get() + w * h, gray.get()));
+    atCapGray.reset();
+    assert(!progressivejpeg::decode(overFile, w, h) && live == held);
+    assert(!progressivejpeg::decode(floodFile, w, h) && live == held);
+    assert(floodFile.bytesRead < flood.size() / 4);  // the decoder stopped reading, it did not walk 4000 scans
+    for (bool four : {false, true}) {
+      Output reduced, kept;
+      hasPsram = false;
+      assert(JpegToBmpConverter::jpegFileToInkBmpStream(overFile, reduced, 232, 350, four));
+      hasPsram = true;
+      assert(JpegToBmpConverter::jpegFileToInkBmpStream(overFile, kept, 232, 350, four));
+      assert(!kept.bytes.empty() && kept.bytes == reduced.bytes && live == held);
+    }
+    std::puts("GREEN: a progressive file of more than 64 scans is refused and keeps the 1/8 cover; 64 scans decode as before");
+  }
   gray.reset(); assert(live == 0);
   for (int fail = 0; fail < count; ++fail) {
     calls = 0; failAt = fail;
