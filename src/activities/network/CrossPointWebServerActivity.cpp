@@ -21,6 +21,7 @@
 #include "MappedInputManager.h"
 #include "NetworkModeSelectionActivity.h"
 #include "SdCardFontSystem.h"
+#include "SettingsList.h"
 #include "FontPackInstaller.h"
 #include "SilentRestart.h"
 #include "UIFontTiers.h"
@@ -181,6 +182,14 @@ void CrossPointWebServerActivity::onEnter() {
   Activity::onEnter();
 
   LOG_INF("WEBACT", "Enter after reader closed heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+
+  // The settings catalog (~16 KB on the X3) a settings screen or a pinned setting built stays cached after it: returned
+  // here, under the render lock, with every screen that borrowed its rows gone (the reader does the same). With it held,
+  // Wi-Fi and the server left the X3 8 KB, and an upload stalled.
+  {
+    RenderLock lock(*this);
+    releaseBaseSettingsList();
+  }
 
   // Heap-critical transition: WiFi (~45KB) plus the web server have to fit in
   // what's left of the ~380KB parts. SD-font caches retained for the CJK UI
