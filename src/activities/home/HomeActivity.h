@@ -276,7 +276,9 @@ class HomeActivity final : public UiTabListActivity {
   // The cover frame of a book with no cover (components/CoverHolder.h). A frame whose picture is not
   // cached yet is drawn plain and asks for it; an idle pass on the main task writes it.
   std::string holderPath(int width, int height) const;
-  bool drawHolder(int x, int y, int width, int height);
+  // True for a book with no cover of its own, the only book whose frame takes the placeholder.
+  bool coverless(int index) const;
+  bool drawHolder(bool holder, int x, int y, int width, int height);
   void wantHolder(int width, int height);
   bool tickHolders();
   bool writeHolder(int width, int height);

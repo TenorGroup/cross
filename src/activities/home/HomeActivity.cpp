@@ -2121,9 +2121,9 @@ void HomeActivity::drawRecentCard() {
 #endif
     if (image) coverHeight = height;
   }
-  // A plain frame waits for the idle pass to write the placeholder: the card is not kept, or its file
-  // would bring the plain frame back after the picture is on the card.
-  const bool plainFrame = !image && !drawHolder(card.coverX, card.coverY, card.coverW, card.coverH);
+  // A plain frame waits for the idle pass to write the placeholder or the book's cover: the card is not
+  // kept, or its file would bring the plain frame back after the picture is on the card.
+  const bool plainFrame = !image && !drawHolder(coverless(shown), card.coverX, card.coverY, card.coverW, card.coverH);
   // Round the cover's corners by painting the page back over them, the pixels a rounded card
   // would not cover: a few hundred pixels, no second buffer, and the cached card keeps them.
   if (!coverKept)
@@ -2231,6 +2231,7 @@ HomeActivity::CardFile HomeActivity::loadCardFile(const std::string& path, const
 }
 
 void HomeActivity::wantThumb(const int index) {
+  if (coverless(index)) return;
   if (homeInkEnabled()) {
     queueTouchThumb(index, cardThumbWidth, cardThumbHeight);
     return;
@@ -2274,6 +2275,7 @@ void HomeActivity::writeMissingThumb(const int index) {
     touchThumbCount = 0;
     freeCoverBuffer();
     coverRendered = false;
+    bool wrote = false;
     for (int slot = 0; slot < count; ++slot) {
       const auto& q = requests[slot];
       const auto& path = recentBooks[q.book].path;
@@ -2291,8 +2293,10 @@ void HomeActivity::writeMissingThumb(const int index) {
       }
       LOG_INF("HOME", "Home thumb book=%d size=%dx%d ms=%lu", q.book, q.width, q.height,
               static_cast<unsigned long>(millis() - started));
+      wrote = Storage.exists(touchCoverPath(recentBooks[q.book].coverBmpPath, q.width, q.height).c_str()) || wrote;
     }
-    requestUpdate();
+    // A cover that could not be made leaves the frame as it is: drawing it again is a refresh for nothing.
+    if (wrote) requestUpdate();
     return;
   }
   const std::string path = recentBooks[index].path;
@@ -2564,6 +2568,7 @@ bool HomeActivity::showHomeGray() {
     const auto& cover = recentBooks[slot.book].coverBmpPath;
     for (int attempt = 0; attempt < 2 && !present[i]; ++attempt) {
       if (attempt == 0 && cover.empty()) continue;
+      if (attempt == 1 && !coverless(slot.book)) continue;
       paths[i] = attempt == 0 ? touchCoverPath(cover, r.w, r.h) : holderPath(r.w, r.h);
       auto file = Storage.open(paths[i].c_str());
       if (!file) continue;
@@ -2674,9 +2679,26 @@ std::string HomeActivity::holderPath(const int width, const int height) const {
   return tenorink::cachePath(coverholder::path(), width, height, homeGraySelected);
 }
 
-// The cover frame of a book with no cover (components/CoverHolder.h): the cached picture when the card
-// has it, else a plain frame while an idle pass writes the picture. True when the picture was drawn.
-bool HomeActivity::drawHolder(const int x, const int y, const int width, const int height) {
+// The one rule for the placeholder (founder 11/10/2026): a book with no cover of its own, or one Home cannot
+// write (not an EPUB, a picture the decoders do not read). A book whose cover is still being written keeps
+// the plain frame, so the placeholder never comes up between 2 frames of a book that has a cover.
+bool HomeActivity::coverless(const int index) const {
+  const auto& book = recentBooks[index];
+  if (book.coverBmpPath.empty() || !FsHelpers::hasEpubExtension(book.path)) return true;
+  std::string href;
+  // An empty path in the reader's cover.ref is a book without a cover; no cover.ref, the book is asked.
+  return coverref::load(book.coverBmpPath.substr(0, book.coverBmpPath.rfind('/')), href) &&
+         !FsHelpers::hasJpgExtension(href) && !FsHelpers::hasPngExtension(href);
+}
+
+// A cover frame with nothing of the book's to draw. The placeholder (components/CoverHolder.h) for a book
+// with no cover: the cached picture when the card has it, else a plain frame while an idle pass writes the
+// picture. Any other book: the plain frame. True when the picture was drawn.
+bool HomeActivity::drawHolder(const bool holder, const int x, const int y, const int width, const int height) {
+  if (!holder) {
+    renderer.fillRoundedRect(x, y, width, height, tenorradius::cover(width), Color::LightGray);
+    return false;
+  }
   LOG_INF("HOME", "Cover holder frame=%d,%d,%d,%d", x, y, width, height);
   HalFile file;
   if (Storage.openFileForRead("HOME", holderPath(width, height), file)) {
@@ -2766,9 +2788,12 @@ void HomeActivity::drawTouchCover(const HomeRecentRect& rect, const int index) {
       image = bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() == rect.w &&
               bitmap.getHeight() == rect.h && renderer.drawBitmap(bitmap, rect.x, rect.y, rect.w, rect.h);
     }
-    if (!image) queueTouchThumb(index, rect.w, rect.h);
   }
-  if (!image) drawHolder(rect.x, rect.y, rect.w, rect.h);
+  if (!image) {
+    const bool holder = coverless(index);
+    if (!holder) queueTouchThumb(index, rect.w, rect.h);
+    drawHolder(holder, rect.x, rect.y, rect.w, rect.h);
+  }
   homeCoverCorners(renderer, rect.x, rect.y, rect.w, rect.h);
   LOG_INF("HOME", "Home cover book=%d rect=%d,%d,%d,%d native=%u", index, rect.x, rect.y, rect.w, rect.h,
           image ? 1u : 0u);
