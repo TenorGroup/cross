@@ -311,7 +311,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
     elapsedMs += part.elapsedMs;
     if (part.largestMin && (!largestMin || part.largestMin < largestMin)) largestMin = part.largestMin;
     transfer = part;
-    stop = wrongChip || tagScanner.mismatch() || versionScanner.rejected() || !flashOk || !sizeOk;
+    stop = recordSlot->failed() || wrongChip || tagScanner.mismatch() || versionScanner.rejected() || !flashOk || !sizeOk;
     if (!ok && !cancelled && !stop && !whole && retries < MAX_PART_RETRIES) {
       LOG_INF("OTA", "Part from %u broke at %u, asking again (%u)", static_cast<unsigned>(first),
               static_cast<unsigned>(processedSize), static_cast<unsigned>(retries + 1));
@@ -322,6 +322,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
   transfer.total = otaSize;
   transfer.elapsedMs = elapsedMs;
   transfer.largestMin = largestMin;
+  const bool allocationFailed = recordSlot->failed();
   recordSlot.reset();
   recordTransfer(attempt, transfer);
   if (!attempt.total) attempt.total = otaSize;
@@ -338,6 +339,11 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
     esp_ota_abort(otaHandle);
     attempt.wd = ota_log::watchdog(true, transfer.idleMs, HttpDownloader::PINNED_CA_TIMEOUT_MS);
     return endAttempt(CANCELLED_ERROR, ota_log::transferStep(transfer.status, transfer.headers));
+  }
+
+  if (allocationFailed) {
+    esp_ota_abort(otaHandle);
+    return endAttempt(OOM_ERROR, "heap");
   }
 
   if (wrongChip || tagScanner.mismatch()) {

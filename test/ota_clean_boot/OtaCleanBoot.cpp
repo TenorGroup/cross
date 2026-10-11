@@ -76,9 +76,16 @@ static std::vector<uint8_t> image;
 const char* fixtureTag = "v9.9.9";
 size_t ReleaseJsonParser::getFirmwareSize() const { return image.size(); }
 static bool imageDrops = false;
+static bool tlsRefused = false;
+namespace tls_slot {
+Scope::Scope() = default;
+Scope::~Scope() = default;
+bool Scope::failed() const { return tlsRefused; }
+}
 bool HttpDownloader::fetchUrl(const std::string&, const DataCallback&, const std::string&, const std::string&,
                               const char*, bool, ProgressCallback, bool*, TransferStats* stats) {
   if (stats) *stats = {200, true, 0, 0, 0, 0, 90000, 50000, 50000};
+
   return true;  // the manifest
 }
 // The image server: parts on request, a connection that breaks at breakAt (`breaks` times), or
@@ -96,6 +103,7 @@ bool HttpDownloader::fetchRange(const std::string&, size_t first, size_t last, c
                                 const char*, ProgressCallback, bool*, TransferStats* stats, bool* whole, RangeSession*) {
   if (stats) *stats = {206, true, 0, 0, 0, 0, 90000, 50000, 50000};
   server.firsts.push_back(first);
+  if (tlsRefused) return false;
   const bool ignores = server.ignoresRange || (server.ignoresRangeAfterFirst && first > 0);
   *whole = ignores;
   if (ignores) {
@@ -386,6 +394,21 @@ void screenCases(const std::string& name) {
     std::memcpy(image.data() + 200, version.data(), version.size());
   };
   tagVersion();
+  if (name == "tls-refusal-aborts-cleanly") {
+    OtaUpdateActivity screen;
+    screen.onWifiSelectionComplete(true);
+    tlsRefused = true;
+    screen.runUpdateInstall();
+    require(screen.updater.lastAttempt().err == std::string("OOM_ERROR"), "TLS refusal did not return OOM_ERROR");
+    require(otaCalls.abort == 1 && otaCalls.setBoot == 0 && otaCalls.written == 0,
+            "TLS refusal left a selected or written partition");
+    require(server.firsts.size() == 1, "TLS refusal retried on the same exhausted heap");
+    screen.confirmPopup.chosen(1);
+    screen.onExit();
+    require(bootNow().armed, "the Update choice lost the clean boot fallback");
+    return;
+  }
+
   if (name == "check-alone-arms-nothing" || name == "update-restarts-into-install" ||
       name == "cancel-restarts-home") {
     OtaUpdateActivity screen;

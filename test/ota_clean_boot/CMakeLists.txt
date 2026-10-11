@@ -7,3 +7,7 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(NAME OtaCleanBootProduction
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/run.py
     --output ${CMAKE_CURRENT_BINARY_DIR}/harness --cxx ${CMAKE_CXX_COMPILER})
+add_executable(TlsAllocatorTest TlsAllocator.cpp)
+target_include_directories(TlsAllocatorTest PRIVATE tls_stubs stubs)
+target_compile_definitions(TlsAllocatorTest PRIVATE FREEINK_NET_WOLFSSL)
+add_test(NAME TlsAllocatorProduction COMMAND TlsAllocatorTest)
