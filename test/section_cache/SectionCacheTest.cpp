@@ -1073,7 +1073,7 @@ TEST_F(SectionCacheTest, PartialWatermarkExtensionAvoidsReplayingTheColdPrefix) 
   }
 
   struct ExtensionSample {
-    uint64_t elapsedUs = 0;
+    uint64_t textAdvanceCalls = 0;
     uint64_t htmlReadBytes = 0;
     uint64_t htmlReadCalls = 0;
     uint64_t cacheReadBytes = 0;
@@ -1128,7 +1128,7 @@ TEST_F(SectionCacheTest, PartialWatermarkExtensionAvoidsReplayingTheColdPrefix) 
     }
     section.currentPage = targetPage;
     storageMetrics::begin();
-    const auto start = std::chrono::steady_clock::now();
+    renderer.textAdvanceCalls = 0;
     if (!section.startBuild(spec)) {
       ADD_FAILURE() << "extension build did not start";
       storageMetrics::enabled = false;
@@ -1154,7 +1154,6 @@ TEST_F(SectionCacheTest, PartialWatermarkExtensionAvoidsReplayingTheColdPrefix) 
       return {};
     }
     const auto page = section.loadPage(targetPage);
-    const auto end = std::chrono::steady_clock::now();
     if (!page) {
       ADD_FAILURE() << "target page was unavailable after crossing its watermark";
       storageMetrics::enabled = false;
@@ -1162,7 +1161,7 @@ TEST_F(SectionCacheTest, PartialWatermarkExtensionAvoidsReplayingTheColdPrefix) 
       return {};
     }
     ExtensionSample result{
-      static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()),
+      renderer.textAdvanceCalls,
       storageMetrics::htmlReadBytes, storageMetrics::htmlReadCalls,
       storageMetrics::cacheReadBytes, storageMetrics::cacheReadCalls,
       storageMetrics::cacheWriteBytes, storageMetrics::cacheSeekCalls,
@@ -1206,8 +1205,8 @@ TEST_F(SectionCacheTest, PartialWatermarkExtensionAvoidsReplayingTheColdPrefix) 
       EXPECT_EQ(partialSamples.back().visibleOffset, coldSamples.back().visibleOffset);
     }
 
-    const auto partialUs = summarize(partialSamples, [](const auto& sample) { return sample.elapsedUs; });
-    const auto coldUs = summarize(coldSamples, [](const auto& sample) { return sample.elapsedUs; });
+    const auto partialWork = summarize(partialSamples, [](const auto& sample) { return sample.textAdvanceCalls; });
+    const auto coldWork = summarize(coldSamples, [](const auto& sample) { return sample.textAdvanceCalls; });
     const auto partialHtml = summarize(partialSamples, [](const auto& sample) { return sample.htmlReadBytes; });
     const auto coldHtml = summarize(coldSamples, [](const auto& sample) { return sample.htmlReadBytes; });
     const auto partialCacheRead = summarize(partialSamples, [](const auto& sample) { return sample.cacheReadBytes; });
@@ -1219,7 +1218,7 @@ TEST_F(SectionCacheTest, PartialWatermarkExtensionAvoidsReplayingTheColdPrefix) 
 
     std::cout << "SECTION_WATERMARK_BENCH mode=partial watermark=" << fixture.watermark
               << " target=" << fixture.watermark << " samples=" << sampleCount;
-    printMetric("us", partialUs);
+    printMetric("text_advance_calls", partialWork);
     printMetric("html_read_bytes", partialHtml);
     printMetric("cache_read_bytes", partialCacheRead);
     printMetric("cache_write_bytes", partialCacheWrite);
@@ -1227,14 +1226,18 @@ TEST_F(SectionCacheTest, PartialWatermarkExtensionAvoidsReplayingTheColdPrefix) 
     std::cout << "\n";
     std::cout << "SECTION_WATERMARK_BENCH mode=cold watermark=" << fixture.watermark
               << " target=" << fixture.watermark << " samples=" << sampleCount;
-    printMetric("us", coldUs);
+    printMetric("text_advance_calls", coldWork);
     printMetric("html_read_bytes", coldHtml);
     printMetric("cache_read_bytes", coldCacheRead);
     printMetric("cache_write_bytes", coldCacheWrite);
     printMetric("cache_seek_calls", coldCacheSeek);
     std::cout << "\n";
 
-    EXPECT_LT(partialUs.p95, coldUs.p50)
+    // Font measurements count layout work even when both paths read one HTML buffer.
+    EXPECT_GT(partialWork.max, 0u);
+    EXPECT_EQ(partialWork.p50, partialWork.max);
+    EXPECT_EQ(coldWork.p50, coldWork.max);
+    EXPECT_LT(partialWork.max, coldWork.p50)
       << "partial extension replayed the cold parser prefix at watermark " << fixture.watermark;
     if (fixture.watermark >= 120) {
       EXPECT_LT(partialHtml.p95, coldHtml.p50)

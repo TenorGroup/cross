@@ -287,6 +287,7 @@ add_test(NAME CoverRedriveProductionBehavior COMMAND "${Python3_EXECUTABLE}" "${
 
 add_subdirectory(text_gray_policy)
 
+add_test(NAME SettingsStatusLabel COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/settings_semantics/status_label.py" --output "${CMAKE_CURRENT_BINARY_DIR}/settings-status-label")
 add_test(NAME SettingsChoiceSemantics COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/settings_semantics/run.py" --output "${CMAKE_CURRENT_BINARY_DIR}/settings-semantics")
 add_test(NAME SettingsChoicePixels COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/settings_semantics/pixels.py" --output "${CMAKE_CURRENT_BINARY_DIR}/settings-pixels")
 
