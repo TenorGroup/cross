@@ -2,7 +2,7 @@
 
 `png/` contains the 42 source images used by `scripts/icons/sinh.py`. Each image is 1 bit and 40x40 px.
 
-The 21 designs were approved on 2026-10-09. `-chon` contains the selected stroke-3 artwork. `-xam` is made from it by `scripts/icons/xam.py`: the same shape with 1 lane of every stroke taken away, a solid 2 px line inside the selected ink and with exactly the selected ink box. The selected central stems of `doc` and `thong_tin` remain 4 px wide for symmetry; their grey stems are 2 px, centred.
+The 21 designs were approved on 2026-10-09. `-chon` contains the selected stroke-3 artwork; for `gan_day`, `cai_dat`, `ngon_ngu`, `thong_tin`, `ban_phim`, `them` and `cu_chi` it is made by `scripts/icons/chon.py` from true circles and lines (`tron.py`), so edit that script and not the PNG. `-xam` is made from it by `scripts/icons/xam.py`: the same shape with 1 lane of every stroke taken away, a solid 2 px line inside the selected ink and with exactly the selected ink box. The selected central stems of `doc` and `thong_tin` remain 4 px wide for symmetry; their grey stems are 2 px, centred.
 
 Centre the ink bounding box. Opposite white margins must differ by at most 1 px. An odd ink extent leaves the extra white pixel at the right or bottom. The ink centre is therefore 19.5 px for an even extent and 19 px for an odd extent. Selected and grey variants follow this same convention; different extent parity permits a 0.5 px centre difference.
 

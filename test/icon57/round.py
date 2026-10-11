@@ -1,8 +1,8 @@
-"""Grey tab icons: circles round, lines straight, keys in a grid.
+"""Tab icons (grey and selected): circles round, lines straight, keys in a grid.
 
 Run `python3 test/icon57/round.py`. Reads the grey bitmap the way scripts/icons/sinh.py hands it to the headers and fails when
 - a ring (the clock, the info ring, the globe, the two knobs of the sliders) is not square, has an edge midpoint more than
-  0,5 px from its circle, is thinner than 1,8 px or thicker than 2,4 px on average, or is not the same in all 8 mirrorings;
+  0,5 px from its circle, is thinner than 1,8 px or thicker than 2,4 px on average (3 px strokes: 2,8 to 3,4), or is not the same in all 8 mirrorings;
 - the globe is not mirrored in x and in y;
 - an arc beside the gesture pill has an edge midpoint more than 0,5 px from its circle (radius 20 outside, 18 inside);
 - the clock hand has a vertical piece that is not 1 unbroken pair of columns, or a diagonal piece that is not 45 degrees;
@@ -47,7 +47,7 @@ def width_height(part):
     return right - left + 1, bottom - top + 1
 
 
-def ring_report(name, part, with_inner=True, full=True):
+def ring_report(name, part, with_inner=True, full=True, thick=(1.8, 2.4)):
     """Outer and inner edge deviation from the circle, thickness, and 8-fold mismatch of one closed ring."""
     left, top, right, bottom = xam.box(part)
     wide, high = width_height(part)
@@ -68,7 +68,7 @@ def ring_report(name, part, with_inner=True, full=True):
         mean = sum(inner) / len(inner)
         check(max(abs(v - mean) for v in inner) <= 0.5,
               f'{name}: inner edge is up to {max(abs(v - mean) for v in inner):.2f} px from its circle')
-        check(1.8 <= radius - mean <= 2.4, f'{name}: ring is {radius - mean:.2f} px thick on average')
+        check(thick[0] <= radius - mean <= thick[1], f'{name}: ring is {radius - mean:.2f} px thick on average')
     if full:
         bad = sum(1 for x, y in part
                   if any((math.floor(qx + cx), math.floor(qy + cy)) not in part
@@ -165,6 +165,52 @@ if len(keys) == 8:
 check(len(bars) == 1 and width_height(bars[0])[1] == 2 and len(bars[0]) == 2 * width_height(bars[0])[0],
       'ban_phim: space bar is not 2 rows of equal length')
 check(all((39 - x, y) in ink for x, y in ink), 'ban_phim: not mirrored in x')
+
+# The selected (black) art of the same icons: stroke 3, same circles and lines.
+def selected(name):
+    return xam.ink_of(sinh.draw(name, 40, 4, True))
+
+
+THICK3 = (2.8, 3.4)
+for name in ('gan_day', 'thong_tin'):
+    found = closed(selected(name), (34, 34))
+    check(len(found) == 1, f'{name} selected: expected 1 closed ring of 34x34, found {len(found)}')
+    for part in found:
+        ring_report(f'{name} selected', part, thick=THICK3)
+found = closed(selected('ngon_ngu'), (34, 34))
+check(len(found) == 1, 'ngon_ngu selected: expected 1 closed ring of 34x34')
+for part in found:
+    ring_report('ngon_ngu selected', part, with_inner=False, full=False)
+knobs = closed(selected('cai_dat'), (13, 13))
+check(len(knobs) == 2, f'cai_dat selected: expected 2 round knobs of 13x13, found {len(knobs)}')
+for part in knobs:
+    ring_report('cai_dat selected knob', part, thick=THICK3)
+ink = selected('gan_day')
+hands = [part for part in xam._parts(ink) if not xam._holes(part)]
+rows = {}
+for x, y in hands[0]:
+    rows.setdefault(y, []).append(x)
+starts = [min(v) for _, v in sorted(rows.items())]
+vertical = [s for s in starts if s == starts[len(starts) // 3]]
+slant = starts[starts.index(vertical[0]) + len(vertical) - 1:]
+check(len(hands) == 1 and len(vertical) >= 6 and all(b - a == 1 for a, b in zip(slant, slant[1:])),
+      'gan_day selected: the hand is not an upright piece and a 45 degree slant')
+ink = selected('ban_phim')
+keys = [p for p in xam._parts(ink) if not xam._holes(p) and width_height(p)[0] <= 5]
+check(len(keys) == 8 and {width_height(p) for p in keys} == {(4, 4)} and all(len(p) == 16 for p in keys),
+      'ban_phim selected: expected 8 square keys of 4x4')
+if len(keys) == 8:
+    lefts, tops = sorted({xam.box(p)[0] for p in keys}), sorted({xam.box(p)[1] for p in keys})
+    check(len(lefts) == 4 and len(tops) == 2 and len({b - a for a, b in zip(lefts, lefts[1:])}) == 1,
+          f'ban_phim selected: keys are not on an even grid ({lefts}, {tops})')
+check(all((39 - x, y) in ink for x, y in ink), 'ban_phim selected: not mirrored in x')
+ink = selected('cu_chi')
+arcs = [part for part in xam._parts(ink) if xam.box(part)[2] < 14 or xam.box(part)[0] > 25]
+check(len(arcs) == 2, 'cu_chi selected: expected 2 arcs')
+for part in arcs:
+    arc_report('cu_chi selected arc', part, (18, 19) if xam.box(part)[0] > 25 else (22, 19), 20, 17)
+dots = xam._parts(selected('them'))
+check(len(dots) == 3 and all(width_height(p) == (6, 6) for p in dots), 'them selected: expected 3 round dots of 6x6')
 
 print(f'{"RED" if failures else "GREEN"}: {checks} round and straight checks, {len(failures)} failures')
 print('\n'.join(failures))
