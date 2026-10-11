@@ -46,8 +46,10 @@ struct PreviewLayout {
   uint8_t antiAliasing = 0xFF;
 };
 
-// Draws the sample-text pane via the reader engine, reusing layout across redraws
+// Draws the sample-text pane via the reader engine, reusing layout across redraws.
+// sideArrows: the list chrome draws its edge arrows (UiListActivity::drawPageHints, 6 x 9 px of ink at x 4..9 on
+// the left, mirrored on the right, y 191..199); the label keeps 6 px from them.
 void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previewPadding, int labelGap, int top,
-                   int height, const char* familyName, const char* sizeName);
+                   int height, const char* familyName, const char* sizeName, bool sideArrows = false);
 
 }  // namespace textsettings

@@ -106,7 +106,7 @@ void relayout(PreviewLayout& layout, const GfxRenderer& renderer, int fontId, in
 }  // namespace
 
 void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previewPadding, int labelGap, int top,
-                   int height, const char* familyName, const char* sizeName) {
+                   int height, const char* familyName, const char* sizeName, const bool sideArrows) {
   const int left = previewPadding;
   const int width = renderer.getScreenWidth() - (previewPadding * 2);
   if (width <= 0 || height <= 0) return;
@@ -117,11 +117,23 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
   const int labelY = top + height - previewPadding - labelH;
   const char* labelText = labelBuf;
   std::string clippedLabel;
-  if (renderer.getTextWidth(UI_10_FONT_ID, labelBuf) > width) {
-    clippedLabel = renderer.truncatedText(UI_10_FONT_ID, labelBuf, width, EpdFontFamily::REGULAR);
+  int labelX = left;
+  int labelRoom = width;
+  if (sideArrows) {
+    // The edge arrows ink x 4..9 and screen width - 11 .. width - 6, y 191..199. A label whose ink comes within
+    // 6 px of those rows starts 6 px clear of the left arrow and ends 6 px clear of the right one.
+    constexpr int kArrowLeftInkRight = 9, kArrowInkTop = 191, kArrowInkBottom = 199, kClear = 6;
+    const auto ink = renderer.getTextInkBounds(UI_10_FONT_ID, labelBuf, EpdFontFamily::REGULAR);
+    if (labelY + ink[1] <= kArrowInkBottom + kClear && labelY + ink[3] - 1 >= kArrowInkTop - kClear) {
+      labelX = std::max(left, kArrowLeftInkRight + kClear + 1 - ink[0]);
+      labelRoom = std::min(width - (labelX - left), renderer.getScreenWidth() - 11 - kClear - labelX);
+    }
+  }
+  if (renderer.getTextWidth(UI_10_FONT_ID, labelBuf) > labelRoom) {
+    clippedLabel = renderer.truncatedText(UI_10_FONT_ID, labelBuf, labelRoom, EpdFontFamily::REGULAR);
     labelText = clippedLabel.c_str();
   }
-  renderer.drawText(UI_10_FONT_ID, left, labelY, labelText);
+  renderer.drawText(UI_10_FONT_ID, labelX, labelY, labelText);
 
   const int fontId = SETTINGS.getReaderFontId();
   if (fontId == 0) return;

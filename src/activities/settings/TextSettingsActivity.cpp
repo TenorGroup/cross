@@ -728,7 +728,7 @@ void TextSettingsActivity::render(RenderLock&&) {
     ++passes;
 #endif
     textsettings::renderPreview(renderer, previewLayout_, metrics_.previewPadding, metrics_.verticalSpacing, afterHeader,
-                               previewHeight, familyName, sizeName);
+                               previewHeight, familyName, sizeName, drawsSideArrows());
 #ifdef TENOR_PRESS_PROBE
     previewMs += millis() - previewStarted;
 #endif
