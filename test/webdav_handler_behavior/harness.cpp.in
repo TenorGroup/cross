@@ -6,6 +6,10 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <thread>
+#include <array>
+#include <functional>
+#include "UploadSocket.h"
 #include <vector>
 #include "@REPLACEMENT@"
 
@@ -24,6 +28,8 @@ class String {
 };
 #define LOG_DBG(...) do {} while (0)
 #define LOG_ERR(...) do {} while (0)
+#define LOG_INF(...) do {} while (0)
+unsigned long millis() { return 0; }
 int watchdogResets = 0;
 void resetTaskWatchdogIfSubscribed() { ++watchdogResets; }
 bool allocationFailure = false;
@@ -155,6 +161,7 @@ struct NetworkClient {
   size_t write(Stream&);
   size_t write(Stream&, size_t);
   void stop() { connection->stopped = true; }
+  void clear() {}
 };
 struct WebServer {
   String src, dst;
@@ -170,6 +177,17 @@ struct WebServer {
     body = text ? text : "";
   }
 };
+struct CrossPointWebServer {
+  WebServer* server;
+  UploadSocket uploadSocket;
+  std::function<bool()> uploadCancel;
+  struct { std::array<uint8_t,4096> buffer; } upload;
+  void noteUploadSocket() { uploadSocket.note(7); }
+  void noteTransferActivity(size_t) {}
+  bool uploadCancelled();
+  void download(HalFile&);
+};
+@PRODUCTION_DOWNLOAD@
 enum RawStatus { RAW_START, RAW_WRITE, RAW_END, RAW_ABORTED };
 struct HTTPRaw { RawStatus status; uint8_t* buf = nullptr; size_t currentSize = 0; size_t totalSize = 0; };
 struct Auth { bool authorize(WebServer&, bool) const { return true; } };
@@ -179,6 +197,11 @@ struct WebDAVHandler {
   String _putPath;
   bool _putOk = false;
   bool _putExisted = false;
+  std::function<bool()> cancel_;
+  std::function<void()> noteSocket_;
+  std::function<void()> retractSocket_;
+  explicit WebDAVHandler(Auth access = {}) : auth(access) {}
+  bool transferCancelled() const { return cancel_ && cancel_(); }
   void raw(WebServer&, const String&, HTTPRaw&);
   void handlePut(WebServer&);
   void handleMove(WebServer&);
@@ -484,6 +507,76 @@ int main() {
     if (fault != "read close") expect(s.connection->wire.size() < 2666, "fault does not fabricate missing bytes");
     expect(s.connection->wire == std::string(s.connection->wire.size(), 'x'), "only initialized source bytes sent");
   }
+  begin("HTTP download Back cancellation");
+  Storage.files["/owner.json"] = {std::string(9000, 'x')};
+  WebServer httpServer{"/owner.json", ""};
+  CrossPointWebServer download{&httpServer};
+  httpServer.connection->writeChunk = 17;
+  download.uploadCancel = [&] { return httpServer.connection->wire.size() >= 1024; };
+  HalFile httpFile = Storage.open("/owner.json");
+  download.download(httpFile);
+  expect(httpServer.connection->wire.size() >= 1024 && httpServer.connection->wire.size() < 9000,
+         "HTTP partial writes stop on Back");
+  expect(httpServer.connection->stopped && !httpFile, "HTTP Back closes socket and file");
+  expect(!download.uploadSocket.interrupt([](int) {}), "HTTP retracts socket before returning");
+
+  begin("GET Back cancellation");
+  Storage.files["/owner.json"] = {std::string(2666, 'x')};
+  WebDAVHandler cancelledGet;
+  WebServer cancelledGetServer{"/owner.json", ""};
+  bool getCancelled = false;
+  cancelledGet.cancel_ = [&] {
+    if (cancelledGetServer.connection->wire.size() >= 1024) getCancelled = true;
+    if (getCancelled) cancelledGetServer.connection->stopped = true;
+    return getCancelled;
+  };
+  bool getSocketHeld = false;
+  cancelledGet.noteSocket_ = [&] { getSocketHeld = true; };
+  cancelledGet.retractSocket_ = [&] { getSocketHeld = false; };
+  cancelledGetServer.connection->writeChunk = 17;
+  cancelledGet.handleGet(cancelledGetServer);
+  expect(cancelledGetServer.connection->stopped, "GET Back closes the socket");
+  expect(cancelledGetServer.connection->wire.size() < 2666, "GET Back stops before the body ends");
+  expect(Storage.closedFiles == 1, "GET Back closes the file");
+  expect(!getSocketHeld, "GET clears the socket before returning");
+
+  begin("PUT Back cancellation");
+  seed("/source.epub", "/owner.json");
+  WebDAVHandler cancelledPut;
+  WebServer cancelledPutServer{"/owner.json", ""};
+  bool putCancelled = false;
+  cancelledPut.cancel_ = [&] {
+    cancelledPutServer.connection->stopped = putCancelled;
+    return putCancelled;
+  };
+  cancelledPut.noteSocket_ = [] {};
+  cancelledPut.retractSocket_ = [] {};
+  HTTPRaw putStart{RAW_START};
+  cancelledPut.raw(cancelledPutServer, cancelledPutServer.src, putStart);
+  std::string partial = "new title|partial";
+  HTTPRaw putWrite{RAW_WRITE, reinterpret_cast<uint8_t*>(partial.data()), partial.size(), partial.size()};
+  cancelledPut.raw(cancelledPutServer, cancelledPutServer.src, putWrite);
+  putCancelled = true;
+  cancelledPut.raw(cancelledPutServer, cancelledPutServer.src, putWrite);
+  HTTPRaw putAbort{RAW_ABORTED};
+  cancelledPut.raw(cancelledPutServer, cancelledPutServer.src, putAbort);
+  cancelledPut.handlePut(cancelledPutServer);
+  expect(cancelledPutServer.connection->stopped, "PUT Back closes the socket");
+  expect(Storage.files.at("/owner.json").data.find("old title") == 0, "PUT Back preserves the old file");
+  expect(!Storage.files.count("/owner.json.davtmp"), "PUT Back removes the temporary file");
+  begin("PUT Back at body end");
+  seed("/source.epub", "/owner.json");
+  WebDAVHandler endPut;
+  WebServer endServer{"/owner.json", ""};
+  bool endCancelled = false;
+  endPut.cancel_ = [&] { return endCancelled; };
+  endPut.raw(endServer, endServer.src, putStart);
+  endPut.raw(endServer, endServer.src, putWrite);
+  endCancelled = true;
+  HTTPRaw putEnd{RAW_END};
+  endPut.raw(endServer, endServer.src, putEnd);
+  expect(Storage.files.at("/owner.json").data.find("old title") == 0, "Back before commit keeps old file");
+  expect(!Storage.files.count("/owner.json.davtmp"), "Back before commit removes temporary file");
   for (bool empty : {false, true}) {
     begin(empty ? "GET empty with allocation failure" : "GET OOM before headers");
     Storage.files["/owner.json"] = {empty ? "" : "valid payload"};

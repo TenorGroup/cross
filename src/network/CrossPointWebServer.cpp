@@ -166,12 +166,11 @@ void CrossPointWebServer::noteUploadSocket() {
 #endif
 }
 
-// Runs on the Back sampler task. With its read side shut, the socket reports the client
-// gone at the library's next poll for data (every 2 ms), so the upload aborts there. The
-// main task retracts the socket before the server closes it (UploadSocket).
+// Runs on the Back sampler task. Closing both directions interrupts a blocked read or write.
+// The main task retracts the socket before the server closes it (UploadSocket).
 void CrossPointWebServer::interruptUpload() {
 #ifndef SIMULATOR
-  uploadSocket.interrupt([](const int fd) { shutdown(fd, SHUT_RD); });
+  uploadSocket.interrupt([](const int fd) { shutdown(fd, SHUT_RDWR); });
 #endif
 }
 
@@ -375,7 +374,8 @@ void CrossPointWebServer::begin() {
                                     "Timeout",   "If-None-Match", "Host",    "Origin"};
   server->collectHeaders(collectedHeaders, 9);
   server->addHandler(
-      new WebDAVHandler(auth));  // Note: WebDAVHandler will be deleted by WebServer when server is stopped
+      new WebDAVHandler(auth, [this] { return uploadCancelled(); }, [this] { noteUploadSocket(); },
+                        [this] { uploadSocket.retract(); }));  // Note: WebDAVHandler will be deleted by WebServer when server is stopped
   LOG_DBG("WEB", "WebDAV handler initialized");
 
   server->begin();
@@ -834,6 +834,7 @@ void CrossPointWebServer::handleDownload() {
   server->send(200, contentType.c_str(), "");
 
   NetworkClient client = server->client();
+  noteUploadSocket();
   // HTTP handlers run serially; reuse the upload arena instead of spending
   // half of loopTask's stack on a second transfer buffer.
   auto* buffer = upload.buffer.data();
@@ -844,11 +845,19 @@ void CrossPointWebServer::handleDownload() {
           static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
   bool downloadOk = chunkSize > 0;
   while (downloadOk && file.available()) {
+    if (uploadCancelled()) {
+      downloadOk = false;
+      break;
+    }
     int result = file.read(buffer, chunkSize);
     if (result <= 0) break;
     size_t bytesRead = static_cast<size_t>(result);
     size_t totalWritten = 0;
     while (totalWritten < bytesRead) {
+      if (uploadCancelled()) {
+        downloadOk = false;
+        break;
+      }
       resetTaskWatchdogIfSubscribed();
       size_t wrote = client.write(buffer + totalWritten, bytesRead - totalWritten);
       if (wrote == 0) {
@@ -860,6 +869,8 @@ void CrossPointWebServer::handleDownload() {
       sent += wrote;
     }
   }
+  uploadSocket.retract();
+  if (!downloadOk) client.stop();
   client.clear();
   file.close();
   LOG_INF("WEB", "Download end ok=%d sent=%u elapsed=%lu heap=%u stack=%u", downloadOk, static_cast<unsigned>(sent),
