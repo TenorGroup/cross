@@ -227,11 +227,7 @@ void BmpViewerActivity::onEnter() {
   }
 }
 
-void BmpViewerActivity::onExit() {
-  Activity::onExit();
-  renderer.clearScreen();
-  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
-}
+void BmpViewerActivity::onExit() { Activity::onExit(); }
 
 void BmpViewerActivity::doSetSleepCover() {
   GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));

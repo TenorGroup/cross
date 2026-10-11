@@ -1595,15 +1595,22 @@ bool GfxRenderer::drawBitmap1Bit(const Bitmap& bitmap, const int x, const int y,
   // For 1-bit BMP, output is still 2-bit packed (for consistency with readNextRow)
   const int outputRowSize = (bitmap.getWidth() + 3) / 4;
   const auto rowBytesSize = static_cast<size_t>(bitmap.getRowBytes());
-  auto rowScratch = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(outputRowSize) + rowBytesSize);
+  const size_t rowWords = (static_cast<size_t>(outputRowSize) + rowBytesSize + 1) / 2;
+  auto rowScratch = heapfloor::array<uint16_t[]>(rowWords + (isScaled ? bitmap.getWidth() : 0), "bmp-columns");
   if (!rowScratch) {
     LOG_ERR("GFX", "!! Failed to allocate 1-bit BMP row buffers");
 
     return false;
   }
 
-  auto* outputRow = rowScratch.get();
-  auto* rowBytes = rowScratch.get() + outputRowSize;
+  auto* outputRow = reinterpret_cast<uint8_t*>(rowScratch.get());
+  auto* rowBytes = outputRow + outputRowSize;
+  auto* columns = rowScratch.get() + rowWords;
+  if (isScaled) {
+    for (int bmpX = 0; bmpX < bitmap.getWidth(); ++bmpX) {
+      columns[bmpX] = static_cast<uint16_t>(std::floor(bmpX * scale));
+    }
+  }
 
   for (int bmpY = 0; bmpY < bitmap.getHeight(); bmpY++) {
     // Read rows sequentially using readNextRow
@@ -1624,7 +1631,7 @@ bool GfxRenderer::drawBitmap1Bit(const Bitmap& bitmap, const int x, const int y,
     }
 
     for (int bmpX = 0; bmpX < bitmap.getWidth(); bmpX++) {
-      int screenX = x + (isScaled ? static_cast<int>(std::floor(bmpX * scale)) : bmpX);
+      int screenX = x + (isScaled ? columns[bmpX] : bmpX);
       if (screenX >= getScreenWidth()) {
         break;
       }

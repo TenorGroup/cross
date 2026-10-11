@@ -27,6 +27,9 @@ class HalGPIO {
  public:
   // isUsbConnected() is compiled from lib/hal/HalGPIO.cpp by gauge_task.py.
   bool lastUsbConnected = false;
+  mutable bool usbGaugeSampled = false;
+  mutable bool usbGaugeConnected = false;
+  mutable uint32_t usbGaugeSampleMs = 0;
   bool isUsbConnected() const;
   bool isXteinkDevice() const { return BoardConfig::ACTIVE.board != BoardConfig::Board::Other; }
   bool deviceIsX3() const { return BoardConfig::ACTIVE.board == BoardConfig::Board::X3; }
