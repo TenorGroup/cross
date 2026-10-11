@@ -1698,7 +1698,10 @@ int HomeActivity::drawCardStats(const HomeCardLayout& card, HomeStatsBounds* bou
     if (in.compact && bounds) {
       // The frame is measured on samples so the cover keeps its size from day to day. A real value
       // that wraps where its sample does not would overflow that frame, so it is measured as it is.
-      const bool realWraps = !first[row].empty() && cardStatValueWidth(renderer, fonts[row], first[row].c_str()) > width;
+      // A book with no numbers yet shows "Chưa ghi nhận" alone in a frame sized for 6 rows, where its
+      // 2nd line has room: it is not measured, so the cover does not change size once numbers arrive.
+      const bool realWraps = cardStats.recorded && !first[row].empty() &&
+                             cardStatValueWidth(renderer, fonts[row], first[row].c_str()) > width;
       if (!realWraps || cardStatValueWidth(renderer, fonts[row], samples[row]) > width) first[row] = samples[row];
     }
     if (cardStatValueWidth(renderer, fonts[row], first[row].c_str()) > width) {

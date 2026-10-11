@@ -39,7 +39,7 @@ def cache_hash(tmp, path):
     return subprocess.check_output([str(exe), path], text=True).strip()
 
 
-def shoot(tmp, name, tier, title):
+def shoot(tmp, name, tier, title, record=RECORD):
     sd = Path(tmp) / name
     store = sd / '.crosspoint'
     cache = store / ('epub_' + cache_hash(tmp, PATH))
@@ -51,8 +51,9 @@ def shoot(tmp, name, tier, title):
         z.writestr('cover.jpg', cover_jpeg())
     books = [dict(path=PATH, title=title, author='Tenor', coverBmpPath='/' + str(cache.relative_to(sd)) + '/thumb2_[HEIGHT].bmp')]
     (store / 'recent.json').write_text(json.dumps(dict(books=books), ensure_ascii=False), encoding='utf-8')
-    (store / 'reading-stats.json').write_text(json.dumps(dict(schema=3, activeBook=dict(RECORD, title=title)), ensure_ascii=False),
-                                             encoding='utf-8')
+    if record:  # no record: a book with no reading numbers yet
+        (store / 'reading-stats.json').write_text(json.dumps(dict(schema=3, activeBook=dict(record, title=title)),
+                                                             ensure_ascii=False), encoding='utf-8')
     (store / 'state.json').write_text('{"showBootScreen":false,"openEpubPath":""}')
     (store / 'settings.json').write_text(json.dumps(dict(language='VI', uiTheme=4, uiShell=0, uiTextSize=tier, homeStyle=0,
                                                          sleepTimeout=120, wakeIntoBook=0, tipsEnabled=0)))
