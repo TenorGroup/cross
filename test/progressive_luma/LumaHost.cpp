@@ -81,15 +81,6 @@ int main(int argc, char** argv) {
     int next = 0, asks = 0, stopAt = -1;
     uint32_t lastAsk = 0, maxGap = 0, atYes = 0;
   } run;
-  const size_t before = live;
-  const auto opened = run.decoder.open(file);
-  // Bytes the decoder holds after open (its own blocks only).
-  std::printf("open=%s w=%d h=%d live=%zu\n", name(opened), run.decoder.width(), run.decoder.height(), live - before);
-  if (opened != progluma::Result::Done) return 0;
-  if (mode == "decode") {
-    run.out = std::fopen(argv[3], "wb");
-    std::fprintf(run.out, "P5\n%d %d\n255\n", run.decoder.width(), run.decoder.height());
-  }
   if (mode == "stop") run.stopAt = std::atoi(argv[3]);
   progluma::Sink sink;
   sink.user = &run;
@@ -108,6 +99,16 @@ int main(int argc, char** argv) {
     r.atYes = blocks;
     return true;
   };
+  const size_t before = live;
+  const auto opened = run.decoder.open(file, sink);
+  // Bytes the decoder holds after open (its own blocks only).
+  std::printf("open=%s w=%d h=%d live=%zu read=%zu asks=%d\n", name(opened), run.decoder.width(), run.decoder.height(),
+              live - before, file.bytesRead, run.asks);
+  if (opened != progluma::Result::Done) return 0;
+  if (mode == "decode") {
+    run.out = std::fopen(argv[3], "wb");
+    std::fprintf(run.out, "P5\n%d %d\n255\n", run.decoder.width(), run.decoder.height());
+  }
   const auto result = run.decoder.run(sink);
   if (run.out) std::fclose(run.out);
   if (result == progluma::Result::Done) assert(run.next == run.decoder.height());

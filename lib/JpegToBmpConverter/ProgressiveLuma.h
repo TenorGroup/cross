@@ -45,6 +45,11 @@ class Sniffer {
   void decide(Kind kind);
 };
 
+// The most a decoder of an image this wide may hold (every reader and table it may take), and its
+// biggest block (the band of 8 pixel rows).
+size_t worstBytes(int width);
+size_t biggestBlock(int width);
+
 enum class Result : uint8_t {
   Done,
   Stopped,      // the caller's stop answered yes; nothing was kept
@@ -64,8 +69,9 @@ class Decoder {
  public:
   Decoder();
   ~Decoder();
-  // Reads every marker of the file once, then takes its memory through the heap floor door.
-  Result open(HalFile& file);
+  // Reads every marker of the file once (asking `sink.stop` before every sector), then takes its
+  // memory through the heap floor door.
+  Result open(HalFile& file, const Sink& sink = Sink{});
   int width() const;
   int height() const;
   uint32_t blocks() const;  // luma blocks decoded so far

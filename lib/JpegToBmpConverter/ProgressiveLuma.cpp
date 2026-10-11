@@ -81,14 +81,20 @@ struct Reader {
 
 // One pass over the file in order, through a sector buffer on the stack.
 struct Sequence {
-  Sequence(HalFile& f, const uint32_t bytes) : file(f), size(bytes) {}
+  Sequence(HalFile& f, const uint32_t bytes, const Sink& s) : file(f), sink(s), size(bytes) {}
   HalFile& file;
+  const Sink& sink;
   uint32_t size, pos = 0, base = kNone;
-  bool io = false;
+  bool io = false, stopped = false;
   uint8_t buf[kSector];
   int get() {
-    if (pos >= size) return -1;
+    if (pos >= size || stopped) return -1;
     if (base == kNone || pos < base || pos >= base + kSector) {
+      // The marker pass reads the whole file: the caller's stop is asked before every sector.
+      if (sink.stop && sink.stop(sink.user)) {
+        stopped = true;
+        return -1;
+      }
       base = pos & ~(kSector - 1);
       const uint32_t n = std::min(kSector, size - base);
       if (!file.seek(base) || file.read(buf, n) != static_cast<int>(n)) {
@@ -109,93 +115,72 @@ int16_t shifted(const int32_t v, const int al) {
   return static_cast<int16_t>(static_cast<uint16_t>(static_cast<uint32_t>(v) << al));
 }
 
-// libjpeg's accurate integer inverse DCT (jidctint.c, islow), to 8 x 8 pixels.
+// libjpeg's accurate integer inverse DCT (jidctint.c, islow), to 8 x 8 pixels. The arithmetic wraps
+// (unsigned): a valid file never leaves 32 bits, so its pixels are libjpeg's; a damaged file whose
+// coefficients do gets a wrong block, never undefined behaviour.
+using Wrap = uint32_t;
+constexpr Wrap F0298 = 2446, F0390 = 3196, F0541 = 4433, F0765 = 6270, F0899 = 7373, F1175 = 9633, F1501 = 12299,
+               F1847 = 15137, F1961 = 16069, F2053 = 16819, F2562 = 20995, F3072 = 25172;
+constexpr int CONST_BITS = 13, PASS1_BITS = 2;
+
+// One 1-D pass over in[0..7], descaled by n bits, written every `step` values.
+void pass(const Wrap* in, int32_t* out, const int step, const int n) {
+  const auto descale = [n](const Wrap x) { return static_cast<int32_t>(x + (Wrap(1) << (n - 1))) >> n; };
+  Wrap z2 = in[2], z3 = in[6];
+  Wrap z1 = (z2 + z3) * F0541;
+  Wrap tmp2 = z1 - z3 * F1847, tmp3 = z1 + z2 * F0765;
+  Wrap tmp0 = (in[0] + in[4]) << CONST_BITS, tmp1 = (in[0] - in[4]) << CONST_BITS;
+  const Wrap t10 = tmp0 + tmp3, t13 = tmp0 - tmp3, t11 = tmp1 + tmp2, t12 = tmp1 - tmp2;
+  tmp0 = in[7];
+  tmp1 = in[5];
+  tmp2 = in[3];
+  tmp3 = in[1];
+  z1 = tmp0 + tmp3;
+  z2 = tmp1 + tmp2;
+  z3 = tmp0 + tmp2;
+  Wrap z4 = tmp1 + tmp3;
+  const Wrap z5 = (z3 + z4) * F1175;
+  tmp0 *= F0298;
+  tmp1 *= F2053;
+  tmp2 *= F3072;
+  tmp3 *= F1501;
+  z1 *= Wrap(0) - F0899;
+  z2 *= Wrap(0) - F2562;
+  z3 = z3 * (Wrap(0) - F1961) + z5;
+  z4 = z4 * (Wrap(0) - F0390) + z5;
+  tmp0 += z1 + z3;
+  tmp1 += z2 + z4;
+  tmp2 += z2 + z3;
+  tmp3 += z1 + z4;
+  out[0] = descale(t10 + tmp3);
+  out[7 * step] = descale(t10 - tmp3);
+  out[step] = descale(t11 + tmp2);
+  out[6 * step] = descale(t11 - tmp2);
+  out[2 * step] = descale(t12 + tmp1);
+  out[5 * step] = descale(t12 - tmp1);
+  out[3 * step] = descale(t13 + tmp0);
+  out[4 * step] = descale(t13 - tmp0);
+}
+
 void idct(const int16_t* coef, const uint16_t* quant, uint8_t* out, const int stride) {
-  constexpr int CONST_BITS = 13, PASS1_BITS = 2;
-  constexpr int32_t F0298 = 2446, F0390 = 3196, F0541 = 4433, F0765 = 6270, F0899 = 7373, F1175 = 9633,
-                    F1501 = 12299, F1847 = 15137, F1961 = 16069, F2053 = 16819, F2562 = 20995, F3072 = 25172;
-  const auto descale = [](const int32_t x, const int n) { return (x + (int32_t(1) << (n - 1))) >> n; };
   int32_t ws[64];
+  Wrap in[8];
   for (int c = 0; c < 8; ++c) {
-    const auto in = [&](int r) { return int32_t(coef[r * 8 + c]) * quant[r * 8 + c]; };
-    if (!coef[8 + c] && !coef[16 + c] && !coef[24 + c] && !coef[32 + c] && !coef[40 + c] && !coef[48 + c] &&
-        !coef[56 + c]) {
-      const int32_t dc = in(0) * (1 << PASS1_BITS);
+    // A coefficient times its quantizer fits 32 bits (32.767 x 65.535).
+    for (int r = 0; r < 8; ++r) in[r] = static_cast<Wrap>(int32_t(coef[r * 8 + c]) * quant[r * 8 + c]);
+    if (!in[1] && !in[2] && !in[3] && !in[4] && !in[5] && !in[6] && !in[7]) {
+      const auto dc = static_cast<int32_t>(in[0] << PASS1_BITS);
       for (int r = 0; r < 8; ++r) ws[r * 8 + c] = dc;
       continue;
     }
-    int32_t z2 = in(2), z3 = in(6);
-    int32_t z1 = (z2 + z3) * F0541;
-    int32_t tmp2 = z1 - z3 * F1847, tmp3 = z1 + z2 * F0765;
-    z2 = in(0);
-    z3 = in(4);
-    int32_t tmp0 = (z2 + z3) * (1 << CONST_BITS), tmp1 = (z2 - z3) * (1 << CONST_BITS);
-    const int32_t t10 = tmp0 + tmp3, t13 = tmp0 - tmp3, t11 = tmp1 + tmp2, t12 = tmp1 - tmp2;
-    tmp0 = in(7);
-    tmp1 = in(5);
-    tmp2 = in(3);
-    tmp3 = in(1);
-    z1 = tmp0 + tmp3;
-    z2 = tmp1 + tmp2;
-    z3 = tmp0 + tmp2;
-    int32_t z4 = tmp1 + tmp3;
-    const int32_t z5 = (z3 + z4) * F1175;
-    tmp0 *= F0298;
-    tmp1 *= F2053;
-    tmp2 *= F3072;
-    tmp3 *= F1501;
-    z1 *= -F0899;
-    z2 *= -F2562;
-    z3 = z3 * -F1961 + z5;
-    z4 = z4 * -F0390 + z5;
-    tmp0 += z1 + z3;
-    tmp1 += z2 + z4;
-    tmp2 += z2 + z3;
-    tmp3 += z1 + z4;
-    constexpr int n = CONST_BITS - PASS1_BITS;
-    ws[c] = descale(t10 + tmp3, n);
-    ws[56 + c] = descale(t10 - tmp3, n);
-    ws[8 + c] = descale(t11 + tmp2, n);
-    ws[48 + c] = descale(t11 - tmp2, n);
-    ws[16 + c] = descale(t12 + tmp1, n);
-    ws[40 + c] = descale(t12 - tmp1, n);
-    ws[24 + c] = descale(t13 + tmp0, n);
-    ws[32 + c] = descale(t13 - tmp0, n);
+    pass(in, ws + c, 8, CONST_BITS - PASS1_BITS);
   }
+  int32_t px[8];
   for (int r = 0; r < 8; ++r) {
-    const int32_t* w = ws + r * 8;
-    int32_t z2 = w[2], z3 = w[6];
-    int32_t z1 = (z2 + z3) * F0541;
-    int32_t tmp2 = z1 - z3 * F1847, tmp3 = z1 + z2 * F0765;
-    int32_t tmp0 = (w[0] + w[4]) * (1 << CONST_BITS), tmp1 = (w[0] - w[4]) * (1 << CONST_BITS);
-    const int32_t t10 = tmp0 + tmp3, t13 = tmp0 - tmp3, t11 = tmp1 + tmp2, t12 = tmp1 - tmp2;
-    tmp0 = w[7];
-    tmp1 = w[5];
-    tmp2 = w[3];
-    tmp3 = w[1];
-    z1 = tmp0 + tmp3;
-    z2 = tmp1 + tmp2;
-    z3 = tmp0 + tmp2;
-    int32_t z4 = tmp1 + tmp3;
-    const int32_t z5 = (z3 + z4) * F1175;
-    tmp0 *= F0298;
-    tmp1 *= F2053;
-    tmp2 *= F3072;
-    tmp3 *= F1501;
-    z1 *= -F0899;
-    z2 *= -F2562;
-    z3 = z3 * -F1961 + z5;
-    z4 = z4 * -F0390 + z5;
-    tmp0 += z1 + z3;
-    tmp1 += z2 + z4;
-    tmp2 += z2 + z3;
-    tmp3 += z1 + z4;
-    constexpr int n = CONST_BITS + PASS1_BITS + 3;
-    const int32_t px[8] = {descale(t10 + tmp3, n), descale(t11 + tmp2, n), descale(t12 + tmp1, n),
-                           descale(t13 + tmp0, n), descale(t13 - tmp0, n), descale(t12 - tmp1, n),
-                           descale(t11 - tmp2, n), descale(t10 - tmp3, n)};
+    for (int x = 0; x < 8; ++x) in[x] = static_cast<Wrap>(ws[r * 8 + x]);
+    pass(in, px, 1, CONST_BITS + PASS1_BITS + 3);
     uint8_t* o = out + r * stride;
-    for (int x = 0; x < 8; ++x) o[x] = static_cast<uint8_t>(std::clamp(px[x] + 128, int32_t(0), int32_t(255)));
+    for (int x = 0; x < 8; ++x) o[x] = static_cast<uint8_t>(std::clamp(px[x], int32_t(-128), int32_t(127)) + 128);
   }
 }
 
@@ -476,6 +461,16 @@ struct Decoder::State {
   }
 };
 
+size_t biggestBlock(const int width) {
+  const size_t band = size_t(64) * ((width + 7) / 8);
+  return std::max({band, sizeof(Reader) * kMaxReaders, sizeof(Huff) * kMaxReaders * 3});
+}
+size_t worstBytes(const int width) {
+  const size_t blocks = (width + 7) / 8;
+  return sizeof(Decoder::State) + sizeof(Reader) * kMaxReaders + sizeof(Huff) * kMaxReaders * 3 +
+         sizeof(int16_t) * 4 * (blocks + 4) + 64 * blocks;
+}
+
 Decoder::Decoder() = default;
 Decoder::~Decoder() = default;
 int Decoder::width() const { return s ? s->width : 0; }
@@ -483,11 +478,11 @@ int Decoder::height() const { return s ? s->height : 0; }
 uint32_t Decoder::blocks() const { return s ? s->blocks : 0; }
 
 namespace {
-Result load(Decoder::State& st, HalFile& file) {
+Result load(Decoder::State& st, HalFile& file, const Sink& sink) {
   st.file = &file;
   st.fileSize = static_cast<uint32_t>(file.size());
-  Sequence in(file, st.fileSize);
-  const auto bad = [&in](const Result r) { return in.io ? Result::Io : r; };
+  Sequence in(file, st.fileSize, sink);
+  const auto bad = [&in](const Result r) { return in.stopped ? Result::Stopped : in.io ? Result::Io : r; };
   if (in.get() != 0xFF || in.get() != 0xD8) return bad(Result::Corrupt);
   uint32_t dcAt[4]{}, acAt[4]{};
   uint16_t quant[4][64]{};
@@ -529,7 +524,7 @@ Result load(Decoder::State& st, HalFile& file) {
       // A single component is never interleaved: its blocks are its MCUs.
       if (st.ncomp == 1) st.hs[0] = st.vs[0] = st.hmax = st.vmax = 1;
       // The luma must be the widest plane: a chroma plane wider than it is not decoded here.
-      if (st.hs[0] != st.hmax || st.vs[0] != st.vmax) return Result::Unsupported;
+      if (st.hs[0] != st.hmax || st.vs[0] != st.vmax) return bad(Result::Unsupported);
       frame = true;
     } else if (marker == 0xC4) {
       while (in.pos < end) {
@@ -568,26 +563,26 @@ Result load(Decoder::State& st, HalFile& file) {
         hasLuma |= c == 0;
         td[i] = static_cast<uint8_t>(tables >> 4);
         ta[i] = static_cast<uint8_t>(tables & 15);
-        if (td[i] > 3 || ta[i] > 3) return Result::Corrupt;
+        if (td[i] > 3 || ta[i] > 3) return bad(Result::Corrupt);
       }
       scan.ss = static_cast<uint8_t>(in.get());
       scan.se = static_cast<uint8_t>(in.get());
       const int approx = in.get();
-      if (in.io) return Result::Io;
+      if (in.io || in.stopped) return bad(Result::Io);
       scan.ah = static_cast<uint8_t>(approx >> 4);
       scan.al = static_cast<uint8_t>(approx & 15);
       if (scan.se > 63 || scan.ss > scan.se || (scan.ss == 0 && scan.se != 0) || (scan.ss > 0 && scan.ns != 1) ||
           scan.ah > 13 || scan.al > 13 || (scan.ah && scan.al != scan.ah - 1))
-        return Result::Corrupt;
-      if (++scans > kMaxScans) return Result::Unsupported;
+        return bad(Result::Corrupt);
+      if (++scans > kMaxScans) return bad(Result::Unsupported);
       if (hasLuma) {
-        if (st.readers == kMaxReaders) return Result::Unsupported;
+        if (st.readers == kMaxReaders) return bad(Result::Unsupported);
         for (int i = 0; i < scan.tables(); ++i) {
           scan.tableAt[i] = scan.ss > 0 ? acAt[ta[0]] : dcAt[td[i]];
-          if (!scan.tableAt[i]) return Result::Corrupt;  // a table used before it was defined
+          if (!scan.tableAt[i]) return bad(Result::Corrupt);  // a table used before it was defined
         }
         if (!st.readers) {
-          if (!quantSet[tq0]) return Result::Corrupt;
+          if (!quantSet[tq0]) return bad(Result::Corrupt);
           std::memcpy(st.quant, quant[tq0], sizeof(st.quant));
         }
         scan.dri = dri;
@@ -607,15 +602,16 @@ Result load(Decoder::State& st, HalFile& file) {
         in.pos -= 2;
         break;
       }
-      if (in.io) return Result::Io;
+      if (in.io || in.stopped) return bad(Result::Io);
       continue;
     }
-    if (in.io) return Result::Io;
+    if (in.io || in.stopped) return bad(Result::Io);
     in.pos = end;
   }
-  if (in.io) return Result::Io;
+  if (in.stopped) return Result::Stopped;
+  if (in.io || in.stopped) return bad(Result::Io);
   // A file cut before its end may have lost scans that come after the cut, so it is not decoded.
-  if (!frame || !st.readers || !ended) return Result::Corrupt;
+  if (!frame || !st.readers || !ended) return bad(Result::Corrupt);
 
   // Memory, through the heap floor door: the readers, their tables, a row of luma DC, a band.
   st.bw = (st.width + 7) / 8;
@@ -643,7 +639,7 @@ Result load(Decoder::State& st, HalFile& file) {
       int n = 0;
       for (int k = 1; k <= 16; ++k) n += head[k];
       for (int k = 0; k < n; ++k) values[k] = static_cast<uint8_t>(in.get());
-      if (in.io) return Result::Io;
+      if (in.stopped || in.io) return in.stopped ? Result::Stopped : Result::Io;
       build(st.table[pool], head + 1, values, n);
       r.table[t] = static_cast<uint8_t>(pool++);
     }
@@ -652,10 +648,10 @@ Result load(Decoder::State& st, HalFile& file) {
 }
 }  // namespace
 
-Result Decoder::open(HalFile& file) {
+Result Decoder::open(HalFile& file, const Sink& sink) {
   s.reset(new (std::nothrow) State());
   if (!s) return Result::NoHeap;
-  const Result r = load(*s, file);
+  const Result r = load(*s, file, sink);
   if (r != Result::Done) s.reset();  // nothing is held after a refusal
   return r;
 }

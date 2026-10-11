@@ -187,6 +187,15 @@ corrupt['se_over_63'] = scan_header(p420, 1, lambda h: h[:-3] + bytes([1, 64, h[
 corrupt['ac_run_past_se'] = scan_header(p420, 1, lambda h: h[:-3] + bytes([1, 1, h[-1]]))
 # The luma band 6..63 read as 60..63: its runs reach past coefficient 63.
 corrupt['ac_run_past_63'] = scan_header(p420, 4, lambda h: h[:-3] + bytes([60, 63, h[-1]]))
+# Luma DC with every code meaning a 15 bit difference: the coefficients run far past what a picture
+# gives. The decode may end any way, but its arithmetic stays defined (the sanitizers watch).
+dc15 = edit(p420, 0xC4, lambda b: table(0, b[0] & 15, [1] + [0] * 15, [15]) + b[17 + sum(b[1:17]):])
+r = host('decode', save('dc15', dc15), work / 'out.pgm')
+check(bool(r) and r.get('open') == 'Done', f'DC of category 15: decoded without undefined arithmetic ({r})')
+# Luma quantized by 65.535 everywhere (a 16 bit table): every product leaves 32 bits in the IDCT.
+q16 = edit(p420, 0xDB, lambda b: bytes([0x10 | (b[0] & 15)]) + b'\xff\xff' * 64 + b[65:])
+r = host('decode', save('q16', q16), work / 'out.pgm')
+check(r.get('run') == 'Done', f'16 bit quantizers of 65.535: decoded without undefined arithmetic ({r})')
 corrupt['ah_over_13'] = scan_header(p420, 1, lambda h: h[:-3] + bytes([h[-3], h[-2], 0xE0 | 13]))
 for name, data in corrupt.items():
     r = host('decode', save(name, data), work / 'out.pgm')
@@ -209,10 +218,15 @@ for k in range(240):
         save(f'fuzz_fail_{k}', bytes(src))
 check(not any('fuzz' in f or 'rc=' in f for f in fails), '240 randomly damaged files: no sanitizer report, no crash')
 
-for n in (1, 5, 40):
+# The marker pass asks before every sector: a stop there has read no further than the sectors before it.
+for n in (1, 5):
     r = host('stop', save('p420', p420), n)
-    check(r.get('run') == 'Stopped' and int(r.get('max_gap', 99)) <= 16 and int(r.get('after', 99)) <= 1,
-          f'stop at question {n}: {r}')
+    check(r.get('open') == 'Stopped' and int(r.get('read', 1 << 30)) <= (n - 1) * 512 and r.get('live') == '0',
+          f'stop at question {n}, in the marker pass: {r}')
+n = 120
+r = host('stop', save('p420', p420), n)
+check(r.get('run') == 'Stopped' and int(r.get('max_gap', 99)) <= 16 and int(r.get('after', 99)) <= 1,
+      f'stop at question {n}, in the decode: {r}')
 for door in ('pjx-readers', 'pjx-tables', 'pjx-dc', 'pjx-band'):
     r = host('refuse', save('p420', p420), door)
     check(r.get('open') == 'NoHeap' and r.get('live') == '0', f'heap floor refuses {door}: nothing held ({r})')
