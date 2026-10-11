@@ -23,6 +23,7 @@ constexpr int DATE_FONT_ID = SMALL_FONT_ID;
 constexpr int SOURCE_TITLE_FONT_ID = UI_12_FONT_ID;
 constexpr int TITLE_FONT_ID = NOTOSERIF_12_FONT_ID;
 constexpr int WORD_FONT_ID = NOTOSERIF_16_FONT_ID;
+constexpr int UGLY_META_STEP = 32;
 constexpr int FOOTER_GAP = 8, GLYPH_TOP_GAP = 56, HINTS_CLEARANCE = 16, CHEVRON_CLEARANCE = 6, TOP_GAP = 60;
 int quotesHeaderBottom() { return 90; }
 int statusBlockHeight(const GfxRenderer&) { return 200; }
@@ -106,6 +107,8 @@ struct QuoteDetailActivity {
   tenorchrome::X3ScreenLayout screenLayout() const;
   quotedetail::Metrics metrics() const;
   int visitX3Meta(bool paint, int firstLine = 0, int y = 0) const;
+  int metaStep() const;
+  void positionLabel(char* out, size_t size) const;
   void layoutX3Pages();
   void drawX3Content() const;
 };

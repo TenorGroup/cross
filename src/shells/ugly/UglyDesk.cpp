@@ -33,6 +33,8 @@ constexpr Place PLACES[6] = {
     {{352, 66, 498, 236}, StrId::STR_HOME_TAB_STATS},    {{210, 80, 312, 225}, StrId::STR_HOME_TAB_RECENT},
     {{75, 286, 455, 515}, StrId::STR_UGLY_DESK_READING}, {{36, 558, 240, 668}, StrId::STR_HOME_TAB_FOLDER},
     {{322, 512, 480, 672}, StrId::STR_READER_TAB_FAVORITES}, {{36, 60, 186, 248}, StrId::STR_SETTINGS_TITLE}};
+constexpr int RING_PAD_Y = 24;  // the pen ring's room above and below the small objects
+constexpr int RING_CLEAR = 5;    // the ring's lowest ink stays about this far above the path line's words
 constexpr int ROW_TOLERANCE = 60;  // objects whose centres lie this close vertically share a row
 constexpr homerows::Page PAGES[6] = {homerows::Page::Stats,   homerows::Page::Recent,    homerows::Page::Recent,
                                      homerows::Page::Folder,  homerows::Page::Favorites, homerows::Page::Settings};
@@ -180,9 +182,13 @@ void Desk::render(RenderLock&&) {
     text(renderer, Size::S52, 410 - (today % 100 >= 10 ? 6 : 0), 208, day);
   }
 
-  // The big open book gets a snugger ring than the small objects.
-  circle(renderer, Circle::Object, ring[selected], selected == READING ? 8 : 16, selected == READING ? 12 : 24, mark_.get(selected), 3);
   pathHints(renderer, tr(STR_UGLY_DIARY_DESK), nullptr, false);
+  // The big open book gets a snugger ring than the small objects. It is drawn after the path line, whose wipe would
+  // cut a lower arc, and its lower arc stops RING_CLEAR above the highest row the line's words reach (it reaches
+  // RING_PAD_Y below its box), so the pen closes it whole in the room between the label and the line.
+  Box& around = ring[selected];
+  around.y1 = std::min(around.y1, pathInkTop(renderer) - RING_CLEAR - RING_PAD_Y);
+  circle(renderer, Circle::Object, around, selected == READING ? 8 : 16, selected == READING ? 12 : RING_PAD_Y, mark_.get(selected), 3);
   statusBar(renderer, mappedInput, {true, true, true, true});
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 #ifdef UGLY_FRAME_LOG

@@ -618,6 +618,11 @@ void pageHints(const GfxRenderer& r, const char* before, const char* after, int 
   text(r, Size::S22, w - 52 - width(r, Size::S22, after), baseline, after);
 }
 
+int pathInkTop(const GfxRenderer& r) {
+  const auto bar = tenorchrome::x3ScreenLayout(r).barRect;
+  return bar.y + (bar.height - ascent(Size::S22)) / 2;
+}
+
 void pathHints(const GfxRenderer& r, const char* path, const char* note, const bool wholeBar) {
   if (!tenorchrome::x3ScreenLayoutEnabled()) return;
   const auto bar = tenorchrome::x3ScreenLayout(r).barRect;

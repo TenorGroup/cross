@@ -53,6 +53,8 @@ class QuoteDetailActivity final : public Activity {
   tenorchrome::X3ScreenLayout screenLayout() const;
   void drawX3Content() const;
   int visitX3Meta(bool paint, int firstLine = 0, int y = 0) const;
+  int metaStep() const;
+  void positionLabel(char* out, size_t size) const;
   void layoutX3Pages();
 
  private:

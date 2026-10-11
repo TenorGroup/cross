@@ -75,6 +75,8 @@ void mark(const GfxRenderer& renderer, Mark m, int cx, int cy);
 void pageHints(const GfxRenderer& renderer, const char* before, const char* after, int baseline);
 // `wholeBar` false wipes only the band the words stand in, for a page whose drawing reaches into the bar's height.
 void pathHints(const GfxRenderer& renderer, const char* path, const char* note = nullptr, bool wholeBar = true);
+// The highest row the path line's words can reach; a drawing above the foot bar keeps clear of it.
+int pathInkTop(const GfxRenderer& renderer);
 
 // left and right are the front Left and Right buttons, which walk up and down the screen.
 struct Hints {
