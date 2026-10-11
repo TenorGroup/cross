@@ -304,3 +304,5 @@ add_subdirectory(brand_boot)
 add_subdirectory(tenor_ink)
 
 add_subdirectory(progressive_jpeg)
+
+add_subdirectory(cover_holder)

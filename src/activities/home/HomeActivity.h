@@ -271,6 +271,17 @@ class HomeActivity final : public UiTabListActivity {
   bool homeInkEnabled() const;
   bool homeGrayWanted() const;
   std::string touchCoverPath(const std::string& cover, int width, int height) const;
+  // The cover frame of a book with no cover (components/CoverHolder.h). A frame whose picture is not
+  // cached yet is drawn plain and asks for it; an idle pass on the main task writes it.
+  std::string holderPath(int width, int height) const;
+  bool drawHolder(int x, int y, int width, int height);
+  void wantHolder(int width, int height);
+  void tickHolders();
+  bool writeHolder(int width, int height);
+  struct HolderRequest { int16_t width = 0, height = 0; };
+  std::array<HolderRequest, 4> holderRequests{};
+  std::atomic<int> holderCount{0};
+  std::atomic<uint32_t> holderAtMs{0};
   bool showHomeGray();
   void clearHomeGray();
   bool homeGrayOnGlass = false;
