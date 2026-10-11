@@ -2268,6 +2268,7 @@ void HomeActivity::onTick() {
 
 void HomeActivity::writeMissingThumb(const int index) {
   RenderLock lock(*this);
+  HalPowerManager::Lock fullSpeed;
   if (activeTabId != Tab::RECENT || index != shownRecent()) return;
   if (homeInkEnabled()) {
     const auto requests = touchThumbs;
@@ -2736,6 +2737,7 @@ bool HomeActivity::tickHolders() {
   }
   if (millis() - holderAtMs.load() < HOLDER_IDLE_MS) return false;
   RenderLock lock(*this);
+  HalPowerManager::Lock fullSpeed;
   const auto requests = holderRequests;
   const int count = holderCount.exchange(0);
   if (activeTabId != Tab::RECENT) return false;

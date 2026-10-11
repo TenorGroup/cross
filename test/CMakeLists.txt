@@ -311,3 +311,5 @@ add_subdirectory(cover_ink)
 add_subdirectory(idle_home)
 
 add_subdirectory(cover_holder)
+
+add_subdirectory(home_thumb_work)
