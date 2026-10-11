@@ -105,7 +105,9 @@ class BookMetadataCache {
     uint16_t hashHigh;
     int16_t spineIndex;
     bool operator<(const SpineHrefIndexEntry& o) const {
-      return hashHigh < o.hashHigh || (hashHigh == o.hashHigh && hashLow < o.hashLow);
+      return hashHigh < o.hashHigh ||
+             (hashHigh == o.hashHigh &&
+              (hashLow < o.hashLow || (hashLow == o.hashLow && spineIndex < o.spineIndex)));
     }
     bool sameKey(const SpineHrefIndexEntry& o) const { return hashHigh == o.hashHigh && hashLow == o.hashLow; }
   };

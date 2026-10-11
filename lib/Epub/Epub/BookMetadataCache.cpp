@@ -379,32 +379,32 @@ bool BookMetadataCache::beginTocPass() {
 #ifdef TENOR_PRESS_PROBE
   const unsigned long indexStarted = millis();
 #endif
-  if (spineCount >= LARGE_SPINE_THRESHOLD) {
-    // Without the index every TOC entry rescans the spine file (minutes at
-    // thousands of chapters), so a book whose index does not fit is refused.
-    const uint32_t needed = static_cast<uint32_t>(spineCount) * sizeof(SpineHrefIndexEntry) + INDEX_HEAP_RESERVE;
+  if (spineCount > 0) {
+    // Small books also use the bounded index: the old linear path reread the spine for every TOC item.
+    const uint32_t reserve = spineCount < LARGE_SPINE_THRESHOLD ? 1024u : INDEX_HEAP_RESERVE;
+    const uint32_t needed = static_cast<uint32_t>(spineCount) * sizeof(SpineHrefIndexEntry) + reserve;
     if (ESP.getFreeHeap() < needed) {
-      LOG_ERR("BMC", "Book too large: %d spine items need %u B of heap, %u free", spineCount,
-              static_cast<unsigned>(needed), static_cast<unsigned>(ESP.getFreeHeap()));
-      tocFile.close();
-      spineFile.close();
-      return false;
+      LOG_ERR("BMC", "Href index needs %u B for %d spine items, %u free; using linear lookup", needed, spineCount,
+              static_cast<unsigned>(ESP.getFreeHeap()));
+      useSpineHrefIndex = false;
+    } else {
+      spineHrefIndex.clear();
+      spineHrefIndex.resize(spineCount);
+      spineFile.seek(0);
+      for (int i = 0; i < spineCount; i++) {
+        spineHrefIndex[i] = hrefKey(readSpineEntry(spineFile).href, static_cast<int16_t>(i));
+      }
+      std::sort(spineHrefIndex.begin(), spineHrefIndex.end());
+      spineFile.seek(0);
+      useSpineHrefIndex = true;
+      LOG_DBG("BMC", "Using href index for %d spine items", spineCount);
     }
-    spineHrefIndex.clear();
-    spineHrefIndex.resize(spineCount);
-    spineFile.seek(0);
-    for (int i = 0; i < spineCount; i++) {
-      spineHrefIndex[i] = hrefKey(readSpineEntry(spineFile).href, static_cast<int16_t>(i));
-    }
-    std::sort(spineHrefIndex.begin(), spineHrefIndex.end());
-    spineFile.seek(0);
-    useSpineHrefIndex = true;
-    LOG_DBG("BMC", "Using fast index for %d spine items", spineCount);
   } else {
     useSpineHrefIndex = false;
   }
 #ifdef TENOR_PRESS_PROBE
-  LOG_INF("BMC", "INDEX_SPLIT href_index ms=%lu spines=%d", millis() - indexStarted, spineCount);
+  LOG_INF("BMC", "INDEX_SPLIT href_index ms=%lu spines=%d bytes=%u enabled=%u", millis() - indexStarted, spineCount,
+          static_cast<unsigned>(spineHrefIndex.size() * sizeof(SpineHrefIndexEntry)), useSpineHrefIndex ? 1u : 0u);
 #endif
 
   // Wrapper OOM is fine: createTocEntry falls back to unbuffered writes.
