@@ -11,6 +11,7 @@ target_include_directories(PngBmpAllocationTest PRIVATE
   ${REPO_ROOT}/test/host_stubs
   ${REPO_ROOT}/test/inflate_stream/stubs
   ${REPO_ROOT}/lib/PngToBmpConverter
+  ${REPO_ROOT}/lib/JpegToBmpConverter
   ${REPO_ROOT}/lib/GfxRenderer
   ${REPO_ROOT}/lib/Memory
   ${REPO_ROOT}/lib/miniz/src
