@@ -91,7 +91,8 @@ void ConfirmationActivity::layoutCross() {
     headerHeight = 40 + questionLines.size() * renderer.getLineHeight(UI_12_FONT_ID) + 4 +
                    messageLines.size() * renderer.getLineHeight(SMALL_FONT_ID);
   }
-  layout = confirmationLayout(touch, renderer.getScreenWidth(), top, bottom, headerHeight);
+  layout = confirmationLayout(touch, renderer.getScreenWidth(), top, bottom, headerHeight,
+                              UITheme::getInstance().getMetrics().popupCornerRadius);
   if (touch) {
     const int clearTop = wholeLineTop(renderer, layout.action.y - 8);
     renderer.fillRect(0, clearTop, renderer.getScreenWidth(), bottom + 8 - clearTop, false);

@@ -171,3 +171,29 @@ def tick_metrics(image, root, box):
         if text_top is not None:
             out['off_text'] = centre - (text_top + text_bottom + 1) / 2
     return out
+
+
+def edge_distance(x, y, box, r):
+    """How far inside the rounded box (corner radius r) the pixel (x, y) lies, counted from its outer edge."""
+    x0, y0, x1, y1 = box
+    cx = x0 + r if x < x0 + r else x1 + 1 - r if x > x1 - r else None
+    cy = y0 + r if y < y0 + r else y1 + 1 - r if y > y1 - r else None
+    if cx is not None and cy is not None:
+        return r - math.hypot(x + 0.5 - cx, y + 0.5 - cy)
+    return min(x - x0, x1 - x, y - y0, y1 - y) + 0.5
+
+
+def ring_clearance(image, box, r):
+    """How near the ring round Cancel (ink in the last 57 rows of a confirmation) comes to the box's edge, in px from the
+    outer edge; the 2 px border and its blur (under 4 px) are not the ring."""
+    px = image.load()
+    x0, y0, x1, y1 = box
+    near = 99.0
+    for y in range(y1 - 56, y1 + 1):
+        for x in range(x0, x1 + 1):
+            if dark(px[x, y]):
+                d = edge_distance(x, y, box, r)
+                if d >= 4.0:
+                    near = min(near, d)
+    return near
+

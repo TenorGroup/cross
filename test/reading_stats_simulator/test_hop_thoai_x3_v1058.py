@@ -2,7 +2,7 @@
 
 Each dialog the X3 can open from Settings, the Home hold menu and the reader's text settings is run in the production
 simulator at the 3 text sizes; the last frame is measured against the one before it (hop_thoai_do.py):
-  - the 4 corners of the box fit one circle of the radius the theme gives that box (pop-up, hold menu and slider 28, confirmation 19, a notice tenorradius::leaf of its height),
+  - the 4 corners of the box fit one circle of the radius the theme gives that box (pop-up, hold menu and slider 28, confirmation 28 as the pop-up, a notice tenorradius::leaf of its height),
     each row of the arc has its pixel, and the 4 corners are the same;
   - a pop-up that marks its value has exactly 1 tick; the tick's ink box is centred on its row to 0.5 px and on the label's ink
     to 0.5 px, stands 16 px in from the row's ring (17 px of air to the ring's inner edge) and 40 px or more from the box's border.
@@ -36,7 +36,7 @@ TIERS = [0] if os.environ.get('POP_QUICK') else [0, 1, 2]
 
 # name, kind, starts on Home, reader menu style (1 tool bar, 0 list), keys
 POPUP, HOLD, CONFIRM, SLIDER, TOAST = 'popup', 'hold', 'confirm', 'slider', 'toast'
-RADIUS = {POPUP: 28, HOLD: 28, CONFIRM: 19, SLIDER: 28}
+RADIUS = {POPUP: 28, HOLD: 28, CONFIRM: 28, SLIDER: 28}
 
 
 def want_radius(kind, box):
@@ -167,6 +167,15 @@ class HopThoaiX3(unittest.TestCase):
                 gaps = sorted(sum(1 for row in fit[2][:want] if row == 60) for fit in fits.values())
                 self.assertLessEqual(gaps[1], 2, f'{key}: rows of the arc with no pixel, per corner {gaps}')
 
+    def test_confirmation_ring_keeps_6_px_from_the_edge(self):
+        # the ring round Cancel stood 6 px in from the edge of the box at 19; the larger corner must not bring it nearer
+        for key, (screen, frames) in self.shots.items():
+            if screen[1] != CONFIRM:
+                continue
+            with self.subTest(key=key):
+                near = measure.ring_clearance(frames[1], self.boxes[key], want_radius(CONFIRM, self.boxes[key]))
+                self.assertGreaterEqual(near, 6, f'{key}: the ring comes {near} px from the edge')
+
     def test_tick(self):
         for key, (screen, frames) in self.shots.items():
             box = self.boxes[key]
@@ -192,6 +201,12 @@ class Static(unittest.TestCase):
         margin, mark, gap = (int(v) for v in re.search(r'constexpr int TEXT_X = (\d+), MARK = (\d+), GAP = (\d+);', popup).groups())
         laid = tuple(int(v) for v in re.search(r': textWidth \+ 2 \* innerPadding \+ (\d+) \+ (\d+) \+ (\d+) \+ (\d+);', popup).groups())
         self.assertEqual(laid, (margin, mark, gap, margin))
+
+    def test_confirmation_takes_the_popup_radius_from_the_theme(self):
+        layout = (REPO / 'src/components/ConfirmationLayout.h').read_text()
+        self.assertNotRegex(layout, r', 19, headerHeight')
+        activity = (REPO / 'src/activities/util/ConfirmationActivity.cpp').read_text()
+        self.assertIn('UITheme::getInstance().getMetrics().popupCornerRadius);', activity)
 
     def test_tick_is_set_on_the_row_it_stands_in(self):
         popup = (REPO / 'src/components/OptionPopup.h').read_text()
