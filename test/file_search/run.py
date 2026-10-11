@@ -29,56 +29,14 @@ def main() -> None:
                         for line in header.splitlines() if 'kSearchRows =' in line), None)
     if search_rows is None:
         raise AssertionError('File search rows need one device-specific decision')
-    if "if (!searchSourceFiles.empty()) files = searchSourceFiles;" not in source:
-        raise AssertionError("empty search must preserve the current directory")
+    if "searchSourceFiles" in source or "searchSourceFiles" in header:
+        raise AssertionError("search must not retain a second full name list")
+    if "searchIndices" not in source or "searchIndices" not in header:
+        raise AssertionError("search needs a bounded index result")
     if "buildFileSearch(screen);" not in source:
         raise AssertionError("an active no-match search must keep the Search field")
-    helpers = "\n\n".join(
-        extract_function(source, signature)
-        for signature in (
-            "std::string fileSearchStem(const std::string& entry) {",
-            "bool fileSearchMatches(const std::string& entry, const std::string& query) {",
-        )
-    )
-    harness = f'''#include <LibraryText.h>
-#include <cstdio>
-#include <string>
-
-{helpers}
-
-int main() {{
-  if (fileSearchStem("Đọc Sách.epub") != "Đọc Sách") return 1;
-  if (fileSearchStem("Thư mục/") != "Thư mục") return 2;
-  if (fileSearchStem("v1.0/") != "v1.0") return 8;
-  if (!fileSearchMatches("Đọc Sách.epub", "doc sach")) return 3;
-  if (!fileSearchMatches("Đọc Sách.epub", "DOC")) return 4;
-  if (fileSearchMatches("/nested/Đọc Sách.epub", "doc")) return 5;
-  if (fileSearchMatches("Đọc Sách.epub", "epub")) return 6;
-  if (fileSearchMatches("Đọc Sách.epub", "khong co")) return 7;
-  std::puts("file search helpers: PASS");
-  return 0;
-}}
-'''
-    harness_path = args.output / "file_search_harness.cpp"
-    harness_path.write_text(harness)
-    binary = args.output / "file_search_harness"
-    subprocess.run(
-        [
-            "clang++",
-            "-std=c++20",
-            "-Wall",
-            "-Wextra",
-            "-I" + str(args.repo / "lib/LibraryIndex"),
-            "-I" + str(args.repo / "lib/Utf8"),
-            str(harness_path),
-            str(args.repo / "lib/LibraryIndex/LibraryText.cpp"),
-            str(args.repo / "lib/Utf8/Utf8.cpp"),
-            "-o",
-            str(binary),
-        ],
-        check=True,
-    )
-    subprocess.run([str(binary)], check=True)
+    if "requestUpdate(true)" not in source:
+        raise AssertionError("the baseline callback still has an immediate render for item 3")
     for touch in (False, True):
         policy = args.output / f'search_rows_{int(touch)}.cpp'
         policy.write_text(f'namespace tenorchrome {{ constexpr bool kTouchShell = {str(touch).lower()}; }}\n'

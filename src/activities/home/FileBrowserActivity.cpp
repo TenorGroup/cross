@@ -5,7 +5,6 @@
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <I18n.h>
-#include <LibraryText.h>
 #include <Memory.h>
 #include <Utf8.h>
 
@@ -98,9 +97,7 @@ std::string fileSearchStem(const std::string& entry) {
 }
 
 bool fileSearchMatches(const std::string& entry, const std::string& query) {
-  const std::string needle = library::fold(query);
-  if (needle.empty()) return true;
-  return library::matchesQuery(library::fold(fileSearchStem(entry)), needle);
+  return filesearch::matchRank(entry, query) != 255;
 }
 
 void formatFileExtension(const std::string& filename, char* buffer, const size_t bufferSize) {
@@ -122,7 +119,7 @@ void FileBrowserActivity::loadFiles() {
   if (!fileNameBuffer) {
     LOG_ERR("FileBrowser", "fileNameBuffer not allocated");
     files.clear();
-    searchSourceFiles.clear();
+    searchIndices.clear();
     return;
   }
   // Cai gi la muc doc duoc, cai gi bi giau, thu tu sap xep: chot o docthumuc, dung chung
@@ -133,20 +130,22 @@ void FileBrowserActivity::loadFiles() {
   tooMany = false;
   if (cap == 0) {
     files.clear();
-    searchSourceFiles.clear();
+    searchIndices.clear();
     tooMany = true;
     return;
   }
-  std::vector<std::string>* destination = searchQuery.empty() ? &files : &searchSourceFiles;
-  destination->clear();
+  files.clear();
   docthumuc::doc(basepath.c_str(), SETTINGS.showHiddenFiles,
                  mode == Mode::PickFirmware ? docthumuc::Loc::Firmware : docthumuc::Loc::Sach, fileNameBuffer.get(),
-                 NAME_BUFFER_SIZE, *destination, cap, &tooMany);
-  if (searchQuery.empty()) {
-    searchSourceFiles.clear();
-  } else {
-    applySearch(searchQuery);
-  }
+                 NAME_BUFFER_SIZE, files, cap, &tooMany);
+  searchIndices.clear();
+  if (!searchQuery.empty()) applySearch(searchQuery);
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("FILES_SEARCH", "source_n=%u result_n=%u alloc=%u free=%u largest=%u",
+          static_cast<unsigned>(files.size()), static_cast<unsigned>(listCount()),
+          static_cast<unsigned>(searchIndices.capacity() * sizeof(uint16_t)),
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
   if (tooMany) LOG_INF("FILES", "%s holds more than %u names: refused", basepath.c_str(), static_cast<unsigned>(cap));
 }
 
@@ -170,7 +169,7 @@ void FileBrowserActivity::provideRow(void* ctx, const uint16_t index, fui::ListI
   }
   const size_t fileIndex = static_cast<size_t>(index - kSearchRows);
   if (fileIndex >= self->files.size()) return;
-  const std::string& entry = self->files[fileIndex];
+  const std::string& entry = self->entryForVisibleRow(static_cast<int>(fileIndex));
   formatFileName(entry, self->rowNameBuf, sizeof(self->rowNameBuf));
   if (self->rowIsPinned(static_cast<int>(index))) {
     static constexpr char PIN_GLYPH[] = "\xEE\x84\x8A";
@@ -221,8 +220,8 @@ void FileBrowserActivity::prewarmRowGlyphs(const int start) {
         auto* c = const_cast<PrewarmCtx*>(static_cast<const PrewarmCtx*>(ctx));
         const int row = c->first + static_cast<int>(i);
         if (row < kSearchRows) return tr(STR_SEARCH);
-        if (row >= kSearchRows && row - kSearchRows < static_cast<int>(c->self->files.size())) {
-          formatFileName(c->self->files[row - kSearchRows], c->self->rowNameBuf, sizeof(c->self->rowNameBuf));
+        if (row >= kSearchRows && row < c->self->listCount()) {
+          formatFileName(c->self->entryForVisibleRow(row), c->self->rowNameBuf, sizeof(c->self->rowNameBuf));
           return c->self->rowNameBuf;
         }
         return c->self->basepath.c_str();
@@ -231,14 +230,10 @@ void FileBrowserActivity::prewarmRowGlyphs(const int start) {
 }
 
 void FileBrowserActivity::applySearch(const std::string& query) {
-  files.clear();
-  if (query.empty()) {
-    files = searchSourceFiles;
-    return;
+  searchIndices.clear();
+  if (!query.empty() && !filesearch::buildResults(files, query, searchIndices)) {
+    LOG_ERR("FileBrowser", "Search result allocation refused");
   }
-  files.reserve(searchSourceFiles.size());
-  for (const auto& entry : searchSourceFiles)
-    if (fileSearchMatches(entry, query)) files.push_back(entry);
 }
 
 void FileBrowserActivity::openSearch() {
@@ -253,13 +248,7 @@ void FileBrowserActivity::openSearch() {
   startActivityForResult(std::move(keyboard), [this](const ActivityResult& result) {
     if (result.isCancelled) return;
     searchQuery = std::get<KeyboardResult>(result.data).text;
-    if (searchQuery.empty()) {
-      if (!searchSourceFiles.empty()) files = searchSourceFiles;
-      searchSourceFiles.clear();
-    } else {
-      if (searchSourceFiles.empty()) searchSourceFiles = files;
-      applySearch(searchQuery);
-    }
+    applySearch(searchQuery);
     nav.selected = 0;
     nav.top = 0;
     requestUpdate(true);
@@ -269,7 +258,7 @@ void FileBrowserActivity::openSearch() {
 void FileBrowserActivity::onEnter() {
   UiListActivity::onEnter();
   searchQuery.clear();
-  searchSourceFiles.clear();
+  searchIndices.clear();
 
   fileNameBuffer = makeUniqueNoThrow<char[]>(NAME_BUFFER_SIZE);
   if (!fileNameBuffer) {
@@ -299,7 +288,7 @@ void FileBrowserActivity::onExit() {
   rememberDirectory();
   Activity::onExit();
   files.clear();
-  searchSourceFiles.clear();
+  searchIndices.clear();
   fileNameBuffer.reset();
 }
 
@@ -412,7 +401,7 @@ void FileBrowserActivity::activateSelected() {
     return;
   }
 
-  const std::string& entry = files[nav.selected - kSearchRows];
+  const std::string& entry = entryForVisibleRow(nav.selected);
   bool isDirectory = (entry.back() == '/');
 
   // Firmware picker: select file -> return path; navigate into directories normally.
@@ -436,7 +425,7 @@ void FileBrowserActivity::activateSelected() {
     basepath += entry.substr(0, entry.length() - 1);
     searchQuery.clear();
     fileSearchReveal.reset();
-    searchSourceFiles.clear();
+    searchIndices.clear();
     loadFiles();
     nav.selected = 0;
     nav.top = 0;
@@ -459,7 +448,7 @@ void FileBrowserActivity::showEntryActions() {
     return;
   }
 
-  const bool isDirectory = files[nav.selected - kSearchRows].back() == '/';
+  const bool isDirectory = entryForVisibleRow(nav.selected).back() == '/';
   // Touch has no Select to hold, so the menu carries the pin, and a tap already opens: Pin or Unpin,
   // Rename, Delete, anchored to the row.
   enum class Do : uint8_t { Open, Pin, Delete, Rename };
@@ -509,7 +498,7 @@ void FileBrowserActivity::deleteSelected() {
 
   std::string cleanBasePath = basepath;
   if (cleanBasePath.back() != '/') cleanBasePath += "/";
-  const std::string entry = files[nav.selected - kSearchRows];
+  const std::string entry = entryForVisibleRow(nav.selected);
   const std::string fullPath = cleanBasePath + entry;
 
   auto handler = [this, fullPath](const ActivityResult& res) {
@@ -553,7 +542,7 @@ void FileBrowserActivity::deleteSelected() {
 void FileBrowserActivity::startRename() {
   if (files.empty() || nav.selected < kSearchRows || nav.selected >= listCount()) return;
 
-  const std::string oldEntry = files[nav.selected - kSearchRows];
+  const std::string oldEntry = entryForVisibleRow(nav.selected);
   if (oldEntry.back() == '/') return;
 
   std::string cleanBasePath = basepath;
@@ -635,8 +624,8 @@ bool FileBrowserActivity::handleCustomInput() {
     return true;
   }
   if (mode == Mode::Books && mappedInput.wasLongPressed(MappedInputManager::Button::PageForward, 400)) {
-    if (nav.selected >= kSearchRows && nav.selected < listCount() && files[nav.selected - kSearchRows].back() != '/') {
-      const auto path = basepath + (basepath.back() == '/' ? "" : "/") + files[nav.selected - kSearchRows];
+    if (nav.selected >= kSearchRows && nav.selected < listCount() && entryForVisibleRow(nav.selected).back() != '/') {
+      const auto path = basepath + (basepath.back() == '/' ? "" : "/") + entryForVisibleRow(nav.selected);
       if (FsHelpers::hasEpubExtension(path) || FsHelpers::hasTxtExtension(path) ||
           FsHelpers::hasMarkdownExtension(path) || FsHelpers::hasXtcExtension(path))
         startActivityForResult(ReaderActivity::create(renderer, mappedInput, path, false, true), nullptr);
@@ -655,7 +644,7 @@ bool FileBrowserActivity::handleCustomInput() {
       basepath = "/";
       searchQuery.clear();
       fileSearchReveal.reset();
-      searchSourceFiles.clear();
+      searchIndices.clear();
       loadFiles();
       nav.selected = 0;
       nav.top = 0;
@@ -685,7 +674,7 @@ bool FileBrowserActivity::handleButtons() {
         basepath = next;
         searchQuery.clear();
         fileSearchReveal.reset();
-        searchSourceFiles.clear();
+        searchIndices.clear();
         loadFiles();
         nav.reset();
         restoreDirectory();
@@ -725,7 +714,7 @@ bool FileBrowserActivity::handleButtons() {
           if (basepath.empty()) basepath = "/";
           searchQuery.clear();
           fileSearchReveal.reset();
-          searchSourceFiles.clear();
+          searchIndices.clear();
           loadFiles();
 
           const auto pos = oldPath.find_last_of('/');
@@ -938,7 +927,7 @@ void FileBrowserActivity::drawFooter() {
   // STR_SELECT instead. Directories in the same picker still descend, so keep STR_OPEN there.
   const bool selectingSearch = nav.selected >= 0 && nav.selected < kSearchRows;
   const bool selectingFirmwareFile = mode == Mode::PickFirmware && nav.selected >= kSearchRows &&
-                                     nav.selected < listCount() && files[nav.selected - kSearchRows].back() != '/';
+                                     nav.selected < listCount() && entryForVisibleRow(nav.selected).back() != '/';
   const char* confirmLabel = selectingSearch ? tr(STR_SEARCH)
                                              : (listCount() <= 1 ? "" : (selectingFirmwareFile ? tr(STR_SELECT) : tr(STR_OPEN)));
   const auto labels = mappedInput.mapLabels(backLabel, confirmLabel, listCount() <= 1 ? "" : tr(STR_DIR_UP),
@@ -981,15 +970,22 @@ void FileBrowserActivity::drawX3Content() {
   }
 }
 
+const std::string& FileBrowserActivity::entryForVisibleRow(const int row) const {
+  const size_t visible = static_cast<size_t>(row - kSearchRows);
+  return files[searchQuery.empty() ? visible : searchIndices[visible]];
+}
+
 size_t FileBrowserActivity::findEntry(const std::string& name) const {
-  const auto entry = std::find(files.begin(), files.end(), name);
-  return entry != files.end() ? static_cast<size_t>(entry - files.begin()) : 0;
+  for (size_t visible = 0; visible < (searchQuery.empty() ? files.size() : searchIndices.size()); ++visible) {
+    if (entryForVisibleRow(static_cast<int>(visible) + kSearchRows) == name) return visible;
+  }
+  return 0;
 }
 
 void FileBrowserActivity::captureNavigation(MenuNavigationState& state) const {
   UiListActivity::captureNavigation(state);
   state.location = basepath;
-  if (nav.selected >= kSearchRows && nav.selected < listCount()) state.selection = files[nav.selected - kSearchRows];
+  if (nav.selected >= kSearchRows && nav.selected < listCount()) state.selection = entryForVisibleRow(nav.selected);
 }
 void FileBrowserActivity::restoreNavigation(const MenuNavigationState& state) {
   if (mode != Mode::Books || state.location.empty()) return;
@@ -1001,8 +997,7 @@ void FileBrowserActivity::restoreNavigation(const MenuNavigationState& state) {
   }
   nav.selected = kepConTro(state.cursors[0].selected, listCount());
   if (!state.selection.empty()) {
-    const auto it = std::find(files.begin(), files.end(), state.selection);
-    if (it != files.end()) nav.selected = static_cast<int>(it - files.begin()) + kSearchRows;
+    nav.selected = static_cast<int>(findEntry(state.selection)) + kSearchRows;
   }
   nav.top = state.cursors[0].top;
   nav.followOnBuild = true;
@@ -1017,23 +1012,22 @@ void FileBrowserActivity::restoreDirectory() {
   // Caller already holds RenderLock and loaded this directory.
   MenuNavigationState state;
   if (!activityManager.menuNavigationMemory().load("BrowserDir:" + basepath, state)) return;
-  const auto it = std::find(files.begin(), files.end(), state.selection);
-  nav.selected = it != files.end() ? static_cast<int>(it - files.begin()) + kSearchRows
-                                   : kepConTro(state.cursors[0].selected, listCount());
+  nav.selected = state.selection.empty() ? kepConTro(state.cursors[0].selected, listCount())
+                                         : static_cast<int>(findEntry(state.selection)) + kSearchRows;
   nav.top = state.cursors[0].top;
   nav.followOnBuild = true;
 }
 
 std::string FileBrowserActivity::favoriteKey(int row) const {
   if (mode != Mode::Books || row < kSearchRows || row >= listCount()) return {};
-  auto name = files[row - kSearchRows];
+  auto name = entryForVisibleRow(row);
   const bool folder = !name.empty() && name.back() == '/';
   if (folder) name.pop_back();
   return filefavorites::keyFor(basepath + (basepath.back() == '/' ? "" : "/") + name, folder);
 }
 bool FileBrowserActivity::toggleFavorite(int row) {
   if (row < kSearchRows || row >= listCount()) return false;
-  auto name = files[row - kSearchRows];
+  auto name = entryForVisibleRow(row);
   const bool folder = name.back() == '/';
   if (folder) name.pop_back();
   return filefavorites::toggle(basepath + (basepath.back() == '/' ? "" : "/") + name, folder);

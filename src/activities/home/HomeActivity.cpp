@@ -373,10 +373,18 @@ void HomeActivity::rebuildRows(const bool readFolder) {
     case Tab::FOLDER:
       if (readFolder) docGocTheNho();
       folderRowIndices.clear();
-      for (size_t fileIndex = 0; fileIndex < mucTheNho.size(); ++fileIndex) {
+      if (tenorchrome::kTouchShell) {
+        filesearch::IndexBuffer matches;
+        if (!filesearch::buildResults(mucTheNho, folderSearchQuery, matches, "home-file-search-results")) {
+          LOG_ERR("Home", "Search result allocation refused");
+        } else {
+          for (size_t i = 0; i < matches.size(); ++i) folderRowIndices.push_back(matches[i]);
+        }
+      }
+      const size_t rowCount = tenorchrome::kTouchShell ? folderRowIndices.size() : mucTheNho.size();
+      for (size_t row = 0; row < rowCount; ++row) {
+        const size_t fileIndex = tenorchrome::kTouchShell ? folderRowIndices[row] : row;
         const auto& muc = mucTheNho[fileIndex];
-        if (tenorchrome::kTouchShell && !fileSearchMatches(muc, folderSearchQuery)) continue;
-        if (tenorchrome::kTouchShell) folderRowIndices.push_back(static_cast<uint16_t>(fileIndex));
         // Touch: the File card is the root of File, its rows as a folder's rows (name, icon).
         if (tenorchrome::kTouchShell) {
           char name[128];
@@ -386,6 +394,12 @@ void HomeActivity::rebuildRows(const bool readFolder) {
           rowLabels.push_back(muc);
         }
       }
+#ifdef TENOR_PRESS_PROBE
+      LOG_INF("FILES_SEARCH", "source_n=%u result_n=%u alloc=%u free=%u largest=%u",
+              static_cast<unsigned>(mucTheNho.size()), static_cast<unsigned>(rowCount),
+              static_cast<unsigned>(folderRowIndices.capacity() * sizeof(uint16_t)),
+              static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
       break;
     case Tab::STATS: {
       const bool enlarged = statsPaged();

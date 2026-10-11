@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "activities/UiListActivity.h"
+#include "components/FileSearch.h"
 
 // The name a folder entry shows: no trailing slash, no extension (the File card of Home uses it too).
 void formatFileName(const std::string& filename, char* buffer, size_t bufferSize);
@@ -37,9 +38,9 @@ class FileBrowserActivity final : public UiListActivity {
   void rememberDirectory();
   void restoreDirectory();
   std::vector<std::string> files;
-  // The raw current-directory names are retained only while a search is active,
-  // so clearing the query restores the same directory without another SD walk.
-  std::vector<std::string> searchSourceFiles;
+  // The source names stay in their directory order. Search keeps only indexes,
+  // so clearing the query restores the same order without copying names.
+  filesearch::IndexBuffer searchIndices;
   std::string searchQuery;
   std::unique_ptr<char[]> fileNameBuffer;
 
@@ -68,7 +69,9 @@ class FileBrowserActivity final : public UiListActivity {
   int prewarmedStart = -1;
   void prewarmRowGlyphs(int start);
 
-  int listCount() const override { return static_cast<int>(files.size()) + kSearchRows; }
+  int listCount() const override {
+    return static_cast<int>((searchQuery.empty() ? files.size() : searchIndices.size()) + kSearchRows);
+  }
   void buildScreen(UiScreen& screen) override;
   bool ownsX3Chrome() const override { return true; }
   tenorchrome::X3ScreenLayout screenLayout();
@@ -104,6 +107,7 @@ class FileBrowserActivity final : public UiListActivity {
   void openSearch();
   void applySearch(const std::string& query);
   size_t findEntry(const std::string& name) const;
+  const std::string& entryForVisibleRow(int row) const;
 
  public:
   explicit FileBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string initialPath = "/",
