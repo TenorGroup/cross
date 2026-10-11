@@ -104,6 +104,7 @@ for build, extra in (('release', []), ('probe', ['-DTENOR_PRESS_PROBE'])):
     subprocess.run([a.cxx, *flags, *extra, *sources, '-o', str(binaries[build])], check=True)
 cases = [('release', 'flag', 'normal-boot-is-not-an-update-boot'), ('release', 'flag', 'armed-flag-is-spent-once'),
          ('release', 'flag', 'power-loss-leaves-no-update-boot'), ('release', 'screen', 'check-alone-arms-nothing'),
+         ('release', 'screen', 'screen-back-cancels-manifest'),
          ('release', 'screen', 'tls-refusal-aborts-cleanly'),
          ('release', 'screen', 'update-restarts-into-install'), ('release', 'screen', 'cancel-restarts-home'),
          ('release', 'screen', 'update-boot-installs-without-asking'),

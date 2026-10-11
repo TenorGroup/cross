@@ -152,17 +152,27 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
              board_tag::boardName());
   release->setFirmwareAssetName(name);
   size_t received = 0;
+  bool cancelled = false;
   HttpDownloader::TransferStats transfer;
   const bool ok = HttpDownloader::fetchUrl(
       manifestUrl ? manifestUrl : latestReleaseUrl,
       [&](const uint8_t* data, size_t len) {
+        if (cancelCheck && cancelCheck(cancelCtx)) {
+          cancelled = true;
+          return false;
+        }
         if (len > 8192 - received) return false;
         received += len;
         release->feed(reinterpret_cast<const char*>(data), len);
         return true;
       },
-      "", "", ota_trust::ROOT_CA, false, nullptr, nullptr, &transfer);
+      "", "", ota_trust::ROOT_CA, false,
+      [&](size_t, size_t) {
+        if (cancelCheck && cancelCheck(cancelCtx)) cancelled = true;
+      },
+      &cancelled, &transfer);
   recordTransfer(attempt, transfer);
+  if (cancelled) return endAttempt(CANCELLED_ERROR, "manifest");
   if (!ok) return endAttempt(HTTP_ERROR, failedTransfer(attempt, transfer));
   if (!release->complete() || !release->foundTag()) return endAttempt(JSON_PARSE_ERROR, "parse");
   ota_policy::Version version;

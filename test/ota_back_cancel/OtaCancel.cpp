@@ -92,6 +92,7 @@ const char* fixtureTag = "v9.9.9";
 size_t ReleaseJsonParser::getFirmwareSize() const { return image.size(); }
 static size_t stallAt = SIZE_MAX;
 static size_t shortBy = 0;  // the server ends the body early but cleanly
+static bool stallManifest = false;
 static unsigned long transferEndedAt = 0;
 static int fetches = 0;
 
@@ -104,7 +105,15 @@ static bool fakeTransfer(const std::string& url, const HttpDownloader::DataCallb
   ++fetches;
   const unsigned long started = millis();
   if (stats) *stats = {200, true, 0, 0, 0, 0, 90000, 50000, 50000};
-  if (url.find("/firmware/tenor-cross") == std::string::npos) return true;  // the manifest
+  if (url.find("/firmware/tenor-cross") == std::string::npos) {
+    if (!stallManifest) return true;  // the manifest
+    while (!cancelFlag || !*cancelFlag) {
+      if (progress) progress(0, 0);
+      if (millis() - started >= 10000) return false;
+      vTaskDelay(2);
+    }
+    return false;
+  }
   size_t sent = first;
   const size_t end = std::min(image.size(), last == SIZE_MAX ? SIZE_MAX : last + 1);
   unsigned long lastByte = millis();
@@ -241,6 +250,26 @@ void run(const std::string& name) {
     require(activity.updater.checkForUpdate() == OtaUpdater::HTTP_ERROR,
             "a manifest outside the firmware directory was read");
     require(fetches == 0 && is(activity.updater.lastAttempt().step, "url"), "the refused manifest was fetched");
+    return;
+  }
+  if (name == "manifest-back-cancel") {
+    stallManifest = true;
+    activity.backLatch.start(gpio, activity.mappedInput.physicalBack());
+    activity.updater.setCancelCheck(
+        [](void* ctx) { return static_cast<OtaUpdateActivity*>(ctx)->backLatch.latched(); }, &activity);
+    std::thread pulse([&] {
+      vTaskDelay(100);
+      rawKey = 0;
+      vTaskDelay(60);
+      rawKey = -1;
+    });
+    const auto result = activity.updater.checkForUpdate();
+    pulse.join();
+    activity.backLatch.stop();
+    require(result == OtaUpdater::CANCELLED_ERROR, "a stalled manifest did not return CANCELLED_ERROR");
+    require(std::strcmp(activity.updater.lastAttempt().step, "manifest") == 0,
+            "manifest cancellation was recorded at the wrong step");
+    require(otaCalls.begin == 0 && otaCalls.setBoot == 0, "manifest cancellation touched the OTA slot");
     return;
   }
   if (name == "dry-run-keeps-boot-slot" || name == "older-refused-without-dry-run" ||

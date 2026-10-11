@@ -32,7 +32,7 @@ subprocess.run([a.cxx, '-std=c++17', '-pthread', '-Wall', '-Wextra', '-Werror', 
                 str(repo / 'src/network/FirmwareBoardTag.cpp'), str(repo / 'src/network/TlsRecordSlot.cpp'),
                 str(repo / 'src/util/FileTransferBackLatch.cpp'),
                 '-o', str(binary)], check=True)
-cases = ('no-back-installs', 'back-mid-download', 'back-stalled-download', 'stall-ends-on-idle-deadline',
+cases = ('no-back-installs', 'back-mid-download', 'back-stalled-download', 'manifest-back-cancel', 'stall-ends-on-idle-deadline',
          'dry-run-keeps-boot-slot', 'older-refused-without-dry-run', 'dry-run-short-image-released',
          'manifest-outside-firmware-dir-refused')
 results = []

@@ -48,6 +48,8 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
     RenderLock lock(*this);
     state = CHECKING_FOR_UPDATE;
   }
+  if (!backLatch.start(gpio, mappedInput.physicalBack())) LOG_ERR("OTA", "Cannot start Back sampler for manifest");
+  updater.setCancelCheck([](void* ctx) { return static_cast<OtaUpdateActivity*>(ctx)->backLatch.latched(); }, this);
   requestUpdateAndWait();
 
   {
@@ -57,13 +59,22 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
 #ifdef TENOR_PRESS_PROBE
   if (boot.dryRun()) {
     runDryRun();
+    backLatch.stop();
     finish();
     return;
   }
 #endif
   LOG_INF("OTA", "Manifest start heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   const auto res = updater.checkForUpdate();
+  backLatch.stop();
   LOG_INF("OTA", "Manifest check result=%d heap=%u", res, ESP.getFreeHeap());
+  if (res == OtaUpdater::CANCELLED_ERROR) {
+    LOG_PROBE("OTA", "Manifest cancel heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    mappedInput.suppressNextRelease(MappedInputManager::Button::Back);
+    finish();
+    recordAttempt("check");
+    return;
+  }
   // NO_UPDATE here means the release carries no firmware asset for this board
   // (expected until per-board assets are published) - not a failure.
   if (res == OtaUpdater::NO_UPDATE) {
