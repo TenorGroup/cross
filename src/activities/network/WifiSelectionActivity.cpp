@@ -623,6 +623,9 @@ void WifiSelectionActivity::handleAutoConnectFailure() {
     if (giveUpBeforeAsking()) {
       return;
     }
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("WIFI", "Saved networks failed: the list asks the user t=%lu", millis());
+#endif
     autoConnecting = false;
     state = WifiSelectionState::NETWORK_LIST;
     selectedNetworkIndex = 0;
@@ -636,6 +639,9 @@ void WifiSelectionActivity::handleAutoConnectFailure() {
 
 void WifiSelectionActivity::showNetworkListFromAutoConnect() {
   LOG_DBG("WIFI", "User requested manual network list");
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("WIFI", "Confirm during auto-connect: the list asks the user t=%lu", millis());
+#endif
   if (giveUpBeforeAsking()) {
     return;
   }

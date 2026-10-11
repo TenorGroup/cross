@@ -244,6 +244,9 @@ void CrossPointWebServerActivity::onExit() {
     state = WebServerActivityState::SHUTTING_DOWN;
     stopDnsServer();
     MDNS.end();
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("FTX", "mdns ended t=%lu", millis());
+#endif
 
     // Skip reboot if WiFi was never activated (e.g. user backed out of mode selection).
     if (WiFi.getMode() != WIFI_MODE_NULL) {
@@ -253,6 +256,9 @@ void CrossPointWebServerActivity::onExit() {
         WiFi.disconnect(false);
       }
       delay(30);
+#ifdef TENOR_PRESS_PROBE
+      LOG_INF("FTX", "wifi down t=%lu heap=%u largest=%u", millis(), ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
       // The restart hands back the heap Wi-Fi fragmented; the reader then opens
       // on a clean heap, the same way it would after a cold boot.
       if (toBook) {
@@ -499,6 +505,9 @@ void CrossPointWebServerActivity::stopServerAndLeave() {
     webServer->stop();
     webServer.reset();
   }
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("FTX", "server stopped t=%lu heap=%u largest=%u", millis(), ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
   leave();
 }
 

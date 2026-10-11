@@ -351,8 +351,14 @@ static void silentRestartTo(const uint32_t target, const char* targetName) {
   // through to the new activity. On Home, Select on the default
   // selectorIndex=0 opens the most-recent book, looking like a trampoline back
   // to the reader they just exited.
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("FTX", "restart notice target=%s t=%lu", targetName, millis());
+#endif
   showRestartNotice();
   delay(50);
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("FTX", "restart now t=%lu", millis());
+#endif
   ESP.restart();
 }
 
@@ -1035,6 +1041,12 @@ void setup() {
     activityManager.goHome(startHome, needsWakeRefresh);
   }
 
+#ifdef TENOR_PRESS_PROBE
+  if (resume == BootResume::Silent)
+    LOG_INF("FTX", "silent boot target=%u home=%u screen=%s t=%lu", static_cast<unsigned>(snapshotTarget),
+            static_cast<unsigned>(snapshotHomeMenu), activityManager.currentName() ? activityManager.currentName() : "-",
+            millis());
+#endif
   if (resume == BootResume::Silent) {
     // Block until the first paint physically completes. refreshDisplay()
     // waits on the panel BUSY pin so when this returns the user can see the
@@ -1042,6 +1054,9 @@ void setup() {
     // during boot dispatches against an invisible Home and the default
     // selectorIndex=0 opens the most-recent book.
     activityManager.requestFirstPaintAndWait();
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("FTX", "silent boot first paint t=%lu", millis());
+#endif
     // Absorb any button held at this point into currentState as a non-edge:
     // two gpio.update() calls separated by > InputManager's 5ms debounce
     // transition the held bit through lastDebounceTime into currentState
