@@ -8,3 +8,4 @@ add_test(NAME ThumbCacheReuse COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOUR
 add_test(NAME CoverCopyFailure COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_cover_copy_failure.py)
 add_test(NAME X4ShapeCacheV1057 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_x4_shape_cache_v1057.py)
 add_test(NAME X4ShapeCacheV1057Mutation COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_x4_shape_cache_v1057.py --mutation)
+add_test(NAME CoverBmpAtomic COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_cover_bmp_atomic.py)

@@ -9,6 +9,7 @@
 #include <Logging.h>
 #include <Memory.h>
 #include <PngToBmpConverter.h>
+#include <RecoverableFile.h>
 #include <TenorInk.h>
 #include <Utf8.h>
 #include <ZipFile.h>
@@ -978,19 +979,23 @@ bool Epub::generateCoverBmp(bool cropped, bool originalThresholds, const bool on
       return false;
     }
 
+    // The BMP is written under a part name and renamed once whole: whether the cover exists is decided by its
+    // name alone, so a write cut by power loss must not leave that name (a truncated BMP would be served forever).
+    const auto coverBmpPath = getCoverBmpPath(cropped, originalThresholds, oneBit);
+    const auto coverBmpPart = coverBmpPath + ".davtmp";
     HalFile coverBmp;
-    if (!Storage.openFileForWrite("EBP", getCoverBmpPath(cropped, originalThresholds, oneBit), coverBmp)) {
+    if (!Storage.openFileForWrite("EBP", coverBmpPart, coverBmp)) {
       return false;
     }
 #ifdef TENOR_PRESS_PROBE
     const unsigned long convertStartMs = millis();
 #endif
-    const bool success =
-        JpegToBmpConverter::jpegFileToBmpStream(coverJpg, coverBmp, cropped, originalThresholds, oneBit);
+    bool success = JpegToBmpConverter::jpegFileToBmpStream(coverJpg, coverBmp, cropped, originalThresholds, oneBit);
     // Explicitly close() files before calling Storage.remove()
     coverJpg.close();
     coverBmp.close();
     Storage.remove(coverJpgTempPath.c_str());
+    success = success && freeink::replaceFile(Storage, coverBmpPart.c_str(), coverBmpPath.c_str());
 #ifdef TENOR_PRESS_PROBE
     LOG_INF("EBP", "Cover BMP build total=%lu ms convert=%lu ms oneBit=%d ok=%d", millis() - coverStartMs,
             millis() - convertStartMs, oneBit ? 1 : 0, success ? 1 : 0);
@@ -998,7 +1003,7 @@ bool Epub::generateCoverBmp(bool cropped, bool originalThresholds, const bool on
 
     if (!success) {
       LOG_ERR("EBP", "Failed to generate BMP from cover image");
-      Storage.remove(getCoverBmpPath(cropped, originalThresholds, oneBit).c_str());
+      Storage.remove(coverBmpPart.c_str());
     }
     LOG_DBG("EBP", "Generated BMP from JPG cover image, success: %s", success ? "yes" : "no");
     return success;
@@ -1021,19 +1026,22 @@ bool Epub::generateCoverBmp(bool cropped, bool originalThresholds, const bool on
       return false;
     }
 
+    const auto coverBmpPath = getCoverBmpPath(cropped, originalThresholds, oneBit);
+    const auto coverBmpPart = coverBmpPath + ".davtmp";
     HalFile coverBmp;
-    if (!Storage.openFileForWrite("EBP", getCoverBmpPath(cropped, originalThresholds, oneBit), coverBmp)) {
+    if (!Storage.openFileForWrite("EBP", coverBmpPart, coverBmp)) {
       return false;
     }
-    const bool success = PngToBmpConverter::pngFileToBmpStream(coverPng, coverBmp, cropped, originalThresholds, oneBit);
+    bool success = PngToBmpConverter::pngFileToBmpStream(coverPng, coverBmp, cropped, originalThresholds, oneBit);
     // Explicitly close() files before calling Storage.remove()
     coverPng.close();
     coverBmp.close();
     Storage.remove(coverPngTempPath.c_str());
+    success = success && freeink::replaceFile(Storage, coverBmpPart.c_str(), coverBmpPath.c_str());
 
     if (!success) {
       LOG_ERR("EBP", "Failed to generate BMP from PNG cover image");
-      Storage.remove(getCoverBmpPath(cropped, originalThresholds, oneBit).c_str());
+      Storage.remove(coverBmpPart.c_str());
     }
     LOG_DBG("EBP", "Generated BMP from PNG cover image, success: %s", success ? "yes" : "no");
     return success;
