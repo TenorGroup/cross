@@ -63,6 +63,7 @@ class BookMetadataCache {
 
  private:
   std::string cachePath;
+  std::string sourcePath;
   uint32_t lutOffset;
   uint16_t spineCount;
   uint16_t tocCount;
@@ -152,8 +153,14 @@ class BookMetadataCache {
  public:
   BookMetadata coreMetadata;
 
-  explicit BookMetadataCache(std::string cachePath)
-      : cachePath(std::move(cachePath)), lutOffset(0), spineCount(0), tocCount(0), loaded(false), buildMode(false) {}
+  explicit BookMetadataCache(std::string cachePath, std::string sourcePath = {})
+      : cachePath(std::move(cachePath)),
+        sourcePath(std::move(sourcePath)),
+        lutOffset(0),
+        spineCount(0),
+        tocCount(0),
+        loaded(false),
+        buildMode(false) {}
   ~BookMetadataCache() = default;
 
   // Building phase (stream to disk immediately)
@@ -242,6 +249,9 @@ class BookMetadataCache {
   // Reading phase (read mode). With `allowPartial`, a missing book.bin falls back to book.part.
   // `stop` is asked while the records are checked; a stopped load fails.
   bool load(bool allowPartial = false, StopFn stop = nullptr);
+  // Read the small metadata sidecar and stat book.bin without validating its records.
+  bool loadMetadataOnly(BookMetadata& metadata, uint16_t* spine = nullptr, uint16_t* toc = nullptr,
+                        uint32_t* lut = nullptr) const;
   bool isPartial() const { return partial; }
   SpineEntry getSpineEntry(int index);
   TocEntry getTocEntry(int index);

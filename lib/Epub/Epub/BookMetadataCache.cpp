@@ -28,6 +28,9 @@ void logPassWrites(const char* file, const serialization::BufferedFileWriter* ou
 namespace {
 constexpr uint8_t BOOK_CACHE_VERSION = 10;  // v10: ignore ambiguous guide text references
 constexpr char bookBinFile[] = "/book.bin";
+constexpr char metadataFile[] = "/book.meta";
+constexpr char tmpMetadataFile[] = "/book.meta.tmp";
+constexpr uint8_t METADATA_VERSION = 1;
 constexpr char tmpSpineBinFile[] = "/spine.bin.tmp";
 constexpr char tmpTocBinFile[] = "/toc.bin.tmp";
 // A book indexed in the background (BookMetadataCache::indexesInBackground). book.part holds the
@@ -62,6 +65,73 @@ constexpr int BOOKBIN_MIN_CHUNK = 64;
 // Guards every loaded cache's size window: the reader's render task and its loop both ask for
 // sizes. One lock for the firmware's life, like ZipFile's, so no book open leaves one behind.
 std::mutex sizeWindowLock;
+
+bool metadataSourceKey(const std::string& cachePath, const std::string& sourcePath, uint64_t& key,
+                       uint32_t* readCount = nullptr) {
+  key = 14695981039346656037ull;
+  const std::string& identityPath = sourcePath.empty() ? cachePath : sourcePath;
+  for (const char c : identityPath) {
+    key ^= static_cast<uint8_t>(c);
+    key *= 1099511628211ull;
+  }
+  HalFile source;
+  if (!sourcePath.empty() && !Storage.openFileForRead("BMC", sourcePath, source)) return false;
+  if (!sourcePath.empty()) {
+    const uint32_t size = source.size();
+    key ^= static_cast<uint64_t>(size) * 0x9e3779b97f4a7c15ull;
+    uint8_t sample[64] = {};
+    const size_t head = std::min<size_t>(sizeof(sample), size);
+    if (head && source.read(sample, head) == static_cast<int>(head)) {
+      if (readCount) ++*readCount;
+      for (size_t i = 0; i < head; ++i) {
+        key ^= sample[i];
+        key *= 1099511628211ull;
+      }
+    } else if (head) {
+      source.close();
+      return false;
+    }
+    if (size > sizeof(sample) && source.seek(size - sizeof(sample)) &&
+        source.read(sample, sizeof(sample)) == static_cast<int>(sizeof(sample))) {
+      if (readCount) ++*readCount;
+      for (const uint8_t byte : sample) {
+        key ^= byte;
+        key *= 1099511628211ull;
+      }
+    } else if (size > sizeof(sample)) {
+      source.close();
+      return false;
+    }
+    source.close();
+  }
+  return true;
+}
+
+uint32_t metadataChecksum(const uint8_t version, const uint64_t sourceKey, const uint32_t bookSize,
+                          const uint16_t spineCount, const uint16_t tocCount, const uint32_t lutOffset,
+                          const std::string& title, const std::string& author) {
+  uint32_t checksum = 2166136261u;
+  const auto add = [&checksum](const void* data, const size_t size) {
+    const auto* bytes = static_cast<const uint8_t*>(data);
+    for (size_t i = 0; i < size; ++i) {
+      checksum ^= bytes[i];
+      checksum *= 16777619u;
+    }
+  };
+  add(&version, sizeof(version));
+  add(&sourceKey, sizeof(sourceKey));
+  add(&bookSize, sizeof(bookSize));
+  add(&spineCount, sizeof(spineCount));
+  add(&tocCount, sizeof(tocCount));
+  add(&lutOffset, sizeof(lutOffset));
+  const uint32_t titleSize = title.size();
+  const uint32_t authorSize = author.size();
+  add(&titleSize, sizeof(titleSize));
+  add(title.data(), title.size());
+  add(&authorSize, sizeof(authorSize));
+  add(author.data(), author.size());
+  return checksum;
+}
 
 #ifdef TENOR_UI_ACCEPTANCE
 // Logical metadata operations. BufferedFileReader/Writer may coalesce these
@@ -98,9 +168,11 @@ constexpr uint32_t MAX_METADATA_STRING_BYTES = 4096;
 template <typename F>
 class MetadataReader {
  public:
-  MetadataReader(F& file, size_t end) : file(file), end(end) {}
+  MetadataReader(F& file, size_t end, size_t maxStringBytes = MAX_METADATA_STRING_BYTES)
+      : file(file), end(end), maxStringBytes(maxStringBytes) {}
   bool ok() const { return valid; }
   size_t position() const { return file.position(); }
+  size_t readCount() const { return reads; }
   bool seek(size_t target) {
 #ifdef TENOR_UI_ACCEPTANCE
     ++cacheIoStats.seekOps;
@@ -115,7 +187,7 @@ class MetadataReader {
   }
   bool string(std::string& value) {
     uint32_t length = 0;
-    if (!pod(length) || length > MAX_METADATA_STRING_BYTES || !has(length)) {
+    if (!pod(length) || length > maxStringBytes || !has(length)) {
       valid = false;
       value.clear();
       return false;
@@ -125,6 +197,7 @@ class MetadataReader {
   }
 
   bool read(void* dst, size_t length) {
+    ++reads;
 #ifdef TENOR_UI_ACCEPTANCE
     ++cacheIoStats.readOps;
     cacheIoStats.readBytes += length;
@@ -137,7 +210,9 @@ class MetadataReader {
   bool has(size_t length) const { return position() <= end && length <= end - position(); }
   F& file;
   size_t end;
+  size_t maxStringBytes;
   bool valid = true;
+  size_t reads = 0;
 };
 
 // Entry (de)serializers, templated so they run over HalFile and the Buffered*
@@ -947,6 +1022,99 @@ bool BookMetadataCache::load(const bool allowPartial, const StopFn stop) {
   return allowPartial && !(stop && stop()) && loadFile(true, stop);
 }
 
+namespace {
+bool writeMetadataSidecarFile(const std::string& cachePath, const std::string& sourcePath,
+                              const BookMetadataCache::BookMetadata& metadata,
+                              const uint16_t spineCount, const uint16_t tocCount, const uint32_t lutOffset,
+                              const uint32_t bookSize) {
+  const std::string tmp = cachePath + tmpMetadataFile;
+  const std::string path = cachePath + metadataFile;
+  if (sourcePath.empty() || metadata.title.size() > 2047 || metadata.author.size() > 2047) return false;
+  uint64_t sourceKey = 0;
+  if (!metadataSourceKey(cachePath, sourcePath, sourceKey)) return false;
+  Storage.remove(tmp.c_str());
+  HalFile file;
+  bool ok = Storage.openFileForWrite("BMC", tmp, file);
+  if (ok) ok = serialization::writePod(file, METADATA_VERSION);
+  if (ok) ok = serialization::writePod(file, sourceKey);
+  if (ok) ok = serialization::writePod(file, bookSize);
+  if (ok) ok = serialization::writePod(file, spineCount);
+  if (ok) ok = serialization::writePod(file, tocCount);
+  if (ok) ok = serialization::writePod(file, lutOffset);
+  if (ok) ok = serialization::writeString(file, metadata.title);
+  if (ok) ok = serialization::writeString(file, metadata.author);
+  const uint32_t checksum = metadataChecksum(METADATA_VERSION, sourceKey, bookSize, spineCount, tocCount, lutOffset,
+                                             metadata.title, metadata.author);
+  if (ok) ok = serialization::writePod(file, checksum);
+  if (ok) ok = file.sync();
+  if (file) ok = file.close() && ok;
+  if (ok) {
+    Storage.remove(path.c_str());
+    ok = Storage.rename(tmp.c_str(), path.c_str());
+  }
+  if (!ok) Storage.remove(tmp.c_str());
+  return ok;
+}
+}  // namespace
+
+bool BookMetadataCache::loadMetadataOnly(BookMetadata& metadata, uint16_t* spine, uint16_t* toc,
+                                         uint32_t* lut) const {
+  metadata = {};
+#ifdef TENOR_PRESS_PROBE
+  const unsigned long started = millis();
+#endif
+  HalFile sidecar;
+  const std::string sidecarPath = cachePath + metadataFile;
+  if (!Storage.openFileForRead("BMC", sidecarPath, sidecar)) return false;
+  const size_t sidecarSize = sidecar.size();
+  MetadataReader reader(sidecar, sidecarSize, 2047);
+  uint8_t version = 0;
+  uint64_t sourceKey = 0;
+  uint32_t bookSize = 0, lutOffset = 0;
+  uint16_t spineCountValue = 0, tocCountValue = 0;
+  uint32_t checksum = 0;
+  const bool ok = reader.pod(version) && version == METADATA_VERSION && reader.pod(sourceKey) &&
+                  reader.pod(bookSize) && reader.pod(spineCountValue) && reader.pod(tocCountValue) &&
+                  reader.pod(lutOffset) && reader.string(metadata.title) && reader.string(metadata.author) &&
+                  reader.pod(checksum) && reader.position() == sidecarSize &&
+                  spineCountValue > 0 && spineCountValue <= INT16_MAX && tocCountValue <= INT16_MAX &&
+                  lutOffset <= bookSize &&
+                  static_cast<uint64_t>(lutOffset) +
+                          (static_cast<uint64_t>(spineCountValue) + tocCountValue) * sizeof(uint32_t) <= bookSize &&
+                  checksum == metadataChecksum(version, sourceKey, bookSize, spineCountValue, tocCountValue,
+                                                lutOffset, metadata.title, metadata.author);
+  if (sidecar) sidecar.close();
+  if (!ok) {
+    Storage.remove(sidecarPath.c_str());
+    metadata = {};
+    return false;
+  }
+
+  const std::string bookPath = cachePath + bookBinFile;
+  HalFile book;
+  uint64_t currentSourceKey = 0;
+  uint32_t sourceReads = 0;
+  const bool bookStatOk = Storage.openFileForRead("BMC", bookPath, book);
+  const uint32_t currentBookSize = bookStatOk ? book.size() : 0;
+  if (book) book.close();
+  if (!bookStatOk || currentBookSize != bookSize || !metadataSourceKey(cachePath, sourcePath, currentSourceKey, &sourceReads) ||
+      sourceKey != currentSourceKey) {
+    Storage.remove(sidecarPath.c_str());
+    metadata = {};
+    return false;
+  }
+  if (spine) *spine = spineCountValue;
+  if (toc) *toc = tocCountValue;
+  if (lut) *lut = lutOffset;
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("BMC", "META_READ bytes=%u reads=%u ms=%lu free=%u largest=%u spine=%u toc=%u",
+          static_cast<unsigned>(sidecarSize), static_cast<unsigned>(reader.readCount() + sourceReads),
+          millis() - started, static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
+          static_cast<unsigned>(spineCountValue), static_cast<unsigned>(tocCountValue));
+#endif
+  return true;
+}
+
 bool BookMetadataCache::loadFile(const bool partFile, const StopFn stop) {
   loaded = false;
   partial = false;
@@ -1032,6 +1200,10 @@ bool BookMetadataCache::loadFile(const bool partFile, const StopFn stop) {
   if (!partial) {
     bookSize = previous;
     windowFirst = 0;
+    if (!sourcePath.empty() && !Storage.exists((cachePath + metadataFile).c_str()) &&
+        !writeMetadataSidecarFile(cachePath, sourcePath, coreMetadata, spineCount, tocCount, lutOffset, fileSize)) {
+      LOG_DBG("BMC", "Metadata sidecar unavailable; full cache remains valid");
+    }
   }
   loaded = true;
   LOG_DBG("BMC", "Validated cache: %d spine, %d TOC entries", spineCount, tocCount);

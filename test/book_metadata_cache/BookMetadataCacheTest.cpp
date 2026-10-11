@@ -67,6 +67,29 @@ static void healthyLargeBook() {
   REQUIRE(cache.getSpineEntry(2043).tocIndex == 2043);
   REQUIRE(cache.getCumulativeSize(2043) == 2044u * 25704);
 }
+static void metadataSidecarRejectsReplacedSource() {
+  auto book = fixture(3);
+  Storage.files["/test/book.bin"] = book;
+  auto source = std::make_shared<TestFile>();
+  source->bytes.resize(160, 0x31);
+  Storage.files["/book.epub"] = source;
+  {
+    BookMetadataCache cache("/test", "/book.epub");
+    REQUIRE(cache.load());
+  }
+  REQUIRE(Storage.exists("/test/book.meta"));
+  book->reads = 0;
+  source->reads = 0;
+  BookMetadataCache::BookMetadata metadata;
+  BookMetadataCache reader("/test", "/book.epub");
+  REQUIRE(reader.loadMetadataOnly(metadata));
+  REQUIRE(metadata.title == "metadata");
+  REQUIRE(book->reads == 0);
+  source->bytes[0] ^= 0x01;
+  REQUIRE(!reader.loadMetadataOnly(metadata));
+  REQUIRE(!Storage.exists("/test/book.meta"));
+}
+
 static void truncatedRead() {
   auto f = fixture();
   f->readable = 98304;
@@ -298,6 +321,7 @@ int main(int argc, char** argv) {
                {"large lookup records and buffer OOM", lookupWindowsHandleLargeRecordsAndBufferFailure},
                {"cursor runtime failure", cursorRuntimeFailure},
                {"healthy 2044 chapters", healthyLargeBook},
+               {"metadata sidecar source identity", metadataSidecarRejectsReplacedSource},
                {"96KiB read failure", truncatedRead},
                {"runtime seek failure", runtimeSeekFailure},
                {"oversized title", oversizedTitle},

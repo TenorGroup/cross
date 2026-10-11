@@ -548,7 +548,7 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
   LOG_DBG("EBP", "Loading ePub: %s", filepath.c_str());
 
   // Initialize spine/TOC cache
-  bookMetadataCache.reset(new BookMetadataCache(cachePath));
+  bookMetadataCache.reset(new BookMetadataCache(cachePath, filepath));
   // Always create CssParser - needed for inline style parsing even without CSS files
   cssParser.reset(new CssParser(cachePath));
 
@@ -594,7 +594,7 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
           cssParseResult = parseCssFiles(cacheStatus);
         }
         bookMetadataCache.reset();
-        bookMetadataCache.reset(new BookMetadataCache(cachePath));
+        bookMetadataCache.reset(new BookMetadataCache(cachePath, filepath));
         if (!bookMetadataCache->load(/*allowPartial=*/true)) {
           LOG_ERR("EBP", "Failed to reload cache after CSS rebuild");
           return false;
@@ -682,7 +682,7 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
         Storage.removeDir((cachePath + "/sections").c_str());
       }
     }
-    bookMetadataCache.reset(new BookMetadataCache(cachePath));
+    bookMetadataCache.reset(new BookMetadataCache(cachePath, filepath));
     if (!bookMetadataCache->load(/*allowPartial=*/true)) {
       LOG_ERR("EBP", "Failed to reload cache after writing");
       return false;
@@ -773,7 +773,7 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
 #ifdef TENOR_PRESS_PROBE
   const unsigned long reloadStarted = millis();
 #endif
-  bookMetadataCache.reset(new BookMetadataCache(cachePath));
+  bookMetadataCache.reset(new BookMetadataCache(cachePath, filepath));
   if (!bookMetadataCache->load()) {
     LOG_ERR("EBP", "Failed to reload cache after writing");
     return false;
@@ -828,7 +828,7 @@ Epub::IndexStep Epub::indexSome(const BookMetadataCache::StopFn stop) {
     ok = bookMetadataCache->buildBookBinFromPart(filepath, ask);
   } else {
     step = "load";
-    auto full = makeUniqueNoThrow<BookMetadataCache>(cachePath);
+    auto full = makeUniqueNoThrow<BookMetadataCache>(cachePath, filepath);
     ok = full && full->load(/*allowPartial=*/false, ask);
     if (ok) {
       bookMetadataCache = std::move(full);
@@ -849,11 +849,11 @@ bool Epub::loadMetadata(std::string& title, std::string& author) {
   title.clear();
   author.clear();
 
-  auto metadataCache = makeUniqueNoThrow<BookMetadataCache>(cachePath);
-  // A book still indexing in the background carries its title in book.part.
-  if (metadataCache && metadataCache->load(/*allowPartial=*/true)) {
-    title = metadataCache->coreMetadata.title;
-    author = metadataCache->coreMetadata.author;
+  auto metadataCache = makeUniqueNoThrow<BookMetadataCache>(cachePath, filepath);
+  BookMetadataCache::BookMetadata sidecarMetadata;
+  if (metadataCache && metadataCache->loadMetadataOnly(sidecarMetadata)) {
+    title = std::move(sidecarMetadata.title);
+    author = std::move(sidecarMetadata.author);
     return true;
   }
   if (!metadataCache) {
