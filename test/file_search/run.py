@@ -35,8 +35,12 @@ def main() -> None:
         raise AssertionError("search needs a bounded index result")
     if "buildFileSearch(screen);" not in source:
         raise AssertionError("an active no-match search must keep the Search field")
-    if "requestUpdate(true)" not in source:
-        raise AssertionError("the baseline callback still has an immediate render for item 3")
+    browser_callback = extract_function(source, "void FileBrowserActivity::openSearch()")
+    if "requestUpdate(true)" in browser_callback:
+        raise AssertionError("file search callback still requests an immediate render")
+    home_callback = extract_function(source, "void HomeActivity::openFileSearch()")
+    if "requestUpdate(true)" in home_callback:
+        raise AssertionError("home file search callback still requests an immediate render")
     for touch in (False, True):
         policy = args.output / f'search_rows_{int(touch)}.cpp'
         policy.write_text(f'namespace tenorchrome {{ constexpr bool kTouchShell = {str(touch).lower()}; }}\n'
