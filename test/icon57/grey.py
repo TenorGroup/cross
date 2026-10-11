@@ -3,7 +3,7 @@
 Run `python3 test/icon57/grey.py`. For each of the 25 tab shapes it reads the selected and the grey bitmap the
 way scripts/icons/sinh.py hands them to the headers, and fails when
 - the grey ink box is not the selected ink box (size or centre),
-- a grey pixel lies outside the selected ink,
+- a grey pixel lies more than 1 px from the selected ink (the circles and the keyboard are drawn true, so they may differ by a pixel),
 - the selected icon is mirrored and the grey one is not,
 - a grey pixel stands alone (no ink above, below, left or right of it): the checkerboard,
 - the grey ink is not lighter than the selected ink, or is under a third of it.
@@ -31,9 +31,10 @@ for name in SHAPES:
     checks += 5
     if xam.box(selected) != xam.box(grey):
         fail(name, f'grey ink box {xam.box(grey)} differs from selected {xam.box(selected)}')
-    outside = sorted(grey - selected)
+    outside = sorted(p for p in grey if not any((p[0] + dx, p[1] + dy) in selected
+                                                 for dx in (-1, 0, 1) for dy in (-1, 0, 1)))
     if outside:
-        fail(name, f'{len(outside)} grey pixels outside the selected ink, first {outside[0]}')
+        fail(name, f'{len(outside)} grey pixels more than 1 px from the selected ink, first {outside[0]}')
     if xam.mirrored(selected) and not xam.mirrored(grey):
         fail(name, 'selected icon is mirrored, grey is not')
     lonely = sorted(p for p in grey if not any((p[0] + dx, p[1] + dy) in grey

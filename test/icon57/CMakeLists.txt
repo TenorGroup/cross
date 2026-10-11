@@ -30,3 +30,4 @@ add_test(NAME Icon57HeaderBytes COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT
 add_test(NAME Icon57SourceAlignment COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/alignment.py")
 add_test(NAME Icon59GreyArt COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/grey.py")
 add_test(NAME Icon59GreyBytes COMMAND "${Python3_EXECUTABLE}" "${REPO_ROOT}/scripts/icons/xam.py" --check)
+add_test(NAME Icon59RoundStraight COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/round.py")

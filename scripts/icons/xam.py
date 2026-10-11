@@ -5,19 +5,24 @@
     python3 scripts/icons/xam.py --check    # exit 1 when a grey PNG differs from what this makes
 
 A grey icon is the selected icon with 1 lane of every stroke taken away, so it is a solid 2 px line:
-- it is a subset of the selected ink, so it can never be bigger;
+- it lies inside the selected ink, so it is never bigger (the icons drawn by tron.py may differ by 1 px);
 - its ink box is the selected ink box, pixel for pixel (the lane left is always the outer one);
 - it has no checkerboard: every edge is a clean run of ink, which is what a 1 bit panel draws sharply.
 Which lane goes is decided per pixel from the unbroken ink run across the stroke: the lane that faces the
-centre of the ink box. A run that is 4 wide and straddles that centre evenly loses both its
-outer lanes, so the 2 px that stay are centred and a mirrored icon stays mirrored. A stroke of 4 (the older shapes in hinh.py) goes through
-this twice. HAND holds the few pixels the rule cannot place (a dot, a stem end): ('del', x, y) or
-('add', x, y), counted from the top left of the 40 px image, checked against the selected ink.
+centre of the ink box. A run that is 4 wide and straddles that centre evenly loses both its outer lanes, so the
+2 px that stay are centred and a mirrored icon stays mirrored. A stroke of 4 (the older shapes in hinh.py) goes
+through this twice.
+The clock, the sliders, the globe, the info ring, the dots of "more", the arcs of the gesture icon and the keyboard
+are drawn from true circles and lines by tron.py instead (REDRAW below), so they are round and straight.
+HAND holds the few pixels the rule cannot place (a dot, a stem end): ('del', x, y) or ('add', x, y), counted from
+the top left of the 40 px image, checked against the selected ink.
 """
 import os
 import sys
 
 from PIL import Image
+
+import tron
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PNG = os.path.join(ROOT, 'scripts', 'icons', 'icon57', 'png')
@@ -35,6 +40,30 @@ HAND = {
     'he_thong_b': [('del', 5, 25), ('del', 34, 25)],
     'font': [('del', 3, 31), ('del', 36, 31)],
     'kieu': [(kind, x, y) for y in range(7, 35) for kind, x in (('del', 29), ('add', 27))],
+}
+
+
+def _info(base):
+    """The info icon: the lane rule keeps the dot and the stem, the ring is drawn."""
+    ring = set().union(*[part for part in _parts(base) if _holes(part)])
+    return (base - ring) | tron.ring(20, 20, 17, 2)
+
+
+def _gesture(base):
+    """The gesture icon: the pill stays as the lane rule leaves it, the two side arcs are drawn."""
+    arcs = set().union(*[part for part in _parts(base) if box(part)[2] < 14 or box(part)[0] > 25])
+    return (base - arcs) | tron.side_arcs()
+
+
+# Icons drawn from true circles, lines and rounded rectangles (tron.py); each gets the lane-rule ink to start from.
+REDRAW = {
+    'gan_day': lambda base: tron.clock(),
+    'cai_dat': lambda base: tron.sliders(),
+    'ngon_ngu': lambda base: tron.globe(),
+    'ban_phim': lambda base: tron.keyboard(),
+    'them': lambda base: tron.dots(),
+    'thong_tin': _info,
+    'cu_chi': _gesture,
 }
 
 
@@ -181,6 +210,9 @@ def grey(name, selected, passes=1):
     for kind, x, y in HAND.get(name, ()):
         assert (x, y) in selected, (name, kind, x, y)
         (ink.add if kind == 'add' else ink.discard)((x, y))
+    if name in REDRAW:
+        ink = REDRAW[name](ink)
+        assert box(ink) == box(selected), (name, box(ink), box(selected))
     return ink
 
 
