@@ -328,7 +328,7 @@ if args.ugly_contract:
     fixture += '}\n'
     fixture += '\nnamespace ugly {\n' + function(ink, 'void pageHints(') + '\n}\n'
     if 'void pathHints(' in ink:
-        fixture += '\nnamespace ugly {\n' + function(ink, 'void pathHints(') + '\n}\n'
+        fixture += '\nnamespace ugly {\n' + function(ink, 'void pathHints(').replace('const bool wholeBar)', 'const bool wholeBar = true)') + '\n}\n'
     else:
         fixture += '\nnamespace ugly { void pathHints(const GfxRenderer&, const char*, const char*) {} }\n'
     fixture += '''

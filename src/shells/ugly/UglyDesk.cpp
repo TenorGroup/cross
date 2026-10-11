@@ -169,7 +169,7 @@ void Desk::render(RenderLock&&) {
 
   // The big open book gets a snugger ring than the small objects.
   circle(renderer, Circle::Object, ring[selected], selected == READING ? 8 : 16, selected == READING ? 12 : 24, mark_.get(selected), 3);
-  pathHints(renderer, tr(STR_UGLY_DIARY_DESK));
+  pathHints(renderer, tr(STR_UGLY_DIARY_DESK), nullptr, false);
   statusBar(renderer, mappedInput, {true, true, true, true});
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 #ifdef UGLY_FRAME_LOG

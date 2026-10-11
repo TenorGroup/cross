@@ -646,11 +646,12 @@ void pageHints(const GfxRenderer& r, const char* before, const char* after, int 
   text(r, Size::S22, w - 52 - width(r, Size::S22, after), baseline, after);
 }
 
-void pathHints(const GfxRenderer& r, const char* path, const char* note) {
+void pathHints(const GfxRenderer& r, const char* path, const char* note, const bool wholeBar) {
   if (!tenorchrome::x3ScreenLayoutEnabled()) return;
   const auto bar = tenorchrome::x3ScreenLayout(r).barRect;
-  r.fillRect(bar.x, bar.y, bar.width, bar.height, false);
   const int baseline = bar.y + (bar.height + ascent(Size::S22)) / 2;
+  const int wipeTop = wholeBar ? bar.y : std::max(bar.y, baseline - ascent(Size::S22) - 8);
+  r.fillRect(bar.x, wipeTop, bar.width, bar.y + bar.height - wipeTop, false);
   const auto info = fit(r, Size::S22, note ? note : "", bar.width - 48);
   const int reserve = info.empty() ? 0 : width(r, Size::S22, info.c_str()) + 16;
   const int room = std::max(0, bar.width - 48 - reserve);
