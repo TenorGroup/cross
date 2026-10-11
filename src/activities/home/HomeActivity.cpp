@@ -2090,7 +2090,9 @@ void HomeActivity::drawRecentCard() {
   bool image = coverKept;
   if (!coverKept) cardFileThumb = 0;
   const int fallbackHeights[] = {cardThumbHeight, HOME_CARD_COVER_H, UITheme::getInstance().getMetrics().homeCoverHeight};
-  for (int attempt = 0; attempt < (homeInkEnabled() ? 1 : 3); ++attempt) {
+  // The X3 without its tenor/ink cover yet draws the reader's 1 bit thumbnail: the ink cover of a
+  // baseline JPEG needs a 32 KB inflate window in one block, which Home after reading does not have.
+  for (int attempt = 0; attempt < (homeInkEnabled() && tenorchrome::kTouchShell ? 1 : 3); ++attempt) {
     const int height = fallbackHeights[attempt];
     if (image || book.coverBmpPath.empty()) break;
     HalFile file;
