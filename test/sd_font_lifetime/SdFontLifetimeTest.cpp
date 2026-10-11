@@ -280,6 +280,33 @@ void testAdvanceCap() {
   std::printf("ADVANCE_CAP unique_input=4096 excluded=4097 persistent_limit=768 included_advance=%u space_advance=%u hyphen_advance=%u\n",
               batch.getAdvance(0x4e10, 0), batch.getAdvance(' ', 0), batch.getAdvance('-', 0));
 }
+void testAdvanceFullMetadata() {
+  SdCardFont font;
+  loadAdvanceFont(font);
+  std::string full;
+  for (uint32_t cp = 0x5000; cp < 0x5000 + 768; ++cp) appendUtf8(full, cp);
+  require(font.buildAdvanceTable(full.c_str(), 1) == 0, "fill 768 advances");
+  require(font.getAdvance('a', 0) == 0, "measured glyph is outside the full cache");
+  HalDisplay display;
+  GfxRenderer renderer(display);
+  renderer.insertFont(42, EpdFontFamily(font.getEpdFont()));
+  renderer.registerSdCardFont(42, &font);
+  HalFile::readCalls = HalFile::readBytes = HalFile::seekCalls = HalFile::openCalls = 0;
+  const int width = renderer.getTextAdvanceX(42, "a", EpdFontFamily::REGULAR);
+  std::printf("ADVANCE_FULL width=%d bytes=%zu reads=%zu seeks=%zu opens=%zu\n",
+              width, HalFile::readBytes, HalFile::readCalls, HalFile::seekCalls, HalFile::openCalls);
+  require(width == advanceFor('a') / 16, "metadata keeps the layout width");
+  require(HalFile::readBytes == 16 && HalFile::readCalls == 1, "full-cache miss reads metadata only");
+  HalFile::readCalls = 0;
+  const auto cached = utf8Text({0x5000});
+  require(renderer.getTextAdvanceX(42, cached.c_str(), EpdFontFamily::REGULAR) == advanceFor(0xfffd) / 16,
+          "cached replacement keeps its width");
+  require(HalFile::readCalls == 0, "full table retains its hits");
+  // A missing codepoint keeps the same replacement width as ordinary layout.
+  const auto missing = utf8Text({0x7000});
+  require(renderer.getTextAdvanceX(42, missing.c_str(), EpdFontFamily::REGULAR) == advanceFor(0xfffd) / 16,
+          "uncached missing glyph uses replacement metadata");
+}
 void testAdvanceGrowthFailure() {
   SdCardFont font;
   loadAdvanceFont(font);
@@ -456,6 +483,8 @@ int main(int argc, char** argv) {
     testAdvanceCjk();
   } else if (scenario == "advance-cap") {
     testAdvanceCap();
+  } else if (scenario == "advance-full-metadata") {
+    testAdvanceFullMetadata();
   } else if (scenario == "advance-growth-failure") {
     testAdvanceGrowthFailure();
   } else if (scenario == "advance-growth-peak") {

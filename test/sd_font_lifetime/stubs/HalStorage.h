@@ -15,11 +15,15 @@ struct HalFile {
   inline static size_t shortReadAt = std::numeric_limits<size_t>::max();
   inline static size_t failSeekAt = std::numeric_limits<size_t>::max();
   inline static size_t readCalls = 0;
+  inline static size_t readBytes = 0;
+  inline static size_t seekCalls = 0;
+  inline static size_t openCalls = 0;
   size_t position() const { return offset_; }
   size_t size() const { return bytes ? bytes->size() : 0; }
   bool seek(size_t offset) { return seekSet(offset); }
   bool seekSet(size_t offset) {
     if (!bytes || offset == failSeekAt || offset > bytes->size()) return false;
+    ++seekCalls;
     offset_ = offset;
     return true;
   }
@@ -29,6 +33,7 @@ struct HalFile {
     size_t actual = std::min(size, bytes->size() - offset_);
     if (offset_ == shortReadAt && actual) --actual;
     std::memcpy(out, bytes->data() + offset_, actual);
+    readBytes += actual;
     offset_ += actual;
     return static_cast<int>(actual);
   }
@@ -40,6 +45,7 @@ struct HostStorage {
   bool openFileForRead(const char*, const char* path, HalFile& file) {
     const auto it = files.find(path);
     if (it == files.end()) return false;
+    ++HalFile::openCalls;
     file.bytes = &it->second;
     file.offset_ = 0;
     return true;

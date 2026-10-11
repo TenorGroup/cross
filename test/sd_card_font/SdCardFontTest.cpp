@@ -338,6 +338,36 @@ TEST(SdCardFontTest, LayoutIdentityTracksKerningAndLigatureTables) {
   EXPECT_NE(differentLigature.contentHash(), identity);
 }
 
+TEST(SdCardFontTest, AdvanceMetadataReadSkipsBitmap) {
+  makeFont();
+  SdCardFont font;
+  ASSERT_TRUE(font.load("fixture"));
+
+  sdFontTestReads = 0;
+  uint16_t advance = 0;
+  ASSERT_TRUE(font.readAdvanceMetadata(FIRST + 17, 0, advance));
+  EXPECT_EQ(32U << 4, advance);
+  EXPECT_EQ(1U, sdFontTestReads);
+
+  sdFontTestReads = 0;
+  ASSERT_NE(nullptr, font.getEpdFont()->getGlyph(FIRST + 17));
+  EXPECT_EQ(2U, sdFontTestReads);
+}
+
+TEST(SdCardFontTest, AdvanceMetadataPreservesZeroAdvance) {
+  makeFont();
+  constexpr size_t GLYPH_OFFSET = 64 + 24;
+  put16(GLYPH_OFFSET + 17 * sizeof(EpdGlyph) + 2, 0);
+  SdCardFont font;
+  ASSERT_TRUE(font.load("fixture"));
+
+  sdFontTestReads = 0;
+  uint16_t advance = 123;
+  EXPECT_TRUE(font.readAdvanceMetadata(FIRST + 17, 0, advance));
+  EXPECT_EQ(0U, advance);
+  EXPECT_EQ(1U, sdFontTestReads);
+}
+
 TEST(SdCardFontTest, CompletePagesReplaceEarlierGlyphs) {
   makeFont();
   SdCardFont font;

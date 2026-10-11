@@ -1632,6 +1632,30 @@ uint16_t SdCardFont::getAdvance(uint32_t codepoint, uint8_t style) const {
   return 0;
 }
 
+bool SdCardFont::readAdvanceMetadata(uint32_t codepoint, uint8_t style, uint16_t& outAdvance) const {
+  style &= (MAX_STYLES - 1);
+  const auto& s = styles_[style];
+  if (!loaded_ || !s.present) return false;
+  if (advanceTableLookup(style, codepoint, &outAdvance)) return true;
+  int32_t glyphIndex = findGlobalGlyphIndex(s, codepoint);
+  if (glyphIndex < 0) glyphIndex = findGlobalGlyphIndex(s, REPLACEMENT_GLYPH);
+  if (glyphIndex < 0) return false;
+
+  HalFile file;
+  if (!Storage.openFileForRead("SDCF", filePath_, file)) return false;
+  const uint32_t offset = s.glyphsFileOffset + static_cast<uint32_t>(glyphIndex) * sizeof(EpdGlyph);
+  if (!file.seekSet(offset)) {
+    file.close();
+    return false;
+  }
+  EpdGlyph glyph{};
+  const bool ok = file.read(reinterpret_cast<uint8_t*>(&glyph), sizeof(glyph)) == sizeof(glyph);
+  file.close();
+  if (!ok) return false;
+  outAdvance = glyph.advanceX;
+  return true;
+}
+
 // Given a sorted array of unique codepoints, resolve glyph indices per style,
 // batch-read advanceX from SD, and merge into the persistent advance table.
 // Caller owns the codepoints buffer.

@@ -2343,8 +2343,15 @@ int GfxRenderer::textAdvanceX(const int fontId, const char* text, EpdFontFamily:
       if (BidiUtils::isTransparentMark(cp)) {
         continue;
       }
+      uint16_t metadataAdvance = 0;
       int32_t advFP = sdIt->second->getAdvance(cp, styleIdx);
-      if (advFP == 0 && !utf8IsCombiningMark(cp)) {
+      bool metadataFound = advFP != 0;
+      if (advFP == 0 && !utf8IsCombiningMark(cp) &&
+          sdIt->second->readAdvanceMetadata(cp, styleIdx, metadataAdvance)) {
+        advFP = metadataAdvance;
+        metadataFound = true;
+      }
+      if (advFP == 0 && !utf8IsCombiningMark(cp) && !metadataFound) {
         const EpdGlyph* glyph = font.getGlyph(cp, style);
         advFP = glyph ? glyph->advanceX : 0;
       }
