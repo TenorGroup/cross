@@ -21,6 +21,7 @@
 #include "MappedInputManager.h"
 #include "NetworkModeSelectionActivity.h"
 #include "SdCardFontSystem.h"
+#include "SettingsList.h"
 #include "FontPackInstaller.h"
 #include "SilentRestart.h"
 #include "UIFontTiers.h"
@@ -182,6 +183,14 @@ void CrossPointWebServerActivity::onEnter() {
 
   LOG_INF("WEBACT", "Enter after reader closed heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 
+  // The settings catalog (~16 KB on the X3) a settings screen or a pinned setting built stays cached after it: returned
+  // here, under the render lock, with every screen that borrowed its rows gone (the reader does the same). With it held,
+  // Wi-Fi and the server left the X3 8 KB, and an upload stalled.
+  {
+    RenderLock lock(*this);
+    releaseBaseSettingsList();
+  }
+
   // Heap-critical transition: WiFi (~45KB) plus the web server have to fit in
   // what's left of the ~380KB parts. SD-font caches retained for the CJK UI
   // fallback (mini glyph/kern arenas, kern class tables) are rebuildable on
@@ -244,6 +253,9 @@ void CrossPointWebServerActivity::onExit() {
     state = WebServerActivityState::SHUTTING_DOWN;
     stopDnsServer();
     MDNS.end();
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("FTX", "mdns ended t=%lu", millis());
+#endif
 
     // Skip reboot if WiFi was never activated (e.g. user backed out of mode selection).
     if (WiFi.getMode() != WIFI_MODE_NULL) {
@@ -253,6 +265,9 @@ void CrossPointWebServerActivity::onExit() {
         WiFi.disconnect(false);
       }
       delay(30);
+#ifdef TENOR_PRESS_PROBE
+      LOG_INF("FTX", "wifi down t=%lu heap=%u largest=%u", millis(), ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
       // The restart hands back the heap Wi-Fi fragmented; the reader then opens
       // on a clean heap, the same way it would after a cold boot.
       if (toBook) {
@@ -499,6 +514,9 @@ void CrossPointWebServerActivity::stopServerAndLeave() {
     webServer->stop();
     webServer.reset();
   }
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("FTX", "server stopped t=%lu heap=%u largest=%u", millis(), ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
   leave();
 }
 

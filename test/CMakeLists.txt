@@ -164,6 +164,7 @@ add_subdirectory(keyboard_layout_mask)
 
 add_subdirectory(file_transfer_loop)
 add_subdirectory(file_transfer_back_latch)
+add_subdirectory(file_transfer_heap)
 add_subdirectory(upload_socket)
 add_subdirectory(ota_back_cancel)
 add_subdirectory(ota_log)
