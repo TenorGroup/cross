@@ -1,0 +1,2 @@
+add_test(NAME BitmapWriter.plain COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/run.py
+  --output ${CMAKE_CURRENT_BINARY_DIR}/plain --cxx ${CMAKE_CXX_COMPILER})

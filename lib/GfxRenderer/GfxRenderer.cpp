@@ -28,6 +28,7 @@
 #include "FontCacheManager.h"
 #include "InlineSymbols.h"
 #include "GlyphBitmap.h"
+#include "BitmapRow.h"
 
 namespace {
 constexpr int trackingBetween(const uint32_t leftCp, const uint32_t rightCp, const int8_t tracking) {
@@ -1511,6 +1512,17 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
   for (int bmpX = cropPixX; writesAll && bmpX + 1 < endX; bmpX++) {
     if (columns[bmpX] == columns[bmpX + 1]) columns[bmpX] = -1;
   }
+  bitmaprow::Target rowTarget{getWriteTarget(), panelWidthBytes, panelWidth, panelHeight,
+                              getWriteOriginY(), getWriteRows(), clipLeft_, clipTop_, clipRight_, clipBottom_, {}};
+  for (uint8_t level = 0; level < 4; ++level) {
+    const auto pixel = renderMode == BW ? GrayPlanePixel{level < 3, true}
+        : grayPlanePixel(level, renderMode == GRAYSCALE_MSB, absoluteGrayPlanes);
+    rowTarget.ink[level] = pixel.write ? (pixel.black ? 1 : 2) : 0;
+  }
+  const auto writeRow = bitmaprow::writer(orientation);
+#ifdef TENOR_PRESS_PROBE
+  uint32_t rowReadBytes = 0;
+#endif
   const auto rowOf = [&](const int bmpY) {
     // The BMP's (0, 0) is the bottom-left corner (if the height is positive, top-left if negative).
     // Screen's (0, 0) is the top-left corner.
@@ -1530,6 +1542,9 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
     const uint32_t readStart = micros();
     const auto rowResult = bitmap.readNextRow(outputRow, rowBytes);
     readUs += micros() - readStart;
+#ifdef TENOR_PRESS_PROBE
+    rowReadBytes += bitmap.getRowBytes();
+#endif
     if (rowResult != BmpReaderError::Ok) {
       LOG_ERR("GFX", "Failed to read row %d from bitmap", bmpY);
       return false;
@@ -1547,6 +1562,10 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
       continue;  // the next row lands on the same screen row
     }
 
+    if (!levelRows) {
+      writeRow(rowTarget, outputRow, columns, cropPixX, endX, screenY, whiteAsTransparent);
+      continue;
+    }
     for (int bmpX = cropPixX; bmpX < endX; bmpX++) {
       const int screenX = columns[bmpX];
       if (screenX < 0) {
@@ -1569,6 +1588,10 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
     }
   }
 
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("BMP_ROWS", "ms=%lu bytes=%lu path=%s", static_cast<unsigned long>((micros() - started) / 1000),
+          static_cast<unsigned long>(rowReadBytes), levelRows ? "ref" : "writer");
+#endif
   const int sourceWidth = bitmap.getWidth() - cropPixX * 2;
   const int sourceHeight = bitmap.getHeight() - cropPixY * 2;
   const int renderedWidth = isScaled ? static_cast<int>(std::floor((sourceWidth - 1) * scale)) + 1 : sourceWidth;
