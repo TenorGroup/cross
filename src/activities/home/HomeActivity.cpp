@@ -1186,7 +1186,7 @@ void HomeActivity::openFileSearch() {
     rebuildRows(false);
     activeNav().top = 0;
     activeNav().selected = rowItems.empty() ? 0 : 1;
-    requestUpdate(true);
+    requestUpdate();
   });
 }
 

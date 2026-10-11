@@ -251,7 +251,7 @@ void FileBrowserActivity::openSearch() {
     applySearch(searchQuery);
     nav.selected = 0;
     nav.top = 0;
-    requestUpdate(true);
+    requestUpdate();
   });
 }
 
