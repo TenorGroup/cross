@@ -14,3 +14,11 @@ target_include_directories(CoverThumbRamTest PRIVATE
   ${REPO_ROOT}/src
 )
 add_test(NAME CoverThumbRam COMMAND CoverThumbRamTest)
+add_executable(GrayThumbFailureTest
+  GrayThumbFailureTest.cpp
+  ${REPO_ROOT}/lib/JpegToBmpConverter/GrayThumb.cpp
+  ${REPO_ROOT}/lib/GfxRenderer/BitmapHelpers.cpp
+)
+get_target_property(thumb_includes CoverThumbRamTest INCLUDE_DIRECTORIES)
+target_include_directories(GrayThumbFailureTest PRIVATE ${thumb_includes})
+add_test(NAME GrayThumbFailure COMMAND GrayThumbFailureTest)

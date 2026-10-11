@@ -67,12 +67,22 @@ size_t GrayThumb::bufferBytes(const int height, const int srcW, const int srcH, 
 }
 
 bool GrayThumb::start(const int srcW, const int srcH, const int blockRows, const size_t margin) {
+  ring.reset();
+  bits.reset();
+  ditherer.reset();
+  nextEmit = fedTo = 0;
+  failed = false;
   const size_t bytes = bufferBytes(height, srcW, srcH, blockRows);
   if (bytes == 0 || !plan(srcW, srcH, blockRows) || ESP.getFreeHeap() < bytes + margin) return false;
   ring = heapfloor::array<uint16_t[]>(static_cast<size_t>(ringRows) * outWidth, "thumb-ring");
   bits = heapfloor::array<uint8_t[]>(static_cast<size_t>(rowBytes) * outHeight, "thumb-bits");
   ditherer = makeUniqueNoThrow<FloydSteinberg1BitDitherer>(outWidth);
-  if (!ring || !bits || !ditherer || !ditherer->isValid()) return false;
+  if (!ring || !bits || !ditherer || !ditherer->isValid()) {
+    ring.reset();
+    bits.reset();
+    ditherer.reset();
+    return false;
+  }
   memset(ring.get(), 0, static_cast<size_t>(ringRows) * outWidth * 2);
   memset(bits.get(), 0, static_cast<size_t>(rowBytes) * outHeight);
   // Checked against the heap this one left: without room the smaller one is scaled from this one.
