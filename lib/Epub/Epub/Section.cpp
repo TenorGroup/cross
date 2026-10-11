@@ -476,7 +476,10 @@ std::unique_ptr<ChapterHtmlSlimParser> Section::makeBuildParser(BuildContext* ct
         }
       }
       if (id == prefixes.size()) {
-        if (prefixes.size() == MAX_PREFIXES || prefix.size() > UINT16_MAX) {
+        if (prefixes.size() == MAX_PREFIXES || prefix.size() > UINT16_MAX ||
+            prologBytes > ChapterHtmlSlimParser::MAX_CHECKPOINT_PREFIX ||
+            prefix.size() > ChapterHtmlSlimParser::MAX_CHECKPOINT_PREFIX - prologBytes ||
+            !heapfloor::leaves(prefix.size(), prefix.size(), ESP.getFreeHeap(), ESP.getMaxAllocHeap())) {
           ctxPtr->ddLastValid = false;  // a later page goes back to a point before this one
           return;
         }
@@ -534,7 +537,8 @@ bool Section::ddOpen(BuildContext& ctx, const bool seed) {
       !serialization::readPod(old, size) || !serialization::readPod(old, count) ||
       !serialization::readPod(old, prolog) || !serialization::readPod(old, prefixes) ||
       !serialization::readPod(old, complete) || magic != DD_MAGIC || size != htmlSize || count == 0 ||
-      DD_HEADER + static_cast<uint64_t>(count) * sizeof(DdRecord) > old.size())
+      DD_HEADER + static_cast<uint64_t>(count) * sizeof(DdRecord) > old.size() || prolog >
+          ChapterHtmlSlimParser::MAX_CHECKPOINT_PREFIX || prefixes > 8)
     return true;
   DdRecord block[16];
   for (uint32_t i = 0; i < count;) {
@@ -549,12 +553,18 @@ bool Section::ddOpen(BuildContext& ctx, const bool seed) {
   }
   ctx.ddCount = count;
   ctx.ddProlog = prolog;
+  size_t prefixBytes = 0;
   for (uint8_t i = 0; i < prefixes; ++i) {
     uint16_t length = 0;
     std::string prefix;
-    if (!serialization::readPod(old, length) || length > old.size()) break;
+    if (!serialization::readPod(old, length) || old.position() > old.size() ||
+        length > old.size() - old.position() || length > ChapterHtmlSlimParser::MAX_CHECKPOINT_PREFIX - prolog ||
+        prefixBytes > ChapterHtmlSlimParser::MAX_CHECKPOINT_PREFIX * 8u - length ||
+        !heapfloor::leaves(length, length, ESP.getFreeHeap(), ESP.getMaxAllocHeap()))
+      break;
     prefix.resize(length);
     if (old.read(prefix.data(), length) != static_cast<int>(length)) break;
+    prefixBytes += length;
     ctx.ddPrefixes.push_back(std::move(prefix));
   }
   if (ctx.ddPrefixes.size() != prefixes) {  // records pointing at a prefix that is not there
