@@ -561,12 +561,18 @@ bool HalGPIO::isUsbConnected() const {
     // Other tasks (the render task drawing a charging bolt) get the loop's last answer:
     // the gauge is only safe to read from one task, see HalPowerManager.
     if (!powerManager.mayReadGauge()) return lastUsbConnected;
+    const uint32_t now = millis();
+    if (usbGaugeSampled && static_cast<uint32_t>(now - usbGaugeSampleMs) < 250) return usbGaugeConnected;
+    usbGaugeSampleMs = now;
+    usbGaugeSampled = true;
+    usbGaugeConnected = false;
     // X3: infer USB/charging via BQ27220 Current() register (0x0C, signed mA).
     // Positive current means charging.
     for (uint8_t attempt = 0; attempt < 2; ++attempt) {
       int16_t currentMa = 0;
       if (X3GPIO::readBQ27220CurrentMA(&currentMa)) {
-        return currentMa > 0;
+        usbGaugeConnected = currentMa > 0;
+        return usbGaugeConnected;
       }
       delay(2);
     }

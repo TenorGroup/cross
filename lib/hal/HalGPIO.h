@@ -64,6 +64,9 @@ class HalGPIO {
 #endif
 
   bool lastUsbConnected = false;
+  mutable bool usbGaugeSampled = false;
+  mutable bool usbGaugeConnected = false;
+  mutable uint32_t usbGaugeSampleMs = 0;
   bool usbStateChanged = false;
 
   // Button sampling off the main loop (ADC-ladder boards). A periodic timer runs
