@@ -10,7 +10,7 @@ a=p.parse_args()
 root=a.source_root or Path(__file__).resolve().parents[2]
 home=(root/'src/activities/home/HomeActivity.cpp').read_text()
 start=home.index('  bool image = coverKept;')
-body=home[start:home.index('\n  if (!image) drawHolder(',start)]
+body=home[start:home.index('\n  // A plain frame waits for the idle pass',start)]
 if a.mutation:
     body=body.replace('touchCoverPath(book.coverBmpPath, cardThumbWidth, height)', 'UITheme::getCoverThumbPath(book.coverBmpPath, 450)')
 cpp=r'''
