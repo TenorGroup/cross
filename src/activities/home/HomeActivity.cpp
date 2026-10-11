@@ -2431,6 +2431,7 @@ void HomeActivity::idleStep() {
   stop.clockMs = [] { return static_cast<uint32_t>(millis()); };
   stop.startedMs = millis();
   idleOutcome = static_cast<uint8_t>(coverink::Outcome::Nothing);
+  idleWhy = "";
 #ifdef TENOR_PRESS_PROBE
   const size_t freeBefore = ESP.getFreeHeap();
 #endif
@@ -2439,6 +2440,7 @@ void HomeActivity::idleStep() {
   idleBudget.charge(idleClockUs(), ran);
   LOG_INF("HOME", "Idle cover outcome=%u ms=%lu", idleOutcome, static_cast<unsigned long>(ran));
 #ifdef TENOR_PRESS_PROBE
+  LOG_INF("HOME", "Idle cover why=%s", idleWhy);
   LOG_INF("HOME", "Idle cover heap usb=%u free=%u/%u largest=%u", in.usb ? 1u : 0u, static_cast<unsigned>(freeBefore),
           static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
 #endif
@@ -2461,12 +2463,18 @@ void HomeActivity::idleRelease() {
 
 idlework::Step HomeActivity::coverStep(const idlework::Job& job, const idlework::Stop& stop) {
   auto& home = *static_cast<HomeActivity*>(job.owner);
-  if (job.arg[0] >= static_cast<int>(home.recentBooks.size())) return idlework::Step::Done;
+  if (job.arg[0] >= static_cast<int>(home.recentBooks.size())) {
+    home.idleWhy = "no-book";
+    return idlework::Step::Done;
+  }
   const auto& book = home.recentBooks[job.arg[0]];
   Epub epub(book.path, "/.crosspoint");
   // Where the reader left the cover's path; a book not opened since that began waits for it.
   std::string href;
-  if (!coverref::load(epub.getCachePath(), href)) return idlework::Step::Done;
+  if (!coverref::load(epub.getCachePath(), href)) {
+    home.idleWhy = "no-cover-ref";
+    return idlework::Step::Done;
+  }
   BookCover cover{epub, href, &home};
   coverink::Source source;
   source.sniff = sniffCover;
@@ -2476,7 +2484,7 @@ idlework::Step HomeActivity::coverStep(const idlework::Job& job, const idlework:
   const bool four = job.arg[3] != 0;
   const auto outcome = coverink::build(epub.getCachePath(), tenorink::cachePath(book.coverBmpPath, job.arg[1],
                                                                                 job.arg[2], four),
-                                       job.arg[1], job.arg[2], four, source, stop);
+                                       job.arg[1], job.arg[2], four, source, stop, &home.idleWhy);
   home.idleOutcome = static_cast<uint8_t>(outcome);
   return outcome == coverink::Outcome::Stopped || outcome == coverink::Outcome::NoHeap ? idlework::Step::Stopped
                                                                                          : idlework::Step::Done;

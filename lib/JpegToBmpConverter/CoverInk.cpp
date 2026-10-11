@@ -154,19 +154,26 @@ void dropCards(const std::string& inkPath) {
 }
 
 Outcome build(const std::string& cacheDir, const std::string& inkPath, const int width, const int height,
-              const bool four, const Source& source, const idlework::Stop& stop) {
-  // Only a tenor/ink cover of this book's cache is ever replaced.
+              const bool four, const Source& source, const idlework::Stop& stop, const char** why) {
+  const auto because = [why](const char* reason, const Outcome outcome) {
+    if (why) *why = reason;
+    return outcome;
+  };
+  // Only a tenor/ink cover of this book's cache is ever written.
   const std::string own = cacheDir + "/ink2_";
   if (inkPath.compare(0, own.size(), own) != 0 || inkPath.find('/', own.size()) != std::string::npos)
-    return Outcome::Nothing;
-  if (!settle(inkPath, [&](const std::string& p) { return wholeCover(p, width, height, four); })) return Outcome::Later;
-  // The temporary cover comes first, from the usual path; this step only ever replaces it.
-  if (!Storage.exists(inkPath.c_str())) return Outcome::Nothing;
+    return because("not-ink-path", Outcome::Nothing);
+  if (!settle(inkPath, [&](const std::string& p) { return wholeCover(p, width, height, four); }))
+    return because("settle", Outcome::Later);
+  // A temporary cover is not needed: a cover JPEGDEC cannot decode has none (the 1/8 grid fails, or
+  // Home's heap gate keeps the old path from running), and those are the ones this step is for.
   const std::string state = statePath(cacheDir);
   Record record;
   read(state, record);
-  if (record.kind == Kind::Baseline || record.kind == Kind::Failed) return Outcome::Nothing;
-  if (const Frame* f = record.find(width, height, four); f && f->status != Status::Pending) return Outcome::Nothing;
+  if (record.kind == Kind::Baseline) return because("baseline", Outcome::Nothing);
+  if (record.kind == Kind::Failed) return because("undecodable", Outcome::Nothing);
+  if (const Frame* f = record.find(width, height, four); f && f->status != Status::Pending)
+    return because(f->status == Status::Sharp ? "sharp" : "given-up", Outcome::Nothing);
 
   const auto counted = [&] {
     Frame& f = record.at(width, height, four);
@@ -198,13 +205,13 @@ Outcome build(const std::string& cacheDir, const std::string& inkPath, const int
     if (r == progluma::Result::Unsupported) {
       record.kind = Kind::Baseline;  // not a JPEG: never rebuilt
       write(state, record);
-      return Outcome::Nothing;
+      return because("not-jpeg", Outcome::Nothing);
     }
-    if (r != progluma::Result::Done) return passing(r);
+    if (r != progluma::Result::Done) return because("sniff", passing(r));
     if (sniffer.kind() == progluma::Kind::Baseline) {
       record.kind = Kind::Baseline;
       write(state, record);
-      return Outcome::Nothing;
+      return because("baseline", Outcome::Nothing);
     }
     if (sniffer.kind() != progluma::Kind::Progressive) return gone();
     record.kind = Kind::Progressive;
@@ -217,14 +224,15 @@ Outcome build(const std::string& cacheDir, const std::string& inkPath, const int
   // the copy. The blocks still go through the door one by one below.
   const size_t need = progluma::worstBytes(record.width) + tenorink::streamBytes(width, height, four);
   const size_t biggest = std::max(progluma::biggestBlock(record.width), size_t(width) * 3 * sizeof(int));
-  if (!heapfloor::leaves(need, biggest, ESP.getFreeHeap(), ESP.getMaxAllocHeap())) return Outcome::NoHeap;
+  if (!heapfloor::leaves(need, biggest, ESP.getFreeHeap(), ESP.getMaxAllocHeap()))
+    return because("forecast", Outcome::NoHeap);
 #endif
 
   const std::string coverPath = cacheDir + "/.cover.jpg";
   const auto copied = source.copy(source.user, coverPath, stop);
   // The copy of the cover goes on every way out of the step.
   const Outcome outcome = copied == progluma::Result::Stopped ? stopped()
-                          : copied != progluma::Result::Done  ? passing(copied)
+                          : copied != progluma::Result::Done  ? because("copy", passing(copied))
                                                               : [&]() -> Outcome {
     HalFile cover;
     if (!Storage.openFileForRead("INK", coverPath, cover)) return Outcome::Later;

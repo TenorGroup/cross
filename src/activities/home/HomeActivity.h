@@ -287,6 +287,7 @@ class HomeActivity final : public UiTabListActivity {
   uint32_t idleRetryAt = 0;         // after a heap floor refusal
   uint32_t idleBackoffMs = 30000;   // doubles on each refusal, up to 10 minutes
   uint8_t idleOutcome = 0;          // coverink::Outcome of the last step
+  const char* idleWhy = "";        // why it ended so (the probe build logs it)
   void queueIdleCovers();
   void idleStep();
   void idleRelease();

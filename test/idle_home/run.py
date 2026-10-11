@@ -38,6 +38,7 @@ harness = r'''
 #include <cstdio>
 #include <string>
 #include <vector>
+#include <set>
 namespace coverink { enum class Outcome : uint8_t { Nothing, Sharp, Stopped, NoHeap, Later, Failed, Gone }; }
 static constexpr bool kInkX3 = true;
 uint32_t now = 10000;
@@ -61,6 +62,43 @@ struct RecentBook { std::string path, coverBmpPath; };
 enum class Tab { RECENT, STATS };
 struct UiTabListActivity { void onResume() {} };
 '''
+# What the real coverStep (checked below) reaches: the book's cache, cover.ref, the step.
+step_stubs = r'''
+#include <TenorInk.h>
+std::set<std::string> refs;  // book caches holding a cover.ref
+struct Epub {
+  std::string cache;
+  Epub(const std::string& path, const std::string& dir) : cache(dir + "/epub_" + std::to_string(path.size())) {}
+  const std::string& getCachePath() const { return cache; }
+};
+namespace coverref { bool load(const std::string& cache, std::string& href) {
+  if (!refs.count(cache)) return false;
+  href = "OEBPS/images/cover.jpg";
+  return true;
+} }
+namespace progluma { enum class Result : uint8_t { Done }; class Sniffer; }
+'''
+step_build = r'''
+namespace coverink {
+struct Source {
+  progluma::Result (*sniff)(void*, progluma::Sniffer&, const idlework::Stop&) = nullptr;
+  progluma::Result (*copy)(void*, const std::string&, const idlework::Stop&) = nullptr;
+  void (*release)(void*) = nullptr;
+  void* user = nullptr;
+};
+std::string builtDir, builtPath, builtHref;
+int builtFour = -1;
+Outcome build(const std::string& dir, const std::string& path, int, int, bool four, const Source& s,
+              const idlework::Stop&, const char** why) {
+  builtDir = dir; builtPath = path; builtFour = four;
+  builtHref = static_cast<BookCover*>(s.user)->href;
+  *why = "built";
+  return Outcome::Sharp;
+}
+}  // namespace coverink
+progluma::Result sniffCover(void*, progluma::Sniffer&, const idlework::Stop&) { return progluma::Result::Done; }
+progluma::Result copyCover(void*, const std::string&, const idlework::Stop&) { return progluma::Result::Done; }
+'''
 home = r'''
 struct HomeActivity : UiTabListActivity {
   std::vector<RecentBook> recentBooks;
@@ -73,6 +111,7 @@ struct HomeActivity : UiTabListActivity {
   idlework::Queue<> idleQueue;
   uint32_t idleQuietSince = 0, idleRetryAt = 0, idleBackoffMs = 30000;
   uint8_t idleOutcome = 0;
+  const char* idleWhy = "";
   int updates = 0;
   bool homeInkEnabled() const { return ink; }
   void freeCoverBuffer() { snapshot = false; }
@@ -82,6 +121,7 @@ struct HomeActivity : UiTabListActivity {
   void idleRelease();
   void onResume();
   static idlework::Step coverStep(const idlework::Job& job, const idlework::Stop& stop);
+  static idlework::Step realStep(const idlework::Job& job, const idlework::Stop& stop);
 };
 coverink::Outcome next = coverink::Outcome::Sharp;
 int runs = 0;
@@ -217,6 +257,21 @@ int main() {
   }
   assert(runs - before == 120);
   std::puts("GREEN no more than 120 steps an hour, on USB too");
+
+  // The real coverStep: a book without cover.ref is left, and says so; with it, the step builds the
+  // tenor/ink cover Home draws (1 bit) in that book's cache, from the cover.ref's path.
+  idlework::Job job;
+  job.owner = &h;
+  job.arg[0] = 0; job.arg[1] = 298; job.arg[2] = 450; job.arg[3] = 0;
+  h.recentBooks[0] = {"/v1015/p58-1.epub", "/.crosspoint/epub_17/thumb2_[HEIGHT].bmp"};
+  idlework::Stop stop;
+  assert(HomeActivity::realStep(job, stop) == idlework::Step::Done && std::string(h.idleWhy) == "no-cover-ref");
+  assert(coverink::builtPath.empty());
+  refs.insert("/.crosspoint/epub_17");
+  assert(HomeActivity::realStep(job, stop) == idlework::Step::Done && std::string(h.idleWhy) == "built");
+  assert(coverink::builtDir == "/.crosspoint/epub_17" && coverink::builtPath == "/.crosspoint/epub_17/ink2_1_298x450.bmp");
+  assert(coverink::builtFour == 0 && coverink::builtHref == "OEBPS/images/cover.jpg");
+  std::puts("GREEN the real step: no cover.ref says so; with it the 1 bit cover of that book's cache is built");
   return 0;
 }
 '''
@@ -225,9 +280,13 @@ read = t.index('if (!Storage.openFileForRead("HOME", path, file)) continue;')
 assert 'coverink::restore(path);' in t[read - 120:read], 'the card opens its cover without coverink::restore'
 print('GREEN the card restores a cut replacement before it opens its tenor/ink cover')
 source = (harness + fnvs + home + function('void HomeActivity::queueIdleCovers()') + function('void HomeActivity::idleStep()')
-          + function('void HomeActivity::idleRelease()') + function('void HomeActivity::onResume()') + cases)
+          + function('void HomeActivity::idleRelease()') + function('void HomeActivity::onResume()')
+          + step_stubs + t[t.index('struct BookCover {'):t.index('};', t.index('struct BookCover {')) + 3] + step_build
+          + function('idlework::Step HomeActivity::coverStep(').replace('HomeActivity::coverStep(', 'HomeActivity::realStep(')
+          + cases)
 (args.output / 'generated.cpp').write_text(source)
 subprocess.run(['c++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-UNDEBUG', '-I', str(repo / 'lib/IdleWork'),
+                '-I', str(repo / 'lib/JpegToBmpConverter'),
                 str(args.output / 'generated.cpp'), '-o', str(args.output / 'test')], check=True)
 r = subprocess.run([str(args.output / 'test')], capture_output=True, text=True)
 print(r.stdout, end='')

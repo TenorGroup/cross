@@ -20,3 +20,15 @@ ref.draft('YCbCr', ref.size)
 ref.convert('YCbCr').getchannel(0).save(here / 'cover.pgm')
 rgb.save(here / 'baseline.jpg', 'JPEG', quality=85)
 rgb.convert('CMYK').save(here / 'cmyk.jpg', 'JPEG', progressive=True, quality=85)
+# DC of each component in a scan of its own: the X3's JPEGDEC fails on it (err=2, the first book of
+# the X3 probe of 11/10/2026), so Home has no temporary cover for it at all.
+import shutil, subprocess, tempfile
+script = '0: 0 0 0 1;\n1: 0 0 0 0;\n2: 0 0 0 0;\n0: 1 9 0 0;\n0: 10 63 0 0;\n1: 1 63 0 0;\n2: 1 63 0 0;\n0: 0 0 1 0;\n'
+with tempfile.NamedTemporaryFile('w', suffix='.txt', delete=False) as f:
+    f.write(script)
+jpegtran = shutil.which('jpegtran') or '/opt/homebrew/bin/jpegtran'
+(here / 'dcsplit.jpg').write_bytes(subprocess.run([jpegtran, '-copy', 'none', '-scans', f.name, str(here / 'cover.jpg')],
+                                                  capture_output=True, check=True).stdout)
+ref = Image.open(here / 'dcsplit.jpg')
+ref.draft('YCbCr', ref.size)
+ref.convert('YCbCr').getchannel(0).save(here / 'dcsplit.pgm')

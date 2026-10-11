@@ -12,8 +12,9 @@
 //
 // Home draws the temporary cover at once (the 1/8 grid JPEGDEC gives). When idle, this step
 // decodes the cover's full luma (ProgressiveLuma), runs it through the one tenor/ink kernel
-// (CoverStream) and puts the result in place of the temporary file, in the book's cache only:
-// the book file is only ever read. The sharp file has the temporary one's name, depth and size.
+// (CoverStream) and puts the result in place of the temporary file, or writes it when there is
+// none (a cover JPEGDEC cannot decode), in the book's cache only: the book file is only ever read.
+// The sharp file has the temporary one's name, depth and size.
 //
 // What is known of a book's cover sits in cover.ink beside its other cache files:
 //   kind  B baseline or not a JPEG (never rebuilt), P progressive, F cannot be decoded (for good)
@@ -57,7 +58,7 @@ bool write(const std::string& path, const Record& record);
 bool restore(const std::string& inkPath);
 
 enum class Outcome : uint8_t {
-  Nothing,  // already sharp, given up, baseline, F, not a tenor/ink cover, or no temporary cover yet
+  Nothing,  // already sharp, given up, baseline, F, or not a tenor/ink cover
   Sharp,    // the sharp cover is in place: Home draws it again
   Stopped,  // a key: nothing changed; the next idle moment starts again
   NoHeap,   // the heap floor would not hold the step: not counted, try later
@@ -77,9 +78,11 @@ struct Source {
   void* user = nullptr;
 };
 
-// One step for the cover drawn from `inkPath` (tenorink::cachePath) in `cacheDir`.
+// One step for the cover drawn from `inkPath` (tenorink::cachePath) in `cacheDir`, whether or not a
+// temporary cover is there. `why` receives a short reason for Nothing and for the early ways out
+// (the probe build logs it).
 Outcome build(const std::string& cacheDir, const std::string& inkPath, int width, int height, bool four,
-              const Source& source, const idlework::Stop& stop);
+              const Source& source, const idlework::Stop& stop, const char** why = nullptr);
 
 // The card files Home saved from a cover (HomeActivity: <thumb>.card plus e, 0 to 3, each with
 // its staging and backup names).

@@ -88,6 +88,7 @@ struct Keys {
   int asks = 0, yesAt = 0;  // yesAt: the key is down at that question, wherever it falls
 } keys;
 uint32_t nowMs = 0, tickMs = 0;
+const char* lastWhy = "";
 uint32_t clockMs() { return nowMs += tickMs; }
 idlework::Stop stopper() {
   idlework::Stop s;
@@ -138,7 +139,8 @@ coverink::Outcome step(Book& book, int w = 96, int h = 140, bool four = true, st
   src.release = [](void* u) { ++static_cast<Book*>(u)->releases; };
   src.user = &book;
   const size_t before = live;
-  const auto out = coverink::build(dir, path, w, h, four, src, stopper());
+  lastWhy = "";
+  const auto out = coverink::build(dir, path, w, h, four, src, stopper(), &lastWhy);
   assert(live == before);  // every block the step took is back
   return out;
 }
@@ -224,8 +226,25 @@ int main() {
   assert(cardsGone() && !leftovers() && book.releases == 1);
   const int asksWhole = keys.asks, readsWhole = Storage.watchReads;
   assert(step(book) == O::Nothing && book.sniffs == 1 && book.copies == 1 && book.releases == 1);
+  assert(std::strcmp(lastWhy, "sharp") == 0);
   std::puts("GREEN progressive cover: sharp file equals libjpeg luma through tenor/ink, cards gone, S kept, not again");
   std::puts("GREEN the card's snapshot is asked back once, before the step's memory; a step with nothing to do keeps it");
+
+  // The X3's own case: a cover its JPEGDEC cannot decode (DC split by component, err=2) never got a
+  // temporary cover. The step writes the sharp one in its place all the same.
+  {
+    const auto split = load("dcsplit.jpg"), splitPgm = load("dcsplit.pgm");
+    // CoverInkJpegdecTest shows the X3's JPEGDEC path failing on this file.
+    fresh();
+    Storage.files.erase(ink(96, 140, false));
+    Book b{split};
+    assert(step(b, 96, 140, false) == O::Sharp);
+    size_t from = 0;
+    for (int lines = 0; lines < 3; ++from) lines += splitPgm[from] == '\n';
+    assert(Storage.files[ink(96, 140, false)] == coverOf(splitPgm.data() + from, 120, 181, 96, 140, false));
+    assert(step(b, 96, 140, false) == O::Nothing && std::strcmp(lastWhy, "sharp") == 0);
+  }
+  std::puts("GREEN a cover JPEGDEC cannot decode, with no temporary cover: the sharp 1 bit cover is written");
 
   // 2 depths x 3 text sizes: 6 entries, each its own, none built twice, none pushed out.
   const int sizes[3][2] = {{96, 140}, {80, 120}, {70, 104}};
