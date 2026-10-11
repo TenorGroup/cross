@@ -31,17 +31,18 @@ int touchTabBarHeight(const bool touchShell, const int regularHeight) {
 
 void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh, const fui::TabItem* tabs,
                                         const int count, const fui::TextStyle& chu) {
-  constexpr int LE = 8;         // bar margin from the screen edge
+  // Bar margin from the band's side: the touch band is already 8 px in from the screen edge, the button board's is not.
+  constexpr int LE = tenorchrome::kTouchShell ? 8 : tenorchrome::X3_BAR_MARGIN;
   constexpr int KHE = tenorchrome::BAR_TAB_INSET;  // band top to the selected pill
   constexpr int PILL_ICON_W = tenorchrome::BAR_TAB_W;
   constexpr int INDICATOR = 6;  // sort arrow beside a label
   const int x0 = thanh.x + LE, w = thanh.width - 2 * LE, h = thanh.height, y0 = thanh.y;
-  if (tenorchrome::kTouchShell && uiTarget.paintingEnabled()) tenorchrome::drawPillRing(renderer, x0, y0, w, h, 2, true);
+  if (uiTarget.paintingEnabled()) tenorchrome::drawBarFrame(renderer, x0, y0, w, h);
   if (count <= 0) return;
   const bool icons = static_cast<bool>(tabs[0].icon);
   const int slotW = (w - 2 * KHE) / count;
-  // Touch icon pills leave 8 px inside the bar's ends; the centres spread evenly between them.
-  const int endInset = tenorchrome::kTouchShell ? 8 : KHE;
+  // Icon pills leave BAR_END_INSET inside the bar's ends; the centres spread evenly between them.
+  const int endInset = tenorchrome::BAR_END_INSET;
   fui::TextStyle label = chu;
   label.align = fui::TextAlign::Center;
   label.color = fui::Color::Black;

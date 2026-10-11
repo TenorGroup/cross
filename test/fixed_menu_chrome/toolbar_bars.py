@@ -41,8 +41,9 @@ fixture += '''
 namespace tenorchrome {
 '''
 chrome = (root / 'src/components/TenorMenuChrome.h').read_text()
-fixture += re.search(r'^constexpr int BAR_TAB_W = .*?;', chrome, re.M).group()
-fixture += '\n' + re.search(r'^constexpr int barTabCentre\(.*?^}\n', chrome, re.M | re.S).group()
+for name in ('BAR_TAB_W', 'BAR_END_INSET', 'FOOT_BACK_X', 'X3_BAR_MARGIN'):
+    fixture += re.search(rf'^constexpr int {name} = .*?;', chrome, re.M).group() + '\n'
+fixture += re.search(r'^constexpr int barTabCentre\(.*?^}\n', chrome, re.M | re.S).group()
 fixture += '''
 }
 namespace freeink::ui { using Rect = tenorchrome::X3ScreenRect; }
@@ -109,7 +110,7 @@ int main() {
           for (int index = 0; index < 5; ++index) {
             const auto rect = toolbar.toolRect(index);
             assert(rect.y == expected.y && rect.height == expected.height);
-            assert(rect.x + rect.width / 2 == 56 + (2 * (renderer.getScreenWidth() - 113) * index + 4) / 8);
+            assert(rect.x + rect.width / 2 == 66 + (2 * (renderer.getScreenWidth() - 133) * index + 4) / 8);
           }
           ++cases;
         }

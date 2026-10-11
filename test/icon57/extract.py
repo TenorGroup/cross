@@ -17,7 +17,7 @@ def function(path, signature):
 root = Path(sys.argv[1])
 chrome = root / 'src/components/TenorMenuChrome.cpp'
 functions = [function(chrome, name) for name in (
-    'bool inPill(', 'void tenorchrome::drawPillRing(',
+    'bool inPill(', 'void tenorchrome::drawPillRing(', 'void tenorchrome::drawBarFrame(',
     'void tenorchrome::drawBarIcon(', 'void tenorchrome::drawBarTab(')]
 functions += [function(root / 'src/activities/UiTabListActivity.cpp', 'void UiTabListActivity::veThanhTheTenor('),
               function(root / 'src/activities/home/HomeActivity.cpp', 'freeink::ui::BitmapRef HomeActivity::tabIcon('),

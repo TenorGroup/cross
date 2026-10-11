@@ -135,6 +135,14 @@ inline int readerToolCentre(const int width, const int tool) {
   return barTabCentre(READER_BAR_LEFT, width - FOOT_BACK_X - READER_BAR_LEFT, READER_TOOLS, tool, 8);
 }
 #endif
+// The ring round a dynamic bar of cards (grey dots 2 px, round-ended): the one function every board's card bar draws it
+// with, the Home cards and the reader's tool bar. A bar of a screen's path (the back, the zone icon, the name pill) has
+// no ring on any board. The board gives the rect; the cards stand BAR_END_INSET in from the ring's ends and
+// BAR_TAB_INSET from its top and bottom.
+constexpr int BAR_END_INSET = 8;
+void drawBarFrame(const GfxRenderer& g, int x, int y, int w, int h);
+// A button board's bar stands this far in from the screen's sides, as the touch board's does.
+constexpr int X3_BAR_MARGIN = FOOT_BACK_X;
 void drawBarTab(const GfxRenderer& renderer, int cx, int y, int h, const uint8_t* bits, int w, int iconH, bool chosen);
 // A ring of `thick` px just inside a round-ended bar; grey = every other pixel.
 void drawPillRing(const GfxRenderer& g, int x, int y, int w, int h, int thick, bool grey);
@@ -156,8 +164,8 @@ constexpr bool roundFrames(const bool fileList = false) { return kTouchShell && 
 // Touch shell: the one frame around a group of content across the screen, FOOT_BACK_X in from both sides,
 // grey dots 2 px, radius PANEL_RADIUS. Text inside starts 16 px in from it.
 constexpr int PANEL_RADIUS = 20;
-// Where a frame stands across the screen: on the X3 from the first tab's ring to the last one's (the bar under it), on
-// touch FOOT_BACK_X in from both sides (the X4 Pro bar's ends). One function for every frame and sheet.
+// Where a frame stands across the screen: on the edges of the dynamic bar's ring under it, X3_BAR_MARGIN in from the
+// X3 bar's ends, FOOT_BACK_X in from both sides on touch (the X4 Pro bar's ends). One function for every frame and sheet.
 struct FrameSpan { int x, width; };
 FrameSpan frameSpan(const GfxRenderer& g);
 void drawPanel(const GfxRenderer& g, int y, int h);

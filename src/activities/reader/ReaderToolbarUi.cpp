@@ -94,9 +94,10 @@ tenorchrome::X3ScreenLayout ReaderToolbarUi::screenLayout() const {
 
 fui::Rect ReaderToolbarUi::toolRect(const int index) const {
   const auto bar = screenLayout().barRect;
-  // The tab list's own centres (UiTabListActivity::veThanhTheTenor): ring 8 px in from the bar's ends.
-  const int center = tenorchrome::barTabCentre(bar.x + 8, bar.width - 16, readermenu::X3_TAB_COUNT, index,
-                                               tenorchrome::BAR_TAB_INSET);
+  // The tab list's own centres (UiTabListActivity::veThanhTheTenor): ring X3_BAR_MARGIN in from the bar's ends.
+  const int center = tenorchrome::barTabCentre(bar.x + tenorchrome::X3_BAR_MARGIN,
+                                               bar.width - 2 * tenorchrome::X3_BAR_MARGIN, readermenu::X3_TAB_COUNT,
+                                               index, tenorchrome::BAR_END_INSET);
   return {static_cast<int16_t>(center - tenorchrome::BAR_TAB_W / 2), static_cast<int16_t>(bar.y),
           tenorchrome::BAR_TAB_W, static_cast<int16_t>(bar.height)};
 }
@@ -177,8 +178,11 @@ fui::Rect ReaderToolbarUi::sheetRect(const fui::Rect& bounds, const int16_t heig
 
 void ReaderToolbarUi::buildX3Bar(UiScreen& screen) {
   const auto layout = screenLayout();
-  renderer_->fillRect(0, layout.bodyRect.bottom(), renderer_->getScreenWidth(),
-                      layout.barRect.bottom() - layout.bodyRect.bottom(), false);
+  // With the key strip off, nothing of the menu stands under the bar: the page's own footer would touch its ring.
+  const int clearTo = SETTINGS.globalStatusBarHidden() ? renderer_->getScreenHeight() : layout.barRect.bottom();
+  renderer_->fillRect(0, layout.bodyRect.bottom(), renderer_->getScreenWidth(), clearTo - layout.bodyRect.bottom(), false);
+  tenorchrome::drawBarFrame(*renderer_, layout.barRect.x + tenorchrome::X3_BAR_MARGIN, layout.barRect.y,
+                            layout.barRect.width - 2 * tenorchrome::X3_BAR_MARGIN, layout.barRect.height);
   for (int index = 0; index < readermenu::X3_TAB_COUNT; ++index) {
     const bool active = model_.activeTool == index;
     const auto& icon = readermenu::x3TabIcon(static_cast<readermenu::Tab>(index), active);

@@ -121,6 +121,14 @@ void tenorchrome::drawPillRing(const GfxRenderer& g, const int x, const int y, c
   }
 }
 
+void tenorchrome::drawBarFrame(const GfxRenderer& g, const int x, const int y, const int w, const int h) {
+#ifdef SIMULATOR
+  LOG_INF("BARFRAME", "screen=%s tier=%u x=%d y=%d w=%d h=%d", activityManager.currentName(), SETTINGS.uiTextSize, x, y,
+          w, h);
+#endif
+  drawPillRing(g, x, y, w, h, 2, true);
+}
+
 tenorchrome::PathPillLayout tenorchrome::layoutPathPill(const GfxRenderer& renderer, const int font, const char* title,
                                                         const int maxWidth, const int paddingLeft,
                                                         const int paddingRight) {
@@ -246,7 +254,7 @@ void tenorchrome::drawX3NavigationPath(const GfxRenderer& renderer, const std::v
             pill.width, height, pill.current, static_cast<unsigned>(pill.icon),
             renderer.getTextWidth(UI_12_FONT_ID, pill.text.c_str()), pill.text.c_str());
 #endif
-    drawPillRing(renderer, leftEdge, top, pill.width, height, pill.current ? 3 : 2, !pill.current);
+    drawPillRing(renderer, leftEdge, top, pill.width, height, 2, true);
     if (!pill.text.empty()) {
       drawPillLabel(renderer, UI_12_FONT_ID, pill.text.c_str(), leftEdge, top, pill.width, height);
     } else if (!pill.current) {
@@ -375,11 +383,9 @@ void tenorchrome::drawFavoriteMark(const GfxRenderer& r, const int x, const int 
 
 tenorchrome::FrameSpan tenorchrome::frameSpan(const GfxRenderer& g) {
   if (x3ScreenLayoutEnabled()) {
+    // The bar's ring: the rect the tab lists and the reader's bar draw it in.
     const auto bar = x3ScreenLayout(g).barRect;
-    // The tab list's centres: the ring 8 px in from the bar's ends, 5 tabs as on Home.
-    const int first = barTabCentre(bar.x + 8, bar.width - 16, 5, 0, BAR_TAB_INSET) - BAR_TAB_W / 2;
-    const int last = barTabCentre(bar.x + 8, bar.width - 16, 5, 4, BAR_TAB_INSET) + BAR_TAB_W / 2;
-    return {first, last - first};
+    return {bar.x + X3_BAR_MARGIN, bar.width - 2 * X3_BAR_MARGIN};
   }
   return {FOOT_BACK_X, g.getScreenWidth() - 2 * FOOT_BACK_X};
 }
@@ -543,7 +549,7 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
       return bold ? icon_tenor_reader_tools_bold_40 : icon_tenor_reader_tools_40;
     };
     if (!shell::isUgly())
-      drawPillRing(r, READER_BAR_LEFT, y, r.getScreenWidth() - FOOT_BACK_X - READER_BAR_LEFT, SIZE, 2, true);
+      drawBarFrame(r, READER_BAR_LEFT, y, r.getScreenWidth() - FOOT_BACK_X - READER_BAR_LEFT, SIZE);
     for (int i = 0; i < READER_TOOLS; ++i) {
       const auto cell = readerToolRect(r.getScreenWidth(), r.getScreenHeight(), i);
       const bool active = i == readerFootBar.activeTool;

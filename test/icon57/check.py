@@ -11,7 +11,7 @@ from PIL import Image, ImageChops
 program, board = sys.argv[1:]
 root = Path(__file__).resolve().parents[2]
 reference = Path(os.environ.get('ICON57_REFERENCE_DIR', root / 'scripts/icons/icon57/png'))
-centres = [56, 160, 264, 367, 471] if board in ('X3', 'Ugly') else [74, 169, 264, 358, 453]
+centres = [66, 165, 264, 362, 461] if board in ('X3', 'Ugly') else [74, 169, 264, 358, 453]
 failures = []
 checks = 0
 for kind, names in [('home', ['gan_day', 'thu_muc_hop', 'yeu_tim', 'thong_ke', 'cai_dat']),

@@ -23,6 +23,7 @@ from pathlib import Path
 
 from PIL import Image
 from cai_dat_truoc_tenor import truoc_tenor
+from test_thanh_khung_x3_v1058 import find_frame
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get("TEST_PROGRAM", REPO / ".pio/build/simulator_x3_uc8279/program"))
@@ -132,7 +133,10 @@ class CaiDatConDongBenDuoiTest(unittest.TestCase):
 
     def kiem_status(self, ten, lon, clock):
         image = self.anh_status(ten)
-        pixels = [(x, y) for y in range(image.height - 70, image.height - 4) for x in range(image.width)
+        # The dynamic bar's ring stands in the lower rows at the taller text sizes: the status strip starts under it.
+        frame = find_frame(image)
+        first_row = frame[1] + frame[3] if frame else image.height - 70
+        pixels = [(x, y) for y in range(first_row, image.height - 4) for x in range(image.width)
                   if image.getpixel((x, y)) < 128]
         self.assertTrue(pixels, f"{ten}: khong co pixel status")
         left = min(x for x, _ in pixels)
