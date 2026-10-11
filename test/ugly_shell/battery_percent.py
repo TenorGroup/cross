@@ -30,6 +30,7 @@ cpp = r'''
 #include <string>
 #include <vector>
 #include <EpdFont.h>
+#include "shells/ugly/UglyIcons.h"
 #include "InlineSymbolBitmaps.h"
 #include "shells/ugly/UglyLogic.h"
 #include "shells/ugly/fonts/ugly_22.h"
@@ -50,11 +51,14 @@ struct Clock {
   }
 } halClock;
 struct Power { int level=87; int getDisplayedBatteryPercentage() { return level; } } powerManager;
+std::vector<std::pair<int,int>> pixels;
 struct GfxRenderer {
   int screenWidth=528, screenHeight=792;
   int getScreenWidth() const { return screenWidth; }
   int getScreenHeight() const { return screenHeight; }
   void fillRect(int,int,int,int,bool) const {}
+  void drawPixel(int x,int y) const { pixels.emplace_back(x,y); }
+  void drawLine(int,int,int,int,bool) const { assert(false); }
 };
 struct MappedInputManager {
   struct Labels { const char *btn1,*btn2,*btn3,*btn4; };
@@ -64,56 +68,85 @@ struct MappedInputManager {
 };
 namespace ugly {
 enum class Size { S22 };
-enum class Mark { Back,Tick,Up,Down,Left,Right };
+enum class Mark : uint8_t { Left,Right,Up,Down,Tick,Back };
 struct Hints { bool back,confirm,left,right; };
-struct Draw { int textX,baseline,span; std::string value; };
+struct Box { int x0=9999,y0=9999,x1=-1,y1=-1; };
+Box bounds(size_t first) {
+  Box box;
+  for (size_t i=first;i<pixels.size();++i) {
+    const auto [x,y]=pixels[i];
+    box.x0=std::min(box.x0,x); box.x1=std::max(box.x1,x+1);
+    box.y0=std::min(box.y0,y); box.y1=std::max(box.y1,y+1);
+  }
+  return box;
+}
+struct Draw { Box box; std::string value; };
 std::vector<Draw> draws;
-std::vector<std::pair<int,int>> digitPixels;
-std::string digitValues;
 const EpdFont FONT22(&ugly_22);
 struct Letter { const EpdGlyph* glyph; logic::Warp warp; };
-void drawWarped(const GfxRenderer&, Size, const Letter& letter, int textX, int baseline, bool) {
-  const auto* glyph=letter.glyph;
-  for (char digit='0';digit<='9';++digit) if (FONT22.getGlyph(digit)==glyph) digitValues+=digit;
-  logic::warpGlyph(FONT22.data->bitmap+glyph->dataOffset,glyph->width,glyph->height,
-                   glyph->left,glyph->top,glyph->advanceX,letter.warp,logic::NO_CLIP,
-                   [&](int pixelX,int pixelY) { digitPixels.emplace_back(textX+pixelX,baseline+pixelY); });
+void drawWarped(const GfxRenderer& r, Size, const Letter& letter, int x, int baseline, bool) {
+  const auto* g=letter.glyph;
+  logic::warpGlyph(FONT22.data->bitmap+g->dataOffset,g->width,g->height,g->left,g->top,
+                   g->advanceX,letter.warp,logic::NO_CLIP,
+                   [&](int px,int py) { r.drawPixel(x+px,baseline+py); });
 }
-int width(const GfxRenderer&, Size, const char* value) { return strlen(value)*12; }
-int text(const GfxRenderer& renderer,Size size,int textX,int baseline,const char* value) {
-  int span=width(renderer,size,value); draws.push_back({textX,baseline,span,value}); return span;
+int width(const GfxRenderer&, Size, const char* value) {
+  int span=0;
+  for (const char* p=value;*p;++p) span+=fp4::toPixel(FONT22.getGlyph(*p)->advanceX);
+  return span;
+}
+int text(const GfxRenderer& r,Size size,int x,int baseline,const char* value) {
+  const size_t first=pixels.size();
+  int cursor=x;
+  for (const char* p=value;*p;++p) {
+    const auto* g=FONT22.getGlyph(*p);
+    drawWarped(r,size,{g,logic::NO_WARP},cursor,baseline,true);
+    cursor+=fp4::toPixel(g->advanceX);
+  }
+  if (*value) draws.push_back({bounds(first),value});
+  return cursor-x;
 }
 std::string fit(const GfxRenderer&,Size,const char* value,int) { return value; }
-void mark(const GfxRenderer&,Mark,int centreX,int centreY) { draws.push_back({centreX-12,centreY+8,24,"mark"}); }
-void stroke(const GfxRenderer&,int,int,int,int,int) {}
-void polyline(const GfxRenderer&,const int (*)[2],int,int) {}
-namespace icons { enum class Id { Battery }; struct Rect { int x,y,width,height; }; }
-uint32_t iconFrameSeed() { return 0; }
-void icon(const GfxRenderer&,icons::Id,icons::Rect,uint32_t) {}
+uint32_t frameSeed=0;
+uint32_t iconFrameSeed() { return frameSeed; }
 '''
 cpp = cpp.replace('namespace ugly {', '''namespace buttonSymbols {
-int labelId(const char* value) { return static_cast<unsigned char>(value[2]) - 0x80; }
+int labelId(const char* value) {
+  return static_cast<unsigned char>(value[0])==0xEE && static_cast<unsigned char>(value[1])==0x84
+      ? static_cast<unsigned char>(value[2])-0x80 : -1;
+}
 }
 namespace ugly {''', 1)
-cpp = cpp.replace('namespace ugly {', r'''namespace inlineSymbols {
-enum class Shape { Select };
-void drawShape(const GfxRenderer&, Shape, int, int, int, bool);
+for signature in ('void dot(', 'void stroke(const GfxRenderer& r, int x0, int y0, const int x1',
+                  'void penStroke(', 'void polyline('):
+    cpp += method(source, signature) + '\n'
+icon_source = (args.repo / 'src/shells/ugly/UglyIconInk.cpp').read_text()
+cpp += method(icon_source, 'void icon(').replace('void icon(', 'void drawIcon(', 1) + '\n'
+cpp += r'''
+size_t iconPixels=0;
+void icon(const GfxRenderer& r,icons::Id id,icons::Rect box,uint32_t seed) {
+  const size_t first=pixels.size();
+  drawIcon(r,id,box,seed,true);
+  iconPixels+=pixels.size()-first;
+  const char* name=id==icons::Id::Battery?"battery":id==icons::Id::Tick?"tick":"mark";
+  draws.push_back({bounds(first),name});
 }
-namespace ugly {''', 1)
-cpp += r'''}
+'''
+cpp += r'''
+}
 namespace inlineSymbols {
-void drawShape(const GfxRenderer&, Shape, int x, int y, int size, bool) {
-  const auto& glyph = size <= 14 ? inlineSymbolBitmaps::kSelectNet14 : inlineSymbolBitmaps::kSelectNet18;
-  int ink = 0;
-  for (int row = 0; row < glyph.height; ++row)
-    for (int col = 0; col < glyph.width; ++col)
-      ink += !!(glyph.rows[row] & (1u << (glyph.width-col-1)));
-  assert(ink > 0);
-  ugly::draws.push_back({x-12,y+8,24,"mark"});
+enum class Shape { Select };
+void drawShape(const GfxRenderer& r, Shape, int x, int y, int size, bool) {
+  const auto& glyph=size<=14?inlineSymbolBitmaps::kSelectNet14:inlineSymbolBitmaps::kSelectNet18;
+  const size_t first=pixels.size();
+  for (int row=0;row<glyph.height;++row) for (int col=0;col<glyph.width;++col)
+    if (glyph.rows[row] & (1u << (glyph.width-col-1))) r.drawPixel(x+col-glyph.width/2,y+row-glyph.height/2);
+  ugly::draws.push_back({ugly::bounds(first),"enter"});
 }
 }
 namespace ugly {
 '''
+cpp += method(source, 'void mark(') + '\n'
 if 'void batteryDigits(' in source:
     cpp += method(source, 'void batteryDigits(') + '\n'
 for signature in ('void battery(', 'bool clockText('):
@@ -126,58 +159,75 @@ cpp += r'''
 }
 int main() {
   GfxRenderer renderer; MappedInputManager input;
-  int cases=0;
-  for (int screenWidth : {480,528,792}) for (int mode : {0,1,2}) for (int level=0;level<=100;++level) for (int screen : {0,1,2}) {
-    ++cases;
+  int cases=0, minGap=9999;
+  for (uint32_t seed : {0u,1u,5u,42u,12345u}) for (int screenWidth : {480,528,792}) for (int side : {1,2})
+  for (int mode : {0,1,2}) for (int level=0;level<=100;++level) for (int screen : {0,1,2}) {
+    ++cases; ugly::frameSeed=seed;
     renderer.screenWidth=screenWidth;
-    SETTINGS.hideBatteryPercentage=mode; powerManager.level=level; ugly::draws.clear();
-    ugly::digitPixels.clear(); ugly::digitValues.clear();
+    SETTINGS.statusBarClock=side;
+    SETTINGS.hideBatteryPercentage=mode; powerManager.level=level;
+    ugly::draws.clear(); pixels.clear(); ugly::iconPixels=0;
+    auto check=[&](bool ok,const char* reason) {
+      if (!ok) {
+        fprintf(stderr,"RED %s width=%d side=%d mode=%d level=%d screen=%d seed=%u\n",
+                reason,screenWidth,side,mode,level,screen,seed);
+        std::exit(1);
+      }
+    };
     if (screen==0) ugly::statusBar(renderer,input,{true,true,true,true});
     if (screen==1) ugly::topBar(renderer,"Home");
     if (screen==2) ugly::formTopBar(renderer);
-    int count=0;
-    for (const auto& draw : ugly::draws) if (draw.value.find('%')!=std::string::npos) {
-      ++count; assert(draw.value==std::to_string(level)+"%");
-      assert(draw.textX>=0 && draw.textX+draw.span<=renderer.screenWidth);
-      for (const auto& other : ugly::draws) if (&other!=&draw && std::abs(other.baseline-draw.baseline)<20)
-        assert(draw.textX+draw.span<=other.textX || other.textX+other.span<=draw.textX);
-    }
-    if (screen==0) {
-      int hint=0;
-      const int wide[4]={105,197,331,423}, narrow[4]={98,186,294,382};
-      for (const auto& draw:ugly::draws) if (draw.value=="mark") {
-        if (draw.textX+12!=(screenWidth>=528?wide:narrow)[hint++]) {
-          fprintf(stderr,"RED physical hint moved screenWidth=%d mode=%d level=%d\n",screenWidth,mode,level);
-          return 1;
+    const bool shown=SETTINGS.batteryPercentShown(false);
+    int count=0, hints=0, ticks=0;
+    const ugly::Draw* battery=nullptr;
+    const ugly::Draw* percent=nullptr;
+    for (const auto& draw : ugly::draws) {
+      const auto b=draw.box;
+      check(b.x0>=0 && b.x1<=screenWidth && b.y0>=0 && b.y1<=renderer.screenHeight,"ink outside screen");
+      if (draw.value=="battery") battery=&draw;
+      if (draw.value=="mark" || draw.value=="tick") ++hints;
+      if (draw.value=="tick") ++ticks;
+      if (draw.value.find('%')!=std::string::npos) {
+        ++count; percent=&draw;
+        check(draw.value==std::to_string(level)+"%","wrong percent value");
+        for (const auto& other : ugly::draws) {
+          if (&other==&draw || other.box.y1<=b.y0 || b.y1<=other.box.y0) continue;
+          const int gap=std::max(other.box.x0-b.x1,b.x0-other.box.x1);
+          check(gap>=0,"percent overlaps same-row ink");
+          if (screen==0) {
+            minGap=std::min(minGap,gap);
+            if (gap<6) fprintf(stderr,"N%%=[%d,%d) %s=[%d,%d) gap=%d px\n",b.x0,b.x1,
+                               other.value.c_str(),other.box.x0,other.box.x1,gap);
+            check(gap>=6,"percent clearance below 6 px");
+          }
         }
       }
-      assert(hint==4);
-      const std::string expected=SETTINGS.batteryPercentShown(false)?std::to_string(level):"";
-      if (ugly::digitValues!=expected) {
-        fprintf(stderr,"RED inside battery digits=%s expected=%s\n",ugly::digitValues.c_str(),expected.c_str());
-        return 1;
-      }
-      int minX=999,minY=999,maxX=-1,maxY=-1;
-      for (const auto& pixel:ugly::digitPixels) {
-        assert(pixel.first>=18 && pixel.first<45 && pixel.second>=renderer.screenHeight-27 && pixel.second<renderer.screenHeight-13);
-        minX=std::min(minX,pixel.first);maxX=std::max(maxX,pixel.first);
-        minY=std::min(minY,pixel.second);maxY=std::max(maxY,pixel.second);
-      }
-      if (!expected.empty()) {
-        assert(!ugly::digitPixels.empty());
-        assert(std::abs(minX+maxX-62)<=1);
-        assert(std::abs(minY+maxY-2*(renderer.screenHeight-20))<=1);
-      }
     }
-    if (count!=((screen!=0 && SETTINGS.batteryPercentShown(false))?1:0)) {
-      fprintf(stderr,"RED screen=%d mode=%d level=%d percent draws=%d\n",screen,mode,level,count);
-      return 1;
+    check(count==(shown?1:0),"missing or unexpected N% text");
+    check(battery!=nullptr,"battery missing");
+    if (screen==0) {
+      check(hints==4 && ticks==1,"four pen hints with one select tick required");
+      if (shown) {
+        check(side==2 ? percent->box.x1<=battery->box.x0 : percent->box.x0>=battery->box.x1,
+              "percent must stand beside battery on inner side");
+      }
+      for (const auto& draw : ugly::draws) {
+        if (draw.value!="mark" && draw.value!="tick") continue;
+        const int gap=std::max(draw.box.x0-battery->box.x1,battery->box.x0-draw.box.x1);
+        check(gap>=6,"battery clearance from key ink below 6 px");
+      }
+      // Draw the battery alone so text and key strokes cannot count as its fill.
+      pixels.clear(); ugly::iconPixels=0;
+      ugly::battery(renderer,side==2?screenWidth-56:14,renderer.screenHeight-20,level,shown);
+      const size_t fill=pixels.size()-ugly::iconPixels;
+      check(shown ? fill==0 : (level<4 ? fill==0 : fill>0),"empty percent body or hidden-mode level strokes");
     }
   }
   SETTINGS.hideBatteryPercentage=CrossPointSettings::HIDE_READER;
   assert(!SETTINGS.batteryPercentShown(true));
-  printf("GREEN %d production bar cases, real digit pixels centred inside body, fixed hint coordinates, header percent, reader contract\n",cases);
+  printf("GREEN %d bar cases, N%% beside empty battery, minimum gap %d px, pen tick, level strokes, headers, reader mode\n",cases,minGap);
 }
+
 '''
 translation_unit = args.output / 'battery.cpp'
 translation_unit.write_text(cpp)
