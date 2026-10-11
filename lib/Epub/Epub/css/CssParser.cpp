@@ -317,7 +317,7 @@ CssParser::PoolResult CssParser::ensureEntryCapacity(const size_t needed) {
   size_t capacity = entryCapacity_ ? entryCapacity_ * 2u : 128u;
   while (capacity < needed) capacity *= 2u;
   capacity = std::min(capacity, MAX_RULES);
-  auto grown = makeUniqueNoThrow<SelectorEntry[]>(capacity);
+  auto grown = heapfloor::array<SelectorEntry[]>(capacity, "css-entries");
   if (!grown) {
     LOG_ERR("CSS", "OOM: selector index (%zu entries)", capacity);
     return PoolResult::OutOfMemory;
@@ -353,7 +353,7 @@ CssParser::PoolResult CssParser::ensureStyleCapacity(const size_t needed) {
   size_t capacity = styleCapacity_ ? styleCapacity_ * 2u : 16u;
   while (capacity < needed) capacity *= 2u;
   capacity = std::min(capacity, MAX_UNIQUE_STYLES);
-  auto grownStyles = makeUniqueNoThrow<CssStyle[]>(capacity);
+  auto grownStyles = heapfloor::array<CssStyle[]>(capacity, "css-styles");
   if (!grownStyles) {
     LOG_ERR("CSS", "OOM: style pool (%zu styles)", capacity);
     return PoolResult::OutOfMemory;

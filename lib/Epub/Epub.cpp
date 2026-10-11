@@ -241,7 +241,7 @@ bool Epub::parseContentOpf(BookMetadataCache::BookMetadata& bookMetadata, const 
   }
 
   if (!opfParser.cssFiles.empty()) {
-    cssFiles = opfParser.cssFiles;
+    cssFiles = std::move(opfParser.cssFiles);
   }
 
   LOG_DBG("EBP", "Successfully parsed content.opf");
@@ -398,7 +398,7 @@ CssParser::ParseResult Epub::parseCssFiles(const CssParser::CacheStatus existing
   };
   std::unique_ptr<CssDedupEntry[]> dedupEntries;
   if (cssFiles.size() > 1) {
-    dedupEntries = makeUniqueNoThrow<CssDedupEntry[]>(cssFiles.size());
+    dedupEntries = heapfloor::array<CssDedupEntry[]>(cssFiles.size(), "css-dedup");
   }
   if (dedupEntries) {
     for (size_t i = 0; i < cssFiles.size(); i++) {
@@ -439,9 +439,11 @@ CssParser::ParseResult Epub::parseCssFiles(const CssParser::CacheStatus existing
     const auto& cssPath = cssFiles[cssIndex];
     const uint64_t dedupKey = dedupEntries ? dedupEntries[cssIndex].contentKey : 0;
     if (dedupKey != 0) {
-      const bool seen =
-          std::any_of(dedupEntries.get(), dedupEntries.get() + cssIndex,
-                      [dedupKey](const CssDedupEntry& candidate) { return candidate.contentKey == dedupKey; });
+      const bool seen = std::any_of(
+          dedupEntries.get(), dedupEntries.get() + cssIndex,
+          [dedupKey, &cssFiles, &cssPath](const CssDedupEntry& candidate) {
+            return candidate.contentKey == dedupKey && cssFiles[candidate.cssIndex] == cssPath;
+          });
       if (seen) {
         skippedDuplicates++;
         continue;
