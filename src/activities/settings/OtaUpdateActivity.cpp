@@ -157,7 +157,7 @@ void OtaUpdateActivity::onEnter() {
 
   // Launch WiFi selection subactivity
   LOG_DBG("OTA", "Launching WifiSelectionActivity...");
-  startActivityForResult(makeUniqueNoThrow<WifiSelectionActivity>(renderer, mappedInput, true, false),
+  startActivityForResult(makeUniqueNoThrow<WifiSelectionActivity>(renderer, mappedInput, true, false, false, boot.armed),
                          [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
 }
 

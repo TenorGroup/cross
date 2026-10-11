@@ -96,6 +96,8 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   // picker leaves with a cancelled result instead of showing the network list
   // or the on-screen keyboard.
   const bool savedNetworkOnly;
+  // Update boot keeps the picker on the saved-network attempt until it fails.
+  const bool deferManualNetworkList;
 
   // Whether we are attempting to auto-connect or auto-scan saved networks.
   bool autoConnecting = false;
@@ -183,7 +185,8 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Network; }
   std::string x3NavigationLabel() const override { return I18N.get(StrId::STR_WIFI_NETWORKS); }
   explicit WifiSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool autoConnect = true,
-                                 bool syncClock = true, bool savedNetworkOnly = false);
+                                 bool syncClock = true, bool savedNetworkOnly = false,
+                                 bool deferManualNetworkList = false);
   void onEnter() override;
   void onExit() override;
   void loop() override;
