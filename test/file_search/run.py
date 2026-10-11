@@ -25,6 +25,7 @@ def main() -> None:
     args.output.mkdir(parents=True, exist_ok=True)
     source = args.source.read_text()
     header = args.source.with_suffix('.h').read_text()
+    home_source = (args.source.parent / 'HomeActivity.cpp').read_text()
     search_rows = next((line.strip().replace('static constexpr', 'constexpr')
                         for line in header.splitlines() if 'kSearchRows =' in line), None)
     if search_rows is None:
@@ -38,7 +39,7 @@ def main() -> None:
     browser_callback = extract_function(source, "void FileBrowserActivity::openSearch()")
     if "requestUpdate(true)" in browser_callback:
         raise AssertionError("file search callback still requests an immediate render")
-    home_callback = extract_function(source, "void HomeActivity::openFileSearch()")
+    home_callback = extract_function(home_source, "void HomeActivity::openFileSearch()")
     if "requestUpdate(true)" in home_callback:
         raise AssertionError("home file search callback still requests an immediate render")
     for touch in (False, True):

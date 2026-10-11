@@ -4,6 +4,9 @@
 
 #include <algorithm>
 #include <cstring>
+#ifdef TENOR_PRESS_PROBE
+#include <Logging.h>
+#endif
 #include <string_view>
 
 namespace filesearch {
@@ -141,6 +144,13 @@ void Scanner::finish(const ScanReason reason) {
   reason_ = reason;
   for (size_t i = 0; i < frames_.size(); ++i) frames_[i] = {};
   frameCount_ = 0;
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("SEARCH_SCAN", "entries=%u depth=%u read_calls=%lu slice_ms=%lu max_block_ms=%lu cancel_ms=%lu reason=%u",
+          static_cast<unsigned>(stats_.entries), static_cast<unsigned>(stats_.depth),
+          static_cast<unsigned long>(stats_.readCalls), static_cast<unsigned long>(stats_.sliceMs),
+          static_cast<unsigned long>(stats_.maxBlockMs), static_cast<unsigned long>(stats_.cancelMs),
+          static_cast<unsigned>(reason));
+#endif
 }
 
 ScanReason Scanner::tick() {
