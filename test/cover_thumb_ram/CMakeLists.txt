@@ -21,4 +21,5 @@ add_executable(GrayThumbFailureTest
 )
 get_target_property(thumb_includes CoverThumbRamTest INCLUDE_DIRECTORIES)
 target_include_directories(GrayThumbFailureTest PRIVATE ${thumb_includes})
+target_compile_options(GrayThumbFailureTest PRIVATE -UNDEBUG)
 add_test(NAME GrayThumbFailure COMMAND GrayThumbFailureTest)
