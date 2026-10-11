@@ -233,6 +233,7 @@ class HomeActivity final : public UiTabListActivity {
   struct ThumbRequest { int book = -1, width = 0, height = 0; };
   std::array<ThumbRequest, 4> touchThumbs{};
   int touchThumbCount = 0;
+  bool thumbBatchWrote = false;
   void queueTouchThumb(int index, int width, int height);
   void wantThumb(int index);
   void writeMissingThumb(int index);
