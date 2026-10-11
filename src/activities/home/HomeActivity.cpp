@@ -286,6 +286,12 @@ void HomeActivity::onExit() {
   UiTabListActivity::onExit();
 }
 
+// Back in front: a cover whose step ended this visit (a failed read, a copy) is tried again.
+void HomeActivity::onResume() {
+  UiTabListActivity::onResume();
+  idleQueue.clear(true);
+}
+
 void HomeActivity::onPause() {
   // The manager holds RenderLock while pausing an activity.
   clearHomeGray();
@@ -2076,6 +2082,7 @@ void HomeActivity::drawRecentCard() {
     const auto path = (homeInkEnabled() && attempt == 0)
                           ? touchCoverPath(book.coverBmpPath, cardThumbWidth, height)
                           : UITheme::getCoverThumbPath(book.coverBmpPath, height);
+    if (homeInkEnabled() && attempt == 0) coverink::restore(path);
     if (!Storage.openFileForRead("HOME", path, file)) continue;
     if (attempt == 0) cardFileThumb = 1;
     Bitmap bitmap(file);
@@ -2326,6 +2333,7 @@ namespace {
 struct BookCover {
   Epub& epub;
   const std::string& href;
+  HomeActivity* home;
 };
 struct StopPrint : Print {
   const idlework::Stop& stop;
@@ -2399,37 +2407,56 @@ void HomeActivity::queueIdleCovers() {
 // On the main task, while Home stands still: one step of the queue's first job.
 void HomeActivity::idleStep() {
   if (!kInkX3) return;
-  if (mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased()) {
+  // A key pressed, let go or still held (a key held past 3 s has no edge left to see): not idle.
+  if (mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() || gpio.rawInputActive()) {
     idleQuietSince = millis();
     return;
   }
+  // Read before the lock: only the render task fills the queue, and it is read again under the lock.
+  if (idleQueue.empty() || static_cast<int32_t>(millis() - idleRetryAt) < 0) return;
+  const uint64_t clockUs = idleClockUs();
+  // Home in front: the Recent tab, no menu over it.
+  const bool front = activeTabId == Tab::RECENT && !rowMenu.isActive();
+  const idlework::IdleInputs in{front ? idlework::Where::Home : idlework::Where::Elsewhere, millis() - idleQuietSince,
+                                gpio.isUsbConnected(), static_cast<int>(powerManager.getBatteryPercentage()),
+                                idleBudget.used(clockUs), idleBudget.stepsIn(clockUs)};
+  if (idlework::verdict(in) != idlework::Why::Ok) return;
   // As the reader's index step: never wait for the render task; a frame in progress skips this pass.
   RenderLock lock(RenderLock::TryTake{});
-  if (!lock.acquired() || idleQueue.empty() || static_cast<int32_t>(millis() - idleRetryAt) < 0) return;
-  const idlework::IdleInputs in{activeTabId == Tab::RECENT ? idlework::Where::Home : idlework::Where::Elsewhere,
-                                millis() - idleQuietSince, gpio.isUsbConnected(),
-                                static_cast<int>(powerManager.getBatteryPercentage()), idleBudget.used(idleClockUs())};
-  if (idlework::verdict(in) != idlework::Why::Ok) return;
+  if (!lock.acquired() || idleQueue.empty()) return;
   // The loop drops the CPU to 10 MHz after 3 s without a key, exactly when this runs.
   HalPowerManager::Lock fullSpeed;
-  // The card's snapshot goes before the step asks for any block; the card is read from its file again.
-  freeCoverBuffer();
-  coverRendered = false;
   idlework::Stop stop;
   stop.keyDown = [](void*) { return gpio.rawInputActive(); };
   stop.clockMs = [] { return static_cast<uint32_t>(millis()); };
   stop.startedMs = millis();
   idleOutcome = static_cast<uint8_t>(coverink::Outcome::Nothing);
-  [[maybe_unused]] const size_t freeBefore = ESP.getFreeHeap();
+#ifdef TENOR_PRESS_PROBE
+  const size_t freeBefore = ESP.getFreeHeap();
+#endif
   idleQueue.runFront(stop);
   const uint32_t ran = millis() - stop.startedMs;
   idleBudget.charge(idleClockUs(), ran);
-  LOG_INF("HOME", "Idle cover outcome=%u ms=%lu usb=%u free=%u/%u largest=%u", idleOutcome,
-          static_cast<unsigned long>(ran), in.usb ? 1u : 0u, static_cast<unsigned>(freeBefore),
+  LOG_INF("HOME", "Idle cover outcome=%u ms=%lu", idleOutcome, static_cast<unsigned long>(ran));
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("HOME", "Idle cover heap usb=%u free=%u/%u largest=%u", in.usb ? 1u : 0u, static_cast<unsigned>(freeBefore),
           static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
   const auto outcome = static_cast<coverink::Outcome>(idleOutcome);
   if (outcome == coverink::Outcome::Sharp) requestUpdate();
-  if (outcome == coverink::Outcome::NoHeap) idleRetryAt = millis() + 30000;
+  // A heap that would not hold the step: wait longer each time, up to 10 minutes.
+  if (outcome == coverink::Outcome::NoHeap) {
+    idleRetryAt = millis() + idleBackoffMs;
+    idleBackoffMs = std::min<uint32_t>(idleBackoffMs * 2, 600000);
+  } else {
+    idleBackoffMs = 30000;
+  }
+}
+
+// What the step takes is given back by the card first: its snapshot is read from its file again.
+void HomeActivity::idleRelease() {
+  freeCoverBuffer();
+  coverRendered = false;
 }
 
 idlework::Step HomeActivity::coverStep(const idlework::Job& job, const idlework::Stop& stop) {
@@ -2440,10 +2467,11 @@ idlework::Step HomeActivity::coverStep(const idlework::Job& job, const idlework:
   // Where the reader left the cover's path; a book not opened since that began waits for it.
   std::string href;
   if (!coverref::load(epub.getCachePath(), href)) return idlework::Step::Done;
-  BookCover cover{epub, href};
+  BookCover cover{epub, href, &home};
   coverink::Source source;
   source.sniff = sniffCover;
   source.copy = copyCover;
+  source.release = [](void* user) { static_cast<BookCover*>(user)->home->idleRelease(); };
   source.user = &cover;
   const bool four = job.arg[3] != 0;
   const auto outcome = coverink::build(epub.getCachePath(), tenorink::cachePath(book.coverBmpPath, job.arg[1],
