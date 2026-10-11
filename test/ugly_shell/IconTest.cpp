@@ -206,8 +206,12 @@ TEST(UglyIcons, ActualFileAssetAndInlineShapeDispatch) {
   EXPECT_EQ(hash(untouched), before);
   shell::uglyMode = true;
   ugly::setIconFrameSeed(123);
-  EXPECT_FALSE(ugly::iconSymbol(untouched, 0, 24, 24, 18, true));
-  EXPECT_EQ(hash(untouched), before);
+  // The Select key is the pen's tick under tenor/ugly.
+  GfxRenderer select, tick;
+  EXPECT_TRUE(ugly::iconSymbol(select, 0, 24, 24, 18, true));
+  ugly::icon(tick, ugly::icons::Id::Tick, {24 - 11, 24 - 11, 22, 22}, 123);
+  EXPECT_NE(hash(select), before);
+  EXPECT_EQ(hash(select), hash(tick));
   EXPECT_TRUE(ugly::iconSymbol(untouched, 1, 24, 24, 18, true));
   EXPECT_NE(hash(untouched), before);
 }

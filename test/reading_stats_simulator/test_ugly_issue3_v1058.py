@@ -6,6 +6,8 @@ tiers 0, 1 and 2, the straight (0) and the turned (1) hand.
  2. The battery level is written beside an empty body (12 px or more high, 6 px clear of the body and the marks).
  3. Reading habits: the explanation is written once, clear of the rule above and of the tip below.
  4. No tenor/cross path pill on any screen of the shell that draws its path in the foot bar.
+ 5. The Select key is the pen's tick under tenor/ugly, in the foot bar and in the tips and sentences of the screens;
+    tenor/cross keeps its Enter symbol.
 """
 import datetime
 import json
@@ -30,9 +32,9 @@ def habits_stats(card):
     path.write_text(json.dumps(doc))
 
 
-def shot(keys, tier=0, level=1, prepare=None, **settings):
+def shot(keys, tier=0, level=1, prepare=None, shell=1, **settings):
     """The screen after `keys` from the diary (1500 ms apart). Returns (image, activities entered)."""
-    card = Card(shell=1, uiTextSize=tier, uiUglyLevel=level, **dict(HAND, **settings))
+    card = Card(shell=shell, uiTextSize=tier, uiUglyLevel=level, **dict(HAND, **settings))
     try:
         if prepare:
             prepare(card)
@@ -179,6 +181,27 @@ class UglyIssue3Test(unittest.TestCase):
             with self.subTest(screen=name):
                 im, acts = shot(keys)
                 self.assertEqual(cross_pills.find(im), [], f'a tenor/cross pill on {acts[-1]}')
+
+    def test_5_the_select_key_is_the_tick_in_the_pen_and_stays_the_enter_in_tenor_cross(self):
+        import enter_symbol
+        routes = {
+            'diary': [],
+            'notebook, hold to pin': ['DOWN'] * 4,
+            'habits, the tip': ['DOWN'] * 4 + ['CONFIRM'],
+            'keyboard, the tips': ['UP'] + ['RIGHT'] * 7 + ['CONFIRM', 'RIGHT', 'CONFIRM'],
+            'answer sheet': ['UP', 'CONFIRM'],
+        }
+        for name, keys in routes.items():
+            with self.subTest(screen=name):
+                im, acts = shot(keys)
+                self.assertEqual(enter_symbol.find(im), [], f'an Enter symbol of tenor/cross on {acts[-1]}')
+        im, _ = shot([], shell=0)
+        self.assertTrue(enter_symbol.find(im), 'tenor/cross keeps the Enter symbol in its foot bar')
+        # the tick of the foot bar is centred on its key: the middle of the ink on the foot's centre line, 197 px across
+        im, _ = shot([], statusBarClock=1)
+        ticks = [p for p in ink_components(im, (160, 752, 240, 792), reach=1) if 9 <= p[2] - p[0] + 1 <= 16 and 8 <= p[3] - p[1] + 1 <= 14]
+        self.assertEqual(len(ticks), 1, ticks)
+        self.assertLessEqual(abs((ticks[0][1] + ticks[0][3]) / 2 - 772), 0.5, f'tick {ticks[0]}')
 
 
 if __name__ == '__main__':
