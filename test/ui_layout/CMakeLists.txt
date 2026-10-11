@@ -124,3 +124,8 @@ add_test(NAME UiLayout.x3_page_scrollbar COMMAND "${Python3_EXECUTABLE}" "${CMAK
 add_test(NAME UiLayout.x4pro_page_scrollbar COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_x4pro_page_scrollbar.py" --output "${CMAKE_CURRENT_BINARY_DIR}/x4pro_page_scrollbar")
 add_test(NAME UiLayout.home_cover_alignment COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_home_cover_alignment.py" --output "${CMAKE_CURRENT_BINARY_DIR}/home_cover_alignment")
 add_test(NAME UiLayout.home_cover_fixed_y_mutation COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_home_cover_alignment.py" --output "${CMAKE_CURRENT_BINARY_DIR}/home_cover_fixed_y_mutation" --mutation)
+add_executable(UiLayout.list_measure_cache list_measure_cache.cpp "${UI_LAYOUT_SDK}/src/FreeInkUI.cpp")
+target_compile_features(UiLayout.list_measure_cache PRIVATE cxx_std_20)
+target_compile_options(UiLayout.list_measure_cache PRIVATE -UNDEBUG)
+target_include_directories(UiLayout.list_measure_cache PRIVATE "${REPO_ROOT}/src" "${UI_LAYOUT_SDK}/include")
+add_test(NAME UiLayout.list_measure_cache COMMAND UiLayout.list_measure_cache)

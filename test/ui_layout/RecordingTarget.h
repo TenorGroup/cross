@@ -9,9 +9,10 @@
 namespace fui = freeink::ui;
 struct Target : fui::DrawTarget {
   UITextSizeSpec spec;
-  std::vector<fui::Rect> runs;
+  std::vector<fui::Rect> runs; mutable int measureCalls = 0;
   explicit Target(uint8_t tier) : spec(uiTextSizeSpec(tier)) {}
   fui::Size measureText(fui::FontId font, const char* text, fui::TextStyle) const override {
+    ++measureCalls;
     int chars = 0;
     for (const unsigned char* p = reinterpret_cast<const unsigned char*>(text); *p; ++p)
       if ((*p & 0xc0) != 0x80) ++chars;
