@@ -11,8 +11,9 @@
 #include "shells/Shell.h"
 
 namespace x3readerchrome {
-template <class Visitor>
-inline int eachInfoLine(const GfxRenderer& renderer, const char* text, Visitor visit) {
+// `measure` is the width a line takes in the letters it is drawn in.
+template <class Visitor, class Measure>
+inline int eachInfoLine(const GfxRenderer& renderer, const char* text, Visitor visit, Measure measure) {
   const char* cursor = text ? text : "";
   int count = 0;
   while (*cursor) {
@@ -26,7 +27,7 @@ inline int eachInfoLine(const GfxRenderer& renderer, const char* text, Visitor v
       if (used + bytes >= sizeof(line)) break;
       std::memcpy(line + used, next, bytes);
       line[used + bytes] = 0;
-      if (used && renderer.getTextWidth(SMALL_FONT_ID, line) > renderer.getScreenWidth() - 48) break;
+      if (used && measure(line) > renderer.getScreenWidth() - 48) break;
       used += bytes;
       if (*next == ' ') lastSpace = used;
       next = end;
@@ -40,10 +41,16 @@ inline int eachInfoLine(const GfxRenderer& renderer, const char* text, Visitor v
   return count;
 }
 
+template <class Visitor>
+inline int eachInfoLine(const GfxRenderer& renderer, const char* text, Visitor visit) {
+  return eachInfoLine(renderer, text, visit, [&](const char* line) { return renderer.getTextWidth(SMALL_FONT_ID, line); });
+}
+
+// `note` is a count at the right end of the path, written where tenor/ugly keeps it; tenor/cross draws it elsewhere.
 inline void drawPath(const GfxRenderer& renderer, const tenorchrome::X3ScreenRect bar, const freeink::Icon& icon,
-                     const char* path) {
+                     const char* path, const char* note = nullptr) {
   if (shell::uglyParts()) {
-    tenorchrome::drawHeader(renderer, path);
+    tenorchrome::drawHeader(renderer, path, "", note);
     return;
   }
   tenorchrome::drawX3ActivityPath(renderer, path);

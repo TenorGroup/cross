@@ -167,6 +167,8 @@ inline int paragraph(const GfxRenderer&, Size, int, int, int, int, const char*, 
 inline void mark(const GfxRenderer&, Mark, int, int) {}
 inline std::string fit(const GfxRenderer&, Size, const std::string& s, int) { return s; }
 inline int width(const GfxRenderer&, Size, const char*) { return 0; }
+struct Box { int x0, y0, x1, y1; };
+inline Box textBounds(const GfxRenderer&, Size, const char*) { return {0, 0, 0, 0}; }
 inline int ascent(Size) { return 20; }
 inline int text(const GfxRenderer&, Size, int, int, const char*, bool = true) { return 0; }
 inline void statusBar(const GfxRenderer&, const char*, const char*, const char*, const char*) {}

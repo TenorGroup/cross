@@ -627,7 +627,7 @@ else:
         fixture += '\n#define X3_SETTINGS_ADAPTER_AVAILABLE 1\n'
     if args.phase2:
         adapters = read_source('src/activities/home/X3FileReaderChrome.h')
-        adapters = adapters[adapters.index('template <class Visitor>'):adapters.rfind('}')]
+        adapters = adapters[adapters.index('template <class Visitor'):adapters.rfind('}')]
         reader_icons = function(read_source('src/activities/reader/ReaderMenuLayout.h'), 'enum class Tab') + ';\n'
         if 'x3TabIcon(' in read_source('src/activities/reader/EpubReaderMenuActivity.cpp'):
             reader_icons += function(read_source('src/components/icons/X3ReaderTabIcons.h'),
@@ -638,7 +638,7 @@ else:
             'FileBrowserActivity': ('screenTip',),
             'QuoteTrimActivity': ('screenTip', 'screenInfo', 'areaTop', 'linesPerArea'),
             'EpubReaderMenuActivity': ('progressText', 'tabIcon', 'infoOverBar'),
-            'QuoteDetailActivity': ('metrics', 'visitX3Meta', 'layoutX3Pages'),
+            'QuoteDetailActivity': ('metrics', 'metaStep', 'positionLabel', 'visitX3Meta', 'layoutX3Pages'),
             'QuotesActivity': ('metrics', 'footer'),
         }
         for directory, classes in PHASE2.items():

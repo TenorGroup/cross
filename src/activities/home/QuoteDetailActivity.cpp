@@ -54,6 +54,7 @@ constexpr int EXCERPT_FONT_ID = NOTOSERIF_14_FONT_ID;
 constexpr int NOTE_FONT_ID = UI_10_FONT_ID;
 
 // A book title of 170 characters exists on a real card: two lines, then an ellipsis.
+constexpr int UGLY_META_STEP = 32;  // the pen's line pitch for the facts under the quote, with air between the lines
 constexpr int TITLE_MAX_LINES = 2;
 constexpr int EXCERPT_MAX_LINES = 3;
 constexpr int EXCERPT_MARGIN = 44;
@@ -217,7 +218,7 @@ void QuoteDetailActivity::show(const int newIndex) {
   pageLine = page;
 
   if (tenorchrome::x3ScreenLayoutEnabled()) {
-    const int step = renderer.getLineHeight(SMALL_FONT_ID);
+    const int step = metaStep();
     const int metaCount = visitX3Meta(false);
     const auto body = endsWithCloseQuote(quote.text) ? quote.text : quote.text + CLOSE_QUOTE;
     auto largeLines = renderer.wrappedText(NOTOSERIF_18_FONT_ID, body.c_str(), width, BODY_MAX_LINES);
@@ -553,8 +554,12 @@ void QuoteDetailActivity::render(RenderLock&&) {
     drawDeleteConfirmation();
   else
     drawQuote();
-  if (tenorchrome::x3ScreenLayoutEnabled())
-    x3readerchrome::drawPath(renderer, screenLayout().barRect, icon_tenor_reader_tools_40, tr(STR_QUOTES));
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    char position[48];
+    positionLabel(position, sizeof(position));
+    x3readerchrome::drawPath(renderer, screenLayout().barRect, icon_tenor_reader_tools_40, tr(STR_QUOTES),
+                             confirmingDelete ? nullptr : position);
+  }
   // The popup draws its own button hints over the screen under it.
   if (popup.processRender(renderer, mappedInput)) return;
   // Each hint names what its button does now: at either end of the list the arrow that
@@ -583,24 +588,47 @@ void QuoteDetailActivity::render(RenderLock&&) {
 
 tenorchrome::X3ScreenLayout QuoteDetailActivity::screenLayout() const { return tenorchrome::x3ScreenLayout(renderer); }
 
+// tenor/ugly writes the facts at its own line pitch, the one its paragraphs use.
+int QuoteDetailActivity::metaStep() const {
+  return shell::uglyParts() ? UGLY_META_STEP : renderer.getLineHeight(SMALL_FONT_ID);
+}
+
+void QuoteDetailActivity::positionLabel(char* out, const size_t size) const {
+  snprintf(out, size, "%d/%d, %d/%d", index + 1, static_cast<int>(ids.size()), quotePage + 1, pages);
+}
+
 int QuoteDetailActivity::visitX3Meta(const bool paint, const int firstLine, const int top) const {
   const auto body = screenLayout().bodyRect;
-  const int step = renderer.getLineHeight(SMALL_FONT_ID);
+  const int step = metaStep();
+  const bool hand = shell::uglyParts();
+  const auto measure = [&](const char* line) {
+    return hand ? ugly::width(renderer, ugly::Size::S22, line) : renderer.getTextWidth(SMALL_FONT_ID, line);
+  };
   int count = 0;
   for (const char* text : {quote.title.c_str(), chapter.c_str(), when.c_str(), pageLine.c_str()}) {
-    count += x3readerchrome::eachInfoLine(renderer, text, [&](const int offset, const char* line) {
-      const int row = count + offset - firstLine;
-      const int lineTop = top + row * step;
-      if (paint && row >= 0 && lineTop + step <= body.bottom())
-        tenorchrome::drawInfoInRect(renderer, line, {body.x, lineTop, body.width, step}, 1);
-    });
+    count += x3readerchrome::eachInfoLine(
+        renderer, text,
+        [&](const int offset, const char* line) {
+          const int row = count + offset - firstLine;
+          const int lineTop = top + row * step;
+          if (!paint || row < 0 || lineTop + step > body.bottom()) return;
+          if (!hand) {
+            tenorchrome::drawInfoInRect(renderer, line, {body.x, lineTop, body.width, step}, 1);
+            return;
+          }
+          // centred on the ink, like the lines of tenor/cross
+          const auto ink = ugly::textBounds(renderer, ugly::Size::S22, line);
+          ugly::text(renderer, ugly::Size::S22, body.x + (body.width - (ink.x0 + ink.x1)) / 2,
+                     lineTop + ugly::ascent(ugly::Size::S22), line);
+        },
+        measure);
   }
   return count;
 }
 
 void QuoteDetailActivity::layoutX3Pages() {
   const auto area = metrics();
-  const int step = renderer.getLineHeight(SMALL_FONT_ID);
+  const int step = metaStep();
   const int lineHeight = size18 ? area.lineHeight18 : area.lineHeight16;
   linesPerPage = std::max(1, quotedetail::linesPerPage(lineHeight, area));
   bodyPages = std::max(1, (static_cast<int>(lines.size()) + linesPerPage - 1) / linesPerPage);
@@ -613,10 +641,12 @@ void QuoteDetailActivity::layoutX3Pages() {
 
 void QuoteDetailActivity::drawX3Content() const {
   const auto body = screenLayout().bodyRect;
-  char position[48];
-  snprintf(position, sizeof(position), "%d/%d, %d/%d", index + 1, static_cast<int>(ids.size()), quotePage + 1, pages);
-  tenorchrome::drawInfoInRect(renderer, position,
-                              {body.x, body.y, body.width, renderer.getLineHeight(SMALL_FONT_ID) + 7});
+  if (!shell::uglyParts()) {
+    char position[48];
+    positionLabel(position, sizeof(position));
+    tenorchrome::drawInfoInRect(renderer, position,
+                                {body.x, body.y, body.width, renderer.getLineHeight(SMALL_FONT_ID) + 7});
+  }
   const auto area = metrics();
   const int top = quotedetail::bodyTop(area);
   if (!loaded) {
