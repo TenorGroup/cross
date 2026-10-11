@@ -8,7 +8,6 @@
 #include "components/icons/tenorHomeTabIcons.h"
 #include "components/icons/tenorReaderTabIcons.h"
 #include "fontIds.h"
-#include "activities/X3LegacyPath.h"
 #include "shells/Shell.h"
 
 namespace x3readerchrome {
@@ -44,7 +43,7 @@ inline int eachInfoLine(const GfxRenderer& renderer, const char* text, Visitor v
 inline void drawPath(const GfxRenderer& renderer, const tenorchrome::X3ScreenRect bar, const freeink::Icon& icon,
                      const char* path) {
   if (shell::uglyParts()) {
-    uglylegacy::drawReaderPath(renderer, bar, icon, path);
+    tenorchrome::drawHeader(renderer, path);
     return;
   }
   tenorchrome::drawX3ActivityPath(renderer, path);

@@ -160,6 +160,26 @@ class UglyIssue3Test(unittest.TestCase):
                         lines = bands(im, 24, 504, rule + 1, 650)
                         self.assertGreaterEqual(len(lines), 5, lines)
 
+    def test_4_no_cross_path_pill_on_the_screens_of_the_foot_bar(self):
+        import cross_pills
+        routes = {
+            'habits': ['DOWN'] * 4 + ['CONFIRM'],
+            'days': ['DOWN'] * 4 + ['RIGHT', 'RIGHT', 'CONFIRM'],
+            'keyboard': ['UP'] + ['RIGHT'] * 7 + ['CONFIRM', 'RIGHT', 'CONFIRM'],
+            'network': ['UP', 'CONFIRM'] + ['RIGHT'] * 2 + ['CONFIRM'],
+            'remap': ['UP'] + ['RIGHT'] * 4 + ['CONFIRM', 'CONFIRM'],
+            'clock': ['UP'] + ['RIGHT'] * 6 + ['CONFIRM', 'CONFIRM'],
+            'language': ['UP'] + ['RIGHT'] * 7 + ['CONFIRM', 'CONFIRM'],
+            'about': ['UP'] + ['RIGHT'] * 7 + ['CONFIRM'] + ['RIGHT'] * 4 + ['CONFIRM'],
+            'koreader': ['UP'] + ['RIGHT'] * 9 + ['CONFIRM', 'CONFIRM'],
+            'opds': ['UP'] + ['RIGHT'] * 9 + ['CONFIRM', 'RIGHT', 'CONFIRM'],
+            'clear cache': ['UP'] + ['RIGHT'] * 9 + ['CONFIRM'] + ['RIGHT'] * 3 + ['CONFIRM'],
+        }
+        for name, keys in routes.items():
+            with self.subTest(screen=name):
+                im, acts = shot(keys)
+                self.assertEqual(cross_pills.find(im), [], f'a tenor/cross pill on {acts[-1]}')
+
 
 if __name__ == '__main__':
     unittest.main()
