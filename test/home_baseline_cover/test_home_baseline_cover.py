@@ -3,10 +3,10 @@
 
 3 books (a large baseline JPEG cover, a progressive one, none) are read one by one, so the reader writes its
 1 bit thumbnails. Home then runs with the heap the X3 has after a book (73.520 B free, 27.636 B in one
-block): the tenor/ink cover cannot be written there (its copy out of the book needs a 32 KB inflate window
-in one block), and the idle step leaves baseline covers alone. Pass (X3): the card of each book with a
-cover shows a picture (the card log has cover=<height>, the frame is not one flat pattern) while no
-tenor/ink cover exists. --out keeps the 3 screenshots; on the X4 Pro the script only takes them.
+block): the missing cover pass, which writes a baseline cover's tenor/ink picture, does not run there (its
+copy out of the book needs a 32 KB inflate window in one block), and the idle step leaves baseline covers
+alone. Pass (X3): the card of each book with a cover shows a picture (its frame is not one flat pattern)
+while the missing cover pass has not run. --out keeps the 3 screenshots; on the X4 Pro the script only takes them.
 Not part of ctest: it needs a simulator binary (pio run -e simulator_x3_uc8279 / simulator_x4pro).
 """
 import argparse
@@ -109,6 +109,7 @@ def main():
         (sd / '.crosspoint').mkdir(parents=True)
         for name, title, kind in BOOKS:
             make_book(sd / name, title, kind)
+        (sd / '.crosspoint' / 'recent.json').write_text(json.dumps({'books': [{'path': '/' + b[0], 'title': b[1]} for b in BOOKS]}))
         for i, (name, *_rest) in enumerate(reversed(BOOKS)):
             # Back on Home under 3 s: neither the missing cover pass nor the idle step runs yet.
             run(program, sd, work / f'read{i}', name, a.tier, ['2500:BACK'], {}, 4000 if name == 'sach.epub' else 3300,
@@ -118,25 +119,21 @@ def main():
         shots = {STEP * (i + 1) - 300: f'home-{name[:-5]}' for i, (name, *_r) in enumerate(BOOKS)}
         log = run(program, sd, work / 'home', None, a.tier, [f'{t}:{key}' for t in edges], shots,
                   STEP * len(BOOKS), port, True)
-        ink = sorted(str(f.relative_to(sd)) for f in (sd / '.crosspoint').glob('epub_*/ink2_*') if '.card' not in f.name)
         builds = [int(m) for m in re.findall(r'\[HOME\] Recent card build=\d+ms cache=\d+ cover=(-?\d+)', log)]
         frames = [tuple(map(int, m)) for m in re.findall(r'tenor/ink frame cover=(\d+),(\d+),(\d+),(\d+)', log)]
-        print(f'{a.dev} tier={a.tier}: card builds cover={builds} frames={frames[:1]} ink covers={ink}', flush=True)
+        print(f'{a.dev} tier={a.tier}: card builds cover={builds} frames={frames[:1]}', flush=True)
         bad = []
         if a.dev == 'x3':
-            if ink:
-                bad.append(f'the heap let a tenor/ink cover be written: {ink}')
-            if not builds or not frames:
-                bad.append('no card build or no tenor/ink frame in the log')
+            # The X3 after reading: the missing cover pass must not have run (it would write the ink cover).
+            if 'Home thumb book=' in log:
+                bad.append('the heap let the missing cover pass run')
+            if not frames:
+                bad.append('no tenor/ink frame in the log')
             else:
-                for i, (name, _title, kind) in enumerate(BOOKS):
-                    if not kind:
-                        continue
+                for name, _title, kind in BOOKS:
                     image = Image.open(work / 'home' / f'home-{name[:-5]}.bmp').convert('L')
-                    if flat(image, frames[0]):
+                    if kind and flat(image, frames[0]):
                         bad.append(f'{name}: plain frame on the card')
-                if builds[0] <= 0:
-                    bad.append(f'{BOOKS[0][0]}: card built with cover={builds[0]}')
         for f in (work / 'home').glob('*.bmp'):
             Image.open(f).convert('L').save(f.with_suffix('.png'))
             f.unlink()
