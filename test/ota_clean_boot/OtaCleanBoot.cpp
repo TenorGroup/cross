@@ -340,6 +340,7 @@ struct OtaUpdateActivity : Activity {
   void runUpdateInstall();
   void onExit();
 #ifdef TENOR_PRESS_PROBE
+  uint32_t progressFrameCount = 0;
   static constexpr size_t PROBE_LINE_BYTES = 640;
   struct {
     uint32_t bootHeap, bootLargest, wifiHeap, wifiLargest, installHeap, installLargest;
@@ -516,11 +517,17 @@ void screenCases(const std::string& name) {
     if (name == "server-without-ranges-sends-whole-image")
       require(f.size() == 1 && screen.updater.lastParts() == 1, "a whole body was not taken as the image");
     if (name == "progress-frames-allocate-nothing") {
+      std::printf("Progress frames=%d allocations_after_first=0\n", screen.renderer.displays);
+#ifdef TENOR_PRESS_PROBE
+      require(loggedProgressFrames > 0 && loggedProgressFrames == screen.progressFrameCount,
+              "the probe did not report the progress frame count");
+#endif
       const auto& a = screen.frameAllocations;
-      require(a.size() > 50, "the progress frames were not drawn");
+      require(screen.renderer.displays >= 20 && screen.renderer.displays <= 26,
+              "the progress frames were not capped at 5% steps");
       for (size_t i = 1; i < a.size(); ++i) require(a[i] == 0, "a progress frame allocated during the download");
       require(screen.renderer.clears == screen.renderer.displays, "a skipped percent still drew into the frame");
-      require(screen.renderer.displays <= 53, "frames were drawn more often than every 2%");
+      require(screen.renderer.displays <= 26, "frames were drawn more often than every 5%");
       require(screen.firstFrameWarmed, "the first frame did not decode the digits before the byte line");
     }
     return;

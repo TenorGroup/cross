@@ -217,13 +217,16 @@ void OtaUpdateActivity::render(RenderLock&&) {
   if (state == UPDATE_IN_PROGRESS) {
     LOG_DBG("OTA", "Update progress: %d / %d", updater.getProcessedSize(), updater.getTotalSize());
     updaterProgress = static_cast<float>(updater.getProcessedSize()) / static_cast<float>(updater.getTotalSize());
-    // Only update every 2% at the most
-    if (static_cast<int>(updaterProgress * 50) == lastUpdaterPercentage / 2) {
+    constexpr int PROGRESS_STEP_PERCENT = 5;
+    // Keep the first and final frames while limiting e-ink progress refreshes to 5% steps.
+    if (static_cast<int>(updaterProgress * 100 / PROGRESS_STEP_PERCENT) ==
+        lastUpdaterPercentage / PROGRESS_STEP_PERCENT) {
       return;
     }
     lastUpdaterPercentage = static_cast<int>(updaterProgress * 100);
   }
 #ifdef TENOR_PRESS_PROBE
+  if (state == UPDATE_IN_PROGRESS) ++progressFrameCount;
   const uint32_t frameHeap = ESP.getFreeHeap();
   const uint32_t frameLargest = ESP.getMaxAllocHeap();
 #endif
@@ -231,7 +234,7 @@ void OtaUpdateActivity::render(RenderLock&&) {
   if (shell::uglyParts() && renderUglyNote(static_cast<int>(updaterProgress * 100), firstProgressFrame)) {
 #ifdef TENOR_PRESS_PROBE
     if (state == UPDATE_IN_PROGRESS)
-      LOG_INF("OTA", "Frame %u%% heap=%u -> %u largest=%u -> %u", lastUpdaterPercentage, frameHeap, ESP.getFreeHeap(),
+      LOG_INF("OTA", "Frame %u%% n=%u heap=%u -> %u largest=%u -> %u", lastUpdaterPercentage, progressFrameCount, frameHeap, ESP.getFreeHeap(),
               frameLargest, ESP.getMaxAllocHeap());
 #endif
     return;
@@ -335,7 +338,7 @@ void OtaUpdateActivity::render(RenderLock&&) {
   renderer.displayBuffer();
 #ifdef TENOR_PRESS_PROBE
   if (state == UPDATE_IN_PROGRESS)
-    LOG_INF("OTA", "Frame %u%% heap=%u -> %u largest=%u -> %u", lastUpdaterPercentage, frameHeap, ESP.getFreeHeap(),
+    LOG_INF("OTA", "Frame %u%% n=%u heap=%u -> %u largest=%u -> %u", lastUpdaterPercentage, progressFrameCount, frameHeap, ESP.getFreeHeap(),
             frameLargest, ESP.getMaxAllocHeap());
 #endif
 }
@@ -465,6 +468,9 @@ void OtaUpdateActivity::runUpdateInstall() {
   backLatch.stop();
 
   LOG_INF("OTA", "Install result=%d bytes=%u", res, static_cast<unsigned>(updater.getProcessedSize()));
+#ifdef TENOR_PRESS_PROBE
+  LOG_PROBE("OTA", "Progress frames=%u", progressFrameCount);
+#endif
   // Dry run (probe): the caller prints and records each run; no result screen.
   if (updater.isDryRun()) return;
   // Back leaves at once: its own press and release are still queued for the next loop pass,

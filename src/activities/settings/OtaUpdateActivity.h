@@ -75,6 +75,7 @@ class OtaUpdateActivity : public Activity {
   void recordAttempt(const char* op, bool now = false);
   bool idleExitDue(unsigned long now, bool interaction);
 #ifdef TENOR_PRESS_PROBE
+  uint32_t progressFrameCount = 0;
   static constexpr size_t PROBE_LINE_BYTES = 640;
   // Free heap and largest block when this screen came up, after Wi-Fi started, at install start.
   struct {
