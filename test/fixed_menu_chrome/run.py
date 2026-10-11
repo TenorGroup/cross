@@ -328,7 +328,7 @@ if args.ugly_contract:
     fixture += '}\n'
     fixture += '\nnamespace ugly {\n' + function(ink, 'void pageHints(') + '\n}\n'
     if 'void pathHints(' in ink:
-        fixture += '\nnamespace ugly {\n' + function(ink, 'void pathHints(') + '\n}\n'
+        fixture += '\nnamespace ugly {\n' + function(ink, 'void pathHints(').replace('const bool wholeBar)', 'const bool wholeBar = true)') + '\n}\n'
     else:
         fixture += '\nnamespace ugly { void pathHints(const GfxRenderer&, const char*, const char*) {} }\n'
     fixture += '''
@@ -432,7 +432,7 @@ void drawShape(const GfxRenderer& r, Shape, int x, int y, int size, bool) {
                              [&](int px, int py) { renderer.drawPixel(left + px, baseline + py, black); });
           }
         '''
-        for signature in ('void polyline(', 'void batteryDigits(', 'void battery(', 'bool clockText('):
+        for signature in ('void polyline(', 'void battery(', 'bool clockText('):
             fixture += function(ink, signature) + '\n'
         for match in re.finditer(r'\nvoid statusBar\(', ink):
             fixture += function(ink[match.start():], 'void statusBar(') + '\n'

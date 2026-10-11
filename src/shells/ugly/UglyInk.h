@@ -64,7 +64,8 @@ void line(const GfxRenderer& renderer, int x0, int y0, int x1, int y1, uint32_t 
 void penStroke(const GfxRenderer& renderer, int x0, int y0, int x1, int y1, int stroke = 1);
 // A hand-drawn tick, its elbow at (x, y).
 void tick(const GfxRenderer& renderer, int x, int y);
-// A battery drawn by hand with its level as pen strokes or small digits inside its body.
+// A battery drawn by hand with its level as pen strokes inside its body, or, with showNumber, an empty body (the
+// level is written beside it, by statusBar).
 void battery(const GfxRenderer& renderer, int x, int y, int percent, bool showNumber = false);
 
 // A hand-drawn mark, one pen stroke from a baked table, about 20 px across, centred on (cx, cy).
@@ -72,7 +73,8 @@ enum class Mark : uint8_t { Left, Right, Up, Down, Tick, Back };
 void mark(const GfxRenderer& renderer, Mark m, int cx, int cy);
 // The page next door on each side, over the lower corners: a drawn arrow beside a short name.
 void pageHints(const GfxRenderer& renderer, const char* before, const char* after, int baseline);
-void pathHints(const GfxRenderer& renderer, const char* path, const char* note = nullptr);
+// `wholeBar` false wipes only the band the words stand in, for a page whose drawing reaches into the bar's height.
+void pathHints(const GfxRenderer& renderer, const char* path, const char* note = nullptr, bool wholeBar = true);
 
 // left and right are the front Left and Right buttons, which walk up and down the screen.
 struct Hints {

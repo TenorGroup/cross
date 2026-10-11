@@ -10,14 +10,13 @@
 
 #include "components/TenorMenuChrome.h"
 #include "fontIds.h"
-#include "X3LegacyPath.h"
 #include "shells/Shell.h"
 
 namespace x3activity {
-inline void drawBar(const GfxRenderer& renderer, const tenorchrome::X3ScreenRect rect, const char* title,
+inline void drawBar(const GfxRenderer& renderer, [[maybe_unused]] const tenorchrome::X3ScreenRect rect, const char* title,
                     const char* prefix = "") {
   if (shell::uglyParts()) {
-    uglylegacy::drawFormPath(renderer, rect, title, prefix);
+    tenorchrome::drawHeader(renderer, title, prefix);
     return;
   }
   tenorchrome::drawX3ActivityPath(renderer, title);

@@ -25,6 +25,9 @@ constexpr StrId descriptions[] = {StrId::STR_HABIT_NIGHT_DESC,   StrId::STR_HABI
 // Where the explanation under the list starts. The hand of tenor/ugly is taller than the small font and its tip over
 // the key bar takes 2 lines, so its explanation starts higher.
 int explanationTop(const GfxRenderer& r) { return tenorchrome::tipY(r) - (shell::uglyParts() ? 236 : 168); }
+constexpr int HAND_STEP = 26;  // a line of the hand in the block over the tip on the X3
+// That block is 7 lines of the hand, which is taller than the small font the block was sized in.
+int handBlockHeight(const GfxRenderer& r) { return 7 * std::max(HAND_STEP, r.getLineHeight(SMALL_FONT_ID)); }
 }  // namespace
 ReadingHabitsActivity::ReadingHabitsActivity(GfxRenderer& r, MappedInputManager& i)
     : UiListActivity("ReadingHabits", r, i) {}
@@ -102,9 +105,12 @@ void ReadingHabitsActivity::drawFooter() {
   constexpr int STEP = 28;
   int lineY = y;
   if (handwritten) {
-    ugly::line(renderer, 24, y - 10, renderer.getScreenWidth() - 24, y - 12, 41, 2);
-    lineY += ugly::ascent(ugly::Size::S22);
-    lineY += STEP * ugly::paragraph(renderer, ugly::Size::S22, 24, lineY, width, STEP, I18N.get(descriptions[selected]));
+    // On the X3 the whole block, rule included, is written below (over the tip), by the hand.
+    if (!tenorchrome::x3ScreenLayoutEnabled()) {
+      ugly::line(renderer, 24, y - 10, renderer.getScreenWidth() - 24, y - 12, 41, 2);
+      lineY += ugly::ascent(ugly::Size::S22);
+      lineY += STEP * ugly::paragraph(renderer, ugly::Size::S22, 24, lineY, width, STEP, I18N.get(descriptions[selected]));
+    }
   } else if (!tenorchrome::x3ScreenLayoutEnabled()) {
     renderer.drawLine(24, y - 10, renderer.getScreenWidth() - 24, y - 10, true);
     // Menu-only, at most two wrapped lines; allocations never run in page turning.
@@ -142,6 +148,24 @@ void ReadingHabitsActivity::drawFooter() {
   const bool matched = (awarded & (1 << selected)) != 0;
   const char* status = !readable ? tr(STR_STATS_READ_ERROR) : matched ? tr(STR_HABIT_MATCHED) : tr(STR_HABIT_COLLECTING);
   const char* tip = failed ? tr(STR_HABIT_SAVE_FAILED) : tr(STR_HABIT_TIP);
+  if (handwritten && tenorchrome::x3ScreenLayoutEnabled()) {
+    // The pen measures and wraps each part in its own letters, so the block is written here and not by x3Info, whose
+    // rows are measured in the small font and written in the pen's wider hand.
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tr(STR_HABIT_TIP), 8));
+    const int top = layout.bodyRect.bottom() - handBlockHeight(renderer);
+    const char* const parts[] = {I18N.get(descriptions[selected]), status, readable && summary.coverage ? evidence : nullptr,
+                                 tr(STR_HABIT_PERIOD), failed ? tr(STR_HABIT_SAVE_FAILED) : nullptr};
+    ugly::line(renderer, 24, top - 10, renderer.getScreenWidth() - 24, top - 12, 41, 2);
+    const auto clip = renderer.getClipRect();
+    renderer.setClipRect(0, top, renderer.getScreenWidth(), handBlockHeight(renderer));
+    int baseline = top + ugly::ascent(ugly::Size::S22);
+    for (const char* part : parts)
+      if (part && *part) baseline += HAND_STEP * ugly::paragraph(renderer, ugly::Size::S22, 24, baseline, width, HAND_STEP, part);
+    renderer.setClipRect(clip[0], clip[1], clip[2], clip[3]);
+    tenorchrome::drawTipInRect(renderer, tr(STR_HABIT_TIP), layout.tipRect, 8);
+    UiListActivity::drawFooter();
+    return;
+  }
   if (tenorchrome::x3ScreenLayoutEnabled()) {
     const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tr(STR_HABIT_TIP), 8));
     auto body = layout.bodyRect;

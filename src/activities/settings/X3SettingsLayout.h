@@ -9,7 +9,6 @@
 #include "components/icons/tenorHomeTabIcons.h"
 #include "components/icons/tenorSettingsIcons.h"
 #include "fontIds.h"
-#include "activities/X3LegacyPath.h"
 #include "shells/Shell.h"
 
 namespace x3settings {
@@ -30,7 +29,7 @@ template <typename Screen> inline bool beginScreen(Screen& screen, const GfxRend
 inline void drawPath(const GfxRenderer& renderer, const char* title,
                      const freeink::Icon& icon = icon_tenor_home_settings_40) {
   if (shell::uglyParts()) {
-    uglylegacy::drawSettingsPath(renderer, title, icon);
+    tenorchrome::drawHeader(renderer, title);
     return;
   }
   tenorchrome::drawX3ActivityPath(renderer, title);

@@ -27,6 +27,8 @@ def extend_path(fixture, chrome, function, full_painter, root):
     fixture = includes + fixture
     declarations = '''
 namespace tenorchrome {
+// The hand's path (tenor/ugly) is written by UglyInk in the firmware; the harness draws none.
+inline void drawHeader(const GfxRenderer&, const char*, const char* = "", const char* = nullptr) {}
 void drawPillRing(const GfxRenderer&, int, int, int, int, int, bool);
 void drawPillLabel(const GfxRenderer&, int, const char*, int, int, int, int);
 void drawBarIcon(const GfxRenderer&, const uint8_t*, int, int, int, int, bool);
@@ -58,11 +60,6 @@ void drawPathPill(const GfxRenderer&, int, const char*, int, int, int, int, int,
         icon = function(chrome, 'tenorchrome::drawBarIcon(')
         icon = icon.replace('  if (shell::isUgly() && ugly::iconAsset(r, bits, {x, y, w, h}, ugly::iconFrameSeed())) return;\n', '')
         declarations += icon + '\n'
-    legacy = (root / 'src/activities/X3LegacyPath.h').read_text()
-    declarations += '\nnamespace uglylegacy {\n'
-    for name in ('drawFormPath', 'drawSettingsPath', 'drawReaderPath'):
-        declarations += function(legacy, 'inline void ' + name + '(') + '\n'
-    declarations += '}\n'
     return fixture + declarations + function(chrome, 'const freeink::Icon& x3PathIcon(') + '\n' + \
         function(chrome, 'tenorchrome::drawX3NavigationPath(') + '\n' + \
         function(chrome, 'tenorchrome::drawX3ActivityPath(') + '\n'
