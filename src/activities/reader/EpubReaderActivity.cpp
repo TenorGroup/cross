@@ -490,8 +490,9 @@ bool EpubReaderActivity::loadBook() {
       if (pendingThumbCount < 2) pendingThumbHeights[1] = 0;
       coverThumbs = makeUniqueNoThrow<CoverThumbCapture>(*epub, pendingThumbHeights, pendingThumbCount);
       ImageBlock::setThumbHook(coverThumbs.get());
-      coverRefPending = true;
     }
+    // Every book, owed thumbnails or not: Home's idle cover step finds the cover through it.
+    coverRefPending = true;
   }
 #ifdef TENOR_TURN_TRACE
   LOG_INF("ERS", "LOAD_STAGES epub=%lu progress=%lu marks=%lu quotes=%lu thumbs=%lu uncached=%u",
@@ -1140,11 +1141,13 @@ void EpubReaderActivity::loop() {
 
   // The open is committed, so its first frame is up. Thumbnails still owed are written as the
   // reader closes, but not on the power key; Home then writes them, and without this file it loads
-  // the whole book to find the cover (1,3 s for 5.000 chapters on the X3).
+  // the whole book to find the cover (1,3 s for 5.000 chapters on the X3). Home's idle cover step
+  // reads it for every book, so it is written whenever it is missing or names another cover.
   if (coverRefPending && !openCommitPending) {
     coverRefPending = false;
     std::string saved;
-    if (pendingThumbCount > 0 && !(coverref::load(epub->getCachePath(), saved) && saved == epub->getCoverHref())) {
+    const bool loaded = coverref::load(epub->getCachePath(), saved);
+    if (coverref::saveDue(loaded, saved, epub->getCoverHref())) {
       const bool ok = coverref::save(epub->getCachePath(), epub->getCoverHref());
       LOG_DBG("ERS", "Cover ref saved ok=%u", ok ? 1u : 0u);
     }
