@@ -1,7 +1,7 @@
 """X3 dynamic bar: a ring round the bar of cards only, as on the X4 Pro (founder 11/10/2026).
 
 Every X3 screen with a bar is run in the production simulator and its last frame measured.
-Bars of cards (Home, the reader menu's tool bar and its list of cards):
+Bars of cards (Home, the reader menu's tool bar with its Text sheet over the page, and its list of cards):
   - the ring (grey dots, 2 px, round-ended) stands 16 px in from both sides, found from the pixels alone;
   - it is the same rect on every screen of one text size (1 px apart is a failure) and the one the painter logged;
   - nothing but white touches it: the 3 rows over and under it are clear (tips above, the button strip below);
@@ -33,7 +33,8 @@ WIDTH, HEIGHT = 528, 792
 MARGIN, END_INSET, TOP_INSET = 16, 8, 6
 BAR_HEIGHT = {0: 60, 1: 67, 2: 72}
 # the screens whose bar has a chosen card (black ring 3 px) and which of the 5 slots it is
-CHOSEN = {'home-recent': 0, 'home-stats': 3, 'home-settings': 4, 'reader-toolbar': 1, 'reader-list': 0}
+CHOSEN = {'home-recent': 0, 'home-stats': 3, 'home-settings': 4, 'reader-toolbar': 1, 'reader-text-toolbar': 4,
+          'reader-list': 0}
 CARD_WIDTH = 84
 
 # name, starts on Home, reader menu style (1 tool bar, 0 list), keys
@@ -190,9 +191,16 @@ def find_frame(image):
         match = sum(1 for x in range(lo, hi) if (pixels[x, y] < 128) == ((x + y) % 2 == 0))
         if match >= 0.985 * (hi - lo) and sum(1 for x in range(lo, hi) if pixels[x, y] < 128) >= 0.4 * (hi - lo):
             rows.append(y)
-    if len(rows) < 4:
+    # A frame standing over the bar (the reader's progress line) has dotted rows too: the ring is the last 2 runs.
+    runs = [[rows[0]]] if rows else []
+    for y in rows[1:]:
+        if y == runs[-1][-1] + 1:
+            runs[-1].append(y)
+        else:
+            runs.append([y])
+    if len(runs) < 2 or len(runs[-2]) + len(runs[-1]) < 4:
         return None
-    top, height = rows[0], rows[-1] - rows[0] + 1
+    top, height = runs[-2][0], runs[-1][-1] - runs[-2][0] + 1
     left = min(range(0, 41), key=lambda x: mismatch(image, x, top, 2 * (WIDTH // 2 - x), height, True))
     right = min(range(WIDTH - 41, WIDTH), key=lambda e: mismatch(image, left, top, e - left + 1, height, False))
     return left, top, right - left + 1, height
