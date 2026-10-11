@@ -1594,7 +1594,7 @@ HomeActivity::CoverSize HomeActivity::cardCoverSize(const int index) {
   if (FsHelpers::hasEpubExtension(book.path)) {
     Epub epub(book.path, "/.crosspoint");
     std::string href;
-    coverref::load(epub.getCachePath(), href);
+    if (coverref::load(epub.getCachePath(), href) && href.empty()) return {};
     if (epub.readCoverDimensions(href, dims)) {
       cardCoverSizes[index] = {dims.width, dims.height};
       return cardCoverSizes[index];
