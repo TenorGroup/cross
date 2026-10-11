@@ -174,6 +174,7 @@ class GfxRenderer {
  int getScreenWidth() const { return 600; }
  int getTextHeight(int) const { return 30; }
  int getTextWidth(int,const char*) const { return 100; }
+ std::array<int,4> getTextInkBounds(int,const char*,int) const { return {0,0,0,0}; }
  int getLineHeight(int,float) const { return 32; }
  std::string truncatedText(int,const char* text,int,int) const { return text; }
  void drawText(int,int,int,const char*) const {}
@@ -193,7 +194,7 @@ void relayout(PreviewLayout& layout,const GfxRenderer&,int,int) {
  ++relayouts; layout.lines.clear(); layout.lines.push_back(std::make_unique<TextBlock>());layout.firstParagraphLines=1;
 }
 void renderPreview(const GfxRenderer& renderer,PreviewLayout& layout,int previewPadding,int labelGap,int top,int height,
-                   const char* familyName,const char* sizeName) { @PREVIEW@ }
+                   const char* familyName,const char* sizeName,const bool sideArrows) { @PREVIEW@ }
 }
 int main() {
  GfxRenderer renderer;textsettings::PreviewLayout layout;

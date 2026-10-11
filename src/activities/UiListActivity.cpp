@@ -875,8 +875,12 @@ void UiListActivity::renderUi() {
   if (rowsFramed && !tenorchrome::kTouchShell) drawPageHints(true);
 }
 
+bool UiListActivity::drawsSideArrows() const {
+  return tenorchrome::enabled() && !tenorchrome::kTouchShell && SETTINGS.tenorSideArrows && showsSideArrows();
+}
+
 void UiListActivity::drawPageHints(const bool overScrollbar) {
-  if (!tenorchrome::enabled() || tenorchrome::kTouchShell || !SETTINGS.tenorSideArrows || !showsSideArrows()) return;
+  if (!drawsSideArrows()) return;
   constexpr int cy = 195;
   inlineSymbols::drawShape(renderer, inlineSymbols::Shape::Left, 7, cy, 8, true);
   // The scroll bar's thumb is drawn first on a framed list and the arrow over it, white where they meet.

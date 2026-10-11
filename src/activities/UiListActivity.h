@@ -304,6 +304,8 @@ class UiListActivity : public Activity, protected UiAppHost {
   // The side-button arrows (Tenor chrome, setting tenorSideArrows). A screen with a drawing level with them,
   // where they would read as part of it, turns them off.
   virtual bool showsSideArrows() const { return true; }
+  // Whether drawPageHints puts the arrows on the screen edges now.
+  bool drawsSideArrows() const;
 
   // --- helpers ---------------------------------------------------------------
   // Measure visibleRows for the screen band, apply follow-on-build, clamp the
