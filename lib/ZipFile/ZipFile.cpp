@@ -11,6 +11,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <utility>
 
 struct ZipInflateCtx {
   HalFile* file = nullptr;
@@ -84,6 +85,11 @@ constexpr size_t MAX_NAME = 255;
 constexpr size_t WALK_BLOCK = 4096;
 constexpr size_t WALK_BLOCK_SMALL = 1024;
 constexpr size_t WALK_BLOCK_MIN = CENTRAL_HEADER + MAX_NAME;
+constexpr uint32_t ZIP_INDEX_MAGIC = 0x3158495a;
+constexpr uint8_t ZIP_INDEX_VERSION = 1;
+constexpr uint16_t ZIP_INDEX_BUCKETS = 128;
+constexpr size_t ZIP_INDEX_HEADER = 29;
+constexpr size_t ZIP_INDEX_RECORD = 24;
 
 uint16_t le16(const uint8_t* p) { return static_cast<uint16_t>(p[0] | p[1] << 8); }
 uint32_t le32(const uint8_t* p) { return le16(p) | static_cast<uint32_t>(le16(p + 2)) << 16; }
@@ -132,6 +138,23 @@ constexpr size_t KNOWN_SLOTS = 8;
 Known known[KNOWN_SLOTS];
 size_t knownNext = 0;
 std::mutex knownLock;
+
+struct ZipIndexRecord {
+  uint64_t hash;
+  uint16_t nameLen;
+  uint16_t method;
+  uint32_t compressedSize;
+  uint32_t uncompressedSize;
+  uint32_t localHeaderOffset;
+};
+
+bool writeBytes(HalFile& file, const void* value, const size_t size) {
+  return file.write(static_cast<const uint8_t*>(value), size) == size;
+}
+
+bool readBytes(HalFile& file, void* value, const size_t size) {
+  return file.read(value, size) == static_cast<int>(size);
+}
 }  // namespace
 
 uint64_t ZipFile::zipKey() const {
@@ -261,6 +284,12 @@ bool ZipFile::loadFileStatSlim(const char* filename, FileStatSlim* fileStat) {
     }
   }
 
+  if (zipDetails.totalEntries >= 1000) {
+    const std::string indexPath = filePath + ".zidx";
+    if (!Storage.exists(indexPath.c_str())) buildZipIndex();
+    if (loadZipIndexEntry(filename, fileStat)) return true;
+  }
+
   struct Search {
     const char* name;
     size_t nameLen;
@@ -284,6 +313,131 @@ bool ZipFile::loadFileStatSlim(const char* filename, FileStatSlim* fileStat) {
   known[knownNext] = {key, name, static_cast<uint16_t>(nameLen), search.next, *fileStat};
   knownNext = (knownNext + 1) % KNOWN_SLOTS;
   return true;
+}
+
+bool ZipFile::buildZipIndex() {
+  if (zipDetails.totalEntries < 1000) return false;
+  const uint16_t slots = static_cast<uint16_t>((zipDetails.totalEntries + ZIP_INDEX_BUCKETS - 1) / ZIP_INDEX_BUCKETS);
+  const std::string tmpPath = filePath + ".zidx.tmp";
+  const std::string indexPath = filePath + ".zidx";
+  Storage.remove(tmpPath.c_str());
+  HalFile index;
+  if (!Storage.openFileForWrite("ZIP", tmpPath, index)) return false;
+  uint16_t counts[ZIP_INDEX_BUCKETS] = {};
+  if (!walkCentralDir(0, false, "index-count",
+                      [](void* ctx, const CentralEntry& entry) {
+                        auto* counts = static_cast<uint16_t*>(ctx);
+                        if (entry.name) ++counts[fnvHash64(entry.name, entry.nameLen) % ZIP_INDEX_BUCKETS];
+                        return false;
+                      },
+                      counts))
+    index.close();
+    Storage.remove(tmpPath.c_str());
+    return false;
+  for (const uint16_t count : counts) {
+    if (count > slots) {
+      index.close();
+      Storage.remove(tmpPath.c_str());
+      return false;
+    }
+  }
+  const uint32_t sourceSize = static_cast<uint32_t>(file.size());
+  const uint64_t pathHash = fnvHash64(filePath.data(), filePath.size());
+  const uint32_t tableSize = static_cast<uint32_t>(ZIP_INDEX_BUCKETS) * slots * ZIP_INDEX_RECORD;
+  bool ok = writeBytes(index, &ZIP_INDEX_MAGIC, sizeof(ZIP_INDEX_MAGIC)) &&
+            writeBytes(index, &ZIP_INDEX_VERSION, sizeof(ZIP_INDEX_VERSION)) &&
+            writeBytes(index, &ZIP_INDEX_BUCKETS, sizeof(ZIP_INDEX_BUCKETS)) &&
+            writeBytes(index, &slots, sizeof(slots)) && writeBytes(index, &pathHash, sizeof(pathHash)) &&
+            writeBytes(index, &sourceSize, sizeof(sourceSize)) &&
+            writeBytes(index, &zipDetails.centralDirOffset, sizeof(zipDetails.centralDirOffset)) &&
+            writeBytes(index, &zipDetails.totalEntries, sizeof(zipDetails.totalEntries));
+  const uint16_t reserved = 0;
+  ok = ok && writeBytes(index, &reserved, sizeof(reserved));
+  uint8_t zeros[256] = {};
+  for (uint32_t left = tableSize; ok && left; ) {
+    const size_t n = std::min<size_t>(left, sizeof(zeros));
+    ok = writeBytes(index, zeros, n);
+    left -= static_cast<uint32_t>(n);
+  }
+  uint16_t offsets[ZIP_INDEX_BUCKETS] = {};
+  std::pair<HalFile*, uint16_t*> writeState{&index, offsets};
+  if (ok) {
+    ok = walkCentralDir(0, false, "index-write",
+                        [](void* ctx, const CentralEntry& entry) {
+                          auto* state = static_cast<std::pair<HalFile*, uint16_t*>*>(ctx);
+                          if (!entry.name) return false;
+                          const uint64_t hash = fnvHash64(entry.name, entry.nameLen);
+                          const uint16_t bucket = hash % ZIP_INDEX_BUCKETS;
+                          const uint16_t slot = state->second[bucket]++;
+                          ZipIndexRecord record{hash, entry.nameLen, entry.method, entry.compressedSize,
+                                                entry.uncompressedSize, entry.localHeaderOffset};
+                          const uint32_t position = ZIP_INDEX_HEADER +
+                              (static_cast<uint32_t>(bucket) * (static_cast<uint32_t>(state->first->size() - ZIP_INDEX_HEADER) /
+                                                                  ZIP_INDEX_BUCKETS)) +
+                              static_cast<uint32_t>(slot) * ZIP_INDEX_RECORD;
+                          return state->first->seek(position) && writeBytes(*state->first, &record, sizeof(record));
+                        },
+                        &writeState);
+  }
+  const bool synced = index.sync();
+  index.close();
+  ok = synced && ok;
+  if (ok) {
+    Storage.remove(indexPath.c_str());
+    ok = Storage.rename(tmpPath.c_str(), indexPath.c_str());
+  }
+  if (!ok) Storage.remove(tmpPath.c_str());
+  return ok;
+}
+
+bool ZipFile::loadZipIndexEntry(const char* filename, FileStatSlim* fileStat) {
+  const std::string indexPath = filePath + ".zidx";
+  HalFile index;
+  if (!Storage.openFileForRead("ZIP", indexPath, index)) return false;
+  uint32_t magic = 0, sourceSize = 0, centralOffset = 0;
+  uint8_t version = 0;
+  uint16_t buckets = 0, slots = 0, totalEntries = 0, reserved = 0;
+  uint64_t pathHash = 0;
+  const bool headerOk = readBytes(index, &magic, sizeof(magic)) && readBytes(index, &version, sizeof(version)) &&
+                        readBytes(index, &buckets, sizeof(buckets)) && readBytes(index, &slots, sizeof(slots)) &&
+                        readBytes(index, &pathHash, sizeof(pathHash)) && readBytes(index, &sourceSize, sizeof(sourceSize)) &&
+                        readBytes(index, &centralOffset, sizeof(centralOffset)) && readBytes(index, &totalEntries, sizeof(totalEntries)) &&
+                        readBytes(index, &reserved, sizeof(reserved));
+  const uint64_t currentPathHash = fnvHash64(filePath.data(), filePath.size());
+  if (!headerOk || magic != ZIP_INDEX_MAGIC || version != ZIP_INDEX_VERSION || buckets != ZIP_INDEX_BUCKETS ||
+      slots == 0 || totalEntries != zipDetails.totalEntries || sourceSize != file.size() ||
+      centralOffset != zipDetails.centralDirOffset || pathHash != currentPathHash) {
+    if (index) index.close();
+    Storage.remove(indexPath.c_str());
+    return false;
+  }
+  const uint16_t bucket = fnvHash64(filename, strlen(filename)) % buckets;
+  const uint32_t bucketBytes = static_cast<uint32_t>(slots) * ZIP_INDEX_RECORD;
+  if (bucketBytes > 4096 || !index.seek(ZIP_INDEX_HEADER + static_cast<uint32_t>(bucket) * bucketBytes)) {
+    index.close();
+    return false;
+  }
+  uint8_t buffer[4096];
+  if (index.read(buffer, bucketBytes) != static_cast<int>(bucketBytes)) {
+    index.close();
+    return false;
+  }
+  const uint64_t hash = fnvHash64(filename, strlen(filename));
+  for (uint16_t i = 0; i < slots; ++i) {
+    ZipIndexRecord record;
+    std::memcpy(&record, buffer + static_cast<size_t>(i) * ZIP_INDEX_RECORD, sizeof(record));
+    if (record.hash != hash || record.nameLen != strlen(filename)) continue;
+    uint8_t local[30 + MAX_NAME] = {};
+    if (!file.seek(record.localHeaderOffset) || file.read(local, sizeof(local)) < 30) continue;
+    const uint16_t localNameLen = le16(local + 26);
+    if (localNameLen != record.nameLen || localNameLen > MAX_NAME ||
+        std::memcmp(local + 30, filename, localNameLen) != 0) continue;
+    *fileStat = {record.method, record.compressedSize, record.uncompressedSize, record.localHeaderOffset};
+    index.close();
+    return true;
+  }
+  index.close();
+  return false;
 }
 
 long ZipFile::getDataOffset(const FileStatSlim& fileStat) {

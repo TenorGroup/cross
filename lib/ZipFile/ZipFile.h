@@ -63,6 +63,8 @@ class ZipFile {
   bool lastCentralDirPosValid = false;
 
   bool loadFileStatSlim(const char* filename, FileStatSlim* fileStat);
+  bool buildZipIndex();
+  bool loadZipIndexEntry(const char* filename, FileStatSlim* fileStat);
   // Every walk of the central directory: block reads from `from` (0: its start), and with `wrap` on
   // from its start up to `from`. `visit` returns true to stop. False when the zip cannot be read.
   using Visit = bool (*)(void* ctx, const CentralEntry& entry);

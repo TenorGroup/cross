@@ -53,6 +53,8 @@ class HalFile : public Print {
     return static_cast<int>(count);
   }
   void close() { data.reset(); }
+  size_t write(const uint8_t*, size_t) { return 0; }
+  bool sync() { return true; }
 
  private:
   std::shared_ptr<const std::vector<uint8_t>> data;
@@ -68,5 +70,9 @@ class HalStorage {
     file = HalFile(it->second);
     return true;
   }
+  bool exists(const char* path) const { return files.find(path) != files.end(); }
+  bool remove(const char*) { return false; }
+  bool openFileForWrite(const char*, const std::string&, HalFile&) { return false; }
+  bool rename(const char*, const char*) { return false; }
 };
 inline HalStorage Storage;
