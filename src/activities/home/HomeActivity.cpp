@@ -2346,8 +2346,8 @@ void HomeActivity::writeMissingThumb(const int index) {
         epub.generateThumbBmps(heights, 2);
       }
     }
+    requestUpdate();
   }
-  requestUpdate();
 }
 
 namespace {

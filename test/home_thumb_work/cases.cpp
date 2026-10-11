@@ -34,5 +34,15 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 4; ++i) failed.writeMissingThumb(0);
     assert(failed.updates == 0);
   }
+  if (name == "heap") {
+    h.ink = false;
+    tenorchrome::kTouchShell = false;
+    ESP.heap = 10000;
+    h.writeMissingThumb(0);
+    assert(h.updates == 0 && popups == 0 && decodes == 0);
+    ESP.heap = 200000;
+    h.writeMissingThumb(0);
+    assert(h.updates == 1 && popups == 1 && decodes == 1);
+  }
   std::puts("GREEN");
 }
