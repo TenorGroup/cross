@@ -1,6 +1,9 @@
 #pragma once
 #include "shells/ugly/UglyMarkSeed.h"
 #include <string>
+#if FREEINK_DEVICE_X4PRO
+#include <HalMemory.h>
+#endif
 
 #include "RecentBooksStore.h"
 #include "UglyScreen.h"
@@ -22,6 +25,9 @@ class Desk final : public Screen {
 
  private:
   mutable ugly::MarkState mark_;
+#if FREEINK_DEVICE_X4PRO
+  HalMemory::PsramBuffer deskPlane;
+#endif
   // Objects by place on the desk: the buttons walk the picture (see logic::gridStep).
   enum Object : int { STATS, RECENT, READING, FOLDER, FAVORITES, SETTINGS, COUNT };
   void open();

@@ -86,17 +86,30 @@ void Desk::onEnter() {
 void Desk::render(RenderLock&&) {
   [[maybe_unused]] const uint32_t started = millis();
   renderer.clearScreen();
-  // The X3 picture is inflated once into a scratch plane (the PSRAM holds it), then each object is lifted.
-  auto plane = heapfloor::array<uint8_t[]>(logic::FRAME_BYTES, "desk-plane");
-  if (plane && decodeX3BrandPlane(art::DESK, sizeof(art::DESK), plane.get(), logic::FRAME_BYTES)) {
+  if (!deskPlane) {
+    auto cached = HalMemory::allocatePsram(logic::FRAME_BYTES);
+    if (cached && heapfloor::judge(logic::FRAME_BYTES, cached.get(), "desk-cache") &&
+        decodeX3BrandPlane(art::DESK, sizeof(art::DESK), cached.get(), logic::FRAME_BYTES)) {
+      deskPlane = std::move(cached);
+    }
+  }
+  std::unique_ptr<uint8_t[]> scratch;
+  const uint8_t* plane = deskPlane.get();
+  if (!plane) {
+    scratch = heapfloor::array<uint8_t[]>(logic::FRAME_BYTES, "desk-plane");
+    if (scratch && decodeX3BrandPlane(art::DESK, sizeof(art::DESK), scratch.get(), logic::FRAME_BYTES)) {
+      plane = scratch.get();
+    }
+  }
+  if (plane) {
     for (int i = 0; i < COUNT; ++i) {
       const Box& b = PLACES[i].box;
-      liftArt(renderer, plane.get(), {b.x0 - LIFT_PAD, b.y0 - LIFT_PAD, b.x1 + LIFT_PAD, b.y1 + LIFT_PAD}, LIFTS[i].dx, LIFTS[i].dy);
+      liftArt(renderer, plane, {b.x0 - LIFT_PAD, b.y0 - LIFT_PAD, b.x1 + LIFT_PAD, b.y1 + LIFT_PAD}, LIFTS[i].dx, LIFTS[i].dy);
     }
   } else {
     LOG_ERR("UGLY", "Desk picture not drawn: heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   }
-  plane.reset();
+  scratch.reset();
   for (int i = 0; i < COUNT; ++i) {
     const char* label = i == READING && !hasBook ? tr(STR_UGLY_DESK_NO_BOOK) : I18N.get(PLACES[i].label);
     text(renderer, Size::S22, LIFTS[i].labelX - width(renderer, Size::S22, label) / 2, LIFTS[i].labelBase, label);
