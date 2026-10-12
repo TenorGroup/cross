@@ -39,6 +39,10 @@ class S3Profiles(unittest.TestCase):
                     self.assertIn(flag, flags)
                 self.assertIn("-DFREEINK_DEVICE_" + device + "=1", flags)
                 self.assertIn("-DFREEINK_CAP_USB_MSC=1", flags)
+                # The beta image has no room for the German patterns.
+                self.assertIn("-DTENOR_HYPH_NO_DE", flags)
+                for plain in (board, board + "-gh_release", "x3-ble", "gh_release"):
+                    self.assertNotIn("-DTENOR_HYPH_NO_DE", option("env:" + plain, "build_flags").split())
                 self.assertIn("-DBOARD_HAS_PSRAM", flags)
                 self.assertNotIn("-DFREEINK_DEVICE_X3=1", flags)
                 self.assertNotIn("-DTENOR_PRESS_PROBE", flags)
@@ -51,6 +55,7 @@ class S3Profiles(unittest.TestCase):
                      "-DBLE_PAGE_TURNER_PROBE", "-DBLE_PAGE_TURNER_STACK_PROBE"):
             self.assertIn(flag, flags)
         self.assertNotIn("-DTENOR_UI_ACCEPTANCE", flags)
+        self.assertIn("-DTENOR_HYPH_NO_DE", flags)
         # With every language the probe image was 6,554,990 B, 1,390 B over the 6,553,600 B app slot.
         self.assertEqual(option("env:x4pro-ble-probe", "custom_i18n_builtin_langs"), "en,vi")
         self.assertIn("-DARDUINO_USB_MODE=0", flags)
