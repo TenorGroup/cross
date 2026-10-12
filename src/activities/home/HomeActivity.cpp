@@ -293,6 +293,7 @@ void HomeActivity::captureNavigation(MenuNavigationState& state) const {
 }
 
 void HomeActivity::onExit() {
+  stopFolderRecursiveSearch();
   clearHomeGray();
   freeCoverBuffer();
   UiTabListActivity::onExit();
@@ -370,23 +371,30 @@ void HomeActivity::rebuildRows(const bool readFolder) {
     case Tab::RECENT:
       for (const auto& book : recentBooks) rowLabels.push_back(book.title);
       break;
-    case Tab::FOLDER:
-      if (readFolder) docGocTheNho();
-      folderRowIndices.clear();
-      for (size_t fileIndex = 0; fileIndex < mucTheNho.size(); ++fileIndex) {
-        const auto& muc = mucTheNho[fileIndex];
-        if (tenorchrome::kTouchShell && !fileSearchMatches(muc, folderSearchQuery)) continue;
-        if (tenorchrome::kTouchShell) folderRowIndices.push_back(static_cast<uint16_t>(fileIndex));
-        // Touch: the File card is the root of File, its rows as a folder's rows (name, icon).
+    case Tab::FOLDER: {
+      if (readFolder && !folderRecursiveSearch) docGocTheNho();
+      if (folderRecursiveSearch) break;
+      if (tenorchrome::kTouchShell &&
+          !filesearch::buildResults(mucTheNho, folderSearchQuery, folderRowIndices, "home-file-search-results")) {
+        LOG_ERR("Home", "Search result allocation refused");
+        folderSearchIncomplete = !folderSearchQuery.empty();
+      }
+      const size_t rowCount = tenorchrome::kTouchShell ? folderRowIndices.size() : mucTheNho.size();
+      for (size_t row = 0; row < rowCount; ++row) {
+        const auto& muc = mucTheNho[tenorchrome::kTouchShell ? folderRowIndices[row] : row];
         if (tenorchrome::kTouchShell) {
           char name[128];
           formatFileName(muc, name, sizeof(name));
           rowLabels.emplace_back(name);
-        } else {
-          rowLabels.push_back(muc);
-        }
+        } else rowLabels.push_back(muc);
       }
+#ifdef TENOR_PRESS_PROBE
+      LOG_INF("FILES_SEARCH", "source_n=%u result_n=%u alloc=%u free=%u largest=%u",
+              unsigned(mucTheNho.size()), unsigned(rowCount), unsigned(folderRowIndices.capacity() * sizeof(uint16_t)),
+              unsigned(ESP.getFreeHeap()), unsigned(ESP.getMaxAllocHeap()));
+#endif
       break;
+    }
     case Tab::STATS: {
       const bool enlarged = statsPaged();
       if (enlarged != statsRowsEnlarged && activeNav().selected > 0) {
@@ -434,7 +442,7 @@ void HomeActivity::rebuildRows(const bool readFolder) {
 
 void HomeActivity::activateIndex(const int index) {
   commitTabNavigation();
-  if (index < 0 || index >= static_cast<int>(rowLabels.size())) return;
+  if (index < 0 || index >= listCount()) return;
   app.clearTapFlash();
 
   switch (activeTabId) {
@@ -444,9 +452,11 @@ void HomeActivity::activateIndex(const int index) {
     case Tab::FOLDER: {
       const std::string& ten = folderEntry(index);
       if (!ten.empty() && ten.back() == '/') {
-        activityManager.goToFileBrowser("/" + ten.substr(0, ten.size() - 1));
+        auto path = folderFullPath(index);
+        path.pop_back();
+        activityManager.goToFileBrowser(path);
       } else {
-        onSelectBook("/" + ten);
+        onSelectBook(folderFullPath(index));
       }
       return;
     }
@@ -545,6 +555,24 @@ void HomeActivity::activateIndex(const int index) {
   }
 }
 
+bool HomeActivity::handleCustomInput() {
+  if (!folderSearchScanner || (folderSearchScanner->reason() != filesearch::ScanReason::Running &&
+                               folderSearchScanner->reason() != filesearch::ScanReason::Cancelled)) return false;
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    RenderLock lock(*this);
+    stopFolderRecursiveSearch();
+    folderSearchQuery.clear();
+    folderRecursiveSearch = false;
+    folderSearchIncomplete = false;
+    rebuildRows(false);
+    activeNav().reset();
+    requestUpdate();
+    return true;
+  }
+  tickFolderRecursiveSearch();
+  return true;
+}
+
 bool HomeActivity::handleButtons() {
   if (pendingRecentRemoval) {
     RecentBook book = std::move(*pendingRecentRemoval);
@@ -592,7 +620,7 @@ bool HomeActivity::handleButtons() {
     }
     std::string path;
     if (activeTabId == Tab::FOLDER && index >= 0 && index < listCount() && folderEntry(index).back() != '/')
-      path = "/" + folderEntry(index);
+      path = folderFullPath(index);
     if (!path.empty()) {
       {
         // Free the card before the reader allocates. onPause() releases it too,
@@ -950,7 +978,13 @@ void HomeActivity::buildScreen(UiScreen& screen) {
       tenorchrome::drawTip(renderer, tr(STR_HOME_FAVORITES_HINT), 0, 6);
     return;
   }
-  if (activeTabId == Tab::FOLDER && rowItems.empty()) {
+  if (activeTabId == Tab::FOLDER && folderSearchIncomplete) {
+    const auto band = screen.takeTop(static_cast<int16_t>(renderer.getLineHeight(SMALL_FONT_ID) + 8), 4);
+    fui::TextStyle status = screen.theme().smallText;
+    status.align = fui::TextAlign::Center;
+    screen.target().text(band, tr(STR_SEARCH_INCOMPLETE), status);
+  }
+  if (activeTabId == Tab::FOLDER && listCount() == 0) {
     screen.centeredText(mucQuaNhieu ? tr(STR_FOLDER_TOO_MANY) : tr(STR_NO_FILES_FOUND), screen.theme().bodyText);
     return;
   }
@@ -969,17 +1003,28 @@ void HomeActivity::buildScreen(UiScreen& screen) {
     props.headerText = screen.theme().smallText;
     props.headerUnderline = false;
   }
-  props.count = static_cast<uint16_t>(rowItems.size());
+  if (activeTabId == Tab::FOLDER && folderRecursiveSearch) {
+    props.items = nullptr;
+    props.rowProvider = &HomeActivity::searchRow;
+    props.rowProviderCtx = this;
+  }
+  props.count = static_cast<uint16_t>(listCount());
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
   if (tenorchrome::kTouchShell) props.inputMask |= fui::InputLongPress;  // hold a row to pin it
   props.labelText = uiMenuLabelText(screen.theme());
   props.labelText.maxLines = 2;
-  syncTabListViewport(screen, props);
+  if (activeTabId == Tab::FOLDER && folderRecursiveSearch) {
+    props.subtitleText = screen.theme().smallText;
+    props.subtitleText.maxLines = 1;
+  }
+  syncTabListViewport(screen, props, activeTabId == Tab::FOLDER && folderRecursiveSearch);
   screen.list(props);
 }
 
 void HomeActivity::render(RenderLock&&) {
+  if (activeTabId == Tab::FOLDER && folderSearchScanner &&
+      folderSearchScanner->reason() == filesearch::ScanReason::Running) return;
   if (rowMenu.isActive() && activeTabId == Tab::RECENT && !shell::isUgly()) {
     if (!tenorchrome::kTouchShell && tenorchrome::x3ScreenLayoutEnabled()) {
       const auto tip = homeScreenLayout().tipRect;
@@ -1156,8 +1201,82 @@ void HomeActivity::docGocTheNho() {
   docthumuc::doc("/", SETTINGS.showHiddenFiles, docthumuc::Loc::Sach, dem.get(), DEM_CO, mucTheNho, cap, &mucQuaNhieu);
 }
 
+void HomeActivity::startFolderRecursiveSearch() {
+  stopFolderRecursiveSearch();
+  folderRecursiveSearch = true;
+  folderSearchIncomplete = false;
+  folderSearchCancelled = false;
+  folderRowIndices.clear();
+  folderSearchStorage = makeUniqueNoThrow<filesearch::HalStorageAdapter>();
+  folderSearchHooks = makeUniqueNoThrow<filesearch::HalScanHooks>(folderSearchCancelled, SETTINGS.showHiddenFiles, mappedInput);
+  folderSearchScanner = makeUniqueNoThrow<filesearch::Scanner>();
+  if (!folderSearchStorage || !folderSearchHooks || !folderSearchScanner ||
+      !folderSearchScanner->start(*folderSearchStorage, *folderSearchHooks, "/", folderSearchQuery)) {
+    LOG_ERR("Home", "Recursive file search refused");
+    stopFolderRecursiveSearch();
+    folderRecursiveSearch = false;
+    folderSearchIncomplete = true;
+    rebuildRows(false);
+    return;
+  }
+  rebuildRows(false);
+}
+
+void HomeActivity::tickFolderRecursiveSearch() {
+  if (!folderSearchScanner || folderSearchScanner->reason() != filesearch::ScanReason::Running) return;
+  RenderLock lock(RenderLock::TryTake{});
+  if (!lock.acquired()) return;
+  const auto reason = folderSearchScanner->tick();
+  if (reason == filesearch::ScanReason::Running || reason == filesearch::ScanReason::Cancelled) return;
+  folderSearchIncomplete = reason != filesearch::ScanReason::Complete;
+  if (activeTabId == Tab::FOLDER) {
+    rebuildRows(false);
+    activeNav().selected = listCount() == 0 ? 0 : 1;
+    activeNav().top = 0;
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("FILES_SEARCH", "source_n=%u result_n=%u alloc=%u free=%u largest=%u",
+            unsigned(folderSearchScanner->stats().entries), unsigned(folderSearchScanner->resultCount()),
+            unsigned(folderSearchScanner->allocatedBytes()), unsigned(ESP.getFreeHeap()), unsigned(ESP.getMaxAllocHeap()));
+#endif
+    requestUpdate();
+  }
+}
+
+void HomeActivity::stopFolderRecursiveSearch() {
+  if (folderSearchScanner && folderSearchScanner->reason() == filesearch::ScanReason::Running) {
+    folderSearchScanner->cancel();
+    folderSearchScanner->tick();
+  }
+  folderSearchScanner.reset();
+  folderSearchHooks.reset();
+  folderSearchStorage.reset();
+  folderSearchCancelled = true;
+}
+
 const std::string& HomeActivity::folderEntry(const int row) const {
-  return mucTheNho[tenorchrome::kTouchShell ? folderRowIndices[row] : static_cast<size_t>(row)];
+  if (folderRecursiveSearch && folderSearchScanner) {
+    folderSearchEntry = std::string(folderSearchScanner->result(static_cast<size_t>(row)).path);
+    return folderSearchEntry;
+  }
+  return mucTheNho[tenorchrome::kTouchShell ? folderRowIndices[static_cast<size_t>(row)] : static_cast<size_t>(row)];
+}
+
+std::string HomeActivity::folderFullPath(const int row) const {
+  const auto& entry = folderEntry(row);
+  return entry.empty() || entry.front() == '/' ? entry : "/" + entry;
+}
+
+void HomeActivity::searchRow(void* ctx, uint16_t index, fui::ListItem& item) {
+  auto* self = static_cast<HomeActivity*>(ctx);
+  const auto path = self->folderEntry(index);
+  formatFileName(std::string(filesearch::basename(path)), self->searchRowName, sizeof(self->searchRowName));
+  const auto folder = filesearch::basename(filesearch::parent(path));
+  snprintf(self->searchRowFolder, sizeof(self->searchRowFolder), "%.*s", int(folder.size()), folder.data());
+  utf8ComposeNfcInPlace(self->searchRowFolder);
+  item.label = self->searchRowName;
+  if (!folder.empty()) item.subtitle = self->searchRowFolder;
+  item.icon = listIconFor(UITheme::getFileIcon(path), 32);
+  item.actionValue = static_cast<int16_t>(index);
 }
 
 void HomeActivity::openFileSearch() {
@@ -1169,10 +1288,17 @@ void HomeActivity::openFileSearch() {
   startActivityForResult(std::move(keyboard), [this](const ActivityResult& result) {
     if (result.isCancelled) return;
     folderSearchQuery = std::get<KeyboardResult>(result.data).text;
-    rebuildRows(false);
+    if (folderSearchQuery.empty()) {
+      stopFolderRecursiveSearch();
+      folderRecursiveSearch = false;
+      folderSearchIncomplete = false;
+      rebuildRows(false);
+    } else {
+      startFolderRecursiveSearch();
+    }
     activeNav().top = 0;
-    activeNav().selected = rowItems.empty() ? 0 : 1;
-    requestUpdate(true);
+    activeNav().selected = listCount() == 0 ? 0 : 1;
+    requestUpdate();
   });
 }
 
@@ -1185,7 +1311,8 @@ bool HomeActivity::rowOpens(const int row) const {
   // The enlarged stats tab's page row turns the page in place.
   if (activeTabId == Tab::STATS) return !statsTurnRow(row);
   if (activeTabId == Tab::CAI_DAT) return true;
-  return activeTabId == Tab::FOLDER && row >= 0 && row < static_cast<int>(rowLabels.size()) &&
+  return activeTabId == Tab::FOLDER && row >= 0 &&
+         row < (folderRecursiveSearch ? listCount() : static_cast<int>(rowLabels.size())) &&
          !folderEntry(row).empty() && folderEntry(row).back() == '/';
 }
 
@@ -1343,7 +1470,7 @@ std::string HomeActivity::favoriteKey(int row) const {
   if (activeTabId == Tab::RECENT && row >= 0 && row < static_cast<int>(recentBooks.size()))
     return filefavorites::keyFor(recentBooks[row].path, false);
   if (activeTabId == Tab::FOLDER && row >= 0 && row < listCount()) {
-    auto path = "/" + folderEntry(row);
+    auto path = folderFullPath(row);
     const bool folder = path.back() == '/';
     if (folder) path.pop_back();
     return filefavorites::keyFor(path, folder);
@@ -1390,7 +1517,7 @@ bool HomeActivity::toggleFavorite(int row) {
   if (activeTabId == Tab::RECENT && row >= 0 && row < static_cast<int>(recentBooks.size()))
     return filefavorites::toggle(recentBooks[row].path, false);
   if (activeTabId == Tab::FOLDER && row >= 0 && row < listCount()) {
-    auto path = "/" + folderEntry(row);
+    auto path = folderFullPath(row);
     const bool folder = path.back() == '/';
     if (folder) path.pop_back();
     return filefavorites::toggle(path, folder);

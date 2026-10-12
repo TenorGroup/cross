@@ -182,6 +182,7 @@ add_subdirectory(hal_storage_trace)
 
 add_subdirectory(folder_rows)
 add_subdirectory(file_search)
+add_subdirectory(file_search_helper)
 add_subdirectory(text_relayout_quiet)
 
 add_subdirectory(history_navigation)

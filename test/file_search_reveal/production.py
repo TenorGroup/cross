@@ -24,7 +24,7 @@ assert 'tenorchrome::kTouchShell && activeTabId == Tab::FOLDER' in home
 overrides = [path.name for path in (repo / "src/activities").rglob("*.h")
              if 'canSearchFiles() const override' in path.read_text()]
 assert sorted(overrides) == ["FileBrowserActivity.h", "HomeActivity.h"], overrides
-assert 'fileSearchMatches(muc, folderSearchQuery)' in home_source
+assert 'filesearch::buildResults(mucTheNho, folderSearchQuery, folderRowIndices' in home_source
 assert 'library::fold' not in home_source
 assert 'buildFileSearch(screen);' in home_source
 assert 'if (!tenorchrome::kTouchShell || !canSearchFiles()) return;' in list_source

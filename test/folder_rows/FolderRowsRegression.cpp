@@ -3,6 +3,7 @@
 #include "components/icons/tenorRowMarks.h"
 #include <FsHelpers.h>
 #include <Utf8.h>
+#include "components/FileSearchScan.h"
 
 #include <algorithm>
 #include <chrono>
@@ -61,7 +62,7 @@ static Scale uiScaleSpec() { return {}; }
 static fui::TextStyle uiMenuLabelText(const fui::ThemeTokens& theme) { return theme.bodyText; }
 static constexpr int SMALL_FONT_ID = 0;
 enum {
-  STR_FILE_SIDE_ACTIONS, STR_NO_BIN_FILES, STR_NO_FILES_FOUND, STR_FOLDER_TOO_MANY, STR_MENU_SAVE_FAILED, STR_SEARCH = 99
+  STR_FILE_SIDE_ACTIONS, STR_NO_BIN_FILES, STR_NO_FILES_FOUND, STR_FOLDER_TOO_MANY, STR_MENU_SAVE_FAILED, STR_SEARCH_INCOMPLETE, STR_SEARCH = 99
 };
 static const char* tr(int id) { return id == STR_SEARCH ? "Search" : "empty"; }
 namespace tenorchrome {
@@ -147,10 +148,16 @@ class FileBrowserActivity {
   static constexpr int kSearchRows = ::kSearchRows;
   std::string basepath = "/測試";
   std::string searchQuery;
+  mutable std::string searchEntry;
+  bool recursiveSearch = false, searchIncomplete = false;
+  filesearch::IndexBuffer searchIndices;
+  std::unique_ptr<filesearch::Scanner> searchScanner;
+  const std::string& entryForVisibleRow(int row) const;
   std::vector<std::string> files;
   static constexpr size_t ROW_NAME_BUF_SIZE = 512;
   char rowNameBuf[ROW_NAME_BUF_SIZE]{};
   char rowExtBuf[16]{};
+  char rowSubtitleBuf[512]{};
   static void provideRow(void* ctx, uint16_t index, fui::ListItem& item);
   static constexpr int PREWARM_WINDOW = 24;
   int prewarmedStart = -1;
