@@ -317,3 +317,5 @@ add_subdirectory(idle_home)
 add_subdirectory(cover_holder)
 
 add_subdirectory(home_thumb_work)
+
+add_subdirectory(file_browser_state)

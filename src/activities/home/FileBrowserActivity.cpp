@@ -15,6 +15,7 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "DocThuMuc.h"
+#include "FileBrowserState.h"
 #include "FileFavorites.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
@@ -114,6 +115,8 @@ FileBrowserActivity::FileBrowserActivity(GfxRenderer& renderer, MappedInputManag
     : UiListActivity("FileBrowser", renderer, mappedInput, /*wantsTouchLongPress=*/true),
       mode(mode),
       openedFromUglyFile(openedFromUglyFile),
+      // Opening File at its root lands in the last folder visited, kept across sleep (filebrowser::state).
+      restoreLastPath(initialPath.empty() || initialPath == "/"),
       basepath(initialPath.empty() ? "/" : std::move(initialPath)),
       entryPath(basepath) {}
 
@@ -141,7 +144,7 @@ void FileBrowserActivity::loadFiles() {
   destination->clear();
   docthumuc::doc(basepath.c_str(), SETTINGS.showHiddenFiles,
                  mode == Mode::PickFirmware ? docthumuc::Loc::Firmware : docthumuc::Loc::Sach, fileNameBuffer.get(),
-                 NAME_BUFFER_SIZE, *destination, cap, &tooMany);
+                 NAME_BUFFER_SIZE, *destination, cap, &tooMany, sortMode);
   if (searchQuery.empty()) {
     searchSourceFiles.clear();
   } else {
@@ -271,6 +274,16 @@ void FileBrowserActivity::onEnter() {
   searchQuery.clear();
   searchSourceFiles.clear();
 
+  if (mode == Mode::Books) {
+    const auto& saved = filebrowser::state();
+    sortMode = shell::isUgly() ? saved.uglySort : saved.crossSort;
+    if (restoreLastPath) {
+      const std::string& savedPath = shell::isUgly() ? saved.uglyPath : saved.crossPath;
+      auto savedDir = Storage.open(savedPath.c_str());
+      if (savedDir && savedDir.isDirectory()) basepath = savedPath;
+    }
+  }
+
   fileNameBuffer = makeUniqueNoThrow<char[]>(NAME_BUFFER_SIZE);
   if (!fileNameBuffer) {
     LOG_ERR("FileBrowser", "malloc failed for name buffer");
@@ -297,6 +310,12 @@ void FileBrowserActivity::onEnter() {
 
 void FileBrowserActivity::onExit() {
   rememberDirectory();
+  if (mode == Mode::Books) {
+    filebrowser::note(shell::isUgly(), basepath, sortMode);
+    // Sleep has already painted its entering notice and will turn storage off in this call.
+    if (activityManager.isSleepTransition()) filebrowser::flush();
+    else activityManager.deferWrite(&filebrowser::flush);
+  }
   Activity::onExit();
   files.clear();
   searchSourceFiles.clear();
