@@ -278,7 +278,7 @@ const char* tr(StrId id) {
             check(page.x3Info.page == 0 && page.updates == 0, "list: information paging preserves front-button navigation");
             page.x3Info.page = 0;
             page.updates = 0;
-            page.mappedInput.released = MappedInputManager::Button::Left;
+            page.mappedInput.released = MappedInputManager::Button::''' + ('Right' if name == 'ReadingHabits' else 'Left') + ''';
             page.pageInput();
             check(page.x3Info.page == 1 && page.updates == 1, "list: side button reaches information pages");
             page.mappedInput.released = MappedInputManager::Button::None;
