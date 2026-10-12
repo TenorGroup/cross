@@ -68,6 +68,22 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(result['baseUrl'], 'https://example.com/fonts/')
         self.assertEqual((destination / self.pack.name).read_bytes(), self.pack.read_bytes())
 
+    def test_catalog_keeps_packs_and_legacy_families(self):
+        legacy = self.directory / 'Legacy_12.cpfont'
+        legacy.write_bytes(self.header)
+        output = self.directory / 'fonts.json'
+        subprocess.run([sys.executable, '-B', str(SCRIPT), '--input', str(self.directory),
+                        '--base-url', 'https://example.com/fonts/', '--output', str(output)],
+                       check=True, capture_output=True)
+        families = {f['name']: f for f in json.loads(output.read_text())['families']}
+        self.assertEqual(set(families), {'Small', 'Legacy'})
+        self.assertEqual(families['Legacy']['files'][0]['name'], legacy.name)
+        entry = families['Small']['files'][0]
+        self.assertEqual(entry['name'], self.pack.name)
+        self.assertEqual(entry['size'], self.pack.stat().st_size)
+        self.assertEqual(entry['sha256'], hashlib.sha256(self.pack.read_bytes()).hexdigest())
+        self.assertEqual(entry['url'], 'https://example.com/fonts/Small.cpfontpack')
+
     def test_duplicate_family_rejected(self):
         with self.assertRaisesRegex(ValueError, 'one pack'):
             manifest.build_manifest({'Small': [self.pack, self.pack]}, 'https://example.com/', True)
