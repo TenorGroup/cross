@@ -659,6 +659,7 @@
       '<button class="btn-small btn-add" onclick="addWifiNetwork()" data-i18n="settings.addNetwork">Thêm mạng</button>' +
     '</div></div>';
     container.innerHTML = html;
+    TenorI18n.apply(container);
   }
 
   async function loadWifiNetworks() {
@@ -764,7 +765,7 @@
     let html = '<div class="card"><h2 data-i18n="settings.opdsTitle">Máy chủ OPDS</h2>';
 
     if (opdsServers.length === 0) {
-      html += '<p style="color:var(--label-color);text-align:center;" data-i18n="settings.opdsEmpty">No OPDS servers configured</p>';
+      html += '<p style="color:var(--label-color);text-align:center;" data-i18n="settings.opdsEmpty">Chưa cấu hình máy chủ OPDS</p>';
     } else {
       opdsServers.forEach(function(srv, idx) {
         html += renderOpdsServer(srv, idx);
@@ -775,6 +776,7 @@
       '<button class="btn-small btn-add" onclick="addOpdsServer()" data-i18n="settings.addServer">Thêm máy chủ</button>' +
     '</div></div>';
     container.innerHTML = html;
+    TenorI18n.apply(container);
   }
 
   async function loadOpdsServers() {

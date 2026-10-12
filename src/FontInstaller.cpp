@@ -74,6 +74,49 @@ bool FontInstaller::isValidCpfontRelativePath(const char* name) {
          name[8] == '/' && isValidCpfontFilename(name + 9);
 }
 
+bool FontInstaller::isValidVectorFilename(const char* name) {
+  if (name == nullptr) return false;
+  size_t len = 0;
+  while (len < MAX_CPFONT_FILENAME_LEN && name[len] != '\0') ++len;
+  if (name[len] != '\0') return false;  // over-long
+
+  // ".ttf" or ".otf" in either case, with a non-empty basename before it.
+  if (len <= 4 || name[len - 4] != '.') return false;
+  const char a = static_cast<char>(name[len - 3] | 0x20);
+  const char b = static_cast<char>(name[len - 2] | 0x20);
+  const char c = static_cast<char>(name[len - 1] | 0x20);
+  const bool ttf = a == 't' && b == 't' && c == 'f';
+  const bool otf = a == 'o' && b == 't' && c == 'f';
+  if (!ttf && !otf) return false;
+
+  const size_t baseLen = len - 4;
+  const char first = name[0];
+  if (!((first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z') || (first >= '0' && first <= '9')))
+    return false;
+  for (size_t i = 0; i < baseLen; ++i) {
+    if (name[i] == '.') {
+      if (i + 1 < baseLen && name[i + 1] == '.') return false;  // no ".."
+      if (i + 1 == baseLen) return false;                        // basename must not end in '.'
+      continue;
+    }
+    if (!isAllowedNameChar(name[i])) return false;
+  }
+  return true;
+}
+
+bool FontInstaller::isVectorFontMagic(const uint8_t head[4]) {
+  return memcmp(head, "\x00\x01\x00\x00", 4) == 0 || memcmp(head, "OTTO", 4) == 0 || memcmp(head, "true", 4) == 0;
+}
+
+FontInstaller::VectorUploadCheck::Verdict FontInstaller::VectorUploadCheck::feed(const uint8_t* data, size_t len) {
+  if (failed_ != Verdict::OK) return failed_;
+  if (len > MAX_VECTOR_FONT_BYTES - total_) return failed_ = Verdict::TOO_BIG;
+  total_ += len;
+  for (size_t i = 0; i < len && have_ < 4; ++i) head_[have_++] = data[i];
+  if (have_ == 4 && !isVectorFontMagic(head_)) return failed_ = Verdict::BAD_MAGIC;
+  return Verdict::OK;
+}
+
 bool FontInstaller::ensureFamilyDir(const char* familyName) {
   // Reject before any registry or storage access: an invalid family must not
   // create (or even probe) anything on the card.
@@ -149,14 +192,10 @@ bool FontInstaller::validateCpfontFile(const char* path) {
   return true;
 }
 
-bool FontInstaller::buildFontPath(const char* family, const char* filename, char* outBuf, size_t outBufSize) {
-  // Nothing writable: refuse without touching the buffer.
-  if (outBuf == nullptr || outBufSize == 0) return false;
-  outBuf[0] = '\0';
-
-  // Validate before any registry lookup so invalid input has no side effects.
-  if (!isValidFamilyName(family) || !isValidCpfontRelativePath(filename)) return false;
-
+namespace {
+// Shared tail of the two path builders: root choice and the bound check. The caller has
+// already validated both names.
+bool joinFontPath(const char* family, const char* filename, char* outBuf, size_t outBufSize) {
   // Use the same root selection as ensureFamilyDir: existing install dir wins,
   // otherwise the default-write root.
   const char* root = SdCardFontRegistry::findFamilyRoot(family);
@@ -173,6 +212,24 @@ bool FontInstaller::buildFontPath(const char* family, const char* filename, char
     return false;
   }
   return true;
+}
+}  // namespace
+
+bool FontInstaller::buildFontPath(const char* family, const char* filename, char* outBuf, size_t outBufSize) {
+  // Nothing writable: refuse without touching the buffer.
+  if (outBuf == nullptr || outBufSize == 0) return false;
+  outBuf[0] = '\0';
+
+  // Validate before any registry lookup so invalid input has no side effects.
+  if (!isValidFamilyName(family) || !isValidCpfontRelativePath(filename)) return false;
+  return joinFontPath(family, filename, outBuf, outBufSize);
+}
+
+bool FontInstaller::buildVectorFontPath(const char* family, const char* filename, char* outBuf, size_t outBufSize) {
+  if (outBuf == nullptr || outBufSize == 0) return false;
+  outBuf[0] = '\0';
+  if (!isValidFamilyName(family) || !isValidVectorFilename(filename)) return false;
+  return joinFontPath(family, filename, outBuf, outBufSize);
 }
 
 FontInstaller::Error FontInstaller::deleteFamily(const char* familyName) {
