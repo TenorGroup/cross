@@ -880,6 +880,81 @@ tenorchrome::BatteryInkBounds tenorchrome::batteryInkBounds(const GfxRenderer& r
   return {textY + top, bottom - top};
 }
 
+namespace {
+int shownBatteryPercent() {
+  return std::clamp(static_cast<int>(powerManager.getDisplayedBatteryPercentage()), 0, 100);
+}
+
+// The battery of every cross status strip: a rounded body, its nub, the level (the bolt while charging) and the
+// number 4 px beside it, before the body when the battery holds the right corner.
+int batteryBlockWidth(const GfxRenderer& r, const int font, const bool large, const bool number) {
+  char text[8];
+  snprintf(text, sizeof(text), "%d", shownBatteryPercent());
+  return (large ? 32 : 26) + (number ? BATTERY_TEXT_GAP + r.getTextWidth(font, text) : 0);
+}
+
+void drawBatteryBlock(const GfxRenderer& r, const int x, const int textY, const int font, const bool large,
+                      const bool number, const bool numberFirst) {
+  const int percent = shownBatteryPercent();
+  char text[8];
+  snprintf(text, sizeof(text), "%d", percent);
+  const int batteryWidth = large ? 32 : 26;
+  const int bx = numberFirst ? x + batteryBlockWidth(r, font, large, number) - batteryWidth : x;
+  const auto ink = tenorchrome::batteryInkBounds(r, font, textY);
+  // Tong be rong gom ca dau pin 2 px, de vien ngoai dung inset.
+  const int bodyWidth = batteryWidth - 2;
+  // Blocks are sampled at pixel centres, so a corner of 5 px draws the body's corners with the
+  // very pixels the battery has always had (3, 1, 1 per row); the charge inside is set 2 px in,
+  // concentric with it.
+  constexpr int BATTERY_RADIUS = 5;
+  r.drawRoundedRect(bx, ink.top, bodyWidth, ink.height, 1, BATTERY_RADIUS, true);
+  r.fillRect(bx + bodyWidth, ink.top + (ink.height - 4) / 2, 2, 4);
+  const int fill = ((bodyWidth - 4) * percent + 50) / 100;
+  if (gpio.isUsbConnected()) {
+    // Charging: the bolt alone, the level stays readable in the number beside it.
+    drawChargingBolt(r, bx, ink.top, bodyWidth, ink.height, large);
+  } else if (fill > 0) {
+    r.fillRoundedRect(bx + 2, ink.top + 2, fill, ink.height - 4, tenorradius::nest(BATTERY_RADIUS, 2), Color::Black);
+  }
+  if (number) r.drawText(font, numberFirst ? x : bx + batteryWidth + BATTERY_TEXT_GAP, textY, text);
+}
+
+// The battery every reader status strip draws, the default bar's in look and place: corner 0 the left, 2 the
+// right, 1 from x. Cross takes the strip battery above; ugly the hand-drawn one, its number after it. left/right
+// bound what it drew; room is what the default ugly strip keeps for it.
+struct ReaderBattery {
+  int left, right, room;
+};
+int uglyBatteryTextWidth(const GfxRenderer& r, const bool number) {
+  char text[8];
+  snprintf(text, sizeof(text), "%d", shownBatteryPercent());
+  return number ? ugly::width(r, ugly::Size::S22, text) : 0;
+}
+int readerBatteryWidth(const GfxRenderer& r, const bool number) {
+  if (!shell::uglyParts()) return batteryBlockWidth(r, SMALL_FONT_ID, false, number);
+  return number ? 44 + uglyBatteryTextWidth(r, true) : 42;
+}
+ReaderBattery drawReaderBattery(const GfxRenderer& r, const int textY, const int corner, const int x,
+                                const bool number) {
+  const int screen = r.getScreenWidth();
+  const int width = readerBatteryWidth(r, number);
+  if (!shell::uglyParts()) {
+    const int left = corner == 0 ? STATUS_CORNER_INSET : corner == 2 ? screen - STATUS_CORNER_INSET - width : x;
+    drawBatteryBlock(r, left, textY, SMALL_FONT_ID, false, number, corner == 2);
+    return {left, left + width, width};
+  }
+  const int room = 46 + (number ? uglyBatteryTextWidth(r, true) + 8 : 0);
+  const int bx = corner == 0 ? 14 : corner == 2 ? screen - 14 - room + 12 : x;
+  ugly::battery(r, bx, textY + 10, shownBatteryPercent());
+  if (number) {
+    char text[8];
+    snprintf(text, sizeof(text), "%d", shownBatteryPercent());
+    ugly::text(r, ugly::Size::S22, bx + 44, textY + 18, text);
+  }
+  return {bx, bx + width, room};
+}
+}  // namespace
+
 void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const int currentPage,
                                  const int pageCount, const float bookProgress, const bool estimated,
                                  const bool bookmarked, const int64_t chapterSeconds, const int64_t bookSeconds,
@@ -900,7 +975,6 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
     return rough ? ugly::fit(r, ugly::Size::S22, value, room) : r.truncatedText(font, value, room);
   };
   const int y = statusTextY(r.getScreenHeight(), false);
-  const auto batteryInk = batteryInkBounds(r, font, y);
   const int markTop = inlineSymbols::markTopOnCapitals(r, font, y, 10);
   if (spec.topTitleMode == S::HIDE_TITLE && bookmarked && spec.textLaneVisible(true))
     inlineSymbols::drawShape(r, inlineSymbols::Shape::Star, 6, markTop + 5, 10, true);
@@ -936,21 +1010,13 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
           snprintf(value, sizeof(value), "-");
         break;
       case S::STATUS_SLOT_BATTERY: {
-        const int percent = std::clamp(static_cast<int>(powerManager.getDisplayedBatteryPercentage()), 0, 100);
-        if (SETTINGS.batteryPercentShown(true)) snprintf(value, sizeof(value), "%d%%", percent);
-        const int iconWidth = rough ? 44 : 26;
-        const int block = iconWidth + (value[0] ? width(value) + 6 : 0);
+        // The default bar's battery, in its corner: the same drawing on every reader strip.
+        const bool number = SETTINGS.batteryPercentShown(true);
+        const int block = readerBatteryWidth(r, number);
         if (block > lane.width) continue;
-        paintedWidths[slot] = block;
-        const int x = place(lane, slot, block);
-        if (rough) ugly::battery(r, x, y + 10, percent);
-        else {
-          r.drawRect(x, batteryInk.top, 24, batteryInk.height, 1, true);
-          r.fillRect(x + 24, batteryInk.top + (batteryInk.height - 4) / 2, 2, 4);
-          if (gpio.isUsbConnected()) drawChargingBolt(r, x, batteryInk.top, 24, batteryInk.height, false);
-          else if (percent > 0) r.fillRect(x + 2, batteryInk.top + 2, (20 * percent + 50) / 100, batteryInk.height - 4);
-        }
-        if (value[0]) text(x + iconWidth + 6, y, value);
+        const auto drawn = drawReaderBattery(r, y, slot, slot == 1 ? place(lane, slot, block) : 0, number);
+        const auto corner = readerstatus::cell(screen, slot);
+        paintedWidths[slot] = slot == 0 ? drawn.right - corner.x : slot == 2 ? corner.x + corner.width - drawn.left : block;
         continue;
       }
       case S::STATUS_SLOT_CHAPTER_PAGES:
@@ -1048,14 +1114,9 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
     int left = 14, right = width - 14;
     if (hienPin) {
       // In a book the number goes beside the battery when the reader asked for it.
-      char pct[8] = "";
-      if (trongTrinhDoc && hienPhanTram)
-        snprintf(pct, sizeof(pct), "%d", std::max(0, std::min(100, static_cast<int>(powerManager.getDisplayedBatteryPercentage()))));
-      const int room = 46 + (pct[0] ? ugly::width(r, ugly::Size::S22, pct) + 8 : 0);
-      const int bx = clockLeft && hienGio ? right - room + 12 : left;
-      ugly::battery(r, bx, base - 8, powerManager.getDisplayedBatteryPercentage());
-      if (pct[0]) ugly::text(r, ugly::Size::S22, bx + 44, base, pct);
-      if (bx == left) left += room;
+      const bool corner = clockLeft && hienGio;
+      const int room = drawReaderBattery(r, base - 18, corner ? 2 : 0, 0, trongTrinhDoc && hienPhanTram).room;
+      if (!corner) left += room;
       else right -= room;
     }
     char clock[12];
@@ -1087,7 +1148,6 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
     return;
   }
   const bool lon = !trongTrinhDoc && SETTINGS.globalStatusBarLarge();
-  const int batteryWidth = lon ? 32 : 26;
   // Touch shell: outside the reader the clock and the battery sit on the header row, battery rightmost;
   // the foot of the screen belongs to the tab bar.
   const bool top = !trongTrinhDoc && (kTouchShell || statusOnTop());
@@ -1098,14 +1158,7 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   char clock[12] = "--:--";
   halClock.formatTime(clock, sizeof(clock), SETTINGS.clockFormat == 1);
   const int timeWidth = r.getTextWidth(fontChu, clock);
-  const auto batteryInk = batteryInkBounds(r, fontChu, y);
-  const int by = batteryInk.top;
-  const int batteryHeight = batteryInk.height;
-  const int percent = std::max(0, std::min(100, static_cast<int>(powerManager.getDisplayedBatteryPercentage())));
-  char percentage[8];
-  snprintf(percentage, sizeof(percentage), "%d", percent);
-  const int batteryTextWidth = hienPhanTram ? r.getTextWidth(fontChu, percentage) : 0;
-  const int batteryBlock = batteryWidth + (hienPhanTram ? BATTERY_TEXT_GAP + batteryTextWidth : 0);
+  const int batteryBlock = batteryBlockWidth(r, fontChu, lon, hienPhanTram);
   // Pin nam o ben DOI dien voi dong ho (hoac ben trai khi khong hien dong ho), nen
   // muc 5 (ten chuong & pin) khong day pin sang phai nhu khi vang dong ho.
   const bool batteryRight = (top && kTouchShell) || (hienGio && swap);
@@ -1124,28 +1177,7 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
     }
     r.drawText(fontChu, clockX, y, clock);
   }
-  const int bx = batteryRight ? width - STATUS_CORNER_INSET - batteryWidth : batteryBlockX;
-  if (hienPin) {
-    // Tong be rong gom ca dau pin 2 px, de vien ngoai dung inset.
-    const int bodyWidth = batteryWidth - 2;
-    // Blocks are sampled at pixel centres, so a corner of 5 px draws the body's corners with the
-    // very pixels the battery has always had (3, 1, 1 per row); the charge inside is set 2 px in,
-    // concentric with it.
-    constexpr int BATTERY_RADIUS = 5;
-    r.drawRoundedRect(bx, by, bodyWidth, batteryHeight, 1, BATTERY_RADIUS, true);
-    r.fillRect(bx + bodyWidth, by + (batteryHeight - 4) / 2, 2, 4);
-    const int fill = ((bodyWidth - 4) * percent + 50) / 100;
-    if (gpio.isUsbConnected()) {
-      // Charging: the bolt alone, the level stays readable in the number beside it.
-      drawChargingBolt(r, bx, by, bodyWidth, batteryHeight, lon);
-    } else if (fill > 0) {
-      r.fillRoundedRect(bx + 2, by + 2, fill, batteryHeight - 4, tenorradius::nest(BATTERY_RADIUS, 2), Color::Black);
-    }
-    if (hienPhanTram) {
-      const int textX = batteryRight ? batteryBlockX : bx + batteryWidth + BATTERY_TEXT_GAP;
-      r.drawText(fontChu, textX, y, percentage);
-    }
-  }
+  if (hienPin) drawBatteryBlock(r, batteryBlockX, y, fontChu, lon, hienPhanTram, batteryRight);
   if (top) {
     if (!kTouchShell) return;
     HeaderBackTapTarget::strip = true;
