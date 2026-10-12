@@ -86,7 +86,7 @@ TEST_F(ChapterHtmlSlimParserTest, RubySurvivesPartialParagraphExtraction) {
       renderer, 0, 20,
       [&](std::unique_ptr<TextBlock> line, auto) {
         ++lines;
-        EXPECT_TRUE(line->getRubyTexts().empty());
+        EXPECT_EQ(line->getRubyCount(), 0u);
       },
       false);
   EXPECT_EQ(lines, 1u);
@@ -95,9 +95,9 @@ TEST_F(ChapterHtmlSlimParserTest, RubySurvivesPartialParagraphExtraction) {
   ASSERT_LT(retainedWords, 3u);
   text.layoutAndExtractLines(renderer, 0, 200, [&](std::unique_ptr<TextBlock> line, auto) {
     ++lines;
-    ASSERT_EQ(line->getRubyTexts().size(), retainedWords);
-    EXPECT_EQ(line->getRubyTexts().back(), "c");
-    for (size_t i = 0; i + 1 < retainedWords; ++i) EXPECT_TRUE(line->getRubyTexts()[i].empty());
+    ASSERT_EQ(line->getRubyCount(), 1u);
+    EXPECT_EQ(line->getRubyText(retainedWords - 1), "c");
+    for (size_t i = 0; i + 1 < retainedWords; ++i) EXPECT_TRUE(line->getRubyText(i).empty());
   });
   EXPECT_EQ(lines, 2u);
 }
@@ -786,7 +786,7 @@ TEST_F(ChapterHtmlSlimParserTest, RubyAtCapacityKeepsVietnameseCjkAndContinuatio
           if (element->getTag() != TAG_PageLine) continue;
           const auto& block = *static_cast<const PageLine&>(*element).getBlock();
           words += block.wordCount();
-          for (const auto& ruby : block.getRubyTexts()) annotationBytes += ruby.size();
+          for (uint16_t i = 0; i < block.wordCount(); ++i) annotationBytes += block.getRubyText(i).size();
         }
       }, false, "", ""};
   EXPECT_TRUE(attempt.parseAndBuildPages());
@@ -813,7 +813,7 @@ TEST_F(ChapterHtmlSlimParserTest, ConsecutiveRubyGroupsBoundRetainedTokensAndCon
             if (element->getTag() != TAG_PageLine) continue;
             const auto& block = *static_cast<const PageLine&>(*element).getBlock();
             words += block.wordCount();
-            for (const auto& ruby : block.getRubyTexts()) annotations += ruby == "reading";
+            for (uint16_t i = 0; i < block.wordCount(); ++i) annotations += block.getRubyText(i) == "reading";
           }
         }, css, "", ""};
     ASSERT_TRUE(attempt.beginParse());
@@ -850,7 +850,7 @@ TEST_F(ChapterHtmlSlimParserTest, ManyLegalRubyAnnotationsBoundAggregateBytes) {
           if (element->getTag() != TAG_PageLine) continue;
           const auto& block = *static_cast<const PageLine&>(*element).getBlock();
           words += block.wordCount();
-          for (const auto& ruby : block.getRubyTexts()) annotationBytes += ruby.size();
+          for (uint16_t i = 0; i < block.wordCount(); ++i) annotationBytes += block.getRubyText(i).size();
         }
       }, false, "", ""};
   ASSERT_TRUE(attempt.beginParse());
