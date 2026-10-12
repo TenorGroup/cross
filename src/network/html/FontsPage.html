@@ -110,7 +110,17 @@
         background: var(--bg);
         color: var(--font-color);
       }
-      .upload-form input[type="file"] { flex: 1; min-width: 200px; }
+      .upload-form input[type="file"] { flex: 1; min-width: 0; }
+      .pick { display: flex; flex-direction: column; gap: 6px; flex: 1 1 220px; min-width: 0; }
+      .pick label { font-size: 13px; color: var(--label-color); }
+      .pick input[type="file"]::file-selector-button {
+        background: transparent; color: var(--font-color); border: 1px solid var(--border-color);
+        border-radius: 2px; margin-right: 12px; cursor: pointer;
+      }
+      .upload-form .btn-primary { flex: 0 0 auto; }
+      @media (max-width: 640px) { .upload-form .btn-primary { flex: 1 0 100%; } }
+      #uploadBar { height: 3px; background: var(--border-color); margin-top: 12px; display: none; }
+      #uploadBar > i { display: block; height: 100%; width: 0; background: var(--font-color); transition: width 0.2s; }
       #status {
         margin-top: 10px;
         padding: 8px;
@@ -142,11 +152,23 @@
     <div class="card">
       <h2 data-i18n="fonts.addTitle">Thêm font chữ</h2>
       <form class="upload-form" id="uploadForm">
-        <input type="file" id="fontPacks" accept=".cpfontpack" multiple aria-label="Thêm font chữ" data-i18n-aria-label="fonts.addTitle" />
-        <input type="file" id="fontFiles" webkitdirectory directory multiple aria-label="Thêm font chữ" data-i18n-aria-label="fonts.addTitle" />
-        <button type="submit" class="btn btn-primary" data-i18n="fonts.submit">Gửi font</button>
+        <div class="pick" id="pickTtf">
+          <label for="fontTtf" data-i18n="fonts.pickTtf">Tệp TTF hoặc OTF</label>
+          <input type="file" id="fontTtf" accept=".ttf,.otf" multiple />
+        </div>
+        <div class="pick">
+          <label for="fontFiles" data-i18n="fonts.pickFolder">Thư mục font</label>
+          <input type="file" id="fontFiles" webkitdirectory directory multiple />
+        </div>
+        <div class="pick">
+          <label for="fontPacks" data-i18n="fonts.pickPack">Gói font (.cpfontpack)</label>
+          <input type="file" id="fontPacks" accept=".cpfontpack" multiple />
+        </div>
+        <button type="submit" class="btn btn-primary" id="submitBtn" data-i18n="fonts.submit">Gửi font</button>
       </form>
+      <p id="ttfHint" class="family-meta" style="margin: 12px 0 0;"></p>
       <p id="pickedInfo" class="family-meta" style="margin: 8px 0 0;"></p>
+      <div id="uploadBar"><i></i></div>
       <div id="status"></div>
     </div>
 
@@ -163,6 +185,11 @@
     let familiesState = null; // {families: [...]} or {error: true}
     let statusState = null; // {kind, message: () => string}
     let pickedState = null; // () => string
+    // Device limits. The size cap and the vector flag must match FontInstaller.h
+    // (MAX_VECTOR_FONT_BYTES) and the build's PSRAM gate (/api/fonts "vector").
+    const MAX_VECTOR_MB = 24;
+    const MAX_FILES_PER_UPLOAD = 12;
+    let vectorSupported = true;
 
     function emptyParagraph(text) {
       const p = document.createElement('p');
@@ -203,7 +230,9 @@
         meta.className = 'family-meta';
         const sizes = (f.sizes || []).join(', ');
         const filesSizes = (f.files || []).map(fi => formatSize(fi.size)).join(' + ');
-        meta.textContent = TenorI18n.t('fonts.familyMeta', { sizes: sizes, files: filesSizes });
+        meta.textContent = f.vector
+          ? TenorI18n.t('fonts.vectorMeta', { files: filesSizes })
+          : TenorI18n.t('fonts.familyMeta', { sizes: sizes, files: filesSizes });
         info.appendChild(meta);
 
         const btn = document.createElement('button');
@@ -253,6 +282,8 @@
         const res = await fetch(TenorI18n.apiUrl('/api/fonts'));
         const data = await res.json();
         familiesState = { families: data.families || [] };
+        vectorSupported = data.vector !== false;
+        applyVectorSupport();
       } catch (e) {
         familiesState = { error: true };
       }
@@ -279,6 +310,8 @@
       await loadFonts();
     }
 
+    const VECTOR_RE = /\.(?:ttf|otf)$/i;
+
     // Derive family name from a .cpfont filename: take everything before the
     // last '-' or '_' (that separator precedes the size suffix, e.g. Bookerly_12.cpfont).
     function familyFromFilename(name) {
@@ -288,30 +321,120 @@
       return cut > 0 ? stem.slice(0, cut) : stem;
     }
 
-    // Sanitize to match firmware's [A-Za-z0-9_-]+ pattern.
+    // A .ttf/.otf name is Family-Style.ttf: the family is what precedes the last
+    // hyphen (underscores stay, Noto_Sans-Bold.ttf is the family Noto_Sans).
+    function vectorFamilyFromFilename(name) {
+      const stem = name.replace(VECTOR_RE, '');
+      const cut = stem.lastIndexOf('-');
+      return cut > 0 ? stem.slice(0, cut) : stem;
+    }
+
+    // Sanitize to match firmware's [A-Za-z0-9_-]{1,31} pattern.
     function sanitizeFamily(raw) {
-      return raw.replace(/[^A-Za-z0-9_-]/g, '_');
+      return raw.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 31);
+    }
+
+    // The firmware keeps a vector file name as is (letters, digits, - _ . and a
+    // first character that is a letter or digit), so make real-world names fit.
+    function safeVectorName(name) {
+      let n = name.replace(/[^A-Za-z0-9_.-]/g, '_').replace(/\.{2,}/g, '.');
+      if (!/^[A-Za-z0-9]/.test(n)) n = 'f' + n;
+      return n.slice(-87);
+    }
+
+    function familyForFile(f) {
+      if (VECTOR_RE.test(f.name)) {
+        // A picked folder names the family; loose files fall back to their own name.
+        const rel = f.webkitRelativePath || '';
+        const top = rel.indexOf('/') > 0 ? rel.slice(0, rel.indexOf('/')) : '';
+        return sanitizeFamily(top || vectorFamilyFromFilename(f.name));
+      }
+      return sanitizeFamily(familyFromFilename(f.name));
     }
 
     function cpfontFilesOnly(fileList) {
       return Array.from(fileList).filter(f => /\.(?:cpfont|cpfontpack)$/i.test(f.name));
     }
 
-    function selectedFontFiles() {
-      return cpfontFilesOnly([...document.getElementById('fontFiles').files, ...document.getElementById('fontPacks').files]);
+    function fontFilesOnly(fileList) {
+      return [...cpfontFilesOnly(fileList), ...Array.from(fileList).filter(f => VECTOR_RE.test(f.name))];
     }
 
-    ['fontFiles', 'fontPacks'].forEach(id => document.getElementById(id).addEventListener('change', function() {
+    function selectedFontFiles() {
+      return fontFilesOnly(['fontTtf', 'fontFiles', 'fontPacks'].flatMap(id => [...document.getElementById(id).files]));
+    }
+
+    // Only PSRAM builds can render .ttf/.otf: elsewhere the picker is hidden and
+    // the hint says so, instead of storing a file that never shows up in the list.
+    function applyVectorSupport() {
+      document.getElementById('pickTtf').style.display = vectorSupported ? '' : 'none';
+      renderHint();
+    }
+
+    function renderHint() {
+      document.getElementById('ttfHint').textContent = vectorSupported
+        ? TenorI18n.t('fonts.ttfHint', { max: MAX_VECTOR_MB, count: MAX_FILES_PER_UPLOAD })
+        : TenorI18n.t('fonts.err.unsupported');
+    }
+
+    ['fontTtf', 'fontFiles', 'fontPacks'].forEach(id => document.getElementById(id).addEventListener('change', function() {
       const files = selectedFontFiles();
       if (files.length === 0) {
-        pickedState = () => TenorI18n.t('fonts.noCpfontInFolder');
+        pickedState = () => TenorI18n.t('fonts.noFontInFolder');
         renderPicked();
         return;
       }
-      const family = sanitizeFamily(familyFromFilename(files[0].name));
+      const family = familyForFile(files[0]);
       pickedState = () => TenorI18n.tPlural('fonts.pickedSummary', files.length, { family: family });
       renderPicked();
     }));
+
+    function sendFont(family, file, name, onProgress) {
+      return new Promise(resolve => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', TenorI18n.apiUrl('/api/fonts/upload'));
+        xhr.upload.onprogress = e => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+        xhr.onload = () => {
+          let data = {};
+          try { data = JSON.parse(xhr.responseText); } catch (e) { /* non-JSON error page */ }
+          resolve(data);
+        };
+        xhr.onerror = () => resolve({ networkError: true });
+        const formData = new FormData();
+        formData.append('family', family);
+        formData.append('file', file, name);
+        xhr.send(formData);
+      });
+    }
+
+    // backend errors carry either a reason code (vector uploads: the page owns the
+    // wording in the three locales) or finished text in the request locale.
+    function failureText(data) {
+      if (data.networkError) return TenorI18n.t('fonts.networkError');
+      if (data.code) return TenorI18n.t('fonts.err.' + data.code, { max: MAX_VECTOR_MB, count: MAX_FILES_PER_UPLOAD });
+      return data.error || TenorI18n.t('fonts.unknownError');
+    }
+
+    function preflightError(files) {
+      const vec = files.filter(f => VECTOR_RE.test(f.name));
+      if (vec.length > 0 && !vectorSupported) return () => TenorI18n.t('fonts.err.unsupported');
+      if (files.length > MAX_FILES_PER_UPLOAD) return () => TenorI18n.t('fonts.err.tooMany', { count: MAX_FILES_PER_UPLOAD });
+      const big = vec.find(f => f.size > MAX_VECTOR_MB * 1048576);
+      if (big) return () => TenorI18n.t('fonts.uploadFailedFile', { file: big.name, message: TenorI18n.t('fonts.err.size', { max: MAX_VECTOR_MB }) });
+      const seen = new Set();
+      for (const f of vec) {
+        const n = safeVectorName(f.name).toLowerCase();
+        if (seen.has(n)) return () => TenorI18n.t('fonts.err.duplicate', { file: f.name });
+        seen.add(n);
+      }
+      return null;
+    }
+
+    function setBar(fraction) {
+      const bar = document.getElementById('uploadBar');
+      bar.style.display = fraction === null ? 'none' : 'block';
+      bar.firstElementChild.style.width = fraction === null ? '0' : Math.round(fraction * 100) + '%';
+    }
 
     document.getElementById('uploadForm').addEventListener('submit', async function(e) {
       e.preventDefault();
@@ -322,52 +445,56 @@
       }
 
       // A directory picker may include files from multiple family subfolders.
-      // Reject that up front — otherwise files[0]'s family is silently reused
+      // Reject that up front: otherwise files[0]'s family is silently reused
       // for every upload, corrupting the install layout.
-      const families = [...new Set(files.map(f => sanitizeFamily(familyFromFilename(f.name))))];
+      const families = [...new Set(files.map(familyForFile))];
       if (families.length !== 1) {
         setStatus('status-err', () => TenorI18n.t('fonts.multiFamily'));
         return;
       }
       const family = families[0];
+      const pre = preflightError(files);
+      if (pre) {
+        setStatus('status-err', pre);
+        return;
+      }
 
+      const submitBtn = document.getElementById('submitBtn');
+      submitBtn.disabled = true;
       let uploaded = 0;
-      for (const file of files) {
-        const index = uploaded + 1;
-        setStatus('', () => TenorI18n.t('fonts.uploading', {
-          index: index,
-          total: files.length,
-          file: file.name
-        }));
-        const formData = new FormData();
-        formData.append('family', family);
-        formData.append('file', file, file.name);
-        try {
-          const res = await fetch(TenorI18n.apiUrl('/api/fonts/upload'), { method: 'POST', body: formData });
-          const data = await res.json();
+      try {
+        for (const file of files) {
+          const index = uploaded + 1;
+          let percent = 0;
+          const showProgress = () => setStatus('', () => TenorI18n.t('fonts.uploading', {
+            index: index,
+            total: files.length,
+            file: file.name
+          }) + ' ' + percent + '%');
+          showProgress();
+          setBar(0);
+          const name = VECTOR_RE.test(file.name) ? safeVectorName(file.name) : file.name;
+          const data = await sendFont(family, file, name, fraction => {
+            percent = Math.round(fraction * 100);
+            setBar(fraction);
+            showProgress();
+          });
           if (!data.ok) {
-            // data.error is backend-owned text already in the request locale;
-            // only the fallback is translated here, at render time.
             setStatus('status-err', () => TenorI18n.t('fonts.uploadFailedFile', {
               file: file.name,
-              message: data.error || TenorI18n.t('fonts.unknownError')
+              message: failureText(data)
             }));
             await loadFonts();
             return;
           }
-        } catch (err) {
-          setStatus('status-err', () => TenorI18n.t('fonts.uploadError', {
-            file: file.name,
-            message: err.message
-          }));
-          await loadFonts();
-          return;
+          uploaded++;
         }
-        uploaded++;
+        setStatus('status-ok', () => TenorI18n.tPlural('fonts.uploadedSummary', uploaded, { family: family }));
+        await loadFonts();
+      } finally {
+        submitBtn.disabled = false;
+        setBar(null);
       }
-
-      setStatus('status-ok', () => TenorI18n.tPlural('fonts.uploadedSummary', uploaded, { family: family }));
-      await loadFonts();
     });
 
     // Switching locale re-renders the current view; it never refetches, never
@@ -376,8 +503,10 @@
       renderFamilies();
       renderStatus();
       renderPicked();
+      renderHint();
     });
 
+    renderHint();
     loadFonts();
   </script>
   </body>

@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "FontInstaller.h"
 #include "UploadSocket.h"
 #include "WebTransferAuth.h"
 
@@ -209,6 +210,9 @@ class CrossPointWebServer {
     bool valid = false;
     bool magicChecked = false;
     bool pack = false;
+    bool vector = false;       // .ttf/.otf: header and size are judged by `check`
+    const char* code = nullptr;  // why a vector or name check failed (page maps it to text)
+    FontInstaller::VectorUploadCheck check;
     size_t bytesWritten = 0;
     size_t bufferPos = 0;
   } fontUpload;

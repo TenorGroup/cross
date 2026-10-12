@@ -2203,10 +2203,13 @@ void CrossPointWebServer::handleFontList() {
     if (!sendRecord()) return;
     if (!append(",\"sizes\":[")) return;
     bool firstSize = true;
-    for (const uint8_t size : family.availableSizes()) {
-      snprintf(value, sizeof(value), "%s%u", firstSize ? "" : ",", static_cast<unsigned>(size));
-      firstSize = false;
-      if (!append(value)) return;
+    // A vector family has no fixed sizes: availableSizes() would report a lone 0.
+    if (!family.vector) {
+      for (const uint8_t size : family.availableSizes()) {
+        snprintf(value, sizeof(value), "%s%u", firstSize ? "" : ",", static_cast<unsigned>(size));
+        firstSize = false;
+        if (!append(value)) return;
+      }
     }
     if (!append("],\"files\":[")) return;
     bool firstFile = true;
@@ -2214,7 +2217,11 @@ void CrossPointWebServer::handleFontList() {
       if (!firstFile && !append(",")) return;
       firstFile = false;
       doc.clear();
+#if CROSSPOINT_VECTOR_FONTS
+      const std::string filePath = family.vector ? file.path : family.filePath(file);
+#else
       const std::string filePath = family.filePath(file);
+#endif
       const char* name = strrchr(filePath.c_str(), '/');
       doc["name"] = name ? name + 1 : filePath.c_str();
       HalFile font;
@@ -2224,9 +2231,11 @@ void CrossPointWebServer::handleFontList() {
       if (!sendRecord()) return;
       resetTaskWatchdogIfSubscribed();
     }
-    if (!append("]}")) return;
+    if (!append(family.vector ? "],\"vector\":true}" : "]}")) return;
   }
-  snprintf(value, sizeof(value), "],\"maxFamilies\":%d}", SdCardFontRegistry::MAX_SD_FAMILIES);
+  // "vector" tells the page whether this build can render .ttf/.otf at all (PSRAM boards only).
+  snprintf(value, sizeof(value), "],\"maxFamilies\":%d,\"vector\":%s}", SdCardFontRegistry::MAX_SD_FAMILIES,
+           CROSSPOINT_VECTOR_FONTS ? "true" : "false");
   if (!append(value)) return;
   if (!flush()) return;
   server->sendContent("");
@@ -2248,11 +2257,15 @@ void CrossPointWebServer::handleFontUploadData() {
       fontUpload.valid = false;
       fontUpload.magicChecked = false;
       fontUpload.pack = false;
+      fontUpload.vector = false;
+      fontUpload.code = nullptr;
+      fontUpload.check = FontInstaller::VectorUploadCheck();
       fontUpload.bytesWritten = 0;
       fontUpload.bufferPos = 0;
 
       if (!FontInstaller::isValidFamilyName(family.c_str())) {
         LOG_ERR("WEB", "Invalid font family name: %s", family.c_str());
+        fontUpload.code = "family";
         break;
       }
 
@@ -2263,7 +2276,20 @@ void CrossPointWebServer::handleFontUploadData() {
       // this an attacker could supply "../../.crosspoint/settings.json" as
       // a "filename" and have it written outside the fonts directory.
       fontUpload.pack = FontPackInstaller::isPackFilename(filename.c_str());
-      if (!fontUpload.pack && !FontInstaller::isValidCpfontFilename(filename.c_str())) {
+      fontUpload.vector = FsHelpers::checkFileExtension(filename, ".ttf") || FsHelpers::checkFileExtension(filename, ".otf");
+      if (fontUpload.vector) {
+        // No engine without PSRAM: refuse before anything touches the card, a stored
+        // file would never show up in the font list.
+        if (!CROSSPOINT_VECTOR_FONTS) {
+          fontUpload.code = "unsupported";
+          break;
+        }
+        if (!FontInstaller::isValidVectorFilename(filename.c_str())) {
+          LOG_ERR("WEB", "Invalid vector font filename: %s", filename.c_str());
+          fontUpload.code = "name";
+          break;
+        }
+      } else if (!fontUpload.pack && !FontInstaller::isValidCpfontFilename(filename.c_str())) {
         LOG_ERR("WEB", "Invalid font filename: %s", filename.c_str());
         break;
       }
@@ -2278,9 +2304,11 @@ void CrossPointWebServer::handleFontUploadData() {
       char path[FontInstaller::MAX_FONT_PATH_SIZE];
       const bool validPath = fontUpload.pack
           ? std::snprintf(path, sizeof(path), "/fonts/%s", filename.c_str()) < static_cast<int>(sizeof(path))
-          : FontInstaller::buildFontPath(family.c_str(), filename.c_str(), path, sizeof(path));
+          : (fontUpload.vector ? FontInstaller::buildVectorFontPath(family.c_str(), filename.c_str(), path, sizeof(path))
+                               : FontInstaller::buildFontPath(family.c_str(), filename.c_str(), path, sizeof(path)));
       if (!validPath) {
         LOG_ERR("WEB", "Invalid font path: %s/%s", family.c_str(), filename.c_str());
+        fontUpload.code = "name";
         break;
       }
 
@@ -2288,17 +2316,20 @@ void CrossPointWebServer::handleFontUploadData() {
       FontInstaller installer(sdFontSystem.registry());
       if (!(fontUpload.pack ? (Storage.exists("/fonts") || Storage.mkdir("/fonts")) : installer.ensureFamilyDir(family.c_str()))) {
         LOG_ERR("WEB", "Failed to create font family dir");
+        fontUpload.code = "write";
         break;
       }
 
       if (Storage.exists(path)) {
         LOG_ERR("WEB", "Font file already exists");
+        fontUpload.code = "exists";
         break;
       }
       fontUpload.filePath = path;
 
       if (!Storage.openFileForWrite("WEB", path, fontUpload.file)) {
         LOG_ERR("WEB", "Failed to open font file for write: %s", path);
+        fontUpload.code = "write";
         break;
       }
 
@@ -2319,17 +2350,27 @@ void CrossPointWebServer::handleFontUploadData() {
       if (!fontUpload.valid) break;
       resetTaskWatchdogIfSubscribed();
 
-      const size_t received = fontUpload.bytesWritten + fontUpload.bufferPos;
-      const char* magic = fontUpload.pack ? "PK\x03\x04" : "CPFONT\0\0";
-      const size_t magicSize = fontUpload.pack ? 4 : 8;
-      for (size_t i = 0; i < upload.currentSize && received + i < magicSize; ++i) {
-        if (upload.buf[i] != static_cast<uint8_t>(magic[received + i])) {
+      if (fontUpload.vector) {
+        // Streamed verdict: header from the first 4 bytes, running size against the cap.
+        const auto verdict = fontUpload.check.feed(upload.buf, upload.currentSize);
+        if (verdict != FontInstaller::VectorUploadCheck::Verdict::OK) {
           fontUpload.valid = false;
+          fontUpload.code = verdict == FontInstaller::VectorUploadCheck::Verdict::TOO_BIG ? "size" : "magic";
           break;
         }
+      } else {
+        const size_t received = fontUpload.bytesWritten + fontUpload.bufferPos;
+        const char* magic = fontUpload.pack ? "PK\x03\x04" : "CPFONT\0\0";
+        const size_t magicSize = fontUpload.pack ? 4 : 8;
+        for (size_t i = 0; i < upload.currentSize && received + i < magicSize; ++i) {
+          if (upload.buf[i] != static_cast<uint8_t>(magic[received + i])) {
+            fontUpload.valid = false;
+            break;
+          }
+        }
+        if (!fontUpload.valid) break;
+        if (received + upload.currentSize >= magicSize) fontUpload.magicChecked = true;
       }
-      if (!fontUpload.valid) break;
-      if (received + upload.currentSize >= magicSize) fontUpload.magicChecked = true;
 
       // Font and general uploads share the serial HTTP handler's arena.
       size_t remaining = upload.currentSize;
@@ -2345,6 +2386,7 @@ void CrossPointWebServer::handleFontUploadData() {
         if (fontUpload.bufferPos >= UploadState::UPLOAD_BUFFER_SIZE) {
           if (fontUpload.file.write(this->upload.buffer.data(), fontUpload.bufferPos) != fontUpload.bufferPos) {
             fontUpload.valid = false;
+            fontUpload.code = "write";
             break;
           }
           fontUpload.bytesWritten += fontUpload.bufferPos;
@@ -2357,7 +2399,8 @@ void CrossPointWebServer::handleFontUploadData() {
     }
 
     case UPLOAD_FILE_END: {
-      fontUpload.valid = fontUpload.valid && fontUpload.magicChecked;
+      if (fontUpload.vector && fontUpload.valid && !fontUpload.check.complete()) fontUpload.code = "magic";
+      fontUpload.valid = fontUpload.valid && (fontUpload.vector ? fontUpload.check.complete() : fontUpload.magicChecked);
       // Flush remaining buffer
       if (fontUpload.valid && fontUpload.bufferPos > 0) {
         if (fontUpload.file.write(this->upload.buffer.data(), fontUpload.bufferPos) != fontUpload.bufferPos) {
@@ -2404,7 +2447,12 @@ void CrossPointWebServer::handleFontUpload() {
     server->send(200, "application/json", "{\"ok\":true}");
     LOG_DBG("WEB", "Font upload complete: %s", fontUpload.filePath.c_str());
   } else {
-    server->send(400, "application/json", webErrorBody(lang, StrId::STR_WEB_INVALID_CPFONT));
+    if (fontUpload.code) {
+      // The page owns the wording of these (3 locales), the device sends only the reason.
+      server->send(400, "application/json", String("{\"ok\":false,\"code\":\"") + fontUpload.code + "\"}");
+    } else {
+      server->send(400, "application/json", webErrorBody(lang, StrId::STR_WEB_INVALID_CPFONT));
+    }
   }
 }
 

@@ -434,4 +434,120 @@ TEST_F(FontInstallerTest, DeleteFamilyReportsStorageFailureAndKeepsTheActiveFont
   EXPECT_STREQ(SETTINGS.sdFontFamilyName, "MyFam");
 }
 
+// ------------------------------------------------------- vector (.ttf/.otf) upload
+
+TEST_F(FontInstallerTest, VectorFilenameAcceptsRealFontNamesAndTheBound) {
+  EXPECT_TRUE(FontInstaller::isValidVectorFilename("LiberationSerif-Regular.ttf"));
+  EXPECT_TRUE(FontInstaller::isValidVectorFilename("Merriweather-BoldItalic.OTF"));
+  EXPECT_TRUE(FontInstaller::isValidVectorFilename("Noto_Sans.v2.ttf"));
+  EXPECT_TRUE(FontInstaller::isValidVectorFilename("a.ttf"));
+  const std::string longest = repeat('f', FontInstaller::MAX_CPFONT_FILENAME_LEN - 4) + ".ttf";
+  ASSERT_EQ(longest.size(), FontInstaller::MAX_CPFONT_FILENAME_LEN);
+  EXPECT_TRUE(FontInstaller::isValidVectorFilename(longest.c_str()));
+  EXPECT_FALSE(FontInstaller::isValidVectorFilename((longest + "x").c_str()));
+}
+
+TEST_F(FontInstallerTest, VectorFilenameRejectsWhatTheRegistryWouldIgnoreOrWhatEscapes) {
+  EXPECT_FALSE(FontInstaller::isValidVectorFilename(nullptr));
+  EXPECT_FALSE(FontInstaller::isValidVectorFilename(""));
+  EXPECT_FALSE(FontInstaller::isValidVectorFilename(".ttf"));         // no basename
+  EXPECT_FALSE(FontInstaller::isValidVectorFilename("_Hidden.ttf"));  // registry skips a leading '_'
+  EXPECT_FALSE(FontInstaller::isValidVectorFilename(".Hidden.ttf"));  // and a leading '.'
+  EXPECT_FALSE(FontInstaller::isValidVectorFilename("a..b.ttf"));     // traversal shape
+  EXPECT_FALSE(FontInstaller::isValidVectorFilename("a/b.ttf"));
+  EXPECT_FALSE(FontInstaller::isValidVectorFilename("a\\b.ttf"));
+  EXPECT_FALSE(FontInstaller::isValidVectorFilename("a b.ttf"));
+  EXPECT_FALSE(FontInstaller::isValidVectorFilename("Ph\xe1\xbb\x91.ttf"));
+  EXPECT_FALSE(FontInstaller::isValidVectorFilename("a.ttc"));
+  EXPECT_FALSE(FontInstaller::isValidVectorFilename("a.ttf.tmp"));
+  EXPECT_FALSE(FontInstaller::isValidVectorFilename("a.cpfont"));
+  EXPECT_FALSE(FontInstaller::isValidVectorFilename("a.woff2"));
+}
+
+TEST_F(FontInstallerTest, VectorMagicAcceptsTrueTypeAndOpenTypeOnly) {
+  const uint8_t ttf[4] = {0x00, 0x01, 0x00, 0x00};
+  const uint8_t otf[4] = {'O', 'T', 'T', 'O'};
+  const uint8_t apple[4] = {'t', 'r', 'u', 'e'};
+  const uint8_t ttc[4] = {'t', 't', 'c', 'f'};
+  const uint8_t cpfont[4] = {'C', 'P', 'F', 'O'};
+  const uint8_t zip[4] = {'P', 'K', 3, 4};
+  EXPECT_TRUE(FontInstaller::isVectorFontMagic(ttf));
+  EXPECT_TRUE(FontInstaller::isVectorFontMagic(otf));
+  EXPECT_TRUE(FontInstaller::isVectorFontMagic(apple));
+  EXPECT_FALSE(FontInstaller::isVectorFontMagic(ttc));
+  EXPECT_FALSE(FontInstaller::isVectorFontMagic(cpfont));
+  EXPECT_FALSE(FontInstaller::isVectorFontMagic(zip));
+}
+
+TEST_F(FontInstallerTest, UploadCheckSeesTheMagicEvenWhenTheStreamArrivesOneByteAtATime) {
+  FontInstaller::VectorUploadCheck check;
+  const uint8_t head[4] = {0x00, 0x01, 0x00, 0x00};
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_FALSE(check.complete());
+    EXPECT_EQ(check.feed(head + i, 1), FontInstaller::VectorUploadCheck::Verdict::OK);
+  }
+  EXPECT_TRUE(check.complete());
+  const uint8_t body[100] = {};
+  EXPECT_EQ(check.feed(body, sizeof(body)), FontInstaller::VectorUploadCheck::Verdict::OK);
+}
+
+TEST_F(FontInstallerTest, UploadCheckRejectsABadHeaderOnTheFourthByteAndStaysRejected) {
+  FontInstaller::VectorUploadCheck check;
+  const uint8_t head[4] = {'C', 'P', 'F', 'O'};
+  EXPECT_EQ(check.feed(head, 3), FontInstaller::VectorUploadCheck::Verdict::OK);
+  EXPECT_EQ(check.feed(head + 3, 1), FontInstaller::VectorUploadCheck::Verdict::BAD_MAGIC);
+  const uint8_t more[2] = {0x00, 0x01};
+  EXPECT_EQ(check.feed(more, 2), FontInstaller::VectorUploadCheck::Verdict::BAD_MAGIC);
+  EXPECT_FALSE(check.complete());
+}
+
+TEST_F(FontInstallerTest, UploadCheckTruncatedBelowTheHeaderIsNotComplete) {
+  FontInstaller::VectorUploadCheck check;
+  const uint8_t head[3] = {0x00, 0x01, 0x00};
+  EXPECT_EQ(check.feed(head, 3), FontInstaller::VectorUploadCheck::Verdict::OK);
+  EXPECT_FALSE(check.complete());
+}
+
+TEST_F(FontInstallerTest, UploadCheckSizeCapIsExactAndSticky) {
+  FontInstaller::VectorUploadCheck check;
+  const uint8_t head[4] = {'O', 'T', 'T', 'O'};
+  ASSERT_EQ(check.feed(head, 4), FontInstaller::VectorUploadCheck::Verdict::OK);
+  std::vector<uint8_t> chunk(1024 * 1024, 0);
+  size_t sent = 4;
+  while (sent + chunk.size() <= FontInstaller::MAX_VECTOR_FONT_BYTES) {
+    ASSERT_EQ(check.feed(chunk.data(), chunk.size()), FontInstaller::VectorUploadCheck::Verdict::OK);
+    sent += chunk.size();
+  }
+  const size_t rest = FontInstaller::MAX_VECTOR_FONT_BYTES - sent;
+  EXPECT_EQ(check.feed(chunk.data(), rest), FontInstaller::VectorUploadCheck::Verdict::OK);  // exactly the cap
+  EXPECT_EQ(check.feed(chunk.data(), 1), FontInstaller::VectorUploadCheck::Verdict::TOO_BIG);  // one over
+  EXPECT_EQ(check.feed(chunk.data(), 0), FontInstaller::VectorUploadCheck::Verdict::TOO_BIG);
+}
+
+TEST_F(FontInstallerTest, BuildVectorFontPathUsesTheSameRootRuleAsTheCpfontPath) {
+  char path[FontInstaller::MAX_FONT_PATH_SIZE];
+  existingRoot = nullptr;
+  writeRoot = "/.fonts";
+  ASSERT_TRUE(FontInstaller::buildVectorFontPath("Merriweather", "Merriweather-Italic.ttf", path, sizeof(path)));
+  EXPECT_STREQ(path, "/.fonts/Merriweather/Merriweather-Italic.ttf");
+  existingRoot = "/fonts";
+  ASSERT_TRUE(FontInstaller::buildVectorFontPath("Merriweather", "Merriweather-Bold.otf", path, sizeof(path)));
+  EXPECT_STREQ(path, "/fonts/Merriweather/Merriweather-Bold.otf");
+}
+
+TEST_F(FontInstallerTest, BuildVectorFontPathFitsTheLongestNamesAndRefusesBadOnesWithoutLookups) {
+  char path[FontInstaller::MAX_FONT_PATH_SIZE];
+  const std::string longest = repeat('f', FontInstaller::MAX_CPFONT_FILENAME_LEN - 4) + ".ttf";
+  ASSERT_TRUE(FontInstaller::buildVectorFontPath(longestFamily().c_str(), longest.c_str(), path, sizeof(path)));
+  EXPECT_EQ(std::strlen(path), sizeof(path) - 1);
+
+  font_installer_test::registryRootLookups = 0;
+  EXPECT_FALSE(FontInstaller::buildVectorFontPath("Fam", "../x.ttf", path, sizeof(path)));
+  EXPECT_FALSE(FontInstaller::buildVectorFontPath("Fam/x", "a.ttf", path, sizeof(path)));
+  EXPECT_FALSE(FontInstaller::buildVectorFontPath("Fam", "a.cpfont", path, sizeof(path)));
+  EXPECT_EQ(font_installer_test::registryRootLookups, 0);
+  EXPECT_FALSE(FontInstaller::buildVectorFontPath("Fam", "a.ttf", path, 8));  // valid names, no room: no truncated path
+  EXPECT_EQ(path[0], '\0');
+}
+
 }  // namespace
