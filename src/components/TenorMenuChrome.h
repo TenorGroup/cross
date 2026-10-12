@@ -235,7 +235,8 @@ void drawStatus(const GfxRenderer& renderer, const char* title = nullptr, int cu
                 bool titleIsName = true);
 void drawReaderSlots(const GfxRenderer& renderer, const char* title, int currentPage, int pageCount,
                      float bookProgress, bool estimated, bool bookmarked,
-                     int64_t chapterSeconds = -1, int64_t bookSeconds = -1, const char* chapterName = nullptr);
+                     int64_t chapterSeconds = -1, int64_t bookSeconds = -1, const char* chapterName = nullptr,
+                     bool titleIsName = true);
 // Small symbols can start one pixel above the battery box (the Select check).
 int smallFooterSymbolsTopY(const GfxRenderer& renderer);
 bool compactFooterTips(bool hasTextHints = false);

@@ -26,7 +26,6 @@ fixture = r'''
 #include <cstdio>
 
 namespace HalDisplay { enum RefreshMode { FAST_REFRESH }; }
-namespace CrossPointSettings { constexpr int HIDE_TITLE = 1; }
 struct StatusBarSpec {
   bool showBattery = true;
   bool slotsEnabled = false;
@@ -70,7 +69,6 @@ struct EpubReaderActivity {
   bool pageFrameKeepsUnderFast = true;
   bleturner::LinkNote linkNoteDrawn = bleturner::LinkNote::None;
   int requests = 0;
-  int readerStatusTopReserve() const { return 0; }
   void requestUpdate() { ++requests; }
   void renderStatusBar() {}
   void repaintStatusBarAlone();

@@ -148,7 +148,7 @@ void XtcReaderActivity::renderStatusBarOverlay(GfxRenderer& renderer, const Stat
   const bool linkNote = sb.showsTitle() && linkNoteTitle(pageInfo.title);
   if (sb.slotsEnabled) {
     tenorchrome::drawReaderSlots(renderer, pageInfo.title.c_str(), pageInfo.currentPage, pageInfo.pageCount, progress,
-                                 false, false, -1, -1, pageInfo.chapterName.c_str());
+                                 false, false, -1, -1, pageInfo.chapterName.c_str(), !linkNote);
     return;
   }
   GUI.drawStatusBar(renderer, progress, pageInfo.currentPage, pageInfo.pageCount, pageInfo.title, paddingBottom, 0,

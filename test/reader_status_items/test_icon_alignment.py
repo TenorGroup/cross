@@ -48,6 +48,7 @@ cpp = r'''
 #include "Utf8.h"
 #include "activities/reader/ReaderStatusLayout.h"
 constexpr int SMALL_FONT_ID = 0;
+constexpr int STATUS_CORNER_INSET = 8;
 struct EpdFontFamily { enum Style { REGULAR }; };
 struct CrossPointSettings {
   enum READER_STATUS_SLOT : unsigned char {
@@ -132,7 +133,8 @@ namespace tenorchrome {
   struct BatteryInkBounds { int top; int height; };
   BatteryInkBounds batteryInkBounds(const GfxRenderer&, int, int);
   int statusTextY(int height, bool) { return height - 24; }
-  void drawReaderSlots(const GfxRenderer&, const char*, int, int, float, bool, bool, int64_t, int64_t, const char* = nullptr);
+  void drawReaderSlots(const GfxRenderer&, const char*, int, int, float, bool, bool, int64_t, int64_t, const char* = nullptr,
+                       bool = true);
 }
 ''' + metric_body + '\n' + body + r'''
 

@@ -609,14 +609,13 @@ void EpubReaderActivity::openReaderMenu() {
   const ChapterPosition position = chapterPosition();
   const int bookProgressPercent = bookPercentFor(position);
   const uint8_t readerStatusBarHeightBeforeMenu = readerStatusBarHeight();
-  const int topReserveBeforeMenu = readerStatusTopReserve();
 
   pauseKeepsStatsInRam = true;
   startActivityForResult(
       std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, epub->getTitle(), position.displayPage(),
                                                position.totalPages, bookProgressPercent, SETTINGS.orientation,
                                                !currentPageFootnotes.empty(), !cachedBookmarks.empty()),
-      [this, readerStatusBarHeightBeforeMenu, topReserveBeforeMenu](const ActivityResult& result) {
+      [this, readerStatusBarHeightBeforeMenu](const ActivityResult& result) {
         const auto& menu = std::get<MenuResult>(result.data);
 
         if (SETTINGS.orientation != menu.orientation) {
@@ -628,8 +627,7 @@ void EpubReaderActivity::openReaderMenu() {
         // The status-bar picker updates SETTINGS in place, then the menu closes
         // through the cancelled result path. Rebuild only when the reserved
         // reader height changes. Same-height modes need a footer repaint only.
-        if (result.isCancelled && (readerStatusBarHeight() != readerStatusBarHeightBeforeMenu ||
-                                     readerStatusTopReserve() != topReserveBeforeMenu)) {
+        if (result.isCancelled && readerStatusBarHeight() != readerStatusBarHeightBeforeMenu) {
           RenderLock lock;
           danLaiTrang();
         }
@@ -4029,8 +4027,6 @@ void EpubReaderActivity::repaintStatusBarAlone() {
 #ifdef TENOR_PRESS_PROBE
   const unsigned long started = millis();
 #endif
-  if (sb.slotsEnabled && sb.topTitleMode != CrossPointSettings::HIDE_TITLE)
-    renderer.fillRect(0, 0, renderer.getScreenWidth(), readerStatusTopReserve(), false);
   const int top = tenorchrome::readerStatusTop(renderer.getScreenHeight());
   renderer.fillRect(0, top, renderer.getScreenWidth(), renderer.getScreenHeight() - top, false);
   auto scope = renderer.getFontCacheManager()->createPrewarmScope();
@@ -4116,7 +4112,7 @@ void EpubReaderActivity::renderStatusBar() const {
     tenorchrome::drawReaderSlots(renderer, title.c_str(), currentPage, pageCount, bookProgress,
                                  section ? section->isBuilding() : false, currentPageBookmarked,
                                  chapterKnown ? static_cast<int64_t>(chapter) : -1,
-                                 bookKnown ? static_cast<int64_t>(book) : -1, chapterName.c_str());
+                                 bookKnown ? static_cast<int64_t>(book) : -1, chapterName.c_str(), !linkNote);
     return;
   }
   GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset, true, currentPageBookmarked,

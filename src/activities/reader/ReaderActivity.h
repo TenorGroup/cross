@@ -27,7 +27,6 @@ class ReaderActivity : public Activity {
   bool handlePreviewInput();
   void drawPreviewFooter() const;
   uint8_t readerStatusBarHeight() const;
-  int readerStatusTopReserve() const;
   void readingMargins(int& top, int& right, int& bottom, int& left) const;
   readerstatus::Pace readingPace;
   virtual readerstatus::Pace::Position pacePosition() const { return {}; }
