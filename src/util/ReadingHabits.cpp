@@ -34,7 +34,7 @@ Day* Ledger::dayFor(uint32_t day) {
   uint32_t latest = 0;
   for (auto& d : days) {
     if (d.day == day) return &d;
-    latest = std::max(latest, d.day);
+    latest = std::max<uint32_t>(latest, d.day);
   }
   if (latest >= day + DAYS) return nullptr;
   auto* result = &*std::min_element(days.begin(), days.end(), [](const Day& a, const Day& b) { return a.day < b.day; });

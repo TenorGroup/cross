@@ -1,5 +1,5 @@
-// The long reading calendar: RAM keeps the 30 newest days, the card keeps 90, and a save never
-// drops the older ones. The heap a save takes is counted here: ArduinoJson allocates with malloc, strings
+// The long reading calendar: RAM keeps the 30 newest days, the card keeps 90 and the 24 hour totals, and a
+// save never drops the older days. The heap a save takes is counted here: ArduinoJson allocates with malloc, strings
 // (String on the device) with operator new.
 #include <algorithm>
 #include <chrono>
@@ -141,6 +141,66 @@ void brokenFiles() {
   std::filesystem::remove_all(fixtureRoot);
 }
 
+void at(const int hour, const int minute, const int second) {
+  halClock.local = {};
+  halClock.local.tm_hour = hour;
+  halClock.local.tm_min = minute;
+  halClock.local.tm_sec = second;
+  halClock.localSet = true;
+}
+uint64_t hourMs(const JsonDocument& doc, const int hour) {
+  return doc["hourMinutes"][hour].as<uint64_t>() * 60000 + doc["hourRemainderMs"][hour].as<uint64_t>();
+}
+
+// 24 running totals by hour of the local day: split at each hour mark and at midnight, a short update adds its
+// ms, and a save that fails half way counts its hours once.
+void hours() {
+  seed();
+  at(1, 0, 30);
+  READING_STATS.record(20260914, 60000, 1, 50);  // 00:59:30 to 01:00:30
+  for (int second = 0; second < 60; ++second) {
+    at(1, 1, second);
+    READING_STATS.record(20260914, 1000, 0, 50);
+  }
+  check(READING_STATS.saveToFile(), "save the first hours");
+  auto doc = savedFile();
+  check(doc["hourMinutes"].size() == 24 && doc["hourRemainderMs"].size() == 24, "24 counters on the card");
+  check(hourMs(doc, 0) == 30000 && hourMs(doc, 1) == 90000, "an hour mark splits the minute, short updates add up");
+  check(READING_STATS.saveToFile() && hourMs(savedFile(), 1) == 90000, "a second save counts nothing twice");
+  check(READING_STATS.loadFromFile(), "reload");
+  at(0, 0, 30);
+  READING_STATS.record(20260915, 60000, 1, 50);  // 23:59:30 to 00:00:30
+  check(READING_STATS.saveToFile(), "save across midnight");
+  doc = savedFile();
+  check(hourMs(doc, 23) == 30000 && hourMs(doc, 0) == 60000 && hourMs(doc, 1) == 90000,
+        "midnight splits into hour 23 and hour 0, the totals carry over a reload");
+  at(0, 2, 0);
+  READING_STATS.record(20260915, 60000, 1, 50);
+  storageFault = {StorageFaultOperation::Rename, MAIN + ".tmp", MAIN};
+  check(!READING_STATS.saveToFile() && storageFault.hits == 1, "the new file stops at .tmp");
+  storageFault = {};
+  check(READING_STATS.saveToFile() && hourMs(savedFile(), 0) == 120000, "hours staged in .tmp count once");
+  at(0, 3, 0);
+  READING_STATS.record(20260915, 60000, 1, 50);
+  storageFault = {StorageFaultOperation::Rename, MAIN, MAIN + ".bak"};
+  check(!READING_STATS.saveToFile() && storageFault.hits == 1, "the old file stays in place");
+  storageFault = {};
+  check(READING_STATS.saveToFile() && hourMs(savedFile(), 0) == 180000, "hours kept in RAM count once");
+  at(5, 0, 0);
+  READING_STATS.record(0, 60000, 1, 50);
+  check(READING_STATS.saveToFile() && hourMs(savedFile(), 5) == 0, "reading without a date has no hour");
+  at(6, 30, 0);
+  READING_STATS.record(20260915, 60000, 1, 50);
+  readinghistory::Snapshot history;
+  check(LOAD_HISTORY(history) && history.hourMs[6] == 60000, "the screen sees hours not saved yet");
+  check(READING_STATS.resetStatistics(true) == ReadingStatsStore::ResetResult::Complete && READING_STATS.saveToFile(),
+        "full reset");
+  doc = savedFile();
+  check(hourMs(doc, 0) == 0 && hourMs(doc, 6) == 0, "a full reset clears the hours");
+  halClock.localSet = false;
+  std::filesystem::remove_all(fixtureRoot);
+}
+
 // The heap one save holds at its peak: 30 days (the old window) and 90.
 size_t savePeak(const unsigned days) {
   seed();
@@ -161,6 +221,7 @@ size_t savePeak(const unsigned days) {
 int main() {
   oldFiles();
   brokenFiles();
+  hours();
   const size_t peak30 = savePeak(30), peak90 = savePeak(90);
   std::cout << "heap peak per save (host, 64-bit): 30 days " << peak30 << " B, 90 days " << peak90
             << " B\n";

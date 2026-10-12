@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <ctime>
 
 #include "CrossPointSettings.h"
 #include "util/NgayGio.h"
@@ -204,7 +205,9 @@ bool readResetSnapshot(JsonDocument& doc) {
   if (!file) return false;
   return readOpenSnapshot(file, file.size(), doc, 32768) == SnapshotReadResult::Ready;
 }
-bool writeSnapshot(const std::string& path, const JsonDocument& doc, const int memo = -1) {
+// `staged`, when given, learns whether the new snapshot reached .tmp whole, also when a rename failed after.
+bool writeSnapshot(const std::string& path, const JsonDocument& doc, const int memo = -1, bool* staged = nullptr) {
+  if (staged) *staged = false;
   if (doc.overflowed()) return false;
   const std::string temporary = path + ".tmp", backup = path + ".bak";
   bool readable = memo >= 0 && knownReadable[memo] == path;
@@ -219,6 +222,7 @@ bool writeSnapshot(const std::string& path, const JsonDocument& doc, const int m
   if (memo == MEMO_LEDGER ? !writeLedger(temporary.c_str(), doc)
                           : !PersistableStoreBase::writeDocToFile(temporary.c_str(), doc))
     return false;
+  if (staged) *staged = true;
   if (Storage.exists(path.c_str())) {
     // Keep the known readable backup if the main file was interrupted.
     if (readable) {
@@ -293,6 +297,12 @@ void encodeDay(JsonArray rows, const solieu::NgayDoc& n) {
 void encodeHistory(JsonDocument& doc, const readinghistory::Snapshot& history) {
   const auto rows = doc["ngay"].to<JsonArray>();
   for (size_t i = 0; i < history.count; ++i) encodeDay(rows, history.days[i]);
+  // Minutes and the ms under a minute, as a day row keeps them.
+  const auto minutes = doc["hourMinutes"].to<JsonArray>(), rest = doc["hourRemainderMs"].to<JsonArray>();
+  for (const uint64_t ms : history.hourMs) {
+    minutes.add(static_cast<uint32_t>(std::min<uint64_t>(ms / 60000, UINT32_MAX)));
+    rest.add(static_cast<uint32_t>(ms % 60000));
+  }
 }
 }  // namespace
 
@@ -305,7 +315,12 @@ bool ReadingStatsStore::saveToFile() const {
   JsonDocument doc;
   toJson(doc);
   encodeHistory(doc, history);
-  return writeSnapshot(getFilePath(), doc, MEMO_LEDGER);
+  bool staged = false;
+  const bool saved = writeSnapshot(getFilePath(), doc, MEMO_LEDGER, &staged);
+  // The pending hours are on the card once the file the next read prefers holds them: the new main file, or a
+  // whole .tmp while main is missing. Otherwise they wait for the next save, counted once either way.
+  if (saved || (staged && !Storage.exists(getFilePath()))) pendingHourMs.fill(0);
+  return saved;
 }
 bool ReadingStatsStore::loadHistory(readinghistory::Snapshot& history) const {
   history = {};
@@ -323,8 +338,15 @@ bool ReadingStatsStore::readHistory(readinghistory::Snapshot& history) const {
     solieu::NgayDoc day;
     for (const auto row : doc["ngay"].as<JsonArrayConst>())
       if (decodeDay(row, day)) history.merge(day);
+    // A file from before the hour counters has none: they start at 0.
+    const auto minutes = doc["hourMinutes"], rest = doc["hourRemainderMs"];
+    for (size_t i = 0; i < readinghistory::HOURS; ++i) {
+      const uint32_t ms = rest[i] | 0u;
+      history.hourMs[i] = static_cast<uint64_t>(minutes[i] | 0u) * 60000 + (ms < 60000 ? ms : 0);
+    }
   }
   for (const auto& day : kho.cacNgay()) history.merge(day);
+  for (size_t i = 0; i < readinghistory::HOURS; ++i) history.hourMs[i] += pendingHourMs[i];
   return true;
 }
 bool ReadingStatsStore::loadFromFile() {
@@ -462,6 +484,10 @@ bool ReadingStatsStore::activateBook(const std::string& path, const int progress
 
 void ReadingStatsStore::record(const uint32_t day, const uint32_t ms, const uint16_t turns, const int progress) {
   kho.gopMilliseconds(day, ms, turns);
+  // The interval ends now on the local clock. Reading without a date has no hour either.
+  struct tm local {};
+  if (day && ms && halClock.localTime(local))
+    readinghistory::addHours(pendingHourMs, (local.tm_hour * 3600u + local.tm_min * 60u + local.tm_sec) * 1000u, ms);
   const uint64_t total =
       std::min<uint64_t>(static_cast<uint64_t>(activeBook.minutes) * 60000 + activeBook.remainderMs + ms,
                          static_cast<uint64_t>(UINT32_MAX) * 60000 + 59999);
@@ -541,6 +567,7 @@ bool ReadingStatsStore::fromJson(const JsonVariantConst doc) {
     return false;
   }
   bookEpoch = doc["bookEpoch"] | 0u;
+  pendingHourMs.fill(0);  // a loaded or reset file has its own totals
   habitLedger.clear();
   const auto h = doc["habits"];
   habitLedger.clockLost = h["clockLost"] | false;

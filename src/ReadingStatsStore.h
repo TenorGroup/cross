@@ -21,6 +21,8 @@ class ReadingStatsStore : public PersistableStore<ReadingStatsStore> {
   bool writableSchema = true;
   uint32_t bookEpoch = 0;
   uint32_t bookListGeneration = 0;
+  // Reading by hour of the local day since the last save; the card keeps the running totals.
+  mutable std::array<uint32_t, readinghistory::HOURS> pendingHourMs{};
   ReadingStatsStore() = default;
   ~ReadingStatsStore() = default;
 
