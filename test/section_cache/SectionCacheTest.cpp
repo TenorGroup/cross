@@ -702,6 +702,34 @@ TEST_F(SectionCacheTest, RejectsPartialCacheFromHeapDependentCssResolver) {
   Section reopened(epub, 0, renderer);
   EXPECT_FALSE(reopened.loadSectionFile(spec));
 }
+
+TEST_F(SectionCacheTest, CorruptCssPayloadDefersTheSectionUntilCacheRebuild) {
+  CssParser css(root.string());
+  const auto sourcePath = root / "style.css";
+  { std::ofstream file(sourcePath); file << "p { font-weight: bold; }"; }
+  HalFile source;
+  ASSERT_TRUE(Storage.openFileForRead("TST", sourcePath.string(), source));
+  ASSERT_EQ(css.loadFromStream(source), CssParser::ParseResult::Complete);
+  ASSERT_TRUE(css.saveToCache(true));
+  auto damaged = bytes(root / "css_rules.cache");
+  ASSERT_GT(damaged.size(), 6u);
+  damaged[6] = 'q';
+  { std::ofstream file(root / "css_rules.cache", std::ios::binary); file.write(damaged.data(), damaged.size()); }
+  css.clear();
+  ASSERT_EQ(css.inspectCache(), CssParser::CacheStatus::Complete);
+  epub->cssParser = &css;
+  spec.embeddedStyle = true;
+  Section section(epub, 1, renderer);
+  EXPECT_FALSE(section.startBuild(spec));
+  EXPECT_FALSE(css.hasCache());
+  EXPECT_FALSE(section.startBuild(spec));
+  EXPECT_FALSE(std::filesystem::exists(root / "sections/1.bin"));
+  ASSERT_TRUE(source.seek(0));
+  ASSERT_EQ(css.loadFromStream(source), CssParser::ParseResult::Complete);
+  ASSERT_TRUE(css.saveToCache(true));
+  EXPECT_TRUE(section.startBuild(spec));
+  epub->cssParser = nullptr;
+}
 TEST_F(SectionCacheTest, MiddlePageShortWriteFailsImmediatelyAndKeepsPreviousCache) {
   {
     Section section(epub, 0, renderer);

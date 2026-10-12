@@ -382,15 +382,26 @@ CssParser::ParseResult Epub::parseCssFiles(const CssParser::CacheStatus existing
 
   LOG_DBG("EBP", "CSS files to parse: %zu", cssFiles.size());
 
+#ifdef TENOR_PRESS_PROBE
+  const unsigned long cssStarted = millis();
+  size_t cssBytes = 0;
+  size_t cssReads = 0;
+  const auto logCssStage = [&](const CssParser::ParseResult result) {
+    LOG_INF("EBP", "CSS_STAGE files=%u rules=%u partial=%u bytes=%u reads=%u ms=%lu free=%u largest=%u",
+            static_cast<unsigned>(cssFiles.size()), static_cast<unsigned>(cssParser->ruleCount()),
+            static_cast<unsigned>(result == CssParser::ParseResult::Partial), static_cast<unsigned>(cssBytes),
+            static_cast<unsigned>(cssReads), millis() - cssStarted, static_cast<unsigned>(ESP.getFreeHeap()),
+            static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  };
+#else
+  const auto logCssStage = [](const CssParser::ParseResult) {};
+#endif
+
   const bool hasPartialCache = existingCacheStatus == CssParser::CacheStatus::Partial;
   cssParser->clear();
 
-  // Some converters emit one byte-identical stylesheet per chapter (100+ .css
-  // entries), and each parse costs a zip locate plus an SD extract round-trip.
-  // Match each normalized CSS path to its central-directory (CRC32,
-  // compressed size) without throwing container allocations, then parse only
-  // the first of each identical pair. If scratch allocation fails, parsing all
-  // stylesheets is slower but remains correct.
+  // Repeated manifest paths share one extraction only when name, CRC and size agree.
+  // If scratch allocation fails, parsing every stylesheet preserves the cascade.
   struct CssDedupEntry {
     uint64_t pathHash = 0;
     uint64_t contentKey = 0;
@@ -421,7 +432,6 @@ CssParser::ParseResult Epub::parseCssFiles(const CssParser::CacheStatus existing
            match++) {
         if (entryPath == cssFiles[match->cssIndex]) {
           match->contentKey = (static_cast<uint64_t>(crc32) << 32) | compressedSize;
-          break;
         }
       }
     });
@@ -441,7 +451,7 @@ CssParser::ParseResult Epub::parseCssFiles(const CssParser::CacheStatus existing
     if (dedupKey != 0) {
       const bool seen = std::any_of(
           dedupEntries.get(), dedupEntries.get() + cssIndex,
-          [dedupKey, &cssFiles, &cssPath](const CssDedupEntry& candidate) {
+          [dedupKey, this, &cssPath](const CssDedupEntry& candidate) {
             return candidate.contentKey == dedupKey && cssFiles[candidate.cssIndex] == cssPath;
           });
       if (seen) {
@@ -465,6 +475,9 @@ CssParser::ParseResult Epub::parseCssFiles(const CssParser::CacheStatus existing
     // Check CSS file size before decompressing - skip files that are too large
     size_t cssFileSize = 0;
     if (getItemSize(cssPath, &cssFileSize)) {
+#ifdef TENOR_PRESS_PROBE
+      cssBytes += cssFileSize;
+#endif
       if (cssFileSize > MAX_CSS_FILE_SIZE) {
         LOG_ERR("EBP", "CSS file too large (%zu bytes > %zu max), skipping: %s", cssFileSize, MAX_CSS_FILE_SIZE,
                 cssPath.c_str());
@@ -483,6 +496,9 @@ CssParser::ParseResult Epub::parseCssFiles(const CssParser::CacheStatus existing
       parseResult = CssParser::ParseResult::Error;
       continue;
     }
+#ifdef TENOR_PRESS_PROBE
+    ++cssReads;
+#endif
     if (!readItemContentsToStream(cssPath, tempCssFile, 1024)) {
       LOG_ERR("EBP", "Could not read CSS file: %s", cssPath.c_str());
       // Explicitly close() file before calling Storage.remove()
@@ -514,18 +530,21 @@ CssParser::ParseResult Epub::parseCssFiles(const CssParser::CacheStatus existing
 
   if (parseResult == CssParser::ParseResult::Error) {
     LOG_ERR("EBP", "CSS parse failed; preserving any previous cache for a later retry");
+    logCssStage(parseResult);
     cssParser->clear();
     return parseResult;
   }
 
   if (parseResult == CssParser::ParseResult::Partial && cssParser->empty()) {
     LOG_ERR("EBP", "CSS parsing stopped before any usable rules were loaded; cache will not be replaced");
+    logCssStage(parseResult);
     cssParser->clear();
     return CssParser::ParseResult::Error;
   }
 
   if (parseResult == CssParser::ParseResult::Partial && hasPartialCache) {
     LOG_DBG("EBP", "CSS retry remained partial; preserving the previous partial cache");
+    logCssStage(parseResult);
     cssParser->clear();
     return parseResult;
   }
@@ -534,6 +553,7 @@ CssParser::ParseResult Epub::parseCssFiles(const CssParser::CacheStatus existing
   // later EPUB load retries the source stylesheets when more heap is available.
   if (!cssParser->saveToCache(parseResult == CssParser::ParseResult::Complete)) {
     LOG_ERR("EBP", "Failed to save CSS rules to cache");
+    logCssStage(CssParser::ParseResult::Error);
     cssParser->clear();
     return CssParser::ParseResult::Error;
   }
@@ -541,6 +561,7 @@ CssParser::ParseResult Epub::parseCssFiles(const CssParser::CacheStatus existing
   LOG_DBG("EBP", "Loaded %zu CSS style rules from %zu files (%zu identical duplicates skipped, %s)",
           cssParser->ruleCount(), cssFiles.size(), skippedDuplicates,
           parseResult == CssParser::ParseResult::Complete ? "complete" : "partial");
+  logCssStage(parseResult);
   cssParser->clear();
   return parseResult;
 }
@@ -571,18 +592,9 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
     }
     if (!skipLoadingCss) {
       const CssParser::CacheStatus cacheStatus = cssParser->inspectCache();
-      CssParser::CacheLoadResult cacheLoadResult = CssParser::CacheLoadResult::Invalid;
-      if (cacheStatus == CssParser::CacheStatus::Complete) {
-        cacheLoadResult = cssParser->loadFromCache();
-      }
-
-      if (cacheLoadResult == CssParser::CacheLoadResult::LowMemory) {
-        LOG_ERR("EBP", "Insufficient heap to load CSS cache; keeping it for a later retry");
-      } else if (cacheLoadResult != CssParser::CacheLoadResult::Complete) {
+      if (cacheStatus != CssParser::CacheStatus::Complete) {
         LOG_DBG("EBP", "CSS cache missing, partial, or invalid; attempting to parse source stylesheets");
-        if (cacheStatus == CssParser::CacheStatus::Invalid ||
-            (cacheStatus == CssParser::CacheStatus::Complete &&
-             cacheLoadResult == CssParser::CacheLoadResult::Invalid)) {
+        if (cacheStatus == CssParser::CacheStatus::Invalid) {
           cssParser->deleteCache();
         }
 

@@ -371,6 +371,10 @@ bool Section::loadBuildCss(BuildContext* ctx) {
       if (cacheResult == CssParser::CacheLoadResult::Invalid) {
         LOG_ERR("SCT", "Failed to load CSS from cache free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
                 static_cast<unsigned>(ESP.getMaxAllocHeap()));
+        if (ctx->cssParser->hasCache() || ctx->cssParser->cacheNeedsRebuild()) {
+          ctx->cssParser->deleteCache();
+          return false;
+        }
       }
     }
   } else {

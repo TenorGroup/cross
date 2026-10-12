@@ -111,8 +111,9 @@ class CssParser {
    * Check if CSS rules cache file exists
    */
   bool hasCache() const;
+  bool cacheNeedsRebuild() const { return cacheNeedsRebuild_; }
 
-  /** Read the cache header without hydrating its rule map. */
+  /** Check header integrity and file size; hydrate verifies the payload checksum. */
   CacheStatus inspectCache() const;
 
   /**
@@ -166,6 +167,7 @@ class CssParser {
   uint16_t styleCount_ = 0;
   uint16_t styleCapacity_ = 0;
   bool ruleGrowthStopped_ = false;
+  mutable bool cacheNeedsRebuild_ = false;
 
   std::string cachePath;
 
@@ -179,9 +181,8 @@ class CssParser {
                                           std::string_view p2 = {}) const;
   [[nodiscard]] std::string_view selectorAt(size_t index) const;
   RuleInsertResult insertOrMerge(std::string_view selector, const CssStyle& style);
-  PoolResult ensureEntryCapacity(size_t needed);
-  PoolResult ensureSelectorPoolCapacity(size_t needed);
-  PoolResult ensureStyleCapacity(size_t needed);
+  PoolResult ensureCapacity(size_t entries, size_t selectors, size_t styles);
+  int existingStyleIndex(const CssStyle& style) const;
   PoolResult internStyle(const CssStyle& style, uint16_t& indexOut);
   static CssStyle parseDeclarations(std::string_view declBlock);
   static void parseDeclarationIntoStyle(std::string_view decl, CssStyle& style);
