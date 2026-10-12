@@ -127,6 +127,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["readerStatusLeft"] = status.slots[0];
   doc["readerStatusCenter"] = status.slots[1];
   doc["readerStatusRight"] = status.slots[2];
+  doc["readerStatusVersion"] = 1;
 
   // Front button remap - managed by RemapFrontButtons sub-activity, not in SettingsList.
   doc["frontButtonBack"] = frontButtonBack;
@@ -309,6 +310,14 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   readerStatusLeft = statusValue("readerStatusLeft", STATUS_SLOT_CHAPTER_NAME, STATUS_SLOT_NONE);
   readerStatusCenter = statusValue("readerStatusCenter", STATUS_SLOT_COUNT, STATUS_SLOT_NONE);
   readerStatusRight = statusValue("readerStatusRight", STATUS_SLOT_CHAPTER_NAME, STATUS_SLOT_NONE);
+  // Version 1: a centre of chapter pages was what was left once the custom bar dropped the book
+  // percent, so it gets both once, unless a corner already shows the percent.
+  if ((doc["readerStatusVersion"] | uint8_t{0}) < 1) {
+    if (readerStatusSlotsEnabled && readerStatusCenter == STATUS_SLOT_CHAPTER_PAGES &&
+        readerStatusLeft != STATUS_SLOT_BOOK_PERCENT && readerStatusRight != STATUS_SLOT_BOOK_PERCENT)
+      readerStatusCenter = STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS;
+    needsResave = true;
+  }
   statusBarItemsMode = doc["statusBarItemsMode"] | uint8_t{0xFF};
   if (statusBarItemsMode != readerStatusBarMode) {
     adoptReaderStatusItems();
