@@ -32,6 +32,7 @@ enum class Result {
   ERASE_FAIL,
   WRITE_FAIL,
   OTADATA_FAIL,
+  NO_CABLE,  // the image would take away the cable flash channel (board_tag::dropsCable)
 };
 
 // Progress callback: called after every chunk write. `written`/`total` are bytes.

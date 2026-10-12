@@ -116,7 +116,8 @@ int main(int argc, char** argv) {
     } else if (install == OtaUpdater::OK) {
       require(otaCalls.begin == 1 && otaCalls.end == 1 && otaCalls.abort == 0 && otaCalls.written == image.size(),
               "successful image did not write and close exactly once");
-    } else if (install == OtaUpdater::WRONG_DEVICE_ERROR || install == OtaUpdater::INTEGRITY_ERROR) {
+    } else if (install == OtaUpdater::WRONG_DEVICE_ERROR || install == OtaUpdater::INTEGRITY_ERROR ||
+               install == OtaUpdater::NO_CABLE_ERROR) {
       require(otaCalls.abort == 1 && otaCalls.end == 0, "an invalid image reached esp_ota_end");
     }
     std::cout << "PASS check=" << check << " install=" << install << " begin=" << otaCalls.begin

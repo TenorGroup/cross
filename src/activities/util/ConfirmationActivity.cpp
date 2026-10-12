@@ -22,6 +22,7 @@ ConfirmationActivity::ConfirmationActivity(GfxRenderer& renderer, MappedInputMan
 void ConfirmationActivity::onEnter() {
   Activity::onEnter();
   if (shell::isUgly()) ugly::ensureFonts(renderer);
+  shownAt = millis();
 
   requestUpdate(true);
 }
@@ -178,6 +179,10 @@ void ConfirmationActivity::render(RenderLock&& lock) {
 }
 
 void ConfirmationActivity::loop() {
+  if (confirmationExpired(content.timeoutMs, shownAt, millis())) {
+    complete(true);
+    return;
+  }
   if (shell::isUgly()) {
     using B = MappedInputManager::Button;
     if (tenorchrome::kTouchShell) {

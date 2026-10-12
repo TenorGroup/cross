@@ -4,6 +4,9 @@
 #include <string>
 
 #include "activities/Activity.h"
+#if TENOR_CABLE_FLASH
+#include "platform/CableFlash.h"
+#endif
 
 /**
  * SD-card based firmware update activity.
@@ -23,7 +26,7 @@ class SdFirmwareUpdateActivity : public Activity {
 
  public:
   tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::System; }
-  std::string x3NavigationLabel() const override { return I18N.get(recoveryMode ? StrId::STR_RECOVERY_MODE : StrId::STR_SD_FIRMWARE_UPDATE); }
+  std::string x3NavigationLabel() const override { return I18N.get(title()); }
   enum class State {
     PICKING,
     VALIDATING,
@@ -35,6 +38,13 @@ class SdFirmwareUpdateActivity : public Activity {
 
   explicit SdFirmwareUpdateActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool recoveryMode = false)
       : Activity("SdFirmwareUpdate", renderer, mappedInput), recoveryMode(recoveryMode) {}
+#if TENOR_CABLE_FLASH
+  // The image comes over the cable (platform/CableFlashLink.h) instead of from the card. The user is
+  // asked first, unless the recovery keys were held at power on (`consented`).
+  SdFirmwareUpdateActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const cableflash::Begin& begin,
+                           bool consented)
+      : Activity("SdFirmwareUpdate", renderer, mappedInput), cable(true), cableStart(consented), cableBegin(begin) {}
+#endif
 
   void onEnter() override;
   void onExit() override;
@@ -60,4 +70,13 @@ class SdFirmwareUpdateActivity : public Activity {
   void promptConfirmation();
   void onConfirmationResult(const ActivityResult& result);
   void performUpdate();
+  StrId title() const;
+#if TENOR_CABLE_FLASH
+  bool cable = false;
+  bool cableStart = false;  // the session starts on the next loop pass
+  cableflash::Begin cableBegin;
+  void performCableUpdate();
+#else
+  static constexpr bool cable = false;
+#endif
 };

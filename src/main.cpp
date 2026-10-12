@@ -95,6 +95,9 @@
 #include "UIFontTiers.h"
 #include "ReaderInkWeight.h"
 #include "platform/BootTrial.h"
+#if TENOR_CABLE_FLASH
+#include "platform/CableFlashLink.h"
+#endif
 #include "platform/ColdLog.h"
 #include "platform/PutFile.h"
 #include "platform/FirmwareProbe.h"
@@ -644,6 +647,8 @@ void setup() {
 #endif
 #ifdef TENOR_PRESS_PROBE
   logSerial.setRxBufferSize(8192);  // CMD:PUT: a 4096 byte window must fit while the card is written
+#elif TENOR_CABLE_FLASH && !defined(SIMULATOR)
+  logSerial.setRxBufferSize(2048);  // a whole cable flash frame (1,048 B) waits while the slot is written
 #endif
   Serial.begin(115200);
 #if LOG_SERIAL_HAS_TX_TIMEOUT
@@ -730,6 +735,10 @@ void setup() {
                                                                                      : MappedInputManager::Button::Up;
   const bool recoveryFirmwareMode = wakeupReason == HalGPIO::WakeupReason::PowerButton && !BoardConfig::isPaperMono() &&
                                     gpio.isPressed(HalGPIO::BTN_POWER) && mappedInputManager.isPressed(recoveryButton);
+#if TENOR_CABLE_FLASH
+  // The keys held at power on are the yes for the first cable update, card or no card.
+  if (recoveryFirmwareMode) cableflash::grantRecoveryConsent();
+#endif
 
   halTiltSensor.begin();
   halClock.begin();
@@ -2188,6 +2197,14 @@ void loop() {
 #endif
       }
     }
+#if TENOR_CABLE_FLASH
+    else if (line.startsWith("TCF1 ")) {
+      // The cable flash channel of the release (platform/CableFlash.h), apart from the probe's commands.
+      line.trim();
+      powerManager.setPowerSaving(false);
+      cableflash::onLine(line.c_str(), renderer, mappedInputManager);
+    }
+#endif
   }
 
   // Hai dong ho, khong phai mot. `lastActivityTime` chi do NGUOI dung cham vao may,

@@ -68,6 +68,18 @@ TEST(ConfirmationProductionContract, ActivityMapsEveryTerminalDecisionToIsCancel
   EXPECT_NE(source.find("selectedIndex = 1 - selectedIndex;"), std::string::npos);
 }
 
+TEST(ConfirmationProductionContract, ATimedQuestionIsCancelledFromTheLoop) {
+  // The cable update asks for 60 s (SdFirmwareUpdateActivity): the loop cancels a question that stood too long,
+  // in both shells, before it reads any input.
+  const auto source = normalizeWhitespace(readSource("src/activities/util/ConfirmationActivity.cpp"));
+  EXPECT_NE(source.find("void ConfirmationActivity::loop() { if (confirmationExpired(content.timeoutMs, shownAt, "
+                        "millis())) { complete(true); return; }"),
+            std::string::npos);
+  EXPECT_NE(source.find("shownAt = millis();"), std::string::npos);
+  EXPECT_NE(readSource("src/activities/settings/SdFirmwareUpdateActivity.cpp").find("content.timeoutMs = cableflash::kConsentMs;"),
+            std::string::npos);
+}
+
 TEST(ConfirmationProductionContract, AllFiveCrossCallersProvideTheirOwnedContent) {
   constexpr std::array<const char*, 4> callers{
       "src/activities/home/FileActions.cpp",  // the file browser and Home's File card ask through it

@@ -19,12 +19,18 @@
 #include "shells/ugly/UglyInk.h"
 #include "shells/ugly/UglyWords.h"
 #include "network/FirmwareFlasher.h"
+#if TENOR_CABLE_FLASH
+#include "platform/CableFlashLink.h"
+#endif
 
 void SdFirmwareUpdateActivity::onEnter() {
   runtimeStarted = false;
   // Stop BLE before entering the picker and before any validation/flash path.
   if (!filetransfer::acquire()) {
     LOG_ERR("FW", "BLE teardown incomplete; leaving SD firmware update");
+#if TENOR_CABLE_FLASH
+    if (cable) cableflash::say("TCF1 FAIL busy");
+#endif
     finish();
     return;
   }
@@ -33,7 +39,20 @@ void SdFirmwareUpdateActivity::onEnter() {
   // Build-identity marker - confirms which firmware build owns the SD update flow.
   LOG_INF("FW", "SdFirmwareUpdateActivity build=%s %s recovery=%d", __DATE__, __TIME__, recoveryMode ? 1 : 0);
   state = State::PICKING;
+#if TENOR_CABLE_FLASH
+  if (cable) {
+    if (!cableStart) promptConfirmation();
+    return;
+  }
+#endif
   launchPicker();
+}
+
+StrId SdFirmwareUpdateActivity::title() const {
+#if TENOR_CABLE_FLASH
+  if (cable) return StrId::STR_CABLE_UPDATE;
+#endif
+  return recoveryMode ? StrId::STR_RECOVERY_MODE : StrId::STR_SD_FIRMWARE_UPDATE;
 }
 
 void SdFirmwareUpdateActivity::onExit() {
@@ -126,6 +145,8 @@ bool SdFirmwareUpdateActivity::validateFirmware() {
       errorMessage = tr(STR_FIRMWARE_TOO_SMALL);
     } else if (vr == firmware_flash::Result::BAD_CHIP || vr == firmware_flash::Result::WRONG_BOARD) {
       errorMessage = tr(STR_FIRMWARE_WRONG_DEVICE);
+    } else if (vr == firmware_flash::Result::NO_CABLE) {
+      errorMessage = tr(STR_FIRMWARE_NO_CABLE);
     } else {
       errorMessage = tr(STR_INVALID_FIRMWARE);
     }
@@ -139,22 +160,50 @@ void SdFirmwareUpdateActivity::promptConfirmation() {
     RenderLock lock(*this);
     state = State::CONFIRMING;
   }
-  // Show "Update firmware?" with the file path as the body line.
-  std::string heading = tr(STR_FIRMWARE_UPDATE_PROMPT);
+  // Show "Update firmware?" with the file path as the body line; over the cable, the version the
+  // computer offers (the session checks the image says the same).
+  std::string heading = cable ? tr(STR_CABLE_UPDATE_PROMPT) : tr(STR_FIRMWARE_UPDATE_PROMPT);
   // Use the basename only to keep the body short.
   std::string body = firmwarePath;
   const auto pos = body.find_last_of('/');
   if (pos != std::string::npos) body = body.substr(pos + 1);
+#if TENOR_CABLE_FLASH
+  if (cable) body = cableBegin.version;
+#endif
 
+  auto content = ConfirmationContent{heading, body, tr(STR_ALERT_FIRMWARE_ACTION_SHORT),
+                                     tr(STR_ALERT_FIRMWARE_ACTION_LONG), "", false};
+#if TENOR_CABLE_FLASH
+  if (cable) {
+    content.timeoutMs = cableflash::kConsentMs;
+    content.touchMessage = heading + " " + body;  // the touch sheet shows one message: say who asks
+  }
+#endif
   startActivityForResult(
-      std::make_unique<ConfirmationActivity>(
-          renderer, mappedInput, heading, body,
-          ConfirmationContent{tr(STR_FIRMWARE_UPDATE_PROMPT), body, tr(STR_ALERT_FIRMWARE_ACTION_SHORT),
-                              tr(STR_ALERT_FIRMWARE_ACTION_LONG), "", false}),
+      std::make_unique<ConfirmationActivity>(renderer, mappedInput, heading, body, std::move(content)),
       [this](const ActivityResult& result) { onConfirmationResult(result); });
 }
 
 void SdFirmwareUpdateActivity::onConfirmationResult(const ActivityResult& result) {
+#if TENOR_CABLE_FLASH
+  if (cable && result.isCancelled) {
+    cableflash::say("TCF1 FAIL denied");  // No, or nobody answered within the minute
+    finish();
+    return;
+  }
+  if (cable) {
+    {
+      RenderLock lock(*this);
+      state = State::UPDATING;
+      writtenBytes = 0;
+      firmwareSize = cableBegin.size;
+      lastRenderedPercent = 101;
+    }
+    requestUpdateAndWait();
+    performCableUpdate();
+    return;
+  }
+#endif
   if (result.isCancelled) {
     if (recoveryMode) {
       // Go back to the picker rather than exiting recovery.
@@ -199,7 +248,8 @@ void SdFirmwareUpdateActivity::performUpdate() {
     // was swapped).
     errorMessage = result == firmware_flash::Result::BAD_CHIP || result == firmware_flash::Result::WRONG_BOARD
                        ? tr(STR_FIRMWARE_WRONG_DEVICE)
-                       : tr(STR_FIRMWARE_WRITE_FAILED);
+                   : result == firmware_flash::Result::NO_CABLE ? tr(STR_FIRMWARE_NO_CABLE)
+                                                                : tr(STR_FIRMWARE_WRITE_FAILED);
     RenderLock lock(*this);
     state = State::FAILED;
     requestUpdate();
@@ -216,7 +266,78 @@ void SdFirmwareUpdateActivity::performUpdate() {
   ESP.restart();
 }
 
+#if TENOR_CABLE_FLASH && defined(SIMULATOR)
+namespace {
+// The simulator has no cable. CROSSPOINT_SIM_CABLE="<percent>:<result>" plays a session that reaches
+// <percent> and ends with <result> (a cableflash::reason name), or stays there with "hold".
+bool simulatorCableResult(void (*progress)(size_t, size_t, void*), void* ctx, size_t total,
+                          cableflash::Result& result) {
+  const char* spec = std::getenv("CROSSPOINT_SIM_CABLE");
+  unsigned percent = 0;
+  char name[24] = "silence";
+  if (spec) std::sscanf(spec, "%u:%23s", &percent, name);
+  progress(total * percent / 100, total, ctx);
+  result = cableflash::Result::Silence;
+  for (int r = 0; r <= static_cast<int>(cableflash::Result::BadSha); ++r) {
+    if (std::strcmp(cableflash::reason(static_cast<cableflash::Result>(r)), name) == 0)
+      result = static_cast<cableflash::Result>(r);
+  }
+  return std::strcmp(name, "hold") != 0;
+}
+}  // namespace
+#endif
+
+#if TENOR_CABLE_FLASH
+void SdFirmwareUpdateActivity::performCableUpdate() {
+  LOG_INF("FW", "Cable update: %s (%lu bytes)", cableBegin.version, static_cast<unsigned long>(cableBegin.size));
+  auto progressCb = +[](size_t written, size_t total, void* ctx) {
+    auto* self = static_cast<SdFirmwareUpdateActivity*>(ctx);
+    const bool newPercent = written * 100 / total != self->writtenBytes * 100 / total;
+    self->writtenBytes = written;
+    self->firmwareSize = total;
+    // Only a new percent wakes the render task: the frames come 1 KB at a time.
+    if (newPercent) self->requestUpdate(true);
+  };
+#ifdef SIMULATOR
+  cableflash::Result result;
+  if (!simulatorCableResult(progressCb, this, cableBegin.size, result)) return;
+#else
+  const auto result = cableflash::run(cableBegin, progressCb, this);
+#endif
+  using R = cableflash::Result;
+  if (result != R::Ok) {
+    LOG_ERR("FW", "cable update failed: %s", cableflash::reason(result));
+    errorMessage = result == R::WrongChip || result == R::WrongBoard                ? tr(STR_FIRMWARE_WRONG_DEVICE)
+                   : result == R::NoCable                                            ? tr(STR_FIRMWARE_NO_CABLE)
+                   : result == R::TooLarge                                           ? tr(STR_FIRMWARE_TOO_LARGE)
+                   : result == R::Silence || result == R::Aborted || result == R::Noise ? tr(STR_CABLE_LOST)
+                   : result == R::FlashFailed                                        ? tr(STR_FIRMWARE_WRITE_FAILED)
+                                                                                     : tr(STR_INVALID_FIRMWARE);
+    RenderLock lock(*this);
+    state = State::FAILED;
+    requestUpdate();
+    return;
+  }
+  LOG_INF("FW", "Cable update complete, restarting");
+  {
+    RenderLock lock(*this);
+    state = State::SUCCESS;
+  }
+  requestUpdateAndWait();
+  delay(1500);
+  ESP.restart();
+}
+#endif
+
 void SdFirmwareUpdateActivity::loop() {
+#if TENOR_CABLE_FLASH
+  if (cableStart) {
+    // The recovery keys were the yes: straight to the session.
+    cableStart = false;
+    onConfirmationResult(ActivityResult{});
+    return;
+  }
+#endif
   if (tenorchrome::x3ScreenLayoutEnabled() &&
       x3Info.turn(mappedInput.wasReleased(MappedInputManager::Button::Up) ? -1 :
                   mappedInput.wasReleased(MappedInputManager::Button::Down) ? 1 : 0)) {
@@ -283,7 +404,7 @@ void SdFirmwareUpdateActivity::render(RenderLock&&) {
 
   renderer.clearScreen();
 
-  const char* headerText = recoveryMode ? tr(STR_RECOVERY_MODE) : tr(STR_SD_FIRMWARE_UPDATE);
+  const char* headerText = I18N.get(title());
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, headerText);
 
   const auto lineHeight = renderer.getLineHeight(UI_10_FONT_ID);

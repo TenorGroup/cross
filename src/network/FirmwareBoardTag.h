@@ -14,6 +14,15 @@
 // exactly one occurrence. Images without a tag (other projects, forks, older
 // releases) are allowed: the guard only rejects a tag naming a DIFFERENT
 // board.
+//
+// A board built with TENOR_CABLE_FLASH (the X4 Pro, whose USB download mode is
+// fused off) can only be reflashed over the cable by firmware that carries the
+// cable channel. Its tag then ends in "TENOR-CABLE-V1:1;", and an image whose
+// own tag lacks that field is refused on every way in (dropsCable below).
+
+#ifndef TENOR_CABLE_FLASH
+#define TENOR_CABLE_FLASH 0
+#endif
 
 namespace board_tag {
 
@@ -37,6 +46,13 @@ class Scanner {
   bool matched() const { return matchingTagFound && !mismatchFound; }
   // Board name from the offending tag, for logging (empty until mismatch()).
   const char* foundName() const { return mismatchFound ? captured : ""; }
+#if TENOR_CABLE_FLASH
+  // The fields that follow the matching board tag, up to its end: they are the image's own, any
+  // copy of the same words elsewhere in the image does not count.
+  bool cable() const;
+  // True when those fields name exactly this product version.
+  bool versionIs(const char* version) const;
+#endif
 
  private:
   static constexpr size_t MAX_NAME = 23;
@@ -46,6 +62,22 @@ class Scanner {
   bool capturing = false;
   bool mismatchFound = false;
   bool matchingTagFound = false;
+#if TENOR_CABLE_FLASH
+  static constexpr size_t MAX_TAIL = 95;
+  char tail[MAX_TAIL + 1] = {0};
+  size_t tailLen = 0;
+  bool tailOpen = false;
+  bool hasField(const char* field, size_t len) const;
+#endif
 };
+
+// THE rule every update path asks before an image may become the boot image: on a board that
+// keeps the cable channel, an image without it (an older release, another project) would leave
+// the device with no way to be flashed over the cable again, so it is refused.
+#if TENOR_CABLE_FLASH
+inline bool dropsCable(const Scanner& image) { return !image.matched() || !image.cable(); }
+#else
+inline bool dropsCable(const Scanner&) { return false; }
+#endif
 
 }  // namespace board_tag

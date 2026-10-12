@@ -16,6 +16,10 @@ ota = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ota)
 
 
+# The X4 Pro tag carries the cable flash channel, as every X4 Pro build does (TENOR_CABLE_FLASH).
+X4PRO_TAG = b'CROSSPOINT-BOARD-V1:x4pro;TENOR-CABLE-V1:1;'
+
+
 def image(version='0.1.0', chip=5, tag=b'CROSSPOINT-BOARD-V1:x4;', digest=True, sdk_version='1.6.0-19-gc33a8b0', product_tag=True):
     header = bytearray(24)
     header[0:2] = bytes([0xE9, 1])
@@ -70,7 +74,7 @@ class PackageTest(unittest.TestCase):
         self.assertTrue(result['assets'][0]['browser_download_url'].endswith('/v1.0.0/tenor-cross-v1.0.0-x3-x4.bin'))
 
     def test_reject_wrong_chip_board_and_release(self):
-        for data in (image(chip=9), image(tag=b'CROSSPOINT-BOARD-V1:x4pro;'),
+        for data in (image(chip=9), image(tag=X4PRO_TAG),
                      image(version='0.1.0-rc'), image(version='01.0.0'),
                      image(version='100000.0.0')):
             with self.subTest(data=data[:80]):
@@ -107,7 +111,7 @@ class PackageTest(unittest.TestCase):
 
     def test_pair_has_matching_board_digest_size_and_staging_only(self):
         c3 = image(version='v1.0.54')
-        s3 = image(version='v1.0.54', chip=9, tag=b'CROSSPOINT-BOARD-V1:x4pro;')
+        s3 = image(version='v1.0.54', chip=9, tag=X4PRO_TAG)
         result = self.pack_pair(c3, s3)
         self.assertEqual(result, self.pack_pair(c3, s3))
         self.assertEqual(result['tag_name'], 'v1.0.54')
@@ -125,12 +129,12 @@ class PackageTest(unittest.TestCase):
         self.assertFalse((self.root / 'out/firmware/stable.json').exists())
 
     def test_pair_preflight_rejects_bad_second_image_without_output(self):
-        good = image(version='v1.0.54', chip=9, tag=b'CROSSPOINT-BOARD-V1:x4pro;')
+        good = image(version='v1.0.54', chip=9, tag=X4PRO_TAG)
         corrupt = good.copy()
         corrupt[300] ^= 1
         for bad in (image(version='v1.0.54'), image(version='v1.0.54', chip=9),
-                    image(version='v1.0.53', chip=9, tag=b'CROSSPOINT-BOARD-V1:x4pro;'),
-                    image(version='v1.0.54-rc.1', chip=9, tag=b'CROSSPOINT-BOARD-V1:x4pro;'),
+                    image(version='v1.0.53', chip=9, tag=X4PRO_TAG),
+                    image(version='v1.0.54-rc.1', chip=9, tag=X4PRO_TAG),
                     good[:-1], good + bytes(0x640000), corrupt):
             with self.subTest(sha=hashlib.sha256(bad).hexdigest()):
                 with self.assertRaises(ValueError):
@@ -138,10 +142,23 @@ class PackageTest(unittest.TestCase):
                 self.assertFalse((self.root / 'out').exists())
 
     def test_pair_rejects_s3_in_combined_position(self):
-        s3 = image(version='v1.0.54', chip=9, tag=b'CROSSPOINT-BOARD-V1:x4pro;')
+        s3 = image(version='v1.0.54', chip=9, tag=X4PRO_TAG)
         with self.assertRaises(ValueError):
             self.pack_pair(s3, s3)
         self.assertFalse((self.root / 'out').exists())
+
+    def test_x4pro_without_cable_channel_is_not_packaged(self):
+        # A release X4 Pro image must keep the cable flash channel in its own tag; the same words
+        # anywhere else in the image do not count.
+        for tag in (b'CROSSPOINT-BOARD-V1:x4pro;',
+                    b'CROSSPOINT-BOARD-V1:x4pro;TENOR-CABLE-V1:0;',
+                    b'CROSSPOINT-BOARD-V1:x4pro;TENOR-CABLE-V1:1',
+                    b'CROSSPOINT-BOARD-V1:x4pro;\0TENOR-CABLE-V1:1;'):
+            with self.subTest(tag=tag):
+                with self.assertRaises(ValueError):
+                    self.pack_pair(image(version='v1.0.54'), image(version='v1.0.54', chip=9, tag=tag))
+                self.assertFalse((self.root / 'out').exists())
+        self.assertTrue(ota.keeps_cable(image(version='v1.0.54', chip=9, tag=X4PRO_TAG), 'x4pro'))
 
     def test_board_identity_is_unique_and_unmixed(self):
         for index, tag in enumerate((b'CROSSPOINT-BOARD-V1:x4;CROSSPOINT-BOARD-V1:x4pro;',
@@ -153,12 +170,12 @@ class PackageTest(unittest.TestCase):
 
     def test_second_conflict_preserves_all_preexisting_bytes(self):
         c3 = image(version='v1.0.54')
-        s3 = image(version='v1.0.54', chip=9, tag=b'CROSSPOINT-BOARD-V1:x4pro;')
+        s3 = image(version='v1.0.54', chip=9, tag=X4PRO_TAG)
         self.pack_pair(c3, s3)
         folder = self.root / 'out'
         before = {p.relative_to(folder): p.read_bytes() for p in folder.rglob('*') if p.is_file()}
         with self.assertRaises(ValueError):
-            self.pack_pair(c3, image(version='v1.0.54', chip=9, tag=b'CROSSPOINT-BOARD-V1:x4pro;', digest=False))
+            self.pack_pair(c3, image(version='v1.0.54', chip=9, tag=X4PRO_TAG, digest=False))
         after = {p.relative_to(folder): p.read_bytes() for p in folder.rglob('*') if p.is_file()}
         self.assertEqual(before, after)
 
@@ -175,7 +192,7 @@ class PackageTest(unittest.TestCase):
     def test_cli_accepts_optional_x4pro_binary(self):
         self.binary.write_bytes(image(version='v1.0.54'))
         second = self.root / 's3.bin'
-        second.write_bytes(image(version='v1.0.54', chip=9, tag=b'CROSSPOINT-BOARD-V1:x4pro;'))
+        second.write_bytes(image(version='v1.0.54', chip=9, tag=X4PRO_TAG))
         subprocess.run([sys.executable, str(REPO / 'scripts/package_tenor_ota.py'),
                         str(self.binary), str(self.root / 'out'), '--x4pro-binary', str(second)],
                        check=True, capture_output=True, text=True)

@@ -1,5 +1,6 @@
 #pragma once
 #include <atomic>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -11,6 +12,7 @@
 struct ConfirmationContent {
   std::string question, message, shortAction, longAction, touchMessage;
   bool destructive = false;
+  uint32_t timeoutMs = 0;  // a question nobody answers in this time is cancelled (0: it waits)
 };
 
 class ConfirmationActivity : public Activity {
@@ -23,6 +25,7 @@ class ConfirmationActivity : public Activity {
   ConfirmationLayout layout{};
   std::vector<std::string> questionLines, messageLines;
   int selectedIndex = 1;
+  uint32_t shownAt = 0;
   std::atomic<bool> laidOut{false};
   void complete(bool cancelled);
   void layoutCross();
