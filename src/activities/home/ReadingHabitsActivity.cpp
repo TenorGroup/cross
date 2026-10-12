@@ -206,14 +206,18 @@ void ReadingHabitsActivity::drawFooter() {
 }
 
 void ReadingHabitsActivity::loop() {
-  if (tenorchrome::x3ScreenLayoutEnabled() && x3Info.turn(
-      mappedInput.wasReleased(MappedInputManager::Button::Left) ? -1 :
-      mappedInput.wasReleased(MappedInputManager::Button::Right) ? 1 : 0)) {
-    requestUpdate();
-    return;
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    using Button = MappedInputManager::Button;
+    const int direction = mappedInput.wasReleased(Button::Left) ? -1 : mappedInput.wasReleased(Button::Right) ? 1 : 0;
+    // Left/Right read through the explanation's pages, then go on to the habit before or after: a long
+    // explanation never holds the cursor on one habit.
+    const int next = x3Info.page + direction;
+    if (direction && next >= 0 && next < x3Info.pages) {
+      x3Info.page = next;
+      requestUpdate();
+      return;
+    }
+    if (direction || mappedInput.wasReleased(Button::Up) || mappedInput.wasReleased(Button::Down)) x3Info.page = 0;
   }
-  if (tenorchrome::x3ScreenLayoutEnabled() &&
-      (mappedInput.wasReleased(MappedInputManager::Button::Up) || mappedInput.wasReleased(MappedInputManager::Button::Down)))
-    x3Info.page = 0;
   UiListActivity::loop();
 }
