@@ -192,4 +192,5 @@ class UiTabListActivity : public UiListActivity {
 
   int touchedRow = -1;
   static void tabActionTrampoline(const freeink::ui::ActionEvent& event, void* user);
+  void showTabOrderMenu(int id);
 };

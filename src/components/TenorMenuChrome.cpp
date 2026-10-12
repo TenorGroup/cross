@@ -291,7 +291,7 @@ constexpr const char* BACK_ONLY_BAR[] = {"KeyboardEntry", "EpubReaderMenu", "Txt
                                          "BmpViewer", "ChapterNumberEntry", "Confirmation", "Crash",
                                          "DictionaryWordSelect", "EpubReaderPercentSelection", "FrontlightPanel",
                                          "OtaUpdate", "QuoteSelect", "SdFirmwareUpdate", "SleepTimeoutInterval",
-                                         "UglySwitch", "UsbDrive"};
+                                         "UglySwitch", "UsbDrive", "ListOrder"};
 // Zone roots that draw their own cards at the foot.
 constexpr const char* TABS_BAR[] = {"Home"};
 
@@ -306,6 +306,30 @@ bool named(const char* const (&names)[N], const char* activityName) {
 // name from the one before it.
 char noted[96] = {};
 uint32_t notedGeneration = UINT32_MAX;
+// The screen's own bar actions (noteFootActions) and where the last bar drew them.
+char footActions[tenorchrome::FOOT_ACTIONS][48] = {};
+uint32_t footActionsGeneration = UINT32_MAX;
+struct FootActionRect { int x = 0, y = 0, width = 0, height = 0; };
+FootActionRect footActionRects[tenorchrome::FOOT_ACTIONS];
+// The screen's own action pills (noteFootActions), laid from `right` leftwards and kept right of `left`; returns
+// where the leftmost one starts (`right` when there are none).
+int drawFootActions(const GfxRenderer& r, const int left, int right, const int y, const int size) {
+  for (auto& rect : footActionRects) rect = {};
+  if (footActionsGeneration != activityManager.activityGeneration()) return right;
+  constexpr int ACTION_PAD = 20, font = UI_12_FONT_ID;
+  for (int i = tenorchrome::FOOT_ACTIONS - 1; i >= 0; --i) {
+    if (!footActions[i][0]) continue;
+    const auto pill = tenorchrome::layoutPathPill(r, font, footActions[i], right - left, ACTION_PAD, ACTION_PAD);
+    if (pill.width <= 0) break;
+    right -= pill.width;
+    r.fillRoundedRect(right, y, pill.width, size, size / 2, Color::White);
+    tenorchrome::drawPillRing(r, right, y, pill.width, size, 2, true);
+    tenorchrome::drawPillLabel(r, font, pill.text.c_str(), right, y, pill.width, size);
+    footActionRects[i] = {right, y, pill.width, size};
+    right -= tenorchrome::FOOT_PILL_GAP;
+  }
+  return right;
+}
 uint32_t handDrawnGeneration = UINT32_MAX;
 ugly::MarkState backMark;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
@@ -466,6 +490,27 @@ void tenorchrome::noteScreenTitle(const char* title) {
   notedGeneration = activityManager.activityGeneration();
 }
 
+void tenorchrome::noteFootActions(const char* first, const char* second) {
+  snprintf(footActions[0], sizeof(footActions[0]), "%s", first ? first : "");
+  snprintf(footActions[1], sizeof(footActions[1]), "%s", second ? second : "");
+  footActionsGeneration = activityManager.activityGeneration();
+}
+
+int tenorchrome::footActionAt(const int x, const int y) {
+  if (footActionsGeneration != activityManager.activityGeneration()) return -1;
+  for (int i = 0; i < FOOT_ACTIONS; ++i) {
+    const auto& r = footActionRects[i];
+    if (r.width > 0 && x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height) return i;
+  }
+  return -1;
+}
+
+tenorchrome::TouchBarRect tenorchrome::footActionRect(const int index) {
+  if (index < 0 || index >= FOOT_ACTIONS || footActionsGeneration != activityManager.activityGeneration()) return {};
+  const auto& r = footActionRects[index];
+  return {r.x, r.y, r.width, r.height};
+}
+
 void tenorchrome::noteHandDrawn() { handDrawnGeneration = activityManager.activityGeneration(); }
 
 const char* tenorchrome::screenTitle() {
@@ -570,6 +615,8 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
     }
   }
 #endif
+  // The screen's own actions, from the bar's right end leftwards; the name pill keeps what is left of them.
+  const int right = drawFootActions(r, pen ? rect.x + rect.width : x + SIZE + FOOT_PILL_GAP, rect.x + rect.width, y, SIZE);
   // Paper with a foot of its own keeps that foot: no zone icon, no name.
   if (bar == FootBar::BackOnly || pen) return;
   // The zone's icon, alone in its ring: a tap leads to the zone's root.
@@ -583,7 +630,7 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
   if (!*title) return;
   constexpr int PAD_LEFT = 18, PAD_RIGHT = 22, font = UI_12_FONT_ID;
   x += SIZE + FOOT_PILL_GAP;
-  const int room = rect.x + rect.width - x;
+  const int room = right - x;
   const std::string name = std::strchr(title, '/') ? title
       : r.truncatedText(font, title, std::max(0, room - PAD_LEFT - PAD_RIGHT), EpdFontFamily::REGULAR);
   drawPathPill(r, font, name.c_str(), x, y, room, SIZE, PAD_LEFT, PAD_RIGHT, true);

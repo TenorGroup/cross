@@ -89,6 +89,15 @@ void noteStatus(const char* text);
 // True when the "B" of a remote linking should blink now: the caller repaints the screen (one refresh).
 bool bluetoothBlinkDue();
 void drawFootBar(const GfxRenderer& renderer, FootBar bar, Zone zone);
+// A screen's own actions in its bar (rule 4: the bar holds what the screen needs), at the bar's right end, each a
+// pill that hugs its words (rule 16), the name pill keeping the room left of them. The screen names them as it
+// draws, every frame, as it names its title; a tap on one is read back with footActionAt.
+constexpr int FOOT_ACTIONS = 2;
+void noteFootActions(const char* first, const char* second = nullptr);
+// The action pill under a tap at (x, y), 0 for the first, or -1.
+int footActionAt(int x, int y);
+// Where the last bar drew action `index` (a pop-up opened from it hangs from it); width 0 when it drew none.
+TouchBarRect footActionRect(int index);
 // A screen laid over a book's page clears the band of the bar first, so "<" stands on white, not on the
 // page's last line.
 // `air` px of the page above the bar are cleared with it: 12 for a screen laid over the page, FRAME_TO_BAR_GAP for the reader

@@ -86,6 +86,7 @@ namespace ugly {
   void line(const GfxRenderer&, int, int, int, int, uint32_t, int) {}
 }
 uint32_t handDrawnGeneration = UINT32_MAX;
+int drawFootActions(const GfxRenderer&, int, int right, int, int) { return right; }  // no screen actions here
 int rings=0,icons=0;
 void drawIcon(const GfxRenderer&,const freeink::Icon&,int,int) { ++icons; }
 namespace tenorchrome {

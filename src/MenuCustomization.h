@@ -124,4 +124,22 @@ inline bool movePin(const char* key, int direction) {
   std::swap(state().pins[from], state().pins[to]);
   return false;
 }
+// Touch (the order screen): the `count` shown tabs of `group` in the order of `ids`, saved; a tab this board does
+// not show keeps its slot. Unchanged when `ids` is no order of the shown tabs or the save fails.
+inline bool arrangeTabs(int group, const int* ids, int count) {
+  if (group < 0 || group >= GROUPS || count <= 0 || count > MAX_TABS) return false;
+  std::array<bool, MAX_TABS> seen{};
+  for (int p = 0; p < count; ++p) {
+    if (ids[p] < 0 || ids[p] >= count || seen[ids[p]]) return false;
+    seen[ids[p]] = true;
+  }
+  auto& order = state().order[group];
+  const auto before = order;
+  std::array<int, MAX_TABS> slots{};
+  for (int p = 0; p < count; ++p) slots[p] = slotAt(group, p, count);
+  for (int p = 0; p < count; ++p) order[slots[p]] = static_cast<uint8_t>(ids[p]);
+  if (save()) return true;
+  order = before;
+  return false;
+}
 }  // namespace menucustom
