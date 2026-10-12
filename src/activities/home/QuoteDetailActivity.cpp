@@ -801,9 +801,11 @@ void QuoteDetailActivity::drawUglyPage() const {
   }
 #ifdef UGLY_FRAME_LOG
   if (!renderer.isFontCacheScanning()) {
-    LOG_INF("UGLY", "QuotePage quote=%d page=%d/%d bodyPages=%d rows=%d lines=%d quip=%d quipRows=%d scraps=%d ms=%lu free=%u largest=%u %s",
+    int lowest = body.y;
+    for (int i = 0; i < wordRects; ++i) lowest = std::max(lowest, words[i].y1);
+    LOG_INF("UGLY", "QuotePage quote=%d page=%d/%d bodyPages=%d rows=%d lines=%d quip=%d quipRows=%d scraps=%d band=%d ms=%lu free=%u largest=%u %s",
             index, quotePage + 1, pages, bodyPages, linesPerPage, uglyMap.lines, quipIndex(ids[index]), quipRows, scrapCount,
-            millis() - penStart, static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
+            body.bottom() - 6 - lowest - ugly::scrap::CLEAR, millis() - penStart, static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
             I18N.get(QUIP_LINES[quipIndex(ids[index])]));
     for (int i = 0; i < scrapCount; ++i)
       LOG_INF("UGLY", "QuoteScrap page=%d kind=%d pic=%d box=%d,%d,%d,%d", quotePage, static_cast<int>(scraps[i].kind),

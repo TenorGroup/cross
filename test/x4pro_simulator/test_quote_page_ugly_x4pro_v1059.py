@@ -55,6 +55,9 @@ class UglyQuotePageX4ProTest(unittest.TestCase):
         _, without = q.run(quotes, TO_DETAIL, [(len(TO_DETAIL) - 1, 'f')], env=dict(CROSSPOINT_SIM_UGLY_SCRAP='0'))
         r = q.renders(log)[-1]
         self.assertGreaterEqual(r['scrapCount'], 2)
+        self.assertGreaterEqual(r['band'], 112)
+        self.assertEqual(len(q.kus(r)), 1, 'a page with room has one ku')
+        self.assertGreaterEqual(len(q.worms(r)), 3, 'a page with room has 3 worms at least')
         self.assertEqual(ImageChops.difference(with_['first'], with_['again']).getbbox(), None)
         added = q.added_ink(with_['first'], without['f'])
         self.assertGreater(len(added), 200)
@@ -72,6 +75,12 @@ class UglyQuotePageX4ProTest(unittest.TestCase):
         pages = q.last_of_each_page(q.renders(log))
         for page in range(1, max(p for _, p in pages)):
             self.assertEqual(pages[(0, page)]['scrapCount'], 0, f'page {page} is full of words')
+        for (_, page), r in pages.items():
+            if r['band'] >= 112:
+                self.assertEqual(len(q.kus(r)), 1, f'page {page}')
+                self.assertGreaterEqual(len(q.worms(r)), 3, f'page {page}')
+            else:
+                self.assertEqual(len(q.kus(r)), 0, f'page {page}')
 
 
 if __name__ == '__main__':

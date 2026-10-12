@@ -1,7 +1,8 @@
 // tenor/ugly quotation page, the scribbles: none of them touches a word, the same page scribbles the same, the room under the
-// words decides how many, and the wall drawing comes at most once.
+// words decides how many, every page with room has one ku and 3 worms at least.
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <set>
 #include <vector>
@@ -96,16 +97,81 @@ TEST(Scrap, ShortPageAlwaysHasSomethingOnIt) {
   for (uint32_t seed = 1; seed <= 300; ++seed) EXPECT_GE(run(words(3), seedOf(seed, 1)).size(), 3u) << seed;
 }
 
-TEST(Scrap, TheWallDrawingComesOnceAtMostAndOnManyPages) {
-  int pages = 0;
-  for (uint32_t seed = 1; seed <= 400; ++seed) {
-    int wall = 0;
-    for (const auto& i : run(words(3), seedOf(seed, 0))) wall += i.kind == Kind::Doodle && i.pic == ugly::doodledata::WALL;
-    ASSERT_LE(wall, 1) << seed;
-    pages += wall;
-  }
-  EXPECT_GE(pages, 400 * 25 / 100);
-  EXPECT_LE(pages, 400 * 75 / 100);
+// The room under the lowest of the words, the way the page measures it: the area's foot less the words' foot less 14.
+int bandOf(const std::vector<Rect>& avoid) {
+  int lowest = AREA.y0;
+  for (const auto& w : avoid) lowest = std::max(lowest, w.y1);
+  return AREA.y1 - lowest - 14;
+}
+
+int count(const std::vector<Item>& items, const Kind kind, const int pic = -1) {
+  int n = 0;
+  for (const auto& i : items) n += i.kind == kind && (pic < 0 || i.pic == pic);
+  return n;
+}
+
+TEST(Scrap, EveryPageWithRoomHasExactlyOneKuAndAtLeastThreeWormsAndOtherPagesHaveNoKu) {
+  int roomy = 0;
+  for (int rows = 0; rows <= 13; ++rows)
+    for (uint32_t seed = 1; seed <= 600; ++seed) {
+      const auto avoid = words(rows, 20 + static_cast<int>(seed % 440));
+      const auto items = run(avoid, seedOf(seed * 0x10000001b3ull + rows, 0));
+      const int band = bandOf(avoid);
+      const int ku = count(items, Kind::Doodle, ugly::doodledata::KU), worms = count(items, Kind::Worm);
+      if (band >= 112) {  // 112 px of room: the number the page's design asks for
+        ASSERT_EQ(ku, 1) << "rows " << rows << " seed " << seed << " band " << band;
+        ASSERT_GE(worms, 3) << "rows " << rows << " seed " << seed;
+        ASSERT_LE(worms, 6);
+        ++roomy;
+      } else {
+        ASSERT_EQ(ku, 0) << "rows " << rows << " band " << band;
+      }
+      ASSERT_LE(static_cast<int>(items.size()), MAX_ITEMS);
+    }
+  EXPECT_GT(roomy, 3000);
+}
+
+TEST(Scrap, TheKuIsTurnedALittleEitherWayRoundAndInSeveralSizesAndWormsDifferInLengthAndWaves) {
+  std::set<int> turns, sizes, lengths, heights, waves;
+  int mirrored = 0, straight = 0;
+  for (uint32_t seed = 1; seed <= 600; ++seed)
+    for (const int bottom : {160, 400, 520, 575, 600})  // words down to here: from a roomy page to just enough room (112)
+      for (const auto& i : run({{42, 54, 502, bottom}}, seedOf(seed, 0))) {
+      if (i.kind == Kind::Doodle && i.pic == ugly::doodledata::KU) {
+        turns.insert(i.sinQ);
+        sizes.insert(i.pct);
+        (i.mirror ? mirrored : straight)++;
+      }
+      if (i.kind == Kind::Worm) {
+        lengths.insert(i.w / 12);
+        heights.insert(i.h);
+        waves.insert(i.wave);
+      }
+    }
+  EXPECT_EQ(turns.size(), 5u);
+  EXPECT_GE(sizes.size(), 3u);  // 80, 66 and 56 percent; 48 stays in reserve under MIN_KU_BAND
+  EXPECT_GT(mirrored, 100);
+  EXPECT_GT(straight, 100);
+  EXPECT_GE(lengths.size(), 8u);
+  EXPECT_GE(heights.size(), 6u);
+  EXPECT_EQ(waves.size(), 3u);
+}
+
+TEST(Scrap, EveryPointOfAWormStaysInItsBox) {
+  int worms = 0;
+  for (uint32_t seed = 1; seed <= 600; ++seed)
+    for (const auto& i : run(words(2), seedOf(seed, 0))) {
+      if (i.kind != Kind::Worm) continue;
+      ++worms;
+      for (int p = 0; p < wormPoints(i); ++p) {
+        const Point at = wormPoint(i, p);
+        ASSERT_GE(at.x - 2, i.box.x0);
+        ASSERT_LE(at.x + 2, i.box.x1);
+        ASSERT_GE(at.y - 2, i.box.y0);
+        ASSERT_LE(at.y + 2, i.box.y1);
+      }
+    }
+  EXPECT_GT(worms, 1500);
 }
 
 TEST(Scrap, EveryKindAndPictureTurnsUpAndFlipsBothWays) {
@@ -117,7 +183,7 @@ TEST(Scrap, EveryKindAndPictureTurnsUpAndFlipsBothWays) {
       if (i.kind == Kind::Doodle) doodles.insert(i.pic);
       if (i.kind == Kind::Doodle || i.kind == Kind::Sleep) (i.mirror ? flipped : straight)++;
     }
-  EXPECT_EQ(kinds.size(), 5u);
+  EXPECT_EQ(kinds.size(), 6u);
   EXPECT_EQ(doodles.size(), static_cast<size_t>(ugly::doodledata::COUNT));
   EXPECT_GT(flipped, 100);
   EXPECT_GT(straight, 100);

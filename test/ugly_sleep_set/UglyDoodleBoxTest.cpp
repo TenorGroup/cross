@@ -79,11 +79,11 @@ TEST(Doodles, APlacedPictureDrawsInsideTheBoxKeptClearForIt) {
       for (const auto& s : strokes(item.kind == Kind::Doodle ? doodles : sleep, item.pic)) {
         // `line` of the pen may stray 1 px off a long segment, a dot is 3 wide: the box has a pen's width of its own.
         for (const auto [x, y] : {std::pair{s.x0, s.y0}, std::pair{s.x1, s.y1}}) {
-          const int px = ugly::scrap::mapX(item, x), py = ugly::scrap::mapY(item, y);
-          ASSERT_GE(px - 2, item.box.x0) << seed << " " << i;
-          ASSERT_LE(px + 2, item.box.x1) << seed << " " << i;
-          ASSERT_GE(py - 2, item.box.y0) << seed << " " << i;
-          ASSERT_LE(py + 2, item.box.y1) << seed << " " << i;
+          const auto at = ugly::scrap::map(item, x, y);
+          ASSERT_GE(at.x - 2, item.box.x0) << seed << " " << i;
+          ASSERT_LE(at.x + 2, item.box.x1) << seed << " " << i;
+          ASSERT_GE(at.y - 2, item.box.y0) << seed << " " << i;
+          ASSERT_LE(at.y + 2, item.box.y1) << seed << " " << i;
         }
       }
       ++checked;

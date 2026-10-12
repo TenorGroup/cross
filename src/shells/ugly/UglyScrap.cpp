@@ -25,11 +25,23 @@ uint8_t* unpack(const uint8_t* packed, const size_t packedSize, const size_t raw
 }
 
 void picture(const GfxRenderer& r, const uint8_t* data, const size_t raw, const Item& item) {
-  const int width = item.kind == Kind::Sleep ? 2 : 0;  // a doodle drawn small keeps a thin pen
+  // a doodle drawn small keeps a thin pen; the ku is drawn thin once it is under 70 percent, like the sleep doodles
+  const int width = item.kind == Kind::Sleep || (item.pic == doodledata::KU && item.pct < 70) ? 2 : 0;
   sleepset::drawPicture(data, raw, item.pic, 0, 0, [&](int x0, int y0, int x1, int y1, int seed, int w) {
-    line(r, mapX(item, x0), mapY(item, y0), mapX(item, x1), mapY(item, y1), static_cast<uint32_t>(seed),
-         width ? std::min(width, w) : w);
+    const Point a = map(item, x0, y0), b = map(item, x1, y1);
+    line(r, a.x, a.y, b.x, b.y, static_cast<uint32_t>(seed), width ? std::min(width, w) : w);
   });
+}
+
+// A worm: its points one after another, a dot at its head end.
+void worm(const GfxRenderer& r, const Item& item) {
+  Point from = wormPoint(item, 0);
+  for (int i = 1; i < wormPoints(item); ++i) {
+    const Point to = wormPoint(item, i);
+    penStroke(r, from.x, from.y, to.x, to.y, 2);
+    from = to;
+  }
+  penStroke(r, from.x, from.y, from.x, from.y, 3);
 }
 
 // A line of scrawl that says nothing, over the word box (x, y, w, h): small loops and spikes, the pen lifted now and then.
@@ -82,6 +94,9 @@ void drawOne(const GfxRenderer& r, const Item& item, const uint8_t* doodles, con
       return;
     case Kind::Rub:
       rub(r, item);
+      return;
+    case Kind::Worm:
+      worm(r, item);
       return;
     case Kind::Circled:
       scrawl(r, item);

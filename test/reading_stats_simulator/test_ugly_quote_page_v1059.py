@@ -68,7 +68,7 @@ def run(quotes, keys, shots=(), tier=0, level=1, language='EN', env=None, timeou
 
 WORD = re.compile(r'QuoteWord page=(\d+) row=(\d+) x=(\d+) y=(\d+) (.*)')
 META = re.compile(r'QuoteMeta page=(\d+) row=(\d+) y=(\d+) (.*)')
-PAGE = re.compile(r'QuotePage quote=(\d+) page=(\d+)/(\d+) bodyPages=(\d+) rows=(\d+) lines=(\d+)(?: quip=(\d+) quipRows=(\d+))? scraps=(\d+) ms=\d+ free=\d+ largest=\d+ (.*)')
+PAGE = re.compile(r'QuotePage quote=(\d+) page=(\d+)/(\d+) bodyPages=(\d+) rows=(\d+) lines=(\d+)(?: quip=(\d+) quipRows=(\d+))? scraps=(\d+) band=(-?\d+) ms=\d+ free=\d+ largest=\d+ (.*)')
 SCRAP = re.compile(r'QuoteScrap page=(\d+) kind=(\d+) pic=(\d+) box=(-?\d+),(-?\d+),(-?\d+),(-?\d+)')
 KEEP = re.compile(r'QuoteWords page=(\d+) box=(-?\d+),(-?\d+),(-?\d+),(-?\d+)')
 
@@ -92,7 +92,7 @@ def renders(log):
                 cur['meta'].append((int(m[2]), int(m[3]), m[4]))
             elif kind == 'p':
                 cur.update(quote=int(m[1]), page=int(m[2]), pages=int(m[3]), bodyPages=int(m[4]), rows=int(m[5]), lines=int(m[6]),
-                           quip=int(m[7] or -1), quipRows=int(m[8] or 0), scrapCount=int(m[9]), quipText=m[10])
+                           quip=int(m[7] or -1), quipRows=int(m[8] or 0), scrapCount=int(m[9]), band=int(m[10]), quipText=m[11])
             elif kind == 's':
                 cur['scraps'].append((int(m[2]), int(m[3]), tuple(int(m[i]) for i in range(4, 8))))
             else:
@@ -106,6 +106,15 @@ def last_of_each_page(rs):
     for r in rs:
         by[(r['quote'], r['page'])] = r
     return by
+
+
+def kus(r):
+    """The ku among the scribbles of a render (kind 0 is a doodle of the set, picture 7 the ku)."""
+    return [s for s in r['scraps'] if s[0] == 0 and s[1] == 7]
+
+
+def worms(r):
+    return [s for s in r['scraps'] if s[0] == 5]
 
 
 def letters(text):
@@ -219,6 +228,9 @@ class UglyQuotePageTest(unittest.TestCase):
                                  env=dict(CROSSPOINT_SIM_UGLY_SCRAP='0'))
                 r = renders(log)[-1]
                 self.assertGreaterEqual(r['scrapCount'], 3, 'a short page has scribbles on it')
+                self.assertGreaterEqual(r['band'], 112)
+                self.assertEqual(len(kus(r)), 1, 'a page with room has one ku')
+                self.assertGreaterEqual(len(worms(r)), 3, 'a page with room has 3 worms at least')
                 self.assertEqual(ImageChops.difference(with_['first'], with_['again']).getbbox(), None,
                                  'the page drew other scribbles when it was drawn again')
                 added = added_ink(with_['first'], without['f'])
@@ -243,6 +255,12 @@ class UglyQuotePageTest(unittest.TestCase):
         total = max(p for _, p in pages)
         for page in range(1, total):
             self.assertEqual(pages[(0, page)]['scrapCount'], 0, f'page {page} is full of words')
+        for (_, page), r in pages.items():  # in every page of the quote: a ku and 3 worms from 112 px of room, else no ku
+            if r['band'] >= 112:
+                self.assertEqual(len(kus(r)), 1, f'page {page} has room and no ku, or two')
+                self.assertGreaterEqual(len(worms(r)), 3, f'page {page} has room and fewer than 3 worms')
+            else:
+                self.assertEqual(len(kus(r)), 0, f'page {page} has no room for a ku')
         _, shots = run([dict(text=text, title='Eros')], TO_DETAIL, [(len(TO_DETAIL) - 1, 'f')])
         _, bare = run([dict(text=text, title='Eros')], TO_DETAIL, [(len(TO_DETAIL) - 1, 'f')], env=dict(CROSSPOINT_SIM_UGLY_SCRAP='0'))
         self.assertEqual(ImageChops.difference(shots['f'], bare['f']).getbbox(), None, 'a full page was scribbled on')

@@ -68,14 +68,12 @@ def build():
            ([(30, 66), (14, 54), (16, 38), (34, 32), (40, 14), (66, 8), (86, 20), (108, 14), (132, 28), (134, 48),
              (150, 58), (142, 68), (112, 72), (30, 66)], 3),
            ([(44, 88), (38, 106)], 2), ([(78, 90), (72, 108)], 2), ([(112, 88), (106, 106)], 2))
-    # 7 graffiti, the way it goes on a toilet wall: two balls, a shaft, a smirk
-    doodle('wall',
-           (gs.ring(26, 26, 17, 17), 3), (gs.ring(26, 62, 17, 17), 3),
-           ([(40, 30), (84, 28), (126, 30)], 3), ([(40, 56), (84, 58), (126, 56)], 3),
-           ([(126, 30), (146, 33), (154, 44), (146, 54), (126, 56)], 3),
-           ([(136, 38), (138, 40)], 3), ([(146, 38), (148, 40)], 3), ([(134, 50), (142, 54), (150, 49)], 2),
-           ([(170, 28), (186, 20)], 2), ([(172, 44), (192, 44)], 2), ([(170, 60), (186, 68)], 2),
-           ([(8, 14), (14, 8)], 2), ([(8, 72), (14, 80)], 2))
+    # 7 the ku, after the founder's sample (12/10): one long outline of the shaft rising to the upper left and closing round
+    # the head, a short stroke along the head, and two round balls at the foot, the lower one the bigger
+    doodle('ku',
+           ([(130, 92), (100, 68), (68, 44), (40, 24), (22, 18), (10, 26), (14, 40), (30, 50), (60, 70), (92, 92), (122, 112)], 3),
+           ([(26, 24), (54, 42)], 2),
+           (gs.ring(170, 92, 26, 28, -110), 3), (gs.ring(128, 130, 29, 25, -60), 3))
     # 8 bolt
     doodle('bolt', ([(48, 6), (16, 56), (38, 54), (22, 106), (64, 44), (42, 46), (48, 6)], 3))
     # 9 coil: loops walking right, a pen that will not let go
@@ -196,9 +194,9 @@ def main():
            'inline constexpr int PAD = %d;' % PAD, '']
     out += o
     out += ['inline constexpr int COUNT = %d;' % len(DOODLES)]
-    out += ['// 0 star, 1 sparkle, 2 spiral, 3 arrow, 4 curly arrow, 5 face, 6 cloud, 7 the wall drawing, 8 bolt, 9 coil, 10 rubbed out,',
+    out += ['// 0 star, 1 sparkle, 2 spiral, 3 arrow, 4 curly arrow, 5 face, 6 cloud, 7 the ku, 8 bolt, 9 coil, 10 rubbed out,',
             '// 11 cross, 12 heart, 13 lines.']
-    out += ['inline constexpr int WALL = %d;' % NAMES.index('wall')]
+    out += ['inline constexpr int KU = %d;' % NAMES.index('ku')]
     out += ['inline constexpr Box BOX[COUNT] = {']
     for p, strokes in enumerate(DOODLES):
         out.append('    {%d, %d, %d, %d},  // %s' % (*box_of(strokes, p), NAMES[p]))
