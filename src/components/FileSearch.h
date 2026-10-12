@@ -1,26 +1,35 @@
 #pragma once
 
-#include <cstddef>
+#include <HeapFloor.h>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
-
-#include <HeapFloor.h>
 
 namespace filesearch {
 
-struct Match {
-  uint16_t index = 0;
-  uint8_t rank = 0;
+std::string_view basename(std::string_view path);
+std::string_view stem(std::string_view path);
+std::string_view parent(std::string_view path);
+// Natural basename order, then raw path bytes. Paths retain their filesystem spelling.
+bool nameLess(std::string_view left, std::string_view right);
+
+class Query {
+ public:
+  explicit Query(std::string_view text);
+  uint8_t rank(std::string_view entry) const;
+ private:
+  std::string folded_;
 };
+uint8_t matchRank(const std::string& entry, const std::string& query);
 
 class IndexBuffer {
  public:
   bool allocate(size_t capacity, const char* owner);
-  void clear() { size_ = 0; }
+  void clear() { data_.reset(); capacity_ = size_ = 0; }
   bool push(uint16_t index) {
-    if (!data_ || size_ >= capacity_) return false;
+    if (size_ >= capacity_) return false;
     data_[size_++] = index;
     return true;
   }
@@ -28,21 +37,10 @@ class IndexBuffer {
   uint16_t* data() { return data_.get(); }
   size_t size() const { return size_; }
   size_t capacity() const { return capacity_; }
-
  private:
   std::unique_ptr<uint16_t[]> data_;
-  size_t capacity_ = 0;
-  size_t size_ = 0;
+  size_t capacity_ = 0, size_ = 0;
 };
-
-// Returns 0 for the whole folded query at the start of the stem, 1 when every
-// folded query word starts a word, 2 when every word occurs anywhere, and 255
-// when one word is absent. The file extension is excluded.
-uint8_t matchRank(const std::string& entry, const std::string& query);
-
-// Builds a stable result index. The source remains owned by the caller, so the
-// result buffer contains only uint16 source indexes.
 bool buildResults(const std::vector<std::string>& source, const std::string& query, IndexBuffer& result,
                   const char* owner = "file-search-results");
-
 }  // namespace filesearch
