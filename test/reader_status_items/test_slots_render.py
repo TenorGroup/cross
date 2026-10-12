@@ -225,6 +225,18 @@ void batteryLikeDefault(){
  }
  SETTINGS.percent=true;
  printf("battery_like_default:GREEN (%d cases, rounded, no %%, default corners)\n",cases);
+ cases=0;
+ for(int screen:{480,528})for(bool ugly:{false,true})for(int slot:{0,2}){
+   rough=ugly;GfxRenderer r;r.w=screen;r.advance=8;
+   SETTINGS.spec={};SETTINGS.spec.slotsEnabled=true;SETTINGS.spec.topTitleMode=S::HIDE_TITLE;
+   SETTINGS.spec.slots[slot]=S::STATUS_SLOT_CLOCK;ink.clear();clockstatus::valid=true;
+   drawReaderSlots(r,"",1,1,1.0f,false,false,-1,-1);
+   const int edge=ugly?14:8;
+   assert(ink.size()==1&&ink[0].text=="12:34");
+   assert(ink[0].x==(slot==0?edge:screen-edge-ink[0].w));
+   ++cases;
+ }
+ printf("clock_like_default:GREEN (%d cases, the default corners)\n",cases);
 }
 int main(int argc,char** argv){
  using S=CrossPointSettings;
@@ -286,11 +298,12 @@ int main(int argc,char** argv){
      drawReaderSlots(r,"A long book or chapter title that reaches the right screen edge repeatedly",5,known?25:0,
                      known?43.0f:-1,false,true,known?5400:-1,known?25200:-1,
                      known?"Mở\nđầu một chương có tên dài để kiểm tra cắt giữa UTF-8 chapter end":nullptr);
-     // A battery in a corner stands where the default bar puts it: 8 px in on cross, the ugly strip's own
-     // corners (its bare body reaches 6 px from the right edge).
+     // A battery or a clock in a corner stands where the default bar puts it: 8 px in on cross, the ugly strip's
+     // own corners (its bare battery body reaches 6 px from the right edge).
      const auto lane=(item==S::STATUS_SLOT_CHAPTER_NAME||item==S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS)&&slot==1
        ? readerstatus::Cell{20,screen-40}
-       : item==S::STATUS_SLOT_BATTERY&&slot!=1 ? readerstatus::cell(screen,slot,6) : readerstatus::cell(screen,slot);
+       : (item==S::STATUS_SLOT_BATTERY||item==S::STATUS_SLOT_CLOCK)&&slot!=1 ? readerstatus::cell(screen,slot,6)
+                                                                             : readerstatus::cell(screen,slot);
      int bottom=0,header=0,named=0;
      std::vector<Ink> items;
      for(const auto& painted:ink){

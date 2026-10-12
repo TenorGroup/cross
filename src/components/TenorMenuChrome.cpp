@@ -1059,6 +1059,12 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
     if (measured <= lane.width) {
       paintedWidths[slot] = measured;
       int x = place(lane, slot, measured);
+      if (spec.slots[slot] == S::STATUS_SLOT_CLOCK && slot != 1) {
+        // The clock in a corner stands where the default bar puts it: 8 px in on cross, 14 on ugly.
+        const auto corner = readerstatus::cell(screen, slot);
+        x = slot == 0 ? edge : screen - edge - measured;
+        paintedWidths[slot] = slot == 0 ? x + measured - corner.x : corner.x + corner.width - x;
+      }
       if (spec.slots[slot] == S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS && !named) {
         if (rough) {
           const auto ink = ugly::textBounds(r, ugly::Size::S22, label.c_str());
