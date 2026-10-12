@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 
 #include <DropCap.h>
 #include <EpdFontFamily.h>
@@ -13,6 +14,13 @@ enum class BidiBaseDir : signed char { AUTO = -1, LTR = 0, RTL = 1 };
 
 class GfxRenderer {
  public:
+  enum RenderMode { BW, GRAYSCALE_LSB, GRAYSCALE_MSB };
+  RenderMode getRenderMode() const { return BW; }
+  bool isStripTargetActive() const { return false; }
+  bool glyphIntersectsStrip(int, int, int, int) const { return true; }
+  bool extendTextBounds(std::array<int, 4>&, int, int, int, const char*, EpdFontFamily::Style,
+                        BidiUtils::BidiBaseDir, int = 0, int = 0) const { return false; }
+
   class FrameBufferLoan {
    public:
     explicit FrameBufferLoan(GfxRenderer&) {}

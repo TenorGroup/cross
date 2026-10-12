@@ -1,9 +1,12 @@
 #pragma once
 
 #include <EpdFontFamily.h>
+#include <DropCap.h>
+#include <Utf8.h>
 #include <HalDisplay.h>
 
 namespace BidiUtils {
+bool isTransparentMark(uint32_t cp);
 // Paragraph base direction for the Unicode BiDi algorithm (UAX#9).
 // AUTO: scan text for first strong directional character (P2/P3 rules)
 // LTR:  force left-to-right paragraph embedding level
@@ -321,6 +324,94 @@ class GfxRenderer {
   // skip an expensive bitmap decode. Returns true when no strip is active.
   // Corners are rotated to physical, so it is orientation-aware.
   bool glyphIntersectsStrip(int x0, int y0, int x1, int y1) const;
+  bool isStripTargetActive() const { return _stripActive; }
+
+  // Metadata only. Unstable or transformed text keeps the full render path.
+  bool extendTextBounds(std::array<int, 4>& box, int fontId, int x, int y, const char* text,
+                        EpdFontFamily::Style style, BidiUtils::BidiBaseDir baseDir, int spacing = 0,
+                        int capHeight = 0) const {
+    if (!text || !*text) return true;
+    if (baseDir == BidiUtils::BidiBaseDir::RTL) return false;
+    for (const auto* q = reinterpret_cast<const unsigned char*>(text); *q; ++q)
+      if (*q >= 0xD6 && *q <= 0xDB) return false;
+    const int resolved = resolveTextFontId(fontId, text, style);
+    const auto it = fontMap.find(resolved);
+    if (it == fontMap.end()) return false;
+    const auto& font = it->second;
+    const auto* data = font.getData(style);
+    if (!data || data->kernHandler || data->vectorBitmapHandler) return false;
+    const auto include = [&](int left, int top, int width, int height) {
+      if (!width || !height) return;
+      box[0] = std::min(box[0], left); box[1] = std::min(box[1], top);
+      box[2] = std::max(box[2], left + width - 1); box[3] = std::max(box[3], top + height - 1);
+    };
+    const auto resident = [](const EpdFontData* face, uint32_t cp) {
+      if (!face->glyphMissHandler) return true;
+      const auto* begin = face->intervals;
+      if (!begin || !face->intervalCount) return false;
+      const auto* end = begin + face->intervalCount;
+      const auto* pos = std::upper_bound(begin, end, cp,
+          [](uint32_t value, const EpdUnicodeInterval& range) { return value < range.first; });
+      return pos != begin && cp <= (pos - 1)->last;
+    };
+    if (capHeight) {
+      const auto initial = dropcap::initial(text);
+      if (initial.codepoint) {
+        const auto original = fontMap.find(fontId);
+        if (original == fontMap.end()) return false;
+        const auto capStyle = static_cast<EpdFontFamily::Style>((style & 3) | EpdFontFamily::BOLD);
+        const auto* capData = original->second.getData(capStyle);
+        if (!capData || !resident(capData, initial.codepoint)) return false;
+        const auto* glyph = original->second.getGlyph(initial.codepoint, capStyle);
+        if (glyph && glyph->width && glyph->height) {
+          const int capWidth = (glyph->width * capHeight + glyph->height / 2) / glyph->height;
+          char prefix[16] = {};
+          memcpy(prefix, text, initial.prefixBytes);
+          const int capX = x + getTextAdvanceX(fontId, prefix, style, spacing);
+          const int advance = getDropCapAdvance(fontId, text, style, capHeight, spacing);
+          include(capX, y + 2, capWidth, capHeight);
+          return extendTextBounds(box, fontId, x, y, prefix, style, BidiUtils::BidiBaseDir::AUTO, spacing) &&
+                 extendTextBounds(box, fontId, x + advance, y, text + initial.endBytes, style,
+                                  BidiUtils::BidiBaseDir::AUTO, spacing);
+        }
+      }
+    }
+    int baseline = y + getFontAscenderSize(resolved);
+    if (resolved != fontId) baseline += (getLineHeight(fontId) - getLineHeight(resolved)) / 2;
+    int pen = x, lastLeft = 0, lastWidth = 0, lastTop = 0;
+    int32_t advance = 0;
+    uint32_t previous = 0;
+    while (uint32_t cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text))) {
+      // Inline controls and handwritten aliases can draw beyond font metrics.
+      if ((cp >= 0xE100 && cp < 0xE110) || (cp >= 0x2190 && cp <= 0x2193) ||
+          cp == 0x2713 || cp == 0x2605 || cp == 0x2665 || cp == 0x2764) return false;
+      const bool mark = utf8IsCombiningMark(cp) || BidiUtils::isTransparentMark(cp);
+      if (!mark) cp = font.applyLigatures(cp, text, style);
+      if (!resident(data, cp)) return false;
+      const auto* glyph = font.getGlyph(cp, style);
+      if (mark) {
+        if (!glyph) continue;
+        const auto anchor = combiningMark::anchorFor(cp);
+        const int raised = combiningMark::raiseAboveBase(anchor, glyph->top, glyph->height, lastTop);
+        const int markX = combiningMark::anchorOver(anchor, pen, lastLeft, lastWidth, glyph->left, glyph->width);
+        include(markX + glyph->left, baseline - raised - glyph->top, glyph->width, glyph->height);
+        continue;
+      }
+      if (previous) pen += fp4::toPixel(advance + font.getKerning(previous, cp, style)) + spacing;
+      lastLeft = glyph ? glyph->left : 0; lastWidth = glyph ? glyph->width : 0;
+      lastTop = glyph ? glyph->top : 0; advance = glyph ? glyph->advanceX : 0;
+      const bool small = (style & (EpdFontFamily::SUP | EpdFontFamily::SUB)) != 0;
+      if (small) advance = (advance + 1) / 2;
+      if (glyph) {
+        const int scale = small ? 2 : 1;
+        include(pen + glyph->left / scale, baseline - glyph->top / scale,
+                (glyph->width + scale - 1) / scale, (glyph->height + scale - 1) / scale);
+      }
+      previous = cp;
+    }
+    return true;
+  }
+
 
   // Active pixel-write target for raw writers (DirectPixelWriter) that bypass
   // drawPixel for speed. When a strip target is active these return the band

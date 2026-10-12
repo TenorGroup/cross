@@ -172,6 +172,13 @@ std::string_view TextBlock::getRubyText(const uint16_t word) const {
   return {rubyTexts[first].text.get(), rubyTexts[first].length};
 }
 
+bool TextBlock::intersectsStrip(const GfxRenderer& renderer, const int fontId, const int x, const int y) const {
+  if (renderer.isFontCacheScanning() || renderer.getRenderMode() == GfxRenderer::BW ||
+      boundsRenderer != &renderer || boundsFont != fontId) return true;
+  return renderer.glyphIntersectsStrip(x + stripBounds[0], y + stripBounds[1],
+                                      x + stripBounds[2], y + stripBounds[3]);
+}
+
 void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int x, const int y) const {
   if (!isValid) {
     LOG_ERR("TXB", "Render skipped: invalid block");
@@ -179,6 +186,15 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
   }
 
   const bool scanning = renderer.isFontCacheScanning();
+  const bool capture = !scanning && renderer.getRenderMode() == GfxRenderer::BW && !renderer.isStripTargetActive();
+  bool boundsValid = capture;
+  std::array<int, 4> bounds = {32767, 32767, -32768, -32768};
+  if (capture || scanning) boundsRenderer = nullptr;
+  const auto drawText = [&](int dx, int dy, const char* text, EpdFontFamily::Style style,
+                            BidiUtils::BidiBaseDir dir, int spacing = 0) {
+    renderer.drawText(fontId, dx, dy, text, true, style, dir, spacing);
+    if (boundsValid) boundsValid = renderer.extendTextBounds(bounds, fontId, dx - x, dy - y, text, style, dir, spacing);
+  };
   const int ascender = renderer.getFontAscenderSize(fontId);
 
   struct DecorationLineTracker {
@@ -204,6 +220,12 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
   const auto flushDecoration = [&](DecorationLineTracker& line) {
     if (line.active()) {
       renderer.drawLine(line.startX, line.yPos, line.endX, line.yPos, 2, true);
+      if (boundsValid) {
+        bounds[0] = std::min(bounds[0], std::min(line.startX, line.endX) - x);
+        bounds[1] = std::min(bounds[1], line.yPos - y);
+        bounds[2] = std::max(bounds[2], std::max(line.startX, line.endX) - x);
+        bounds[3] = std::max(bounds[3], line.yPos + 1 - y);
+      }
       line.reset();
     }
   };
@@ -238,6 +260,8 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
 
     if ((currentStyle & EpdFontFamily::DROP_CAP) && dropCapHeight) {
       renderer.drawDropCapWord(fontId, drawX, wordY, word, currentStyle, dropCapHeight, letterSpacing);
+      if (boundsValid) boundsValid = renderer.extendTextBounds(bounds, fontId, drawX - x, wordY - y, word,
+          currentStyle, BidiUtils::BidiBaseDir::AUTO, letterSpacing, dropCapHeight);
     } else if (boundary > 0) {
       // Focus split: draw bold prefix, then the regular suffix at a pre-computed x offset.
       // The bold prefix is bounded to 9 codepoints by the clamp on targetBoldChars in
@@ -252,11 +276,11 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
           std::min<size_t>({static_cast<size_t>(boundary), static_cast<size_t>(wordTextLen(i)), sizeof(boldBuf) - 1});
       memcpy(boldBuf, word, boldLen);
       boldBuf[boldLen] = '\0';
-      renderer.drawText(fontId, drawX, wordY, boldBuf, true, boldStyle, baseDir, letterSpacing);
+      drawText(drawX, wordY, boldBuf, boldStyle, baseDir, letterSpacing);
       const int suffixX = drawX + focusSuffixXArr[i];
-      renderer.drawText(fontId, suffixX, wordY, word + boldLen, true, currentStyle, baseDir, letterSpacing);
+      drawText(suffixX, wordY, word + boldLen, currentStyle, baseDir, letterSpacing);
     } else {
-      renderer.drawText(fontId, drawX, wordY, word, true, currentStyle, baseDir, letterSpacing);
+      drawText(drawX, wordY, word, currentStyle, baseDir, letterSpacing);
     }
 
     const auto ruby = getRubyText(i);
@@ -269,7 +293,7 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
         groupWidth += renderer.getTextAdvanceX(fontId, wordText(i + k), wordStyle(i + k));
       const int rubyWidth = renderer.getTextAdvanceX(fontId, ruby.data(), EpdFontFamily::SUP);
       const int rubyX = wordX - (rubyWidth - groupWidth) / 2;
-      renderer.drawText(fontId, rubyX, wordY - ascender, ruby.data(), true, EpdFontFamily::SUP, baseDir);
+      drawText(rubyX, wordY - ascender, ruby.data(), EpdFontFamily::SUP, baseDir);
     }
 
     if (scanning) {
@@ -318,6 +342,13 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
     }
   }
   flushDecorations();
+  if (boundsValid && bounds[0] <= bounds[2] && bounds[1] <= bounds[3] &&
+      bounds[0] > -32768 && bounds[1] > -32768 && bounds[2] < 32767 && bounds[3] < 32767) {
+    stripBounds = {static_cast<int16_t>(bounds[0] - 1), static_cast<int16_t>(bounds[1] - 1),
+                   static_cast<int16_t>(bounds[2] + 1), static_cast<int16_t>(bounds[3] + 1)};
+    boundsFont = fontId;
+    boundsRenderer = &renderer;
+  }
 }
 
 bool TextBlock::serialize(HalFile& file) const {

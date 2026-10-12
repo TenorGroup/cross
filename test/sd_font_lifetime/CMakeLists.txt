@@ -76,7 +76,9 @@ get_filename_component(RUBY_BLOCK_DIR "${RUBY_TEXT_SOURCE}" DIRECTORY)
 file(READ "${RUBY_TEXT_SOURCE}" RUBY_BLOCK_CODE)
 string(REPLACE "#include \"TextBlock.h\"" "#include \"${RUBY_BLOCK_DIR}/TextBlock.h\"" RUBY_BLOCK_CODE "${RUBY_BLOCK_CODE}")
 string(REPLACE "../../../../src/fontIds.h" "${REPO_ROOT}/src/fontIds.h" RUBY_BLOCK_CODE "${RUBY_BLOCK_CODE}")
-string(REPLACE "const int y) const {" "const int y) const { ++rasterBlockCalls;" RUBY_BLOCK_CODE "${RUBY_BLOCK_CODE}")
+string(REPLACE "void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int x, const int y) const {"
+  "void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int x, const int y) const { ++rasterBlockCalls;"
+  RUBY_BLOCK_CODE "${RUBY_BLOCK_CODE}")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/RubyBlock.cpp" "extern unsigned long rasterBlockCalls;\n${RUBY_BLOCK_CODE}")
 file(READ "${REPO_ROOT}/lib/GfxRenderer/GfxRenderer.cpp" RUBY_RENDER_CODE)
 string(FIND "${RUBY_RENDER_CODE}" "int GfxRenderer::getTextAdvanceX(" RUBY_ADVANCE_START)
@@ -99,3 +101,18 @@ else()
   target_link_options(RubyRasterTest PRIVATE -Wl,--gc-sections)
 endif()
 add_test(NAME RubyRaster COMMAND RubyRasterTest "${CMAKE_CURRENT_BINARY_DIR}/ruby-raster")
+
+add_executable(StripRasterTest StripRasterTest.cpp ${RUBY_SOURCES}
+  ${REPO_ROOT}/lib/Epub/Epub/Page.cpp
+  "${CMAKE_CURRENT_BINARY_DIR}/RubyBlock.cpp" "${CMAKE_CURRENT_BINARY_DIR}/RubyRenderer.cpp")
+target_compile_definitions(StripRasterTest PRIVATE RUBY_BLOCK_HEADER="${RUBY_BLOCK_DIR}/TextBlock.h"
+  STRIP_SD_FONT_PATH="${REPO_ROOT}/test/reading_stats_simulator/fixtures/BeVietnamPro_18.cpfont")
+target_include_directories(StripRasterTest PRIVATE ${NOTO_INCLUDES})
+target_compile_features(StripRasterTest PRIVATE cxx_std_20)
+target_compile_options(StripRasterTest PRIVATE -ffunction-sections -fdata-sections)
+if(APPLE)
+  target_link_options(StripRasterTest PRIVATE -Wl,-dead_strip)
+else()
+  target_link_options(StripRasterTest PRIVATE -Wl,--gc-sections)
+endif()
+add_test(NAME StripRaster COMMAND StripRasterTest "${CMAKE_CURRENT_BINARY_DIR}/strip-raster")
