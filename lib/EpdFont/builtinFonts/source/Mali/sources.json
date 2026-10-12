@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Mali-Bold.ttf",
+    "url": "https://raw.githubusercontent.com/google/fonts/bd8f81ddb5c74d5c8897b36ad88b440266245103/ofl/mali/Mali-Bold.ttf",
+    "bytes": 112176,
+    "sha256": "3e2f421036c3f91eb5ef34650a5cd2116c737a542147769437a9856a455d4462"
+  },
+  {
+    "name": "Mali-BoldItalic.ttf",
+    "url": "https://raw.githubusercontent.com/google/fonts/bd8f81ddb5c74d5c8897b36ad88b440266245103/ofl/mali/Mali-BoldItalic.ttf",
+    "bytes": 115724,
+    "sha256": "ed51d1fa721e4dc4a43dba34926442a007f8a300543c1171887810a547e5b23b"
+  },
+  {
+    "name": "Mali-Italic.ttf",
+    "url": "https://raw.githubusercontent.com/google/fonts/bd8f81ddb5c74d5c8897b36ad88b440266245103/ofl/mali/Mali-Italic.ttf",
+    "bytes": 115980,
+    "sha256": "feb2808bbd3827949b5eda93179d5820b0fbbb2bfd6154866b0d05e1b8f25f8c"
+  },
+  {
+    "name": "Mali-Regular.ttf",
+    "url": "https://raw.githubusercontent.com/google/fonts/bd8f81ddb5c74d5c8897b36ad88b440266245103/ofl/mali/Mali-Regular.ttf",
+    "bytes": 112756,
+    "sha256": "e3212f0f9be130743d32a4f174b7d79628daa5db0d72ca4c63c799ae465597bb"
+  },
+  {
+    "name": "OFL.txt",
+    "url": "https://raw.githubusercontent.com/google/fonts/bd8f81ddb5c74d5c8897b36ad88b440266245103/ofl/mali/OFL.txt",
+    "bytes": 4381,
+    "sha256": "bc1175730d609233043cde47e48f69831f012e85537c5ec1a2cf4836757c1540"
+  }
+]

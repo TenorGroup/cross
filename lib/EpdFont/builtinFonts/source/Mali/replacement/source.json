@@ -1,0 +1,8 @@
+{
+  "source": "NotoSerif/NotoSerif-Regular.ttf",
+  "sha256": "a7e8ea1ab7e7d368b001c892d6148325fffc849a46e030e55e1bdc597bbe939d",
+  "unicodes": [
+    "U+FFFD"
+  ],
+  "command": "pyftsubset NotoSerif-Regular.ttf --unicodes=U+FFFD --no-recalc-timestamp --output-file=Replacement.ttf"
+}
