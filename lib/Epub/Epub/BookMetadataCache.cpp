@@ -1472,7 +1472,9 @@ bool BookMetadataCache::readSizeWindow(const int first) const {
   if (previous != (next < spineCount ? strideStarts[next / CUMULATIVE_STRIDE] : bookSize)) return false;
   windowFirst = first;
 #ifdef TENOR_PRESS_PROBE
-  LOG_INF("BMC", "SIZE_WINDOW first=%d ms=%lu", first, millis() - started);
+  LOG_INF("BMC", "BMC_SIZE_WINDOW first=%d bytes=%u reads=%u ms=%lu free=%u largest=%u", first,
+          static_cast<unsigned>(count * 3 * sizeof(uint32_t)), static_cast<unsigned>(reader.readCount()),
+          millis() - started, static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
 #endif
   return true;
 }
@@ -1483,11 +1485,12 @@ int BookMetadataCache::getSpineIndexForSize(const uint32_t size) const {
   const int strides = (spineCount + CUMULATIVE_STRIDE - 1) / CUMULATIVE_STRIDE;
   const uint32_t* starts = strideStarts.get();
   const int stride = static_cast<int>(std::lower_bound(starts + 1, starts + strides, size) - starts) - 1;
-  const int last = std::min<int>(spineCount, (stride + 1) * CUMULATIVE_STRIDE) - 1;
-  for (int i = stride * CUMULATIVE_STRIDE; i < last; ++i) {
-    if (getCumulativeSize(i) >= size) return i;
-  }
-  return last;
+  const int first = stride * CUMULATIVE_STRIDE;
+  const int count = std::min<int>(spineCount - first, CUMULATIVE_STRIDE);
+  std::lock_guard<std::mutex> lock(sizeWindowLock);
+  if (windowFirst != first && !readSizeWindow(first)) return -1;
+  const auto* found = std::lower_bound(window, window + count, size);
+  return found == window + count ? -1 : first + static_cast<int>(found - window);
 }
 
 BookMetadataCache::SpineEntry BookMetadataCache::getSpineEntry(const int index) {

@@ -184,6 +184,28 @@ static void smallHrefIndexReadsAndFallback() {
   }
 }
 
+static void sizeJumpReadFailureIsBounded() {
+  for (int count : {399, 2000, 5000}) {
+    auto f = fixture(count);
+    Storage.files["/test/book.bin"] = f;
+    BookMetadataCache cache("/test");
+    REQUIRE(cache.load());
+    f->opens = f->reads = f->readBytes = f->seeks = 0;
+    f->readable = 0;
+    const auto result = cache.getSpineIndexForSize(97u * 25704);
+    std::cout << "SIZE failed n=" << count << " result=" << result << " opens=" << f->opens
+              << " reads=" << f->reads << " bytes=" << f->readBytes << " seeks=" << f->seeks << std::endl;
+    REQUIRE(result == -1);
+    REQUIRE(f->opens <= 1);
+    f->readable = SIZE_MAX;
+    f->opens = f->reads = f->readBytes = f->seeks = 0;
+    REQUIRE(cache.getSpineIndexForSize(97u * 25704) == 96);
+    REQUIRE(f->opens <= 1);
+    std::cout << "SIZE ready n=" << count << " opens=" << f->opens << " reads=" << f->reads
+              << " bytes=" << f->readBytes << " seeks=" << f->seeks << std::endl;
+  }
+}
+
 static void truncatedRead() {
   auto f = fixture();
   f->readable = 98304;
@@ -417,6 +439,7 @@ int main(int argc, char** argv) {
                {"healthy 2044 chapters", healthyLargeBook},
                {"metadata sidecar source identity", metadataSidecarRejectsReplacedSource},
                {"small href index and fallback", smallHrefIndexReadsAndFallback},
+               {"size jump read failure is bounded", sizeJumpReadFailureIsBounded},
                {"96KiB read failure", truncatedRead},
                {"runtime seek failure", runtimeSeekFailure},
                {"oversized title", oversizedTitle},
