@@ -45,7 +45,8 @@ void renderFilteredPageElements(const std::vector<std::unique_ptr<PageElement>>&
 }  // namespace
 
 void PageLine::render(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset) {
-  block->render(renderer, fontId, xPos + xOffset, yPos + yOffset);
+  if (block->intersectsStrip(renderer, fontId, xPos + xOffset, yPos + yOffset))
+    block->render(renderer, fontId, xPos + xOffset, yPos + yOffset);
 }
 
 bool PageLine::serialize(HalFile& file) {

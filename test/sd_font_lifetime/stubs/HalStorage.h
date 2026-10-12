@@ -37,7 +37,7 @@ struct HalFile {
     offset_ += actual;
     return static_cast<int>(actual);
   }
-  size_t write(const uint8_t*, size_t size) { return size; }
+  size_t write(const void*, size_t size) { return size; }
   void close() { bytes = nullptr; }
 };
 struct HostStorage {

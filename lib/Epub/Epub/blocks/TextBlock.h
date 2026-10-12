@@ -2,6 +2,7 @@
 #include <EpdFontFamily.h>
 #include <HalStorage.h>
 
+#include <array>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -51,6 +52,9 @@ class TextBlock final : public Block {
   };
 
  private:
+  mutable std::array<int16_t, 4> stripBounds{};
+  mutable const GfxRenderer* boundsRenderer = nullptr;
+  mutable int boundsFont = 0;
   BlockStyle blockStyle;
   uint16_t numWords = 0;
   uint16_t textBytes = 0;  // total size of the text region, including NULs
@@ -103,7 +107,7 @@ class TextBlock final : public Block {
   TextBlock(const TextBlock&) = delete;
   TextBlock& operator=(const TextBlock&) = delete;
 
-  void setBlockStyle(const BlockStyle& blockStyle) { this->blockStyle = blockStyle; }
+  void setBlockStyle(const BlockStyle& blockStyle) { this->blockStyle = blockStyle; boundsRenderer = nullptr; }
   const BlockStyle& getBlockStyle() const { return blockStyle; }
   bool isEmpty() override { return numWords == 0; }
   bool valid() const { return isValid; }
@@ -118,9 +122,9 @@ class TextBlock final : public Block {
   EpdFontFamily::Style wordStyle(const uint16_t i) const { return static_cast<EpdFontFamily::Style>(stylesArr[i]); }
   uint8_t focusBoundary(const uint16_t i) const { return focusPresent ? focusBoundaryArr[i] : 0; }
   uint16_t focusSuffixX(const uint16_t i) const { return focusPresent ? focusSuffixXArr[i] : 0; }
-  void setLetterSpacing(int8_t value) { letterSpacing = value; }
+  void setLetterSpacing(int8_t value) { letterSpacing = value; boundsRenderer = nullptr; }
   int8_t getLetterSpacing() const { return letterSpacing; }
-  void setDropCapHeight(uint16_t height) { dropCapHeight = height; }
+  void setDropCapHeight(uint16_t height) { dropCapHeight = height; boundsRenderer = nullptr; }
   uint16_t getDropCapHeight() const { return dropCapHeight; }
   bool hasRuby() const;
   int getRubyShift(int ascender) const { return hasRuby() ? (ascender / 2) : 0; }
@@ -128,6 +132,7 @@ class TextBlock final : public Block {
   std::string_view getRubyText(uint16_t word) const;
   std::vector<LinkSpan> takeLinkSpans() { return std::move(linkSpans); }
 
+  bool intersectsStrip(const GfxRenderer& renderer, int fontId, int x, int y) const;
   void render(const GfxRenderer& renderer, int fontId, int x, int y) const;
   BlockType getType() override { return TEXT_BLOCK; }
   bool serialize(HalFile& file) const;
