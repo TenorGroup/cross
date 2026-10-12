@@ -97,13 +97,15 @@ flags = ['-std=c++17', '-Wall', '-Wextra', '-Werror', '-fsanitize=address,undefi
          '-I' + str(repo / 'test/file_transfer_back_latch/stubs'),
          '-I' + str(repo / 'src/network'), '-I' + str(repo / 'lib/NetworkTrust'), '-I' + str(out)]
 sources = [str(here / 'OtaCleanBoot.cpp'), str(repo / 'src/network/OtaUpdater.cpp'),
-           str(repo / 'src/network/FirmwareBoardTag.cpp'), str(repo / 'src/network/TlsRecordSlot.cpp')]
+           str(repo / 'src/network/FirmwareBoardTag.cpp')]
 binaries = {}
 for build, extra in (('release', []), ('probe', ['-DTENOR_PRESS_PROBE'])):
     binaries[build] = out / f'ota-clean-boot-{build}'
     subprocess.run([a.cxx, *flags, *extra, *sources, '-o', str(binaries[build])], check=True)
 cases = [('release', 'flag', 'normal-boot-is-not-an-update-boot'), ('release', 'flag', 'armed-flag-is-spent-once'),
          ('release', 'flag', 'power-loss-leaves-no-update-boot'), ('release', 'screen', 'check-alone-arms-nothing'),
+         ('release', 'screen', 'screen-back-cancels-manifest'),
+         ('release', 'screen', 'tls-refusal-aborts-cleanly'),
          ('release', 'screen', 'update-restarts-into-install'), ('release', 'screen', 'cancel-restarts-home'),
          ('release', 'screen', 'update-boot-installs-without-asking'),
          ('release', 'screen', 'update-boot-failure-restarts-home'),

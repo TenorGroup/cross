@@ -35,6 +35,10 @@ def main():
     build = args.build or Path(tempfile.mkdtemp(prefix="webdav-handler-"))
     build.mkdir(parents=True, exist_ok=True)
     generated = (here / "harness.cpp.in").read_text().replace("@REPLACEMENT@", str(replacement))
+    web = (root / "src/network/CrossPointWebServer.cpp").read_text()
+    download = method(web, "void CrossPointWebServer::handleDownload(")
+    download = "void CrossPointWebServer::download(HalFile& file) {\n" + download[download.index("  NetworkClient client ="):]
+    generated = generated.replace("@PRODUCTION_DOWNLOAD@", method(web, "bool CrossPointWebServer::uploadCancelled(") + "\n" + download)
     generated = generated.replace("@PRODUCTION_CACHE@", cache).replace("@PRODUCTION_METHODS@", functions)
     (build / "test.cpp").write_text(generated)
     (build / "source-hashes.json").write_text(json.dumps({
@@ -44,9 +48,16 @@ def main():
         "compiled-harness": hashlib.sha256(generated.encode()).hexdigest(),
     }, indent=2) + "\n")
     subprocess.run(["c++", "-std=c++17", "-O1", "-g", "-fsanitize=address,undefined",
-                    "-fno-omit-frame-pointer", "-I", str(root / "freeink-sdk/libs/hardware/SDCardManager/include"),
+                    "-fno-omit-frame-pointer", "-I" + str(root / "src/network"), "-I", str(root / "freeink-sdk/libs/hardware/SDCardManager/include"),
                     str(build / "test.cpp"), "-o", str(build / "test")], check=True)
-    return subprocess.run([str(build / "test")]).returncode
+    result = subprocess.run([str(build / "test")]).returncode
+    web = (root / "src/network/CrossPointWebServer.cpp").read_text()
+    (build / "production-interrupt.inc").write_text(method(web, "void CrossPointWebServer::interruptUpload("))
+    subprocess.run(["c++", "-std=c++17", "-pthread", "-I" + str(build),
+                    "-I" + str(root / "src/network"), str(here / "SocketCancel.cpp"),
+                    "-o", str(build / "socket-cancel")], check=True)
+    result |= subprocess.run([str(build / "socket-cancel")]).returncode
+    return result
 
 
 if __name__ == "__main__":

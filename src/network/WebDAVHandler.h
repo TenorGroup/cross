@@ -3,11 +3,16 @@
 #include <HalStorage.h>
 #include <WebServer.h>
 
+#include <functional>
+
 #include "WebTransferAuth.h"
 
 class WebDAVHandler : public RequestHandler {
  public:
-  explicit WebDAVHandler(const WebTransferAuth& access) : auth(access) {}
+  explicit WebDAVHandler(const WebTransferAuth& access, std::function<bool()> cancel = {},
+                         std::function<void()> noteSocket = {}, std::function<void()> retractSocket = {})
+      : auth(access), cancel_(std::move(cancel)), noteSocket_(std::move(noteSocket)),
+        retractSocket_(std::move(retractSocket)) {}
   // RequestHandler interface
   bool canHandle(WebServer& server, HTTPMethod method, const String& uri) override;
   bool canRaw(WebServer& server, const String& uri) override;
@@ -21,6 +26,11 @@ class WebDAVHandler : public RequestHandler {
   String _putPath;
   bool _putOk = false;
   bool _putExisted = false;
+  std::function<bool()> cancel_;
+  std::function<void()> noteSocket_;
+  std::function<void()> retractSocket_;
+
+  bool transferCancelled() const { return cancel_ && cancel_(); }
 
   // WebDAV method handlers
   void handleOptions(WebServer& s);

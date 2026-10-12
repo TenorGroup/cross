@@ -84,6 +84,7 @@ class Scope {
  public:
   Scope();
   ~Scope();
+  bool failed() const;
   Scope(const Scope&) = delete;
   Scope& operator=(const Scope&) = delete;
 };

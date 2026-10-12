@@ -76,9 +76,20 @@ static std::vector<uint8_t> image;
 const char* fixtureTag = "v9.9.9";
 size_t ReleaseJsonParser::getFirmwareSize() const { return image.size(); }
 static bool imageDrops = false;
+static bool cancelManifest = false;
+static bool tlsRefused = false;
+namespace tls_slot {
+Scope::Scope() = default;
+Scope::~Scope() = default;
+bool Scope::failed() const { return tlsRefused; }
+}
 bool HttpDownloader::fetchUrl(const std::string&, const DataCallback&, const std::string&, const std::string&,
-                              const char*, bool, ProgressCallback, bool*, TransferStats* stats) {
+                              const char*, bool, ProgressCallback progress, bool* cancel, TransferStats* stats) {
   if (stats) *stats = {200, true, 0, 0, 0, 0, 90000, 50000, 50000};
+  if (cancelManifest) {
+    if (progress) progress(0, 0);
+    return !(cancel && *cancel);
+  }
   return true;  // the manifest
 }
 // The image server: parts on request, a connection that breaks at breakAt (`breaks` times), or
@@ -96,6 +107,7 @@ bool HttpDownloader::fetchRange(const std::string&, size_t first, size_t last, c
                                 const char*, ProgressCallback, bool*, TransferStats* stats, bool* whole, RangeSession*) {
   if (stats) *stats = {206, true, 0, 0, 0, 0, 90000, 50000, 50000};
   server.firsts.push_back(first);
+  if (tlsRefused) return false;
   const bool ignores = server.ignoresRange || (server.ignoresRangeAfterFirst && first > 0);
   *whole = ignores;
   if (ignores) {
@@ -232,7 +244,7 @@ struct HalGPIO {
 struct FakeLatch {
   bool start(HalGPIO&, uint8_t) { return true; }
   void stop() {}
-  bool latched() const { return false; }
+  bool latched() const { return cancelManifest; }
 };
 struct OptionPopup {
   std::function<void(int)> chosen;
@@ -328,6 +340,7 @@ struct OtaUpdateActivity : Activity {
   void runUpdateInstall();
   void onExit();
 #ifdef TENOR_PRESS_PROBE
+  uint32_t progressFrameCount = 0;
   static constexpr size_t PROBE_LINE_BYTES = 640;
   struct {
     uint32_t bootHeap, bootLargest, wifiHeap, wifiLargest, installHeap, installLargest;
@@ -386,6 +399,30 @@ void screenCases(const std::string& name) {
     std::memcpy(image.data() + 200, version.data(), version.size());
   };
   tagVersion();
+  if (name == "tls-refusal-aborts-cleanly") {
+    OtaUpdateActivity screen;
+    screen.onWifiSelectionComplete(true);
+    tlsRefused = true;
+    screen.runUpdateInstall();
+    require(screen.updater.lastAttempt().err == std::string("OOM_ERROR"), "TLS refusal did not return OOM_ERROR");
+    require(otaCalls.abort == 1 && otaCalls.setBoot == 0 && otaCalls.written == 0,
+            "TLS refusal left a selected or written partition");
+    require(server.firsts.size() == 1, "TLS refusal retried on the same exhausted heap");
+    screen.confirmPopup.chosen(1);
+    screen.onExit();
+    require(bootNow().armed, "the Update choice lost the clean boot fallback");
+    return;
+  }
+  if (name == "screen-back-cancels-manifest") {
+    cancelManifest = true;
+    OtaUpdateActivity screen;
+    screen.onWifiSelectionComplete(true);
+    require(screen.updater.lastAttempt().err == std::string("CANCELLED_ERROR"),
+            "screen did not connect its Back latch before checking the manifest");
+    require(screen.finishes == 1 && otaCalls.begin == 0 && otaCalls.setBoot == 0,
+            "manifest Back did not leave without touching the partition");
+    return;
+  }
   if (name == "check-alone-arms-nothing" || name == "update-restarts-into-install" ||
       name == "cancel-restarts-home") {
     OtaUpdateActivity screen;
@@ -480,11 +517,17 @@ void screenCases(const std::string& name) {
     if (name == "server-without-ranges-sends-whole-image")
       require(f.size() == 1 && screen.updater.lastParts() == 1, "a whole body was not taken as the image");
     if (name == "progress-frames-allocate-nothing") {
+      std::printf("Progress frames=%d allocations_after_first=0\n", screen.renderer.displays);
+#ifdef TENOR_PRESS_PROBE
+      require(loggedProgressFrames > 0 && loggedProgressFrames == screen.progressFrameCount,
+              "the probe did not report the progress frame count");
+#endif
       const auto& a = screen.frameAllocations;
-      require(a.size() > 50, "the progress frames were not drawn");
+      require(screen.renderer.displays >= 20 && screen.renderer.displays <= 26,
+              "the progress frames were not capped at 5% steps");
       for (size_t i = 1; i < a.size(); ++i) require(a[i] == 0, "a progress frame allocated during the download");
       require(screen.renderer.clears == screen.renderer.displays, "a skipped percent still drew into the frame");
-      require(screen.renderer.displays <= 53, "frames were drawn more often than every 2%");
+      require(screen.renderer.displays <= 26, "frames were drawn more often than every 5%");
       require(screen.firstFrameWarmed, "the first frame did not decode the digits before the byte line");
     }
     return;

@@ -86,7 +86,7 @@ struct PhaseActivityBoundary {
   int lastRenderedPercent = -1, lastUpdaterPercentage = 50, selectedNetworkIndex = 0, realNetworkCount = 1;
   Mode mode = Mode::AUTHENTICATE;
   InputType inputType = InputType::Text;
-  bool recoveryMode = false, isApMode = false, autoConnecting = false, grid = true, readable = true, failed = true;
+  bool recoveryMode = false, isApMode = false, autoConnecting = false, deferManualNetworkList = false, grid = true, readable = true, failed = true;
   bool cursorMode = false, urlPanel = false, symbols = false, shifted = false, passwordVisible = false;
   bool firstProgressFrame = false;
   bool togglePos = false;

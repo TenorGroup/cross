@@ -50,6 +50,7 @@ void WebDAVHandler::raw(WebServer& server, const String& uri, HTTPRaw& raw) {
   (void)uri;
   if (!auth.authorize(server, false)) return;
   if (raw.status == RAW_START) {
+    if (noteSocket_) noteSocket_();
     _putPath = getRequestPath(server);
     if (isProtectedPath(_putPath)) {
       _putOk = false;
@@ -91,6 +92,12 @@ void WebDAVHandler::raw(WebServer& server, const String& uri, HTTPRaw& raw) {
 
   } else if (raw.status == RAW_WRITE) {
     if (_putFile && _putOk) {
+      if (transferCancelled()) {
+        _putOk = false;
+        _putFile.close();
+        Storage.remove((_putPath + ".davtmp").c_str());
+        return;
+      }
       resetTaskWatchdogIfSubscribed();
       size_t written = _putFile.write(raw.buf, raw.currentSize);
       if (written != raw.currentSize) {
@@ -99,6 +106,8 @@ void WebDAVHandler::raw(WebServer& server, const String& uri, HTTPRaw& raw) {
     }
 
   } else if (raw.status == RAW_END) {
+    if (transferCancelled()) _putOk = false;
+    if (retractSocket_) retractSocket_();
     if (_putFile) {
       if (_putOk && !_putFile.sync()) _putOk = false;
       if (!_putFile.close()) _putOk = false;
@@ -113,9 +122,11 @@ void WebDAVHandler::raw(WebServer& server, const String& uri, HTTPRaw& raw) {
       }
       if (!_putOk) Storage.remove(tempPath.c_str());
     }
+    if (!_putOk) Storage.remove((_putPath + ".davtmp").c_str());
     LOG_DBG("DAV", "PUT END: %u bytes, ok=%d", raw.totalSize, _putOk);
 
   } else if (raw.status == RAW_ABORTED) {
+    if (retractSocket_) retractSocket_();
     if (_putFile) _putFile.close();
     String tempPath = _putPath + ".davtmp";
     Storage.remove(tempPath.c_str());
@@ -344,11 +355,16 @@ void WebDAVHandler::handleGet(WebServer& s) {
   s.send(200, contentType.c_str(), "");
 
   NetworkClient client = s.client();
+  if (noteSocket_) noteSocket_();
   // HalFile derives from Print, so write(file) selects write(uint8_t) through
   // its bool conversion. Stream explicit bytes and bound reads to the length
   // promised above, including when SD/network operations return short counts.
   bool complete = true;
   while (bytesRemaining > 0) {
+    if (transferCancelled()) {
+      complete = false;
+      break;
+    }
     resetTaskWatchdogIfSubscribed();
     const size_t requested = bytesRemaining < BUFFER_SIZE ? bytesRemaining : BUFFER_SIZE;
     const int count = file.read(buffer.get(), requested);
@@ -359,6 +375,10 @@ void WebDAVHandler::handleGet(WebServer& s) {
     const size_t bytesRead = static_cast<size_t>(count);
     size_t sent = 0;
     while (sent < bytesRead) {
+      if (transferCancelled()) {
+        complete = false;
+        break;
+      }
       resetTaskWatchdogIfSubscribed();
       const size_t written = client.write(buffer.get() + sent, bytesRead - sent);
       if (written == 0 || written > bytesRead - sent) {
@@ -371,6 +391,7 @@ void WebDAVHandler::handleGet(WebServer& s) {
     if (!complete) break;
   }
   if (!file.close()) complete = false;
+  if (retractSocket_) retractSocket_();
   if (!complete) {
     LOG_ERR("DAV", "GET %s failed with %u bytes remaining", path.c_str(), static_cast<unsigned>(bytesRemaining));
     // Headers have already been sent. Close the incomplete response so the

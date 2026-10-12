@@ -75,12 +75,13 @@ std::string uglyStatus(const WifiNetworkInfo& network) {
 
 WifiSelectionActivity::WifiSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                              const bool autoConnect, const bool syncClock,
-                                             const bool savedNetworkOnly)
+                                             const bool savedNetworkOnly, const bool deferManualNetworkList)
     : Activity("WifiSelection", renderer, mappedInput),
       UiAppHost(renderer),
       allowAutoConnect(autoConnect),
       syncClockOnConnect(syncClock),
-      savedNetworkOnly(savedNetworkOnly) {}
+      savedNetworkOnly(savedNetworkOnly),
+      deferManualNetworkList(deferManualNetworkList) {}
 
 void WifiSelectionActivity::onRowEvent(const fui::ActionEvent& event, void* user) {
   auto* self = static_cast<WifiSelectionActivity*>(user);
@@ -845,6 +846,7 @@ void WifiSelectionActivity::loop() {
       return;
     }
     if (autoConnecting && mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+      if (deferManualNetworkList) return;
       autoConnecting = false;
       manualNetworkListRequested = true;
       requestUpdate();
@@ -862,6 +864,7 @@ void WifiSelectionActivity::loop() {
         return;
       }
       if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+        if (deferManualNetworkList) return;
         showNetworkListFromAutoConnect();
         return;
       }
@@ -1129,7 +1132,7 @@ void WifiSelectionActivity::render(RenderLock&&) {
     x3activity::drawBar(renderer, layout.barRect, tr(STR_WIFI_NETWORKS), navigationPrefix.c_str());
     const bool saved = list && !networks.empty() && networks[selectedNetworkIndex].hasSavedPassword;
     const auto labels = mappedInput.mapLabels(autoConnecting ? tr(STR_CANCEL) : tr(STR_BACK),
-        list ? tr(STR_CONNECT) : prompt ? tr(STR_SELECT) : autoConnecting ? tr(STR_SHOW_NETWORKS) : "",
+        list ? tr(STR_CONNECT) : prompt ? tr(STR_SELECT) : autoConnecting && !deferManualNetworkList ? tr(STR_SHOW_NETWORKS) : "",
         prompt ? tr(STR_DIR_LEFT) : saved ? tr(STR_FORGET_BUTTON) : "",
         prompt ? tr(STR_DIR_RIGHT) : list ? tr(STR_RETRY) : "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
@@ -1427,7 +1430,7 @@ void WifiSelectionActivity::renderConnecting(const Rect* screen, const ThemeMetr
     const Rect statusBounds{statusX, screen->y, statusWidth, screen->height};
     UITheme::drawCenteredWrappedText(renderer, statusBounds, UI_10_FONT_ID, statusText, MAX_STATUS_LINES);
     if (autoConnecting) {
-      const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), tr(STR_SHOW_NETWORKS), "", "");
+      const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), deferManualNetworkList ? "" : tr(STR_SHOW_NETWORKS), "", "");
       GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     }
   } else {
@@ -1443,7 +1446,7 @@ void WifiSelectionActivity::renderConnecting(const Rect* screen, const ThemeMetr
     ssidInfo = renderer.truncatedText(UI_10_FONT_ID, ssidInfo.c_str(), statusWidth, EpdFontFamily::REGULAR);
     UITheme::drawCenteredText(renderer, *screen, UI_10_FONT_ID, top, ssidInfo.c_str());
     if (autoConnecting) {
-      const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), tr(STR_SHOW_NETWORKS), "", "");
+      const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), deferManualNetworkList ? "" : tr(STR_SHOW_NETWORKS), "", "");
       GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     }
   }
@@ -1492,13 +1495,15 @@ bool WifiSelectionActivity::renderUglyNote() const {
   switch (state) {
     case WifiSelectionState::SCANNING:
       line = autoConnecting ? tr(STR_FINDING_SAVED_WIFI) : tr(STR_UGLY_WIFI_SCANNING);
-      hints.back = hints.confirm = autoConnecting;
+      hints.back = autoConnecting;
+      hints.confirm = autoConnecting && !deferManualNetworkList;
       break;
     case WifiSelectionState::AUTO_CONNECTING:
     case WifiSelectionState::CONNECTING:
       line = tr(STR_UGLY_WIFI_CONNECTING);
       detail = selectedSSID;
-      hints.back = hints.confirm = autoConnecting;
+      hints.back = autoConnecting;
+      hints.confirm = autoConnecting && !deferManualNetworkList;
       break;
     case WifiSelectionState::CONNECTED:
       line = tr(STR_UGLY_WIFI_CONNECTED);
