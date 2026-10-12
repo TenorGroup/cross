@@ -9,6 +9,7 @@
 #include "components/OptionPopup.h"
 #include "components/QuoteDetailLayout.h"
 #include "components/TenorMenuChrome.h"
+#include "shells/ugly/UglyQuotePage.h"
 
 // Bottom of the header the three Quotes screens share: where their content starts.
 int quotesHeaderBottom();
@@ -59,6 +60,15 @@ class QuoteDetailActivity final : public Activity {
   int metaStep() const;
   void positionLabel(char* out, size_t size) const;
   void layoutX3Pages();
+  // tenor/ugly on the button readers: the quote written by hand, broken into lines and pages in the pen's own widths.
+  void layoutUglyBody();
+  void drawUglyPage() const;
+  // True when the page is written in the pen: tenor/ugly on the button readers (which draw the screen in the X3 layout) and on
+  // the touch reader.
+  bool penPage() const;
+  // Where the page of the pen is laid out: the body rect of the screen, or on the touch reader what lies between its header and
+  // the foot of the content.
+  tenorchrome::X3ScreenRect bodyArea() const;
 
  private:
   enum class Menu : uint8_t { None, Options, Edit, Delete };
@@ -101,6 +111,9 @@ class QuoteDetailActivity final : public Activity {
   int bodyPages = 1;
   int metaOnLast = 0;
   int metaPerPage = 1;
+  // tenor/ugly: the quote as the pen sets it (composed, with its closing mark) and where each page of it starts.
+  std::string uglyBody;
+  ugly::quotepage::PageMap uglyMap;
 
   OptionPopup popup;
   Menu menu = Menu::None;

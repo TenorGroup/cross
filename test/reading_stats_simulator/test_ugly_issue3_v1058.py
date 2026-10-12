@@ -32,8 +32,9 @@ def habits_stats(card):
     path.write_text(json.dumps(doc))
 
 
-def shot(keys, tier=0, level=1, prepare=None, shell=1, **settings):
-    """The screen after `keys` from the diary (1500 ms apart). Returns (image, activities entered)."""
+def shot(keys, tier=0, level=1, prepare=None, shell=1, env=None, **settings):
+    """The screen after `keys` from the diary (1500 ms apart). Returns (image, activities entered). `env` adds
+    simulator variables to the run."""
     card = Card(shell=shell, uiTextSize=tier, uiUglyLevel=level, **dict(HAND, **settings))
     try:
         if prepare:
@@ -41,7 +42,8 @@ def shot(keys, tier=0, level=1, prepare=None, shell=1, **settings):
         parts = ['%d:%s' % (1500 * (i + 1), k) for i, k in enumerate(keys)]
         at = 1500 * len(keys) + 2200
         parts.append('%d:QUIT' % (at + 700))
-        log, shots = card.run(';'.join(parts), [(at, 'f')], timeout=120, CROSSPOINT_SIM_NOW=NOW, CROSSPOINT_SIM_MARK_SEED='12345')
+        log, shots = card.run(';'.join(parts), [(at, 'f')], timeout=120, CROSSPOINT_SIM_NOW=NOW, CROSSPOINT_SIM_MARK_SEED='12345',
+                               **(env or {}))
     finally:
         card.close()
     return shots['f'].convert('L'), entered(log)

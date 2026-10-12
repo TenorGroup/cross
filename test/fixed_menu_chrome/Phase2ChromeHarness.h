@@ -2,6 +2,7 @@
 #include "components/QuoteDetailLayout.h"
 #include "components/QuoteListLayout.h"
 #include "components/QuoteMarkGlyph.h"
+#include "shells/ugly/UglyQuotePage.h"
 #include <Icon.h>
 #include "components/icons/tenorHomeTabIcons.h"
 #include "components/icons/tenorReaderTabIcons.h"
@@ -103,7 +104,12 @@ struct QuoteDetailActivity {
   std::string chapter = "Chapter 1", when = "09/10/2026", pageLine = "Page 123";
   int index = 0, quotePage = 0, pages = 1, linesPerPage = 1, bodyPages = 1, metaOnLast = 0, metaPerPage = 1;
   bool loaded = true, size18 = false;
+  // The page written in the pen has its own checks (UglyQuotePageTest, the simulator journeys); here it is a stub.
+  ugly::quotepage::PageMap uglyMap;
   explicit QuoteDetailActivity(GfxRenderer& target) : renderer(target) {}
+  void drawUglyPage() const {}
+  bool penPage() const { return shell::uglyParts(); }
+  tenorchrome::X3ScreenRect bodyArea() const { return screenLayout().bodyRect; }
   tenorchrome::X3ScreenLayout screenLayout() const;
   quotedetail::Metrics metrics() const;
   int visitX3Meta(bool paint, int firstLine = 0, int y = 0) const;

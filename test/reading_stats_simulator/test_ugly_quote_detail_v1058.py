@@ -28,19 +28,19 @@ def seed_quotes(card):
 
 class UglyQuoteDetailTest(unittest.TestCase):
     def meta_bands(self, im):
-        runs = bands(im, 0, 528, 20, 690)
+        runs = bands(im, 40, 500, 20, 690)  # clear of the margin line of the page (v1.0.59)
         return runs[-4:]
 
     def test_2_the_facts_under_the_quotation_are_centred_with_air_and_the_count_is_in_the_path(self):
         for level in (0, 1):
             for tier in (0, 1, 2):
                 with self.subTest(level=level, tier=tier):
-                    im, acts = shot(TO_DETAIL, tier, level, prepare=seed_quotes)
+                    im, acts = shot(TO_DETAIL, tier, level, prepare=seed_quotes, env=dict(CROSSPOINT_SIM_UGLY_SCRAP='0'))
                     self.assertEqual(acts[-1], 'QuoteDetail')
                     px = im.load()
                     meta = self.meta_bands(im)
                     for top, bottom in meta:
-                        xs = [x for x in range(528) for y in range(top, bottom + 1) if px[x, y] < 128]
+                        xs = [x for x in range(40, 500) for y in range(top, bottom + 1) if px[x, y] < 128]
                         self.assertLessEqual(abs((min(xs) + max(xs)) / 2 - 263.5), 1.5, f'line {top}..{bottom} is off the centre: {min(xs)}..{max(xs)}')
                     for (a, b), (c, d) in zip(meta, meta[1:]):
                         self.assertGreaterEqual(c - b - 1, 4, f'lines {a}..{b} and {c}..{d} are crowded')
