@@ -32,6 +32,7 @@ def card(out, size=0, files=(), extra=None):
 
 def run(program, out, sd, steps, port, gap=2500, settle=1500):
     """steps: [(name, key)] one every `gap` ms from 3 s; a screenshot `settle` ms after each. Returns (log, shots)."""
+    out.mkdir(parents=True, exist_ok=True)
     t, acts, shots = 3000, [], {}
     for name, key in steps:
         if key:

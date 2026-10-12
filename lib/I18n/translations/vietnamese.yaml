@@ -647,6 +647,7 @@ STR_UNPIN_FAVORITE: "Bỏ ghim"
 STR_FILE_SIDE_ACTIONS: "Giữ : Đọc thử   : Xóa"
 
 STR_FILE_NOT_FOUND: "Không tìm thấy sách/thư mục. Giữ  để gỡ ghim."
+STR_FILE_NOT_FOUND_TOUCH: "Không tìm thấy sách/thư mục. Chạm giữ để gỡ ghim."
 
 STR_STATUS_CORNERS: "Pin và đồng hồ"
 STR_BATTERY_LEFT_CLOCK_RIGHT: "Pin trái, giờ phải"

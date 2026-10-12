@@ -731,7 +731,7 @@ void HomeActivity::drawFooter() {
     return;
   }
   if (activeTabId == Tab::FOLDER && ringPos() == 0) tenorchrome::drawTip(renderer, tr(STR_FOLDER_HOLD));
-  if (favoriteFileMissing) tenorchrome::drawTip(renderer, tr(STR_FILE_NOT_FOUND), 1, 3);
+  if (favoriteFileMissing) tenorchrome::drawTip(renderer, missingFileText(), 1, 3);
   if (activeTabId == Tab::STATS && statsResetTip) tenorchrome::drawTip(renderer, I18N.get(*statsResetTip), 1, 2);
 }
 
@@ -796,8 +796,13 @@ const char* HomeActivity::homeTipText() {
   return UiListActivity::favoriteHintText();
 }
 
+// A pin whose book or folder is gone: the touch shell has no Select to name, and a line naming one would be hidden.
+const char* HomeActivity::missingFileText() {
+  return tenorchrome::kTouchShell ? tr(STR_FILE_NOT_FOUND_TOUCH) : tr(STR_FILE_NOT_FOUND);
+}
+
 const char* HomeActivity::homeInfoText() {
-  if (favoriteFileMissing) return tr(STR_FILE_NOT_FOUND);
+  if (favoriteFileMissing) return missingFileText();
   if (activeTabId == Tab::STATS && statsResetTip) return I18N.get(*statsResetTip);
   if (recentRemovalFailed) return tr(STR_REMOVE_FROM_RECENTS_FAILED);
   if (favoriteSaveFailed) return tr(STR_MENU_SAVE_FAILED);
@@ -996,7 +1001,7 @@ void HomeActivity::buildScreen(UiScreen& screen) {
   }
 
   if (!tenorchrome::x3ScreenLayoutEnabled() && favoriteFileMissing)
-    screen.takeBottom(static_cast<int16_t>(28 + tenorchrome::tipHeight(renderer, tr(STR_FILE_NOT_FOUND), 3)));
+    screen.takeBottom(static_cast<int16_t>(28 + tenorchrome::tipHeight(renderer, missingFileText(), 3)));
   if (!tenorchrome::x3ScreenLayoutEnabled() && activeTabId == Tab::STATS && statsResetTip)
     screen.takeBottom(static_cast<int16_t>(28 + tenorchrome::tipHeight(renderer, I18N.get(*statsResetTip), 2)));
   fui::ListProps props;
