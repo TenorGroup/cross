@@ -52,14 +52,14 @@ def extend(root, read_source, function, fixture, names):
     habit_status = '\n'.join(re.search(pattern, habit_footer).group(0) for pattern in
                             (r'const bool matched =[^;]+;', r'const char\* status =[^;]+;'))
     snippets['ReadingHabits'] = descriptions + '\n' + habit_status + '\n' + snippets['ReadingHabits']
-    history_chart = function(sources['ReadingHistory'], 'void ReadingHistoryActivity::drawChart(')
-    history_chart = history_chart[history_chart.index('{') + 1:history_chart.index('  if (tenorchrome::x3ScreenLayoutEnabled())')] + \
-        function(history_chart, '  if (tenorchrome::x3ScreenLayoutEnabled())')
+    # The long-term screen's information line: the page's dates under the grid, the statement as the screen has it.
     history_grid = function(sources['ReadingHistory'], 'void ReadingHistoryActivity::drawGrid(')
-    history_grid = function(history_grid, '  if (tenorchrome::x3ScreenLayoutEnabled())')
+    history_info = history_grid[history_grid.index('  tenorchrome::drawInfoInRect(renderer, range,'):]
+    history_info = history_info[:history_info.index(';') + 1]
+    history_info = history_info.replace('lichdai::SO_TUAN', '4')
     remap_methods = '\n'.join(function(sources['ButtonRemap'], f'const char* ButtonRemapActivity::{method}(')
                               .replace('ButtonRemapActivity::', '') for method in ('getRoleName', 'getHardwareName'))
-    used = '\n'.join(snippets.values()) + '\n'.join(margin_snippets.values()) + history_chart + history_grid + remap_methods + ' STR_ALREADY_ASSIGNED'
+    used = '\n'.join(snippets.values()) + '\n'.join(margin_snippets.values()) + history_info + remap_methods + ' STR_ALREADY_ASSIGNED'
     keys = sorted(set(re.findall(r'\bSTR_[A-Z0-9_]+\b', used)))
     existing = set(re.findall(r'\bSTR_[A-Z0-9_]+\b', fixture))
     extra = [key for key in keys if key not in existing]
@@ -129,8 +129,11 @@ const char* tr(StrId id) {
         constants = '\n'.join('static ' + match for match in re.findall(
             r'constexpr int QR_CODE_(?:WIDTH|HEIGHT)\s*=\s*\d+;', sources[name]))
         if name == 'ReadingHistory':
-            extra_methods = 'void drawChart() const {\n' + history_chart + '\n}\n' + \
-                'void drawGrid() const {\nconst int labelY = gridTop() + 3 * ((renderer.getScreenWidth() - 48) / 10) + 2;\n' + history_grid + '\n}\n'
+            snippet = snippet.replace('ready', 'grid')
+            margins = margins.replace('ready', 'grid')
+            extra_methods = 'void drawPage() const {\nconst int line = renderer.getLineHeight(SMALL_FONT_ID), ' \
+                'step = (renderer.getScreenWidth() - 48) / 7, top = gridTop() + line + 4;\n' \
+                'const char* range = "31/08 - 21/09  1/4";\n' + history_info + '\n}\n'
         if name in ('OtaUpdate', 'BlePageTurner'):
             extra_methods += function(sources[name], f'freeink::ui::Rect {name}Activity::x3PopupFrame(').replace(
                 f'{name}Activity::', '')

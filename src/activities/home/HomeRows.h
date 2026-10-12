@@ -33,8 +33,8 @@ struct SettingsGroups {
 };
 SettingsGroups settingsGroups();
 
-// The Stats page rows, in order: habits, by book, month, quotes, reset all, reset habits.
-inline constexpr StrId STATS_ROWS[] = {StrId::STR_READING_HABITS, StrId::STR_STATS_BY_BOOK, StrId::STR_STATS_MONTH,
+// The Stats page rows, in order: habits, by book, 12 weeks, quotes, reset all, reset habits.
+inline constexpr StrId STATS_ROWS[] = {StrId::STR_READING_HABITS, StrId::STR_STATS_BY_BOOK, StrId::STR_STATS_12_WEEKS,
                                        StrId::STR_QUOTES,         StrId::STR_STATS_RESET_ALL,
                                        StrId::STR_STATS_RESET_HABITS};
 inline constexpr int STATS_ROW_COUNT = 6;
