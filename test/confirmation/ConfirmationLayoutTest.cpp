@@ -106,3 +106,11 @@ TEST(ConfirmationLayout, WrappedTouchMessageGrowsUpwardAndKeepsCancelFixed) {
 }
 
 }  // namespace
+
+TEST(ConfirmationLayout, ATimedQuestionIsCancelledOnceItHasStoodItsTime) {
+  EXPECT_FALSE(confirmationExpired(0, 0, 4000000000U));  // no limit: it waits
+  EXPECT_FALSE(confirmationExpired(60000, 1000, 60999));
+  EXPECT_TRUE(confirmationExpired(60000, 1000, 61000));
+  EXPECT_FALSE(confirmationExpired(60000, 0xFFFFF000U, 0x00001000U));  // across the millis() wrap
+  EXPECT_TRUE(confirmationExpired(60000, 0xFFFFF000U, 0x0000E000U));
+}
