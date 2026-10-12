@@ -7,6 +7,7 @@
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <Utf8.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -218,6 +219,11 @@ void QuoteDetailActivity::show(const int newIndex) {
   pageLine = page;
 
   if (tenorchrome::x3ScreenLayoutEnabled()) {
+    if (shell::uglyParts()) {
+      layoutUglyBody();
+      layoutX3Pages();
+      return;
+    }
     const int step = metaStep();
     const int metaCount = visitX3Meta(false);
     const auto body = endsWithCloseQuote(quote.text) ? quote.text : quote.text + CLOSE_QUOTE;
@@ -617,6 +623,9 @@ int QuoteDetailActivity::visitX3Meta(const bool paint, const int firstLine, cons
             return;
           }
           // centred on the ink, like the lines of tenor/cross
+#ifdef UGLY_FRAME_LOG
+          if (!renderer.isFontCacheScanning()) LOG_INF("UGLY", "QuoteMeta page=%d row=%d y=%d %s", quotePage, row, lineTop, line);
+#endif
           const auto ink = ugly::textBounds(renderer, ugly::Size::S22, line);
           ugly::text(renderer, ugly::Size::S22, body.x + (body.width - (ink.x0 + ink.x1)) / 2,
                      lineTop + ugly::ascent(ugly::Size::S22), line);
@@ -629,6 +638,17 @@ int QuoteDetailActivity::visitX3Meta(const bool paint, const int firstLine, cons
 void QuoteDetailActivity::layoutX3Pages() {
   const auto area = metrics();
   const int step = metaStep();
+  if (shell::uglyParts()) {
+    using namespace ugly::quotepage;
+    const auto body = screenLayout().bodyRect;
+    const int rowsTop = body.y + BODY_BASE - BODY_ASCENT;
+    linesPerPage = capacityFor(body.y, body.bottom());
+    bodyPages = uglyMap.pages;
+    metaOnLast = std::max(0, (body.bottom() - (rowsTop + uglyMap.lastLines * ROW_PITCH + META_GAP)) / step);
+    metaPerPage = std::max(1, (body.bottom() - rowsTop) / step);
+    pages = bodyPages + (std::max(0, visitX3Meta(false) - metaOnLast) + metaPerPage - 1) / metaPerPage;
+    return;
+  }
   const int lineHeight = size18 ? area.lineHeight18 : area.lineHeight16;
   linesPerPage = std::max(1, quotedetail::linesPerPage(lineHeight, area));
   bodyPages = std::max(1, (static_cast<int>(lines.size()) + linesPerPage - 1) / linesPerPage);
@@ -653,6 +673,10 @@ void QuoteDetailActivity::drawX3Content() const {
     tenorchrome::drawInfoInRect(renderer, tr(STR_QUOTES_UNREADABLE), {body.x, top, body.width, body.bottom() - top});
     return;
   }
+  if (shell::uglyParts()) {
+    drawUglyPage();
+    return;
+  }
   if (quotePage < bodyPages) {
     const int first = quotePage * linesPerPage;
     const int end = std::min(static_cast<int>(lines.size()), first + linesPerPage);
@@ -668,4 +692,68 @@ void QuoteDetailActivity::drawX3Content() const {
   } else if (loaded) {
     visitX3Meta(true, metaOnLast + (quotePage - bodyPages) * metaPerPage, top);
   }
+}
+
+// tenor/ugly: the quote as the pen sets it. The words are laid out in the pen's own widths (the same ones the page is drawn
+// with), so a line never runs past its column and a long quote turns pages without losing a word.
+void QuoteDetailActivity::layoutUglyBody() {
+  using namespace ugly::quotepage;
+  ugly::ensureFonts(renderer);
+  uglyBody = utf8ComposeNfc(endsWithCloseQuote(quote.text) ? quote.text : quote.text + CLOSE_QUOTE);
+  const auto body = screenLayout().bodyRect;
+  const int space = ugly::width(renderer, ugly::Size::S30, "a") / 2 + 4;
+  uglyMap = paginate(uglyBody.data(), static_cast<int>(uglyBody.size()), renderer.getScreenWidth() - COLUMN_INSET, space,
+                     capacityFor(body.y, body.bottom()), [this](const char* bytes, const int length) {
+                       return ugly::width(renderer, ugly::Size::S30, std::string(bytes, length).c_str());
+                     });
+}
+
+void QuoteDetailActivity::drawUglyPage() const {
+  using namespace ugly::quotepage;
+#ifdef UGLY_FRAME_LOG
+  const unsigned long penStart = millis();
+#endif
+  const auto body = screenLayout().bodyRect;
+  const int w = renderer.getScreenWidth();
+  const int space = ugly::width(renderer, ugly::Size::S30, "a") / 2 + 4;
+  const int rowsTop = body.y + BODY_BASE - BODY_ASCENT;
+  // the margin of a school notebook
+  ugly::line(renderer, 26, body.y + 32, 27, body.bottom() - 20, 501, 1);
+  const bool onBody = quotePage < bodyPages;
+  if (onBody) {
+    if (quotePage == 0) {
+      ugly::text(renderer, ugly::Size::S38, 42, body.y + MARK_BASE, OPEN_QUOTE);
+    }
+    const int rows = quotePage + 1 < bodyPages ? linesPerPage : uglyMap.lastLines;
+    int pos = uglyMap.start[quotePage];
+    for (int row = 0; row < rows; ++row) {
+      const int baseline = body.y + BODY_BASE + row * ROW_PITCH;
+      pos = nextLine(
+          uglyBody.data(), static_cast<int>(uglyBody.size()), pos, w - COLUMN_INSET, space,
+          [this](const char* bytes, const int length) {
+            return ugly::width(renderer, ugly::Size::S30, std::string(bytes, length).c_str());
+          },
+          [&](const int from, const int length, const int x) {
+            const std::string word = uglyBody.substr(from, length);
+            ugly::text(renderer, ugly::Size::S30, COLUMN_X + x, baseline, word.c_str());
+#ifdef UGLY_FRAME_LOG
+            if (!renderer.isFontCacheScanning())
+              LOG_INF("UGLY", "QuoteWord page=%d row=%d x=%d y=%d %s", quotePage, row, COLUMN_X + x, baseline, word.c_str());
+#endif
+          });
+    }
+  }
+  const int metaStart = onBody ? 0 : metaOnLast + (quotePage - bodyPages) * metaPerPage;
+  const int metaTop = onBody ? rowsTop + uglyMap.lastLines * ROW_PITCH + META_GAP : rowsTop;
+  if (!onBody || quotePage + 1 == bodyPages) {
+    visitX3Meta(true, metaStart, metaTop);
+  }
+  [[maybe_unused]] const int scrapCount = 0;
+#ifdef UGLY_FRAME_LOG
+  if (!renderer.isFontCacheScanning()) {
+    LOG_INF("UGLY", "QuotePage quote=%d page=%d/%d bodyPages=%d rows=%d lines=%d scraps=%d ms=%lu free=%u largest=%u %s",
+            index, quotePage + 1, pages, bodyPages, linesPerPage, uglyMap.lines, scrapCount,
+            millis() - penStart, static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()), "");
+  }
+#endif
 }
