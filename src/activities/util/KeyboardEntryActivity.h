@@ -10,6 +10,9 @@
 
 #include "activities/Activity.h"
 #include "util/ButtonNavigator.h"
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+#include "TelexComposer.h"
+#endif
 
 enum class InputType { Text, Password, Url };
 
@@ -74,6 +77,10 @@ class KeyboardEntryActivity : public Activity {
   bool shifted = false;
   bool symbols = false;
   bool urlPanel = false;  // URL snippet panel replaces the letter layer
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  bool telexEnabled = false;
+  telex::State telexState;
+#endif
 
   // Key hit rects registered by the keyboard component during render(); loop()
   // routes touch snapshots against them. The 5-row EN layout registers 41 keys,

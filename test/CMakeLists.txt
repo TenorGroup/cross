@@ -319,3 +319,4 @@ add_subdirectory(cover_holder)
 
 add_subdirectory(home_thumb_work)
 add_subdirectory(bitmap_writer)
+add_subdirectory(telex_composer)

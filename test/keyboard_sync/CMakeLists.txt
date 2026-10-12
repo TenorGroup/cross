@@ -21,3 +21,15 @@ target_link_libraries(KeyboardSyncTest PRIVATE Threads::Threads)
 foreach(case enter insert backspace clear cursor password password_utf8 utf8_wrap input_time_short input_time_long touch completion cancel viewport landscape_viewport timeout_disabled timeout_wrap timeout_input_reset timeout_normal_cancel stress)
   add_test(NAME KeyboardSync.${case} COMMAND KeyboardSyncTest ${case})
 endforeach()
+
+add_executable(KeyboardTelexTest
+  KeyboardSyncTest.cpp
+  ${REPO_ROOT}/src/activities/util/KeyboardEntryActivity.cpp
+  ${REPO_ROOT}/src/activities/util/TelexComposer.cpp
+  ${REPO_ROOT}/freeink-sdk/libs/ui/FreeInkUI/src/FreeInkUI.cpp
+)
+target_compile_features(KeyboardTelexTest PRIVATE cxx_std_17)
+target_compile_definitions(KeyboardTelexTest PRIVATE FREEINK_DEVICE_X4PRO=1)
+target_include_directories(KeyboardTelexTest PRIVATE stubs ${REPO_ROOT}/src ${REPO_ROOT}/freeink-sdk/libs/ui/FreeInkUI/include)
+target_link_libraries(KeyboardTelexTest PRIVATE Threads::Threads)
+add_test(NAME KeyboardTelex.input COMMAND KeyboardTelexTest telex)

@@ -3,6 +3,7 @@
 #include "components/UITheme.h"
 #include "components/TenorMenuChrome.h"
 
+#include <I18n.h>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -77,6 +78,28 @@ struct Fixture {
     RenderLock lock;
     activity.render(std::move(lock));
   }
+  bool hasKey(const std::string& label) {
+    render();
+    for (const auto& key : renderer.keys) if (key.text == label) return true;
+    return false;
+  }
+  int keyWidth(const std::string& label) {
+    render();
+    for (const auto& key : renderer.keys) if (key.text == label) return key.width;
+    return 0;
+  }
+  void touchKey(const std::string& label) {
+    render();
+    for (const auto& key : renderer.keys) {
+      if (key.text != label) continue;
+      input.reset(); input.tap = true;
+      input.touchX = key.x + key.width / 2;
+      input.touchY = key.y + key.height / 2;
+      activity.loop();
+      return;
+    }
+    throw std::runtime_error("missing keyboard label: " + label);
+  }
   void press(Button button) {
     input.reset();
     input.pressed[static_cast<size_t>(button)] = true;
@@ -138,7 +161,32 @@ struct Fixture {
 };
 
 static void run(const std::string& test) {
-  if (test == "enter") {
+  if (test == "telex") {
+    I18N.language = Language::VI;
+    Fixture vi("");
+    require(vi.hasKey("VI"), "Vietnamese must start with Telex enabled");
+    // The label rect is 37 wide with a single unit and 58 with the shipped 3 units; EN at the largest text size needs about 50.
+    require(vi.keyWidth("VI") >= 50, "Telex key too narrow for the EN label at large text sizes");
+    vi.touchKey("a"); vi.touchKey("a"); vi.touchKey("s");
+    require(vi.completed() == "ấ", "touch keys did not produce NFC Vietnamese");
+    vi.touchKey("VI");
+    require(vi.hasKey("EN"), "toggle must display the current input language");
+    vi.touchKey("s"); vi.touchKey("s");
+    require(vi.completed() == "ấss", "disabled Telex changed literal keys");
+    vi.touchKey("EN"); vi.touchKey("z");
+    require(vi.hasKey("VI"), "Telex did not turn back on");
+    for (InputType kind : {InputType::Password, InputType::Url}) {
+      Fixture raw("", kind);
+      require(!raw.hasKey("VI") && !raw.hasKey("EN"), "literal fields expose Telex");
+      for (char c : std::string("aasdd")) raw.touchKey(std::string(1, c));
+      require(raw.completed() == "aasdd", "literal field changed password or URL bytes");
+    }
+    I18N.language = Language::EN;
+    Fixture en("");
+    require(en.hasKey("EN"), "English must start with Telex disabled");
+    en.touchKey("a"); en.touchKey("a");
+    require(en.completed() == "aa", "English default transformed keys");
+  } else if (test == "enter") {
     Fixture f("aế中", InputType::Password);
     f.againstPausedRender([&] { f.activity.onEnter(); });
     require(f.completed() == "aế中", "onEnter changed initial text");

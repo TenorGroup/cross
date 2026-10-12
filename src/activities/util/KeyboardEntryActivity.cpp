@@ -26,6 +26,50 @@ namespace fui = freeink::ui;
 namespace {
 
 constexpr fui::ActionId ACTION_KEY = 1;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+constexpr int16_t TELEX_KEY = -5;
+
+struct TelexKeyText {
+  fui::GfxRendererTarget& target;
+  const GfxRenderer& renderer;
+  int font;
+};
+
+void drawTelexKeyText(void* context, fui::Rect rect, const char* text, const fui::TextStyle& style) {
+  auto& key = *static_cast<TelexKeyText*>(context);
+  auto centered = style;
+  if (strcmp(text, "VI") == 0 || strcmp(text, "EN") == 0) {
+    const auto fontStyle = style.bold ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
+    const auto ink = key.renderer.getTextInkBounds(key.font, text, fontStyle);
+    const int width = key.renderer.getTextWidth(key.font, text, fontStyle);
+    rect.x += (rect.width - (ink[2] - ink[0])) / 2 - ink[0] - (rect.width - width) / 2;
+    centered.centerInkY = true;
+  }
+  key.target.setTextSink(nullptr, nullptr);
+  key.target.text(rect, text, centered);
+  key.target.setTextSink(drawTelexKeyText, context);
+}
+
+
+const fui::KeyboardLayout& telexLayout(const bool shifted, const bool enabled) {
+  const fui::KeyboardLayout& base = fui::builtinKeyboardLayout(fui::KeyboardLayoutId::QwertyEn, shifted, false, true, false);
+  static fui::KeyboardKey bottom[2][5];
+  static fui::KeyboardRow rows[2][5];
+  static fui::KeyboardLayout layouts[2][2];
+  const int shift = shifted ? 1 : 0;
+  const int mode = enabled ? 1 : 0;
+  const char* label = enabled ? "VI" : "EN";
+  bottom[mode][0] = {"?123", nullptr, fui::KeyKind::Mode, fui::StateNormal, fui::QWERTY_KEY_MODE, 4, true, nullptr};
+  bottom[mode][1] = {"Shift", nullptr, fui::KeyKind::Shift, fui::StateNormal, fui::QWERTY_KEY_SHIFT, 3, true, nullptr};
+  bottom[mode][2] = {label, nullptr, fui::KeyKind::Normal, fui::StateNormal, TELEX_KEY, 3, true, nullptr};
+  bottom[mode][3] = {"Space", nullptr, fui::KeyKind::Space, fui::StateNormal, fui::QWERTY_KEY_SPACE, 6, true, nullptr};
+  bottom[mode][4] = {"OK", nullptr, fui::KeyKind::Ok, fui::StateNormal, fui::QWERTY_KEY_ENTER, 4, true, nullptr};
+  for (int i = 0; i < 4; ++i) rows[mode][i] = base.rows[i];
+  rows[mode][4] = {bottom[mode], 5, 0};
+  layouts[mode][shift] = {rows[mode], 5};
+  return layouts[mode][shift];
+}
+#endif
 
 bool singleLineInput(const GfxRenderer& renderer) {
   return tenorchrome::x3ScreenLayoutEnabled() || normalizedUiTextSize(SETTINGS.uiTextSize) != 0 ||
@@ -191,6 +235,10 @@ void KeyboardEntryActivity::onEnter() {
   cursorMode = false;
   togglePos = false;
   passwordVisible = false;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  telexState = {};
+  telexEnabled = inputType == InputType::Text && I18N.getLanguage() == Language::VI;
+#endif
   selRow = 0;
   selCol = 0;
   delPressCount = 0;
@@ -211,6 +259,10 @@ void KeyboardEntryActivity::onExit() { Activity::onExit(); }
 
 const fui::KeyboardLayout& KeyboardEntryActivity::currentLayout() const {
   if (symbols) return fui::builtinKeyboardLayout(layoutId, shifted, true);
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  if (inputType == InputType::Text)
+    return telexLayout(shifted, telexEnabled);
+#endif
   if (inputType == InputType::Url) {
     if (urlPanel) return URL_SNIPPET_LAYOUT;
     return shifted ? URL_SHIFT_LAYOUT : URL_LAYOUT;
@@ -326,6 +378,11 @@ size_t KeyboardEntryActivity::utf8Next(const std::string& s, size_t pos) {
 void KeyboardEntryActivity::insertUtf8(const char* out) {
   if (!out || !*out) return;
   const size_t n = strlen(out);
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  if (cursorPos > text.length()) cursorPos = text.length();
+  if (telexEnabled && inputType == InputType::Text && out[1] == '\0' &&
+      telex::insert(telexState, text, cursorPos, out[0], maxLength)) return;
+#endif
   if (maxLength != 0 && text.length() + n > maxLength) return;
   if (cursorPos > text.length()) cursorPos = text.length();
   text.insert(cursorPos, out, n);
@@ -333,6 +390,9 @@ void KeyboardEntryActivity::insertUtf8(const char* out) {
 }
 
 bool KeyboardEntryActivity::backspaceUtf8() {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  telexState = {};
+#endif
   if (text.empty() || cursorPos == 0) return false;
   const size_t prev = utf8Prev(text, cursorPos);
   text.erase(prev, cursorPos - prev);
@@ -342,6 +402,13 @@ bool KeyboardEntryActivity::backspaceUtf8() {
 
 bool KeyboardEntryActivity::activateValue(const int16_t value, const bool longPress, bool& complete) {
   switch (value) {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+    case TELEX_KEY:
+      if (inputType != InputType::Text) return false;
+      telexState = {};
+      telexEnabled = !telexEnabled;
+      return true;
+#endif
     case fui::QWERTY_KEY_SHIFT:
       delPressCount = 0;
       hintVisible = false;
@@ -1241,6 +1308,9 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   target.setFont(fui::GfxRendererTarget::FONT_BODY, UI_12_FONT_ID);
   // Compact landscape rows keep both digit and alternate complete. Reuse the
   // existing fixed families without rebinding the user's input/status fonts.
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  int telexKeyFont = UI_12_FONT_ID;
+#endif
   const int rowGap = renderer.getScreenWidth() > renderer.getScreenHeight() ? 0 : fui::KeyboardProps{}.rowGap;
   const int rowHeight = (kbRect.height - (currentLayout().rowCount - 1) * rowGap) /
                         currentLayout().rowCount;
@@ -1253,6 +1323,9 @@ void KeyboardEntryActivity::render(RenderLock&&) {
       renderer.insertFont(KEY_ALT_FONT_ID, uiFontTierFamily(UIFontRole::Caption, 0));
     }
     target.setFont(fui::GfxRendererTarget::FONT_BODY, KEY_BODY_FONT_ID);
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+    telexKeyFont = KEY_BODY_FONT_ID;
+#endif
     target.setFont(fui::GfxRendererTarget::FONT_SMALL, KEY_ALT_FONT_ID);
   }
   const fui::DeviceContext device = target.deviceContext();
@@ -1304,6 +1377,11 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   if (tenorchrome::x3ScreenLayoutEnabled()) props.bottomHitOverflow = 0;
   const bool handwritten = shell::uglyParts();
   target.setPaintingEnabled(!handwritten);
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  TelexKeyText telexKeyText{target, renderer, telexKeyFont};
+  if (!handwritten && inputType == InputType::Text && !symbols)
+    target.setTextSink(drawTelexKeyText, &telexKeyText);
+#endif
   fui::keyboard(frame, kbRect, props);
   target.setPaintingEnabled(true);
   interactions.publish();

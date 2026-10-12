@@ -150,7 +150,12 @@ void OpdsSettingsActivity::handleSelection() {
       }
     };
     startActivityForResult(std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_PASSWORD),
-                                                                   editServer.password, 63, InputType::Text),
+                                                                   editServer.password, 63,
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+                                                                   InputType::Password),
+#else
+                                                                   InputType::Text),
+#endif
                            handler);
   } else if (nav.selected == 4 && !isNewServer) {
     // Delete flow is only available for existing servers.
