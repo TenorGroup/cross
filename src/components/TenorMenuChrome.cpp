@@ -311,6 +311,25 @@ char footActions[tenorchrome::FOOT_ACTIONS][48] = {};
 uint32_t footActionsGeneration = UINT32_MAX;
 struct FootActionRect { int x = 0, y = 0, width = 0, height = 0; };
 FootActionRect footActionRects[tenorchrome::FOOT_ACTIONS];
+// The screen's own action pills (noteFootActions), laid from `right` leftwards and kept right of `left`; returns
+// where the leftmost one starts (`right` when there are none).
+int drawFootActions(const GfxRenderer& r, const int left, int right, const int y, const int size) {
+  for (auto& rect : footActionRects) rect = {};
+  if (footActionsGeneration != activityManager.activityGeneration()) return right;
+  constexpr int ACTION_PAD = 20, font = UI_12_FONT_ID;
+  for (int i = tenorchrome::FOOT_ACTIONS - 1; i >= 0; --i) {
+    if (!footActions[i][0]) continue;
+    const auto pill = tenorchrome::layoutPathPill(r, font, footActions[i], right - left, ACTION_PAD, ACTION_PAD);
+    if (pill.width <= 0) break;
+    right -= pill.width;
+    r.fillRoundedRect(right, y, pill.width, size, size / 2, Color::White);
+    tenorchrome::drawPillRing(r, right, y, pill.width, size, 2, true);
+    tenorchrome::drawPillLabel(r, font, pill.text.c_str(), right, y, pill.width, size);
+    footActionRects[i] = {right, y, pill.width, size};
+    right -= tenorchrome::FOOT_PILL_GAP;
+  }
+  return right;
+}
 uint32_t handDrawnGeneration = UINT32_MAX;
 ugly::MarkState backMark;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
@@ -597,23 +616,7 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
   }
 #endif
   // The screen's own actions, from the bar's right end leftwards; the name pill keeps what is left of them.
-  int right = rect.x + rect.width;
-  for (auto& r2 : footActionRects) r2 = {};
-  if (!pen && footActionsGeneration == activityManager.activityGeneration()) {
-    constexpr int ACTION_PAD = 20, actionFont = UI_12_FONT_ID;
-    for (int i = FOOT_ACTIONS - 1; i >= 0; --i) {
-      if (!footActions[i][0]) continue;
-      const int room = right - (x + SIZE + FOOT_PILL_GAP);
-      const auto pill = layoutPathPill(r, actionFont, footActions[i], room, ACTION_PAD, ACTION_PAD);
-      if (pill.width <= 0) break;
-      right -= pill.width;
-      r.fillRoundedRect(right, y, pill.width, SIZE, SIZE / 2, Color::White);
-      drawPillRing(r, right, y, pill.width, SIZE, 2, true);
-      drawPillLabel(r, actionFont, pill.text.c_str(), right, y, pill.width, SIZE);
-      footActionRects[i] = {right, y, pill.width, SIZE};
-      right -= FOOT_PILL_GAP;
-    }
-  }
+  const int right = drawFootActions(r, pen ? rect.x + rect.width : x + SIZE + FOOT_PILL_GAP, rect.x + rect.width, y, SIZE);
   // Paper with a foot of its own keeps that foot: no zone icon, no name.
   if (bar == FootBar::BackOnly || pen) return;
   // The zone's icon, alone in its ring: a tap leads to the zone's root.

@@ -13,6 +13,8 @@ enum class StrId {
   STR_FOLDER_HOLD,
   STR_HOME_FAVORITES_HINT,
   STR_FILE_NOT_FOUND,
+  STR_FILE_NOT_FOUND_TOUCH,
+  STR_FILE_HOLD_ACTIONS,
   STR_REMOVE_FROM_RECENTS_FAILED,
   STR_MENU_SAVE_FAILED,
   STR_STATS_RESET_FAILED,
@@ -86,6 +88,8 @@ constexpr auto STR_DIR_DOWN = StrId::STR_DIR_DOWN;
 constexpr auto STR_FOLDER_HOLD = StrId::STR_FOLDER_HOLD;
 constexpr auto STR_HOME_FAVORITES_HINT = StrId::STR_HOME_FAVORITES_HINT;
 constexpr auto STR_FILE_NOT_FOUND = StrId::STR_FILE_NOT_FOUND;
+constexpr auto STR_FILE_NOT_FOUND_TOUCH = StrId::STR_FILE_NOT_FOUND_TOUCH;
+constexpr auto STR_FILE_HOLD_ACTIONS = StrId::STR_FILE_HOLD_ACTIONS;
 constexpr auto STR_REMOVE_FROM_RECENTS_FAILED = StrId::STR_REMOVE_FROM_RECENTS_FAILED;
 constexpr auto STR_MENU_SAVE_FAILED = StrId::STR_MENU_SAVE_FAILED;
 constexpr auto STR_HABIT_SAVE_FAILED = StrId::STR_HABIT_SAVE_FAILED;
@@ -125,6 +129,8 @@ const char* tr(StrId id) {
   // PHASE2_LOOKUP
   switch (id) {
     case StrId::STR_FILE_NOT_FOUND: return "File not found";
+    case StrId::STR_FILE_NOT_FOUND_TOUCH: return "File not found, touch and hold to unpin";
+    case StrId::STR_FILE_HOLD_ACTIONS: return "Hold OK: Pin, rename, delete";
     case StrId::STR_REMOVE_FROM_RECENTS_FAILED: return "Could not remove book";
     case StrId::STR_STATS_RESET_FAILED: return "Stats reset failed";
     case StrId::STR_STATS_RESET_PENDING: return "Stats reset pending";
@@ -190,6 +196,7 @@ struct HomeActivity : UiListActivity {
   void drawFooter();
   const char* homeTipText();
   const char* homeInfoText();
+  static const char* missingFileText();
   tenorchrome::X3ScreenLayout homeScreenLayout();
 };
 

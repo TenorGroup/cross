@@ -186,7 +186,7 @@ elif args.tip_only:
 else:
     home_source = read_source('src/activities/home/HomeActivity.cpp')
     fixture += Path(__file__).with_name('FormsHomeFooterHarness.h').read_text()
-    for name in ('drawFooter', 'homeTipText', 'homeInfoText', 'homeScreenLayout'):
+    for name in ('drawFooter', 'homeTipText', 'missingFileText', 'homeInfoText', 'homeScreenLayout'):
         fixture += '\n' + function(home_source, f'HomeActivity::{name}(')
     fixture, phase_two_cases, phase_two_states = extend(ROOT, read_source, function, fixture, PHASE_TWO)
     tests = Path(__file__).with_name('FormsScreenLayoutTest.cpp').read_text()
@@ -227,6 +227,6 @@ assert 'x3ScreenLayout(renderer)' in function(tabs, 'void UiTabListActivity::bui
 assert 'homeScreenLayout()' in function(home, 'void HomeActivity::buildScreen(')
 assert 'homeScreenLayout()' in function(home, 'void HomeActivity::drawRecentCard(')
 footer = function(home, 'void HomeActivity::drawFooter(')
-assert 'drawInfoInRect' in footer and 'STR_FILE_NOT_FOUND' in footer and 'statsResetTip' in footer
+assert 'drawInfoInRect' in footer and 'missingFileText()' in footer and 'statsResetTip' in footer
 assert 'drawTipInRect' in footer
 print('GREEN: shared tab placement and Home body/tip/info bindings')
