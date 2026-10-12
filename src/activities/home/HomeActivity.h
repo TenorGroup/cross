@@ -215,6 +215,7 @@ class HomeActivity final : public UiTabListActivity {
   HomeRefresh homeRefresh;
   HomeRecentRect refreshBody();
   void restoreHomeGhost(const char* reason);
+  void handOffHomeGhost();
   void tickHomeGhost();
 
   // Cover tile snapshot, so a repaint does not decode the cover again. Only the
