@@ -881,7 +881,7 @@ void CrossPointWebServer::handleQuotesExport() {
 #ifdef TENOR_PRESS_PROBE
                                             , &freeMin, &largestMin
 #endif
-                                          ](const char* data, const size_t size) {
+                                          ](const char* data, const size_t size) -> bool {
     if (!server->client().connected()) return false;
     if (!started) {
       server->setContentLength(CONTENT_LENGTH_UNKNOWN);

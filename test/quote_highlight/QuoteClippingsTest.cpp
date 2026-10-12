@@ -22,7 +22,7 @@ struct TestResponse {
   bool live = true, ended = false;
   size_t cutAfter = SIZE_MAX, transferred = 0;
   TestResponse& client() { return *this; }
-  bool connected() const { return live; }
+  uint8_t connected() const { return live; }  // the real client answers with a byte
   void stop() { live = false; }
   void setContentLength(int value) { length = value; }
   void sendHeader(const char*, const char* value) { header = value; }
