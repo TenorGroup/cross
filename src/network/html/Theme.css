@@ -66,8 +66,8 @@ body.tenor-transfer .message.success,body.tenor-transfer .status-ok{color:var(--
 body.tenor-transfer .message.error,body.tenor-transfer .status-err{color:var(--phai-sua);background:var(--than-chi);border:1px solid var(--phai-sua)}
 @media(max-width:640px){
 body.tenor-transfer{padding:0 20px 32px}.tenor-masthead{min-height:68px}.tenor-identity{font-size:20px}.tenor-local{font-size:11px}
-body.tenor-transfer h2{font-size:30px}body.tenor-transfer .nav-links{gap:0;justify-content:space-between;margin-bottom:28px}body.tenor-transfer .nav-links a{font-size:13px;padding:16px 2px}
-body.tenor-transfer .card{padding:16px 0;margin:20px 0}body.tenor-transfer .page-header{align-items:flex-start;flex-direction:column;gap:20px}
+body.tenor-transfer h2{font-size:30px}body.tenor-transfer .nav-links{gap:0;justify-content:space-between;margin-bottom:28px}body.tenor-transfer .nav-links a{font-size:13px;padding:16px 6px;min-width:44px}.tenor-lang-slot label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.tenor-lang-slot select{min-height:44px}
+body.tenor-transfer .card{padding:16px 0;margin:20px 0;line-break:auto}body.tenor-transfer .page-header{align-items:flex-start;flex-direction:column;gap:20px}
 body.tenor-transfer .action-buttons{width:100%;display:grid;grid-template-columns:1fr 1fr auto;gap:8px}body.tenor-transfer .action-buttons button{font-size:13px;padding:10px 12px}
 body.tenor-transfer .modal{width:calc(100% - 24px);max-width:calc(100% - 24px);padding:24px 20px}
 body.tenor-transfer .info-row{gap:12px}
@@ -78,7 +78,7 @@ body.tenor-transfer .file-table th:nth-child(n+3){display:none}
 body.tenor-transfer .file-table th:nth-child(2){text-align:left}
 body.tenor-transfer .file-table td:nth-child(1){grid-column:1;grid-row:1/4;padding-top:3px}
 body.tenor-transfer .file-table td:nth-child(2){grid-column:2;grid-row:1;display:flex;gap:10px;align-items:flex-start;font-size:16px;line-height:1.5}
-body.tenor-transfer .file-table td:nth-child(2) a{min-width:0;overflow-wrap:anywhere}
+body.tenor-transfer .file-table td:nth-child(2) a{min-width:0;word-break:normal;overflow-wrap:anywhere}
 body.tenor-transfer .file-icon{flex-shrink:0;margin:2px 0 0}
 body.tenor-transfer .file-table td:nth-child(3){grid-column:2;grid-row:2;font-size:12px;align-self:center;color:var(--label-color);padding-left:30px}
 body.tenor-transfer .file-table td:nth-child(4){grid-column:2;grid-row:3;align-self:center;font-size:12px;color:var(--label-color);padding-left:30px}
