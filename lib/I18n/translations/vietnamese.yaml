@@ -636,6 +636,7 @@ STR_SIDE_ARROW_HINTS: "Mũi tên cạnh"
 STR_MENU_PIN_HINT: "Giữ : Ghim"
 STR_MENU_PINNED: "Giữ : Gỡ ghim"
 STR_FILE_HOLD_ACTIONS: "Giữ : Ghim, đổi tên, xóa"
+STR_RECENT_HOLD_ACTIONS: "Giữ : Ghim, bỏ khỏi gần đây"
 STR_MENU_SAVE_FAILED: "Không lưu được menu"
 
 STR_HOME_FAVORITES_HINT: "Giữ  trên cài đặt, sách hoặc thư mục để ghim hoặc gỡ.\nTrong Yêu thích, giữ  hoặc  để sắp xếp."

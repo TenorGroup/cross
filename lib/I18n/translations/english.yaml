@@ -636,6 +636,7 @@ STR_SIDE_ARROW_HINTS: "Side arrows"
 STR_MENU_PIN_HINT: "Hold : Pin"
 STR_MENU_PINNED: "Hold : Unpin"
 STR_FILE_HOLD_ACTIONS: "Hold : Pin, rename, delete"
+STR_RECENT_HOLD_ACTIONS: "Hold : Pin, remove from Recent"
 STR_MENU_SAVE_FAILED: "Could not save menu"
 
 STR_HOME_FAVORITES_HINT: "Hold  on a setting, book or folder to pin or unpin.\nIn Favorites, hold  or  to reorder."

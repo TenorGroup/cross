@@ -66,9 +66,8 @@ int Notebook::subtitleLines() const {
 
 int Notebook::firstBaseline() const { return FIRST_BASELINE + (subtitleLines() - 1) * 30; }
 
-const char* Notebook::tip() const {
-  return page == homerows::Page::Folder ? tr(STR_FOLDER_HOLD) : tr(STR_HOME_FAVORITES_HINT);
-}
+// Holding Select does something on Recent only (onKey ConfirmHold): the other pages promise no hold.
+const char* Notebook::tip() const { return page == homerows::Page::Recent ? tr(STR_RECENT_HOLD_ACTIONS) : ""; }
 
 int Notebook::rowsPerPage(int first, int bottom) const {
 #if FREEINK_DEVICE_X4PRO
