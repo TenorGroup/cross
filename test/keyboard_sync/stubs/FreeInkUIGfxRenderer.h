@@ -6,9 +6,14 @@ namespace freeink::ui {
 class GfxRendererTarget : public DrawTarget {
  public:
   static constexpr FontId FONT_SMALL = 0, FONT_BODY = 1;
-  explicit GfxRendererTarget(const GfxRenderer&) {}
+  const GfxRenderer& renderer;
+  explicit GfxRendererTarget(const GfxRenderer& renderer) : renderer(renderer) {}
   void setFont(FontId, int) {}
   void setPaintingEnabled(bool) {}
+  using TextSink = void (*)(void*, Rect, const char*, const TextStyle&);
+  TextSink sink = nullptr;
+  void* sinkContext = nullptr;
+  void setTextSink(TextSink value, void* context) { sink = value; sinkContext = context; }
   DeviceContext deviceContext() const {
     DeviceContext device;
     device.width = 528;
@@ -21,7 +26,10 @@ class GfxRendererTarget : public DrawTarget {
   void stroke(Rect, Paint, uint8_t, uint8_t = 0, uint8_t = CornersAll) override {}
   void line(Point, Point, uint8_t, Paint) override {}
   void triangle(Point, Point, Point, Paint) override {}
-  void text(Rect, const char*, TextStyle) override {}
+  void text(Rect rect, const char* text, TextStyle style) override {
+    if (sink) { sink(sinkContext, rect, text, style); return; }
+    renderer.keys.push_back({rect.x, rect.y, rect.width, rect.height, text});
+  }
   void bitmap(Rect, BitmapRef, BitmapMode, Paint = Paint::solid(Color::Black), Rotation = Rotation::None) override {}
 };
 }
