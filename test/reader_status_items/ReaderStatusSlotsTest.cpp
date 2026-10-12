@@ -9,7 +9,22 @@ void check(bool ok, const char* detail) {
 }
 
 int main() {
-  check(S::STATUS_SLOT_COUNT == 8, "chapter name is appended at slot value 7");
+  JsonDocument full;
+  full["readerStatusBarMode"] = S::READER_STATUS_BAR_DEFAULT;
+  full["statusBarItemsMode"] = S::READER_STATUS_BAR_DEFAULT;
+  full["statusBarTitle"] = S::CHAPTER_TITLE;
+  full["statusBarChapterPageCount"] = 1;
+  full["statusBarBookProgressPercentage"] = 1;
+  SETTINGS.fromJson(full.as<JsonVariantConst>());
+  SETTINGS.setReaderStatusItem(0, S::CHAPTER_TITLE);
+  auto edited = SETTINGS.statusBarSpec();
+  check(edited.showsTitle() && edited.showChapterPageCount && edited.showBookProgressPercent &&
+        edited.showBattery && edited.showsClock(), "editing the full bar retains all five facts");
+  JsonDocument savedFull;
+  SETTINGS.toJson(savedFull);
+  SETTINGS.fromJson(savedFull.as<JsonVariantConst>());
+  check(SETTINGS.statusBarSpec().showBookProgressPercent, "full bar percentage survives saving and loading");
+  check(S::STATUS_SLOT_COUNT == 9 && S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS == 8, "combined progress is appended at slot value 8");
   check(S::STATUS_SLOT_NONE == 0 && S::STATUS_SLOT_CLOCK == 1 && S::STATUS_SLOT_BATTERY == 2 &&
         S::STATUS_SLOT_CHAPTER_PAGES == 3 && S::STATUS_SLOT_BOOK_PERCENT == 4 &&
         S::STATUS_SLOT_CHAPTER_ETA == 5 && S::STATUS_SLOT_BOOK_ETA == 6, "saved slot values retain their IDs");
@@ -32,8 +47,8 @@ int main() {
   check(spec.topTitleMode == S::BOOK_TITLE && spec.slots[2] == S::STATUS_SLOT_BOOK_ETA, "book details preset");
   for (int row = 1; row <= 3; ++row) for (int value = 0; value < S::STATUS_SLOT_COUNT; ++value) {
     const auto before = SETTINGS.statusBarSpec();
-    if (value == 7 && row != 2) {
-      check(!SETTINGS.setReaderStatusItem(row, value), "chapter name is rejected outside the center");
+    if (value >= S::STATUS_SLOT_CHAPTER_NAME && row != 2) {
+      check(!SETTINGS.setReaderStatusItem(row, value), "wide values are rejected outside the center");
       check(SETTINGS.statusBarSpec().slots == before.slots, "rejected choice leaves slots unchanged");
       continue;
     }

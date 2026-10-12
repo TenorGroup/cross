@@ -913,7 +913,8 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
   const int markTop = inlineSymbols::markTopOnCapitals(r, font, y, 10);
   if (spec.topTitleMode == S::HIDE_TITLE && bookmarked && spec.textLaneVisible(true))
     inlineSymbols::drawShape(r, inlineSymbols::Shape::Star, 6, markTop + 5, 10, true);
-  const bool chapterMiddle = spec.slots[1] == S::STATUS_SLOT_CHAPTER_NAME;
+  const bool chapterMiddle = spec.slots[1] == S::STATUS_SLOT_CHAPTER_NAME ||
+                             spec.slots[1] == S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS;
   const int chapterOrder[] = {0, 2, 1};
   int paintedWidths[3] = {};
   for (int index = 0; index < 3; ++index) {
@@ -945,8 +946,17 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
         continue;
       }
       case S::STATUS_SLOT_CHAPTER_PAGES:
+      case S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS:
+        if (spec.slots[slot] == S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS && slot != 1) continue;
         if (pageCount > 0) snprintf(value, sizeof(value), "%s%d/%d", estimated ? "~" : "", currentPage, pageCount);
         else snprintf(value, sizeof(value), "-");
+        if (spec.slots[slot] == S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS) {
+          const size_t used = strlen(value);
+          if (bookProgress >= 0)
+            snprintf(value + used, sizeof(value) - used, "  %.0f%%", std::clamp(bookProgress, 0.0f, 100.0f));
+          else snprintf(value + used, sizeof(value) - used, "  -");
+          lane = readerstatus::chapterCell(r.getScreenWidth(), paintedWidths[0], paintedWidths[2]);
+        }
         break;
       case S::STATUS_SLOT_BOOK_PERCENT:
         if (bookProgress >= 0) snprintf(value, sizeof(value), "%.0f%%", std::clamp(bookProgress, 0.0f, 100.0f));
@@ -974,7 +984,17 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
     const int measured = width(label.c_str());
     if (measured <= lane.width) {
       paintedWidths[slot] = measured;
-      text(readerstatus::textX(lane, slot, measured), y, label.c_str());
+      int x = readerstatus::textX(lane, slot, measured);
+      if (spec.slots[slot] == S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS) {
+        if (rough) {
+          const auto ink = ugly::textBounds(r, ugly::Size::S22, label.c_str());
+          x = (r.getScreenWidth() - (ink.x1 - ink.x0)) / 2 - ink.x0;
+        } else {
+          const auto ink = r.getTextInkBounds(font, label.c_str(), EpdFontFamily::REGULAR);
+          x = (r.getScreenWidth() - (ink[2] - ink[0])) / 2 - ink[0];
+        }
+      }
+      text(x, y, label.c_str());
     }
   }
 }

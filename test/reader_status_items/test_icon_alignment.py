@@ -53,7 +53,7 @@ struct CrossPointSettings {
   enum READER_STATUS_SLOT : unsigned char {
     STATUS_SLOT_NONE = 0, STATUS_SLOT_CLOCK, STATUS_SLOT_BATTERY,
     STATUS_SLOT_CHAPTER_PAGES, STATUS_SLOT_BOOK_PERCENT,
-    STATUS_SLOT_CHAPTER_ETA, STATUS_SLOT_BOOK_ETA, STATUS_SLOT_CHAPTER_NAME, STATUS_SLOT_COUNT
+    STATUS_SLOT_CHAPTER_ETA, STATUS_SLOT_BOOK_ETA, STATUS_SLOT_CHAPTER_NAME, STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS, STATUS_SLOT_COUNT
   };
   enum STATUS_BAR_TITLE : unsigned char { BOOK_TITLE = 0, CHAPTER_TITLE, HIDE_TITLE };
   struct StatusBarSpec {
@@ -85,6 +85,7 @@ struct GfxRenderer {
   int getScreenWidth() const { return w; }
   int getScreenHeight() const { return h; }
   int getTextWidth(int, const char* text) const { return static_cast<int>(std::strlen(text)) * 8; }
+  std::array<int, 4> getTextInkBounds(int, const char* value, int) const { return {0, 5, getTextWidth(0, value), 17}; }
   int getTextInkTop(int, const char* value, int) const { assert(std::strcmp(value, "0123456789") == 0); return digitTop; }
   int getTextInkBottom(int, const char* value, int) const { assert(std::strcmp(value, "0123456789") == 0); return digitBottom; }
   std::string truncatedText(int, const char* text, int width) const {
@@ -104,7 +105,9 @@ struct GfxRenderer {
 };
 namespace shell { bool uglyParts() { return rough; } }
 namespace ugly {
+  struct Box { int x0, y0, x1, y1; };
   enum class Size { S22 };
+  Box textBounds(const GfxRenderer& r, Size, const char* value) { return {0, 5, r.getTextWidth(0, value), 17}; }
   int width(const GfxRenderer& r, Size, const char* text) { return r.getTextWidth(0, text); }
   std::string fit(const GfxRenderer& r, Size, const char* text, int room) { return r.truncatedText(0, text, room); }
   void text(const GfxRenderer& r, Size, int x, int y, const char* value) { r.drawText(0, x, y - 18, value); }

@@ -294,7 +294,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   };
   enum READER_STATUS_SLOT : uint8_t {
     STATUS_SLOT_NONE = 0, STATUS_SLOT_CLOCK, STATUS_SLOT_BATTERY, STATUS_SLOT_CHAPTER_PAGES,
-    STATUS_SLOT_BOOK_PERCENT, STATUS_SLOT_CHAPTER_ETA, STATUS_SLOT_BOOK_ETA, STATUS_SLOT_CHAPTER_NAME, STATUS_SLOT_COUNT
+    STATUS_SLOT_BOOK_PERCENT, STATUS_SLOT_CHAPTER_ETA, STATUS_SLOT_BOOK_ETA, STATUS_SLOT_CHAPTER_NAME,
+    STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS, STATUS_SLOT_COUNT
   };
   uint8_t readerStatusSlotsEnabled = 0;
   uint8_t readerStatusTop = HIDE_TITLE;
@@ -695,7 +696,11 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     uint8_t topTitleMode = HIDE_TITLE;
     std::array<uint8_t, 3> slots{STATUS_SLOT_NONE, STATUS_SLOT_NONE, STATUS_SLOT_NONE};
     bool hasSlot(uint8_t item) const {
-      for (const auto slot : slots) if (slot == item) return true;
+      for (const auto slot : slots) {
+        if (slot == item) return true;
+        if (slot == STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS &&
+            (item == STATUS_SLOT_CHAPTER_PAGES || item == STATUS_SLOT_BOOK_PERCENT)) return true;
+      }
       return false;
     }
     bool showChapterPageCount = false;

@@ -68,6 +68,7 @@ struct GfxRenderer {
      if((*cursor&0xc0)!=0x80)++count;
    return count*advance;
  }
+ std::array<int,4> getTextInkBounds(int,const char* value,int) const {return {0,5,getTextWidth(0,value),17};}
  int getTextInkTop(int,const char*,int) const {return 5;}
  int getTextInkBottom(int,const char*,int) const {return line-4;}
  std::string truncatedText(int,const char* text,int width) const {
@@ -83,7 +84,10 @@ struct GfxRenderer {
 };
 namespace shell {bool uglyParts(){return rough;}}
 namespace ugly {
+ struct Box {int x0,y0,x1,y1;};
+
  enum class Size{S22};
+ Box textBounds(const GfxRenderer& r,Size,const char* value){return {0,5,r.getTextWidth(0,value),17};}
  int width(const GfxRenderer& r,Size,const char* text){return r.getTextWidth(0,text);}
  std::string fit(const GfxRenderer& r,Size,const char* text,int room){return r.truncatedText(0,text,room);}
  void text(const GfxRenderer& r,Size,int x,int y,const char* value){r.drawText(0,x,y-18,value);}
@@ -167,6 +171,31 @@ int main(int argc,char** argv){
    chapterRegression(!strcmp(argv[1],"tail"));return 0;
  }
  chapterRegression(true);chapterRegression(false);
+ for(int screen:{480,528})for(int size:{8,10,12})for(bool ugly:{false,true})for(bool swapped:{false,true}) {
+   GfxRenderer r;r.w=screen;r.advance=size;rough=ugly;
+   SETTINGS.spec={};SETTINGS.spec.slotsEnabled=true;SETTINGS.spec.topTitleMode=S::CHAPTER_TITLE;
+   SETTINGS.spec.slots={swapped?S::STATUS_SLOT_BATTERY:S::STATUS_SLOT_CLOCK,
+                       S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS,
+                       swapped?S::STATUS_SLOT_CLOCK:S::STATUS_SLOT_BATTERY};
+   for(bool known:{false,true}) {
+     ink.clear();clockstatus::valid=true;
+     drawReaderSlots(r,"Chapter",99999,99999,known?100.0f:-1,true,false,0,0);
+     const std::string expected=known?"~99999/99999  100%":"~99999/99999  -";
+     const Ink* counts=nullptr;const Ink* clock=nullptr;const Ink* battery=nullptr;
+     for(const auto& item:ink) {
+       if(item.text==expected)counts=&item;
+       if(item.text=="12:34")clock=&item;
+       if(item.text=="icon")battery=&item;
+     }
+     assert(counts&&clock&&battery);
+     assert(std::abs(counts->x*2+counts->w-screen)<=1);
+     assert(counts->x>=12&&counts->x+counts->w<=screen-12);
+     const int leftEnd=swapped?battery->x+battery->w:clock->x+clock->w;
+     const int rightStart=swapped?clock->x:battery->x;
+     assert(counts->x-leftEnd>=8&&rightStart-counts->x-counts->w>=8);
+   }
+ }
+ puts("combined_progress:GREEN (48 cases, both boards, all sizes, both shells, swapped corners, exact counts)");
  int cases=0;
  GfxRenderer hiddenRenderer;
  SETTINGS.spec={}; SETTINGS.spec.slotsEnabled=true; SETTINGS.spec.topTitleMode=S::HIDE_TITLE;
@@ -184,7 +213,7 @@ int main(int argc,char** argv){
      drawReaderSlots(r,"A long book or chapter title that reaches the right screen edge repeatedly",5,known?25:0,
                      known?43.0f:-1,false,true,known?5400:-1,known?25200:-1,
                      known?"Mở\nđầu một chương có tên dài để kiểm tra cắt giữa UTF-8 chapter end":nullptr);
-     const auto lane=item==S::STATUS_SLOT_CHAPTER_NAME&&slot==1
+     const auto lane=(item==S::STATUS_SLOT_CHAPTER_NAME||item==S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS)&&slot==1
        ? readerstatus::Cell{20,screen-40} : readerstatus::cell(screen,slot);
      int bottom=0,header=0;
      for(const auto& painted:ink){
@@ -194,10 +223,10 @@ int main(int argc,char** argv){
        else{++bottom;assert(painted.x>=lane.x&&painted.x+painted.w<=lane.x+lane.width);}
      }
      assert(header==(top==S::HIDE_TITLE?0:1));
-     const bool visible=item!=S::STATUS_SLOT_NONE&&(item!=S::STATUS_SLOT_CHAPTER_NAME||slot==1);
+     const bool visible=item!=S::STATUS_SLOT_NONE&&(item<S::STATUS_SLOT_CHAPTER_NAME||slot==1);
      assert((bottom>0)==visible);
      if(!known&&visible&&item!=S::STATUS_SLOT_BATTERY){
-       assert(bottom==1&&ink.back().text=="-");
+       assert(bottom==1&&ink.back().text==(item==S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS?"-  -":"-"));
      }
      if(known&&item==S::STATUS_SLOT_CHAPTER_NAME&&slot==1){
        const auto& label=ink.back().text;

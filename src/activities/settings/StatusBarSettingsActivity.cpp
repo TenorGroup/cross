@@ -38,7 +38,7 @@ constexpr StrId SLOT_VALUES[] = {StrId::STR_STATE_OFF, StrId::STR_CLOCK, StrId::
 constexpr StrId CENTER_VALUES[] = {StrId::STR_STATE_OFF, StrId::STR_CLOCK, StrId::STR_BATTERY,
                                   StrId::STR_CHAPTER_PAGE_COUNT, StrId::STR_BOOK_PROGRESS_PERCENTAGE,
                                   StrId::STR_READER_STATUS_CHAPTER_ETA, StrId::STR_READER_STATUS_BOOK_ETA,
-                                  StrId::STR_CHAPTER_NAME};
+                                  StrId::STR_CHAPTER_NAME, StrId::STR_READER_STATUS_CHAPTER_AND_BOOK_PROGRESS};
 static_assert(std::size(CENTER_VALUES) == CrossPointSettings::STATUS_SLOT_COUNT);
 constexpr int TENOR_ROW_COUNT = sizeof(TENOR_NAMES) / sizeof(TENOR_NAMES[0]);
 static_assert(TENOR_ROW_COUNT == StatusBarSettingsActivity::MAX_STATUS_BAR_ITEMS,
