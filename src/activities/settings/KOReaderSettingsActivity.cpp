@@ -75,7 +75,12 @@ void KOReaderSettingsActivity::activateIndex(const int index) {
   } else if (index == 1) {
     // Password
     startActivityForResult(std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_KOREADER_PASSWORD),
-                                                                   KOREADER_STORE.getPassword(), 64, InputType::Text),
+                                                                   KOREADER_STORE.getPassword(), 64,
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+                                                                   InputType::Password),
+#else
+                                                                   InputType::Text),
+#endif
                            [this](const ActivityResult& result) {
                              if (!result.isCancelled) {
                                const auto& kb = std::get<KeyboardResult>(result.data);
