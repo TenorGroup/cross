@@ -24,6 +24,22 @@ int main() {
   SETTINGS.toJson(savedFull);
   SETTINGS.fromJson(savedFull.as<JsonVariantConst>());
   check(SETTINGS.statusBarSpec().showBookProgressPercent, "full bar percentage survives saving and loading");
+  for (const int clockSide : {S::STATUS_BAR_CLOCK_RIGHT, S::STATUS_BAR_CLOCK_LEFT}) {
+    JsonDocument corners;
+    corners["readerStatusBarMode"] = S::READER_STATUS_BAR_DEFAULT;
+    corners["statusBarItemsMode"] = S::READER_STATUS_BAR_DEFAULT;
+    corners["statusBarTitle"] = S::CHAPTER_TITLE;
+    corners["statusBarChapterPageCount"] = 1;
+    corners["statusBarBookProgressPercentage"] = 1;
+    SETTINGS.fromJson(corners.as<JsonVariantConst>());
+    SETTINGS.statusBarClock = clockSide;
+    SETTINGS.setReaderStatusItem(0, S::CHAPTER_TITLE);
+    const bool left = clockSide == S::STATUS_BAR_CLOCK_LEFT;
+    const std::array<uint8_t, 3> expected{left ? S::STATUS_SLOT_CLOCK : S::STATUS_SLOT_BATTERY,
+                                          S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS,
+                                          left ? S::STATUS_SLOT_BATTERY : S::STATUS_SLOT_CLOCK};
+    check(SETTINGS.statusBarSpec().slots == expected, "editing the default bar keeps its clock and battery corners");
+  }
   check(S::STATUS_SLOT_COUNT == 9 && S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS == 8, "combined progress is appended at slot value 8");
   check(S::STATUS_SLOT_NONE == 0 && S::STATUS_SLOT_CLOCK == 1 && S::STATUS_SLOT_BATTERY == 2 &&
         S::STATUS_SLOT_CHAPTER_PAGES == 3 && S::STATUS_SLOT_BOOK_PERCENT == 4 &&

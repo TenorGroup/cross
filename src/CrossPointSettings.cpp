@@ -599,11 +599,15 @@ CrossPointSettings::StatusBarSpec CrossPointSettings::statusBarSpec() const {
       statusBarProgressBar != HIDE_PROGRESS ? static_cast<uint8_t>((statusBarProgressBarThickness + 1) * 2) : 0;
   spec.xtcMode = xtcStatusBarMode;
   spec.topTitleMode = spec.titleMode;
-  spec.slots = {spec.showsClock() ? STATUS_SLOT_CLOCK : spec.showBattery ? STATUS_SLOT_BATTERY : STATUS_SLOT_NONE,
+  // The corners the default bar draws: the clock on the side it was asked for, the battery opposite.
+  const bool clockLeft = spec.clockMode == STATUS_BAR_CLOCK_LEFT;
+  const uint8_t clockSlot = spec.showsClock() ? STATUS_SLOT_CLOCK : STATUS_SLOT_NONE;
+  const uint8_t batterySlot = spec.showBattery ? STATUS_SLOT_BATTERY : STATUS_SLOT_NONE;
+  spec.slots = {clockLeft ? clockSlot : batterySlot,
                 spec.showChapterPageCount ? (spec.showBookProgressPercent ? STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS
                                                                          : STATUS_SLOT_CHAPTER_PAGES)
                                          : spec.showBookProgressPercent ? STATUS_SLOT_BOOK_PERCENT : STATUS_SLOT_NONE,
-                spec.showBattery && spec.showsClock() ? STATUS_SLOT_BATTERY : STATUS_SLOT_NONE};
+                clockLeft ? batterySlot : clockSlot};
   if (statusBarItemsMode == readerStatusBarMode && readerStatusSlotsEnabled) {
     spec.slotsEnabled = true;
     spec.topTitleMode = readerStatusTop;
