@@ -38,7 +38,7 @@ class FontPackTests(unittest.TestCase):
         cls.temporary = tempfile.TemporaryDirectory(prefix='font-pack-test-', dir=ROOT.parent)
         cls.directory = Path(cls.temporary.name)
         cls.fonts = {0: str(FONT_ROOT / 'NotoSerif-Regular.ttf')}
-        cls.intervals = [(0x20, 0x7E), (0x1EA0, 0x1EF9)]
+        cls.intervals = pack.builtin_intervals()
         cls.output = cls.directory / 'Small.cpfontpack'
         with contextlib.redirect_stderr(io.StringIO()):
             cls.metadata = cls.build(cls.output)
@@ -51,6 +51,63 @@ class FontPackTests(unittest.TestCase):
     def build(cls, output):
         return pack.build_pack('Small', cls.fonts, [12], pack.STRENGTHS, cls.intervals,
                                FONT_ROOT / 'OFL.txt', output, pnum=True)
+
+    def test_missing_reading_glyph_rejected(self):
+        for codepoint in (0x1EF1, 0x0306, 0xFFFD):
+            intervals = [(cp, cp) for low, high in self.intervals
+                         for cp in range(low, high + 1) if cp != codepoint]
+            output = self.directory / 'missing.cpfontpack'
+            with self.subTest(codepoint=codepoint):
+                with self.assertRaisesRegex(ValueError, f'U\\+{codepoint:04X}'):
+                    pack.build_pack('Small', self.fonts, [12], pack.STRENGTHS, intervals,
+                                    FONT_ROOT / 'OFL.txt', output, pnum=True)
+                self.assertFalse(output.exists())
+
+    def test_empty_reading_glyph_rejected(self):
+        original = pack.weights.RasterSource.glyph
+
+        def empty(source, codepoint, strength):
+            glyph, bitmap = original(source, codepoint, strength)
+            if codepoint == 0x1EF1 and strength:
+                bitmap = bytes(len(bitmap))
+            return glyph, bitmap
+
+        with patch.object(pack.weights.RasterSource, 'glyph', empty):
+            with self.assertRaisesRegex(ValueError, 'Empty reading glyph.*U\\+1EF1'):
+                self.build(self.directory / 'empty.cpfontpack')
+
+    def test_non_ofl_license_rejected(self):
+        license_path = self.directory / 'wrong-license.txt'
+        license_path.write_text('A font with no redistribution license')
+        with self.assertRaisesRegex(ValueError, 'OFL 1.1'):
+            pack.build_pack('Small', self.fonts, [12], pack.STRENGTHS, self.intervals,
+                            license_path, self.directory / 'unlicensed.cpfontpack')
+
+    def test_missing_license_rejected(self):
+        with self.assertRaises(FileNotFoundError):
+            pack.build_pack('Small', self.fonts, [12], pack.STRENGTHS, self.intervals,
+                            self.directory / 'absent-OFL.txt', self.directory / 'absent.cpfontpack')
+
+    def test_ink_crowding_rejected(self):
+        original = pack.weights.RasterSource.glyph
+
+        def raised(source, codepoint, strength):
+            glyph, bitmap = original(source, codepoint, strength)
+            if codepoint == 0x1EF1 and strength:
+                glyph = list(glyph)
+                glyph[4] += 60
+            return tuple(glyph), bitmap
+
+        with patch.object(pack.weights.RasterSource, 'glyph', raised):
+            with self.assertRaisesRegex(ValueError, 'Line spacing'):
+                self.build(self.directory / 'crowded.cpfontpack')
+
+    def test_repertoire_counts_and_line_gap(self):
+        nfc, nfd = pack.vietnamese_repertoire()
+        self.assertEqual((len(nfc), len(nfd)), (178, 54))
+        for entry in self.metadata['entries']:
+            if entry['path'].endswith('.cpfont'):
+                self.assertGreaterEqual(entry['reading_quality']['gap_pixels'], 1)
 
     def test_extract_and_hash(self):
         with zipfile.ZipFile(self.output) as archive:
