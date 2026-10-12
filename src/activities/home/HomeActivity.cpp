@@ -294,6 +294,8 @@ void HomeActivity::captureNavigation(MenuNavigationState& state) const {
 
 void HomeActivity::onExit() {
   stopFolderRecursiveSearch();
+  restoreHomeGhost("exit");
+  homeRefresh.leave();
   clearHomeGray();
   freeCoverBuffer();
   UiTabListActivity::onExit();
@@ -306,6 +308,8 @@ void HomeActivity::onResume() {
 }
 
 void HomeActivity::onPause() {
+  restoreHomeGhost("pause");
+  homeRefresh.leave();
   // The manager holds RenderLock while pausing an activity.
   clearHomeGray();
   freeCoverBuffer();
@@ -1022,6 +1026,15 @@ void HomeActivity::buildScreen(UiScreen& screen) {
   screen.list(props);
 }
 
+HomeRecentRect HomeActivity::refreshBody() {
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto body = homeScreenLayout().bodyRect;
+    return {0, body.y, renderer.getScreenWidth(), body.height};
+  }
+  const int top = coverTileTop() - 4;
+  return {0, top, renderer.getScreenWidth(), tenorchrome::touchBarTop(renderer.getScreenHeight()) - 8 - top};
+}
+
 void HomeActivity::render(RenderLock&&) {
   if (activeTabId == Tab::FOLDER && folderSearchScanner &&
       folderSearchScanner->reason() == filesearch::ScanReason::Running) return;
@@ -1031,23 +1044,38 @@ void HomeActivity::render(RenderLock&&) {
       renderer.fillRect(tip.x, tip.y, tip.width, tip.height, false);
     }
   }
-  if (rowMenu.processRender(renderer, mappedInput)) return;
+  if (rowMenu.processRender(renderer, mappedInput)) {
+    homeRefresh.leave();
+    return;
+  }
   if (activeTabId == Tab::STATS && statsRowsEnlarged != statsPaged()) rebuildRows();
 #ifdef TENOR_UI_ACCEPTANCE
   const uint32_t totalStartedUs = micros();
   const uint32_t paintStartedUs = totalStartedUs;
 #endif
   const uint32_t started = millis();
+  const bool recent = activeTabId == Tab::RECENT && homeInkEnabled();
+  const uint16_t surface = (static_cast<uint16_t>(renderer.getOrientation()) << 8) |
+                           (normalizedUiTextSize(SETTINGS.uiTextSize) << 4) | SETTINGS.homeStyle;
+  const auto refresh = homeRefresh.choose(recent, shownRecent(), surface);
+  const bool window = refresh.mode == HomeRefresh::Mode::Window;
+  const auto body = refreshBody();
+  const auto clip = renderer.getClipRect();
+  if (window) renderer.setClipRect(body.x, body.y, body.w, body.h);
+  const auto clearFrame = [&] {
+    if (window) renderer.fillRect(body.x, body.y, body.w, body.h, false);
+    else renderer.clearScreen();
+  };
   clearHomeGray();
   inkSlotCount = 0;
-  const bool nextGray = homeGrayWanted();
-  if (kInkX3 && homeGraySelected != nextGray) {
+  const bool nextGray = refresh.oneBit ? false : homeGrayWanted();
+  if (homeGraySelected != nextGray) {
     freeCoverBuffer();
     coverRendered = false;
     touchThumbCount = 0;
   }
   homeGraySelected = nextGray;
-  renderer.clearScreen();
+  clearFrame();
   drawChrome();
 #ifdef TENOR_UI_ACCEPTANCE
   const uint32_t chromeUs = micros() - paintStartedUs;
@@ -1056,7 +1084,7 @@ void HomeActivity::render(RenderLock&&) {
   unsigned paintPass = 0;
   renderSettledList(activeNav(), [&] {
     if (paintPass++ > 0) {
-      renderer.clearScreen();
+      clearFrame();
       drawChrome();
     }
     renderUi();
@@ -1070,16 +1098,29 @@ void HomeActivity::render(RenderLock&&) {
   const uint32_t footerStartedUs = micros();
 #endif
   drawFooter();
+  renderer.setClipRect(clip[0], clip[1], clip[2], clip[3]);
 #ifdef TENOR_UI_ACCEPTANCE
   const uint32_t footerUs = micros() - footerStartedUs;
   const uint32_t paintUs = micros() - paintStartedUs;
   const uint32_t displayStartedUs = micros();
 #endif
-  if (coverRedriveDue()) {
+  if (!window && coverRedriveDue()) {
     renderer.redriveNextRefresh(HalDisplay::FAST_REFRESH);
   }
   const bool grayRequested = homeGraySelected;
-  if (!showHomeGray()) {
+  if (window) {
+    renderer.displayWindow(body.x, body.y, body.w, body.h);
+#ifdef TENOR_PRESS_PROBE
+    if (refresh.changedBook) {
+      LOG_INF("HOME", "HOME_SWAP waves=1 mode=fast rect=%d,%d,%d,%d ms=%lu window=%u",
+              kInkX3 ? 0 : body.x, kInkX3 ? 0 : body.y,
+              kInkX3 ? renderer.getScreenWidth() : body.w, kInkX3 ? renderer.getScreenHeight() : body.h,
+              static_cast<unsigned long>(millis() - started), kInkX3 ? 0u : 1u);
+    }
+#endif
+  } else if (refresh.mode == HomeRefresh::Mode::Restore) {
+    restoreHomeGhost("tab");
+  } else if (!showHomeGray()) {
     if (grayRequested && !homeGraySelected && kInkX3) {
       homeGraySelected = false;
       freeCoverBuffer();
@@ -1112,6 +1153,7 @@ void HomeActivity::render(RenderLock&&) {
   // The wake's first frame is up: the main task writes the splash setup() re-armed (onTick).
   if (cleanInitialRefresh) wakeStatePending = true;
   cleanInitialRefresh = false;
+  homeRefresh.painted(recent, shownRecent(), surface, millis());
   queueIdleCovers();
 }
 
@@ -2376,7 +2418,38 @@ void HomeActivity::wantThumb(const int index) {
   thumbWanted = static_cast<int8_t>(index);
 }
 
+void HomeActivity::restoreHomeGhost([[maybe_unused]] const char* reason) {
+  if (homeRefresh.count() == 0) return;
+#ifdef TENOR_PRESS_PROBE
+  const uint32_t started = millis();
+  const unsigned swaps = homeRefresh.count();
+#endif
+  HalPowerManager::Lock fullSpeed;
+  renderer.redriveNextRefresh(HalDisplay::FULL_REFRESH);
+  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+  homeRefresh.restored();
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("HOME", "HOME_GHOST_RESTORE waves=1 mode=full rect=0,0,%d,%d ms=%lu swaps=%u reason=%s",
+          renderer.getScreenWidth(), renderer.getScreenHeight(), static_cast<unsigned long>(millis() - started),
+          swaps, reason);
+#endif
+}
+
+void HomeActivity::tickHomeGhost() {
+  RenderLock lock(RenderLock::TryTake{});
+  if (!lock.acquired() || homeRefresh.count() == 0) return;
+  uint8_t contacts = 0;
+  int x = 0, y = 0;
+  const bool touch = mappedInput.touchContactsAt(contacts, x, y) && contacts > 0;
+  bool input = touch || gpio.wasTouchActivity() || mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased();
+  for (int key = 0; !input && key <= static_cast<int>(MappedInputManager::Button::ScreenDown); ++key)
+    input = mappedInput.isPressed(static_cast<MappedInputManager::Button>(key));
+  if (homeRefresh.idle(millis(), activeTabId == Tab::RECENT && !rowMenu.isActive(), input))
+    restoreHomeGhost("idle");
+}
+
 void HomeActivity::onTick() {
+  tickHomeGhost();
   if (wakeStatePending.exchange(false)) saveAppState();
   // A tick that wrote a placeholder leaves the idle step for the next one: the redraw comes first.
   const bool holderDrawn = tickHolders();
@@ -2687,8 +2760,14 @@ bool HomeActivity::homeGrayWanted() const {
 }
 
 std::string HomeActivity::touchCoverPath(const std::string& cover, int width, int height) const {
-  return homeInkEnabled() ? tenorink::cachePath(cover, width, height, homeGraySelected)
-                          : UITheme::getCoverThumbPath(cover, width, height);
+  if (!homeInkEnabled()) return UITheme::getCoverThumbPath(cover, width, height);
+  const auto path = tenorink::cachePath(cover, width, height, homeGraySelected);
+  if (!homeGraySelected && !Storage.exists(path.c_str())) {
+    // An existing four-level thumbnail is dithered by the BW renderer during an upgrade.
+    const auto saved = tenorink::cachePath(cover, width, height, true);
+    if (Storage.exists(saved.c_str())) return saved;
+  }
+  return path;
 }
 
 void HomeActivity::clearHomeGray() {
@@ -2818,7 +2897,8 @@ bool HomeActivity::showHomeGray() {
 }
 
 std::string HomeActivity::holderPath(const int width, const int height) const {
-  return tenorink::cachePath(coverholder::path(), width, height, homeGraySelected);
+  return homeInkEnabled() ? touchCoverPath(coverholder::path(), width, height)
+                          : tenorink::cachePath(coverholder::path(), width, height, homeGraySelected);
 }
 
 // The one rule for the placeholder (founder 11/10/2026): a book with no cover of its own, or one Home cannot

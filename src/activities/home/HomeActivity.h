@@ -17,6 +17,7 @@
 #include "components/HomeExcerptStyle.h"
 #include "components/HomeSettingsLayout.h"
 #include "components/HomeRecentLayout.h"
+#include "HomeRefresh.h"
 #include <HalMemory.h>
 #include <IdleWork.h>
 
@@ -211,6 +212,10 @@ class HomeActivity final : public UiTabListActivity {
   // Home took over from a book: its first frame drives the cover again (coverRedriveDue).
   bool leftBook;
   bool coverRedriveDue();
+  HomeRefresh homeRefresh;
+  HomeRecentRect refreshBody();
+  void restoreHomeGhost(const char* reason);
+  void tickHomeGhost();
 
   // Cover tile snapshot, so a repaint does not decode the cover again. Only the
   // tile region is kept, not the whole framebuffer.
@@ -263,7 +268,7 @@ class HomeActivity final : public UiTabListActivity {
 
   // The tenor Recent tab shows one book at a time: ring position N shows recentBooks[N - 1], and
   // the front buttons walk the ring, so they step through the books.
-  static constexpr size_t RECENT_LIMIT = 5;
+  static constexpr size_t RECENT_LIMIT = 7;
   int shownRecent() const;
   // Saved quote each book's card shows during this visit, picked once per book (bit set in
   // cardQuotesPicked) and again after the Quotes screen changed the store; 0 when the book has
