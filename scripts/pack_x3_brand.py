@@ -69,6 +69,9 @@ if __name__ == "__main__":
     parser.add_argument("--namespace", default="x3brand")
     parser.add_argument("--boot-only", action="store_true")
     parser.add_argument("--boot-file", default=SOURCES[0][1])
+    parser.add_argument("--sleep-file", default=SOURCES[1][1])
     args = parser.parse_args()
-    sources = (("BOOT", args.boot_file),) if args.boot_only else SOURCES
+    sources = (("BOOT", args.boot_file),)
+    if not args.boot_only:
+        sources += (("SLEEP", args.sleep_file),)
     build(args.source_dir, args.output, args.width, args.height, args.namespace, sources)

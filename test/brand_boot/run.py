@@ -47,7 +47,8 @@ def main():
             objects.append(obj)
     files = [p for p in files if p.suffix != '.c'] + objects
     subprocess.run(cmd + list(map(str, files)) + ['-o', str(binary)], check=True)
-    for case in ['x4', 'x4-combined', 'x3', 'no-gray', 'wrong-size', 'wrong-orientation', 'x4-sleep']:
+    cases = ['x4', 'x4-combined', 'x3', 'no-gray', 'wrong-size', 'wrong-orientation']
+    for case in cases + ([] if args.baseline else ['x4-sleep', 'x3-sleep']):
         subprocess.run([str(binary), case, str(args.output)], check=True)
     if not args.baseline:
         x3_binary = args.output/'brand-boot-x3'
@@ -55,10 +56,13 @@ def main():
         subprocess.run(x3_cmd + list(map(str, files)) + ['-o', str(x3_binary)], check=True)
         for case in ['x3', 'x4-disabled']:
             subprocess.run([str(x3_binary), case, str(args.output)], check=True)
-    for device, asset in [('x3','X3BrandAssets.h'), ('x4','X4ProBrandAssets.h')]:
+    shown = [('x3','X3BrandAssets.h','BOOT'), ('x4','X4ProBrandAssets.h','BOOT')]
+    if not args.baseline:
+        shown += [('x3-sleep','X3BrandAssets.h','SLEEP'), ('x4-sleep','X4ProBrandAssets.h','SLEEP')]
+    for device, asset, art in shown:
         header = (ROOT/'src/components'/asset).read_text()
         for plane in ['LSB','MSB']:
-            data = re.search(r'BOOT_'+plane+r'\[\] = \{(.*?)\};', header, re.S).group(1)
+            data = re.search(r'\b'+art+'_'+plane+r'\[\] = \{(.*?)\};', header, re.S).group(1)
             packed = bytes(int(v,16) for v in re.findall(r'0x([0-9a-f]{2})',data))
             uploaded = (args.output/(device+'-'+plane.lower()+'.bin')).read_bytes()
             assert uploaded == zlib.decompress(packed), (device, plane)
