@@ -636,9 +636,14 @@ inline void forEachBaseSetting(const std::function<void(SettingInfo&&)>& emit) {
       const StrId names[] = {StrId::STR_READER_STATUS_LEFT, StrId::STR_READER_STATUS_CENTER,
                              StrId::STR_READER_STATUS_RIGHT};
       const char* keys[] = {"readerStatusLeft", "readerStatusCenter", "readerStatusRight"};
-      emit(SettingInfo::DynamicEnum(names[row - 1],
-            {StrId::STR_STATE_OFF, StrId::STR_CLOCK, StrId::STR_BATTERY, StrId::STR_CHAPTER_PAGE_COUNT,
-             StrId::STR_BOOK_PROGRESS_PERCENTAGE, StrId::STR_READER_STATUS_CHAPTER_ETA, StrId::STR_READER_STATUS_BOOK_ETA},
+      std::vector<StrId> values = {StrId::STR_STATE_OFF, StrId::STR_CLOCK, StrId::STR_BATTERY,
+          StrId::STR_CHAPTER_PAGE_COUNT, StrId::STR_BOOK_PROGRESS_PERCENTAGE,
+          StrId::STR_READER_STATUS_CHAPTER_ETA, StrId::STR_READER_STATUS_BOOK_ETA};
+      if (row == 2) {
+        values.push_back(StrId::STR_CHAPTER_NAME);
+        values.push_back(StrId::STR_READER_STATUS_CHAPTER_AND_BOOK_PROGRESS);
+      }
+      emit(SettingInfo::DynamicEnum(names[row - 1], std::move(values),
             [row] { return SETTINGS.readerStatusItem(row); },
             [row](uint8_t v) { SETTINGS.setReaderStatusItem(row, v); }, keys[row - 1], StrId::STR_CUSTOMISE_STATUS_BAR));
     }

@@ -600,7 +600,8 @@ CrossPointSettings::StatusBarSpec CrossPointSettings::statusBarSpec() const {
   spec.xtcMode = xtcStatusBarMode;
   spec.topTitleMode = spec.titleMode;
   spec.slots = {spec.showsClock() ? STATUS_SLOT_CLOCK : spec.showBattery ? STATUS_SLOT_BATTERY : STATUS_SLOT_NONE,
-                spec.showChapterPageCount ? STATUS_SLOT_CHAPTER_PAGES
+                spec.showChapterPageCount ? (spec.showBookProgressPercent ? STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS
+                                                                         : STATUS_SLOT_CHAPTER_PAGES)
                                          : spec.showBookProgressPercent ? STATUS_SLOT_BOOK_PERCENT : STATUS_SLOT_NONE,
                 spec.showBattery && spec.showsClock() ? STATUS_SLOT_BATTERY : STATUS_SLOT_NONE};
   if (statusBarItemsMode == readerStatusBarMode && readerStatusSlotsEnabled) {

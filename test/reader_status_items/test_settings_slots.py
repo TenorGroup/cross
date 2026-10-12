@@ -72,7 +72,7 @@ int main(){
  SETTINGS.adoptReaderStatusItems();
  for(int row=0;row<4;++row){
    view.nav.selected=row;view.handleSelection();
-   const int count=row==0?3:row==2?8:7;
+   const int count=row==0?3:row==2?9:7;
    assert(view.choiceRow_==row&&view.listCount()==count);
    assert(view.choiceTop_==76&&view.choiceBottom_==356&&view.choiceRowHeight_==62);
    assert(view.choiceNav_.selected==SETTINGS.readerStatusItem(row));
