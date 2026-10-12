@@ -5,6 +5,10 @@ Hom nay co dinh 21/09/2026 (thu Hai, CROSSPOINT_SIM_NOW). The co 90 ngay toi hom
   - Trang 2, 3: 28 o moi trang.
   - Trang 4 (Theo gio): khong co o.
 Phim canh DOWN sang trang sau, UP ve trang truoc.
+
+BIEU DO (cot tuan o trang 1-3, 24 cot gio o trang 4): truc y trai (thoi gian) va truc y phai (luot lat trang) la 2 vach
+doc den dai bang ca vung ve; duong luot lat co 1 cham den vien trang o moi diem.
+Cham do bang phep mo 5 x 5: net 2 px va chu bien mat, cot co vien trang tach khoi cham.
 """
 
 import datetime
@@ -86,6 +90,37 @@ def cells(image):
     return sorted(found, key=lambda c: (c[1], c[0]))
 
 
+def runs(image, plot):
+    """Cac doan den doc lien tuc it nhat `plot` diem trong vung than: (x, y dau, y cuoi)."""
+    ink = image[:690] < 128
+    found = []
+    for x in range(image.shape[1]):
+        run = 0
+        for y, v in enumerate(ink[:, x]):
+            run = run + 1 if v else 0
+            if run == plot:
+                end = y
+                while end + 1 < ink.shape[0] and ink[end + 1, x]:
+                    end += 1
+                found.append((x, y - plot + 1, end))
+                break
+    return found
+
+
+def dots(image, plot):
+    """Cham tron 7 px trong vung ve (giua 2 truc, tu dinh truc toi day): khoi nho con lai sau phep mo 5 x 5."""
+    found = runs(image, plot)
+    top, bottom = min(r[1] for r in found) - 6, max(r[2] for r in found) + 6
+    band = ndimage.binary_opening(image[top:bottom] < 128, structure=np.ones((5, 5)))
+    lab, _ = ndimage.label(band)
+    count = 0
+    for sl in ndimage.find_objects(lab):
+        w, h = sl[1].stop - sl[1].start, sl[0].stop - sl[0].start
+        if 4 <= w <= 7 and 4 <= h <= 7:  # a bar is at least 8 px wide
+            count += 1
+    return count
+
+
 class ThongKeDaiHan(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -108,6 +143,15 @@ class ThongKeDaiHan(unittest.TestCase):
     def test_trang_theo_gio_khong_co_o(self):
         self.assertEqual(len(cells(self.images["trang4"])), 0)
         self.assertFalse(np.array_equal(self.images["trang4"], self.images["trang3"]))
+
+    def test_bieu_do_co_hai_truc_y(self):
+        for name, plot in (("trang1", 72), ("trang4", 132)):
+            xs = [x for x, _, _ in runs(self.images[name], plot)]
+            self.assertTrue(xs and xs[0] < 120 and xs[-1] > 400, f"{name}: truc trai va phai {xs}")
+
+    def test_duong_luot_lat_co_cham_o_moi_diem(self):
+        self.assertEqual(dots(self.images["trang1"], 72), 4)
+        self.assertEqual(dots(self.images["trang4"], 132), 24)
 
     def test_phim_len_ve_trang_truoc(self):
         self.assertTrue(np.array_equal(self.images["lui3"], self.images["trang3"]))

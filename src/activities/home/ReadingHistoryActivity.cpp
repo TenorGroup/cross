@@ -173,52 +173,130 @@ static void label(const GfxRenderer& renderer, const int cx, const int top, cons
   renderer.drawText(SMALL_FONT_ID, cx - renderer.getTextWidth(SMALL_FONT_ID, text) / 2, top, text);
 }
 
-constexpr int CHART_BAR_MAX = 36;
-constexpr int HOUR_BAR_MAX = 96;
+// Each chart: reading time as bars on a y axis at the left, page turns as a line on its own y axis at the right. Both
+// axes are numbered at 0, the middle and a round top (lichdai::dinh), each unit written once over its axis; a two-line
+// legend above names the bar and the line. The line runs on a white margin and each point is a black dot ringed in
+// white, so neither hides in a black bar; the figures stand outside the plot, where the line never goes.
+namespace {
+constexpr int WEEK_PLOT = 72;
+constexpr int HOUR_PLOT = 132;
+struct Series {
+  int n;
+  const uint64_t* ms;
+  const uint32_t* turns;
+  int barPercent;              // bar width, in % of its slot
+  const char* const* xLabels;  // one a slot, nullptr for none
+};
+int textLine(const GfxRenderer& renderer) { return shell::uglyParts() ? 26 : renderer.getLineHeight(SMALL_FONT_ID); }
+int textWidth(const GfxRenderer& renderer, const char* text) {
+  return shell::uglyParts() ? ugly::width(renderer, ugly::Size::S22, text) : renderer.getTextWidth(SMALL_FONT_ID, text);
+}
+// Text with its top at `top`: the pen's hand in tenor/ugly, the body face (caption size) otherwise.
+void write(const GfxRenderer& renderer, const int x, const int top, const char* text) {
+  if (shell::uglyParts()) ugly::text(renderer, ugly::Size::S22, x, top + ugly::ascent(ugly::Size::S22), text);
+  else renderer.drawText(SMALL_FONT_ID, x, top, text);
+}
+void stroke(const GfxRenderer& renderer, const int x0, const int y0, const int x1, const int y1, const uint32_t seed) {
+  if (shell::uglyParts()) ugly::line(renderer, x0, y0, x1, y1, seed, 2);
+  else renderer.drawLine(x0, y0, x1, y1, 2, true);
+}
+void dot(const GfxRenderer& renderer, const int cx, const int cy) {
+  renderer.fillRoundedRect(cx - 5, cy - 5, 11, 11, 5, Color::White);
+  renderer.fillRoundedRect(cx - 3, cy - 3, 7, 7, 3, Color::Black);
+}
+// Legend (2 lines), units (1), half a line so the top figures clear the units, the plot, the x labels (1).
+int chartBlockHeight(const GfxRenderer& renderer, const int plot) { return 5 * textLine(renderer) + plot + 8; }
+
+void drawChartBlock(const GfxRenderer& renderer, const int top, const int plot, const Series& s) {
+  const int w = renderer.getScreenWidth(), line = textLine(renderer), margin = 24;
+  uint64_t mostMs = 0;
+  uint32_t mostTurns = 0;
+  for (int i = 0; i < s.n; ++i) {
+    mostMs = std::max(mostMs, s.ms[i]);
+    mostTurns = std::max(mostTurns, s.turns[i]);
+  }
+  const auto time = lichdai::trucThoiGian(mostMs);
+  const uint32_t turnTop = lichdai::dinh(mostTurns);
+  char text[24];
+  // Legend: a small bar, then a short line through a dot, each before its words.
+  const int legendX = margin + 26;
+  renderer.fillRect(margin + 5, top + line / 2 - 6, 8, 12, true);
+  write(renderer, legendX, top, time.gio ? tr(STR_STATS_LEGEND_HOURS) : tr(STR_STATS_LEGEND_MINUTES));
+  stroke(renderer, margin, top + line + line / 2, margin + 18, top + line + line / 2, 7);
+  dot(renderer, margin + 9, top + line + line / 2);
+  write(renderer, legendX, top + line, tr(STR_STATS_LEGEND_TURNS));
+  // Axes: figures right-aligned left of the left axis, left-aligned right of the right axis.
+  snprintf(text, sizeof(text), "%lu", static_cast<unsigned long>(time.dinh));
+  const int leftWidth = textWidth(renderer, text);
+  snprintf(text, sizeof(text), "%lu", static_cast<unsigned long>(turnTop));
+  const int rightWidth = textWidth(renderer, text);
+  const int x0 = margin + leftWidth + 8, x1 = w - margin - rightWidth - 8;
+  const int plotTop = top + 3 * line + line / 2, base = plotTop + plot;
+  write(renderer, margin, top + 2 * line, time.gio ? tr(STR_STATS_HOURS) : tr(STR_STATS_MINUTES));
+  const char* unit = tr(STR_STATS_TURNS_UNIT);
+  write(renderer, w - margin - textWidth(renderer, unit), top + 2 * line, unit);
+  stroke(renderer, x0, plotTop, x0, base, 11);
+  stroke(renderer, x1, plotTop, x1, base, 12);
+  stroke(renderer, x0, base, x1, base, 13);
+  const uint32_t leftTicks[3] = {0, time.dinh / 2, time.dinh}, rightTicks[3] = {0, turnTop / 2, turnTop};
+  for (int t = 0; t < 3; ++t) {
+    const int y = base - t * plot / 2;
+    stroke(renderer, x0 - 5, y, x0, y, 20 + t);
+    stroke(renderer, x1, y, x1 + 5, y, 30 + t);
+    snprintf(text, sizeof(text), "%lu", static_cast<unsigned long>(leftTicks[t]));
+    write(renderer, x0 - 8 - textWidth(renderer, text), y - line / 2, text);
+    snprintf(text, sizeof(text), "%lu", static_cast<unsigned long>(rightTicks[t]));
+    write(renderer, x1 + 8, y - line / 2, text);
+  }
+  // Bars, each centred in its slot, its name under the base.
+  const int slot = (x1 - x0 - 8) / s.n, bar = std::max(2, slot * s.barPercent / 100), first = x0 + 4 + slot / 2;
+  for (int i = 0; i < s.n; ++i) {
+    const int cx = first + i * slot;
+    const int height = s.ms[i] ? std::max<int>(2, static_cast<int>(s.ms[i] * plot / time.ms())) : 0;
+    if (height && shell::uglyParts()) {
+      // tenor/ugly: the bar scribbled with the pen, stroke by stroke.
+      for (int dx = 0; dx < bar; dx += 2)
+        ugly::line(renderer, cx - bar / 2 + dx, base, cx - bar / 2 + dx + 1, base - height, 70 + i * 16 + dx, 2);
+    } else if (height) {
+      renderer.fillRect(cx - bar / 2, base - height, bar, height);
+    }
+    if (s.xLabels[i]) write(renderer, cx - textWidth(renderer, s.xLabels[i]) / 2, base + 4, s.xLabels[i]);
+  }
+  // The line over the bars: a white margin first, then the black stroke, then the dots.
+  const auto y = [&](const int i) { return base - static_cast<int>(static_cast<uint64_t>(s.turns[i]) * plot / turnTop); };
+  for (int i = 1; i < s.n; ++i) renderer.drawLine(first + (i - 1) * slot, y(i - 1), first + i * slot, y(i), 6, false);
+  for (int i = 1; i < s.n; ++i) stroke(renderer, first + (i - 1) * slot, y(i - 1), first + i * slot, y(i), 40 + i);
+  for (int i = 0; i < s.n; ++i) dot(renderer, first + i * slot, y(i));
+}
+}  // namespace
+
 int ReadingHistoryActivity::chartHeight() const {
-  const int line = renderer.getLineHeight(SMALL_FONT_ID);
-  return (hourPage() ? HOUR_BAR_MAX : CHART_BAR_MAX) + line + 12;
+  return chartBlockHeight(renderer, hourPage() ? HOUR_PLOT : WEEK_PLOT);
 }
 
-// Weekly reading under the grid: 4 bars, one a week of the page, each named by its Monday.
+// The 4 weeks of the page, each named by its Monday.
 void ReadingHistoryActivity::drawWeekChart() const {
-  const int left = 24, width = renderer.getScreenWidth() - 2 * left, step = width / lichdai::SO_TUAN, bar = step / 8,
-            base = gridTop() + gridHeight() + CHART_BAR_MAX;
-  const bool handwritten = shell::uglyParts();
-  if (handwritten) ugly::line(renderer, left, base, left + width, base - 2, 61, 2);
-  else renderer.drawLine(left, base, left + width, base, true);
-  uint64_t most = 1;
-  for (const auto& w : weeks) most = std::max(most, w.ms);
-  char text[8];
+  uint64_t ms[lichdai::SO_TUAN];
+  uint32_t turns[lichdai::SO_TUAN];
+  char names[lichdai::SO_TUAN][8];
+  const char* labels[lichdai::SO_TUAN];
   for (int k = 0; k < lichdai::SO_TUAN; ++k) {
-    const int x = left + k * step + (step - bar) / 2,
-              height = weeks[k].ms ? std::max<int>(2, weeks[k].ms * CHART_BAR_MAX / most) : 0;
-    if (height) renderer.fillRect(x, base - height, bar, height);
+    ms[k] = weeks[k].ms;
+    turns[k] = weeks[k].luot;
     const uint32_t key = habits::dateKey(lichdai::dau(today, page) + 7 * k);
-    snprintf(text, sizeof(text), "%02lu/%02lu", static_cast<unsigned long>(key % 100),
+    snprintf(names[k], sizeof(names[k]), "%02lu/%02lu", static_cast<unsigned long>(key % 100),
              static_cast<unsigned long>(key / 100 % 100));
-    label(renderer, x + bar / 2, base + 3, text);
+    labels[k] = names[k];
   }
+  drawChartBlock(renderer, gridTop() + gridHeight(), WEEK_PLOT, {lichdai::SO_TUAN, ms, turns, 30, labels});
 }
 
-// Reading by hour: one thin bar an hour of the local day, the busiest hour full height; 0, 6, 12, 18 named below.
+// The 24 hours of the local day; 0, 6, 12 and 18 named.
 void ReadingHistoryActivity::drawHourChart() const {
-  const int left = 24, width = renderer.getScreenWidth() - 2 * left, step = width / 24, bar = step / 2,
-            base = gridTop() + HOUR_BAR_MAX;
-  const bool handwritten = shell::uglyParts();
-  if (handwritten) ugly::line(renderer, left, base, left + width, base - 2, 61, 2);
-  else renderer.drawLine(left, base, left + width, base, true);
-  uint64_t most = 1;
-  for (const uint64_t ms : history->hourMs) most = std::max(most, ms);
-  char text[8];
-  for (int h = 0; h < 24; ++h) {
-    const int x = left + h * step + (step - bar) / 2,
-              height = history->hourMs[h] ? std::max<int>(2, history->hourMs[h] * HOUR_BAR_MAX / most) : 0;
-    if (height) renderer.fillRect(x, base - height, bar, height);
-    if (h % 6) continue;
-    snprintf(text, sizeof(text), "%d", h);
-    label(renderer, x + bar / 2, base + 3, text);
-  }
+  static const char* const labels[24] = {"0", nullptr, nullptr, nullptr, nullptr, nullptr, "6",  nullptr,
+                                         nullptr, nullptr, nullptr, nullptr, "12", nullptr, nullptr, nullptr,
+                                         nullptr, nullptr, "18", nullptr, nullptr, nullptr, nullptr, nullptr};
+  drawChartBlock(renderer, gridTop(), HOUR_PLOT, {24, history->hourMs.data(), history->hourTurns.data(), 50, labels});
 }
 
 // 7 columns centred, Monday first under the weekday line, 4 rows; the oldest week on top, today framed.
