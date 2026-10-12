@@ -1,5 +1,5 @@
 """X3 Button hints switch (v1.0.59): the row in Display, the clock and battery strip at the top while the hints are
-off, and the reader left as it was.
+off, and in a book the page left as it was while the reader menu and its screens drop the symbols.
 
 TEST_PROGRAM=<simulator_x3_uc8279 program> python3 test_button_hints_v1059.py [switch|layout|reader|migration|all] [--out DIR]
 """
@@ -120,16 +120,31 @@ def layout(out):
     print('GREEN layout:', json.dumps(result), flush=True)
 
 
+# The foot between the battery block and the clock, where the button symbols stand.
+SYMBOLS = (66, H - 21, W - 64, H)
+# Reader menu, list (0) and toolbar (1): the menu, and the chapter list opened from it.
+MENU_JOURNEYS = {0: ('2600:CONFIRM;4000:DOWN;5000:CONFIRM', 7000), 1: ('2600:CONFIRM;4400:CONFIRM;5800:CONFIRM', 8000)}
+
+
 def reader(out):
-    frames = {}
-    for hints in (1, 0):
-        images, _ = run(out, f'reader-h{hints}', '2600:CONFIRM', {2300: 'page', 4200: 'menu'},
-                        {'tenorButtonHints': hints, 'readerTapTip': 0}, book=True)
-        frames[hints] = images
-    for label in ('page', 'menu'):
-        diff = ImageChops.difference(frames[1][label], frames[0][label]).getbbox()
-        assert diff is None, ('the reader does not change with the switch', label, diff)
-    print('GREEN reader: page and menu identical with the hints on and off', flush=True)
+    # The page draws no symbols and stays as it is; the reader menu (both styles) and the screens opened from it lose
+    # the symbols with the switch off, nothing else moves.
+    for style, (journey, at) in MENU_JOURNEYS.items():
+        frames = {}
+        for hints in (1, 0):
+            settings = {'tenorButtonHints': hints, 'readerTapTip': 0, 'readerMenuStyle': style}
+            images, _ = run(out, f'reader-s{style}-h{hints}', '2600:CONFIRM', {2300: 'page', 4200: 'menu'}, settings, book=True)
+            child, _ = run(out, f'reader-s{style}-h{hints}-child', journey, {at: 'child'}, settings, book=True)
+            frames[hints] = {**images, **child}
+        assert ImageChops.difference(frames[1]['page'], frames[0]['page']).getbbox() is None, ('the page changed', style)
+        for label in ('menu', 'child'):
+            on, off = frames[1][label], frames[0][label]
+            assert ink_box(on, SYMBOLS), ('the symbols are drawn with the switch on', style, label)
+            assert ink_box(off, SYMBOLS) is None, ('symbols left with the switch off', style, label, ink_box(off, SYMBOLS))
+            diff = ImageChops.difference(on, off).getbbox()
+            assert diff and diff[0] >= SYMBOLS[0] and diff[1] >= SYMBOLS[1] and diff[2] <= SYMBOLS[2], \
+                ('only the symbols change', style, label, diff)
+    print('GREEN reader: page kept; menu and its screens drop only the symbols with the hints off', flush=True)
 
 
 def migration(out):

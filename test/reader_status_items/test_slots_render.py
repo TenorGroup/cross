@@ -29,6 +29,10 @@ body = method((repo / 'src/components/TenorMenuChrome.cpp').read_text(),
               'void tenorchrome::drawReaderSlots(')
 metric_body = method((repo / 'src/components/TenorMenuChrome.cpp').read_text(),
                      'tenorchrome::BatteryInkBounds tenorchrome::batteryInkBounds(')
+# The battery every reader strip draws (shared with the default bar), copied as it stands.
+chrome = (repo / 'src/components/TenorMenuChrome.cpp').read_text()
+battery_start = chrome.index('int shownBatteryPercent()')
+battery_body = chrome[battery_start:chrome.index('}  // namespace', battery_start)]
 if a.mutation:
     body = body.replace('case S::STATUS_SLOT_NONE: continue;', 'case S::STATUS_SLOT_NONE: break;')
 
@@ -80,9 +84,14 @@ struct GfxRenderer {
    return out+"…";
  }
  void drawText(int,int x,int y,const char* text) const {ink.push_back({x,y,getTextWidth(0,text),line,text});}
- void drawRect(int x,int y,int w,int h,int,bool) const {ink.push_back({x,y,w,h,"icon"});}
+ void drawRect(int x,int y,int w,int h,int,bool) const {ink.push_back({x,y,w,h,"square"});}
+ void drawRoundedRect(int x,int y,int w,int h,int,int,bool) const {ink.push_back({x,y,w,h,"icon"});}
  void fillRect(int x,int y,int w,int h) const {ink.push_back({x,y,w,h,"fill"});}
+ template<class C> void fillRoundedRect(int x,int y,int w,int h,int,C) const {ink.push_back({x,y,w,h,"fill"});}
 };
+enum class Color {Black};
+namespace tenorradius {constexpr int nest(int radius,int inset){return radius>inset?radius-inset:0;}}
+constexpr int BATTERY_TEXT_GAP = 4;
 namespace shell {bool uglyParts(){return rough;}}
 namespace ugly {
  struct Box {int x0,y0,x1,y1;};
@@ -92,7 +101,7 @@ namespace ugly {
  int width(const GfxRenderer& r,Size,const char* text){return r.getTextWidth(0,text);}
  std::string fit(const GfxRenderer& r,Size,const char* text,int room){return r.truncatedText(0,text,room);}
  void text(const GfxRenderer& r,Size,int x,int y,const char* value){r.drawText(0,x,y-18,value);}
- void battery(const GfxRenderer&,int x,int y,int){ink.push_back({x,y-8,44,18,"icon"});}
+ void battery(const GfxRenderer&,int x,int y,int){ink.push_back({x,y-14,42,28,"icon"});}  // UglyInk.cpp: {x, y - 14, 42, 28}
 }
 namespace clockstatus {bool valid=true;bool hasValidTime(){return valid;}}
 struct Clock {bool formatTime(char* value,size_t size,bool){snprintf(value,size,"12:34");return true;}}halClock;
@@ -111,7 +120,7 @@ namespace tenorchrome {
  void drawReaderSlots(const GfxRenderer&,const char*,int,int,float,bool,bool,int64_t,int64_t,const char* = nullptr,bool = true);
 }
 using namespace tenorchrome;
-''' + metric_body + '\n' + body + r'''
+''' + metric_body + '\nnamespace {\n' + battery_body + '}\n' + body + r'''
 void chapterRegression(bool tail){
  using S=CrossPointSettings;
  const std::string title="Chương 12: Gã Lá Nhỏ Và Những Người Bạn ở cuối con đường rất dài";
@@ -185,6 +194,50 @@ void titleInBottomStrip(){
   }
  printf("title_bottom:GREEN (%d production painter cases, name inside the bottom strip, .53 order)\n",cases);
 }
+// Founder 12/10: the custom bar's battery is the default bar's, rounded, its number without "%", in the default
+// corner (8 px in on cross; ugly: 14 px in on the left, its default spot on the right).
+void batteryLikeDefault(){
+ using S=CrossPointSettings;
+ int cases=0;
+ for(int screen:{480,528})for(bool ugly:{false,true})for(int slot:{0,2})for(bool percent:{false,true}){
+   rough=ugly;GfxRenderer r;r.w=screen;r.advance=8;powerManager.percentage=100;SETTINGS.percent=percent;
+   SETTINGS.spec={};SETTINGS.spec.slotsEnabled=true;SETTINGS.spec.topTitleMode=S::HIDE_TITLE;
+   SETTINGS.spec.slots[slot]=S::STATUS_SLOT_BATTERY;ink.clear();
+   drawReaderSlots(r,"",1,1,1.0f,false,false,-1,-1);
+   const Ink* body=nullptr;const Ink* number=nullptr;
+   for(const auto& painted:ink){
+     assert(painted.text!="square"&&painted.text!="100%");
+     if(painted.text=="icon")body=&painted;
+     if(painted.text=="100")number=&painted;
+   }
+   assert(body&&(number!=nullptr)==percent);
+   const int digits=percent?3*8:0;
+   if(!ugly){
+     const int block=26+(percent?4+digits:0);
+     assert(body->x==(slot==0?8:screen-8-26));
+     if(percent)assert(number->x==(slot==0?8+26+4:screen-8-block));
+   }else{
+     const int room=46+(percent?digits+8:0);
+     assert(body->x==(slot==0?14:screen-14-room+12));
+     if(percent)assert(number->x==body->x+44);
+   }
+   ++cases;
+ }
+ SETTINGS.percent=true;
+ printf("battery_like_default:GREEN (%d cases, rounded, no %%, default corners)\n",cases);
+ cases=0;
+ for(int screen:{480,528})for(bool ugly:{false,true})for(int slot:{0,2}){
+   rough=ugly;GfxRenderer r;r.w=screen;r.advance=8;
+   SETTINGS.spec={};SETTINGS.spec.slotsEnabled=true;SETTINGS.spec.topTitleMode=S::HIDE_TITLE;
+   SETTINGS.spec.slots[slot]=S::STATUS_SLOT_CLOCK;ink.clear();clockstatus::valid=true;
+   drawReaderSlots(r,"",1,1,1.0f,false,false,-1,-1);
+   const int edge=ugly?14:8;
+   assert(ink.size()==1&&ink[0].text=="12:34");
+   assert(ink[0].x==(slot==0?edge:screen-edge-ink[0].w));
+   ++cases;
+ }
+ printf("clock_like_default:GREEN (%d cases, the default corners)\n",cases);
+}
 int main(int argc,char** argv){
  using S=CrossPointSettings;
  if(argc>1&&!strcmp(argv[1],"preview")){
@@ -202,7 +255,7 @@ int main(int argc,char** argv){
  if(argc>1&&strcmp(argv[1],"all")){
    chapterRegression(!strcmp(argv[1],"tail"));return 0;
  }
- chapterRegression(true);chapterRegression(false);titleInBottomStrip();
+ chapterRegression(true);chapterRegression(false);titleInBottomStrip();batteryLikeDefault();
  for(int screen:{480,528})for(int size:{8,10,12})for(bool ugly:{false,true})for(bool swapped:{false,true}) {
    GfxRenderer r;r.w=screen;r.advance=size;rough=ugly;
    SETTINGS.spec={};SETTINGS.spec.slotsEnabled=true;SETTINGS.spec.topTitleMode=S::HIDE_TITLE;
@@ -245,8 +298,12 @@ int main(int argc,char** argv){
      drawReaderSlots(r,"A long book or chapter title that reaches the right screen edge repeatedly",5,known?25:0,
                      known?43.0f:-1,false,true,known?5400:-1,known?25200:-1,
                      known?"Mở\nđầu một chương có tên dài để kiểm tra cắt giữa UTF-8 chapter end":nullptr);
+     // A battery or a clock in a corner stands where the default bar puts it: 8 px in on cross, the ugly strip's
+     // own corners (its bare battery body reaches 6 px from the right edge).
      const auto lane=(item==S::STATUS_SLOT_CHAPTER_NAME||item==S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS)&&slot==1
-       ? readerstatus::Cell{20,screen-40} : readerstatus::cell(screen,slot);
+       ? readerstatus::Cell{20,screen-40}
+       : (item==S::STATUS_SLOT_BATTERY||item==S::STATUS_SLOT_CLOCK)&&slot!=1 ? readerstatus::cell(screen,slot,6)
+                                                                             : readerstatus::cell(screen,slot);
      int bottom=0,header=0,named=0;
      std::vector<Ink> items;
      for(const auto& painted:ink){

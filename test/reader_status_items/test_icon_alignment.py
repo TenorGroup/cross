@@ -36,6 +36,10 @@ metric_body = extract_function(
     (repo / "src/components/TenorMenuChrome.cpp").read_text(),
     "tenorchrome::BatteryInkBounds tenorchrome::batteryInkBounds(",
 )
+# The battery every reader strip draws (shared with the default bar), copied as it stands.
+chrome = (repo / "src/components/TenorMenuChrome.cpp").read_text()
+battery_start = chrome.index("int shownBatteryPercent()")
+battery_body = chrome[battery_start:chrome.index("}  // namespace", battery_start)]
 
 cpp = r'''
 #include <algorithm>
@@ -100,10 +104,19 @@ struct GfxRenderer {
   void drawRect(int x, int y, int width, int height, int, bool) const {
     ink.push_back({Ink::Battery, x, y, width, height, 0, "battery"});
   }
+  void drawRoundedRect(int x, int y, int width, int height, int, int, bool) const {
+    ink.push_back({Ink::Battery, x, y, width, height, 0, "battery"});
+  }
   void fillRect(int x, int y, int width, int height) const {
     ink.push_back({Ink::Fill, x, y, width, height, 0, "fill"});
   }
+  template <class C> void fillRoundedRect(int x, int y, int width, int height, int, C) const {
+    ink.push_back({Ink::Fill, x, y, width, height, 0, "fill"});
+  }
 };
+enum class Color { Black };
+namespace tenorradius { constexpr int nest(int radius, int inset) { return radius > inset ? radius - inset : 0; } }
+constexpr int BATTERY_TEXT_GAP = 4;
 namespace shell { bool uglyParts() { return rough; } }
 namespace ugly {
   struct Box { int x0, y0, x1, y1; };
@@ -136,7 +149,7 @@ namespace tenorchrome {
   void drawReaderSlots(const GfxRenderer&, const char*, int, int, float, bool, bool, int64_t, int64_t, const char* = nullptr,
                        bool = true);
 }
-''' + metric_body + '\n' + body + r'''
+''' + metric_body + '\nnamespace {\n' + battery_body + '}\n' + body + r'''
 
 static double center(const Ink& box) { return box.y + (box.h - 1) / 2.0; }
 
