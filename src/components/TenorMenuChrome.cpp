@@ -1302,12 +1302,12 @@ bool tenorchrome::x3ScreenLayoutEnabled() {
 }
 
 bool tenorchrome::buttonHintsShown() {
-  return !SETTINGS.globalStatusBarHidden() &&
-         (kTouchShell || SETTINGS.tenorButtonHints || activityManager.isReaderActivity());
+  return !SETTINGS.globalStatusBarHidden() && (kTouchShell || SETTINGS.tenorButtonHints);
 }
 
 bool tenorchrome::statusOnTop() {
-  return x3ScreenLayoutEnabled() && !shell::uglyParts() && !SETTINGS.globalStatusBarHidden() && !buttonHintsShown();
+  return x3ScreenLayoutEnabled() && !shell::uglyParts() && !SETTINGS.globalStatusBarHidden() && !buttonHintsShown() &&
+         !activityManager.isReaderActivity();
 }
 
 tenorchrome::X3ScreenLayout tenorchrome::x3ScreenLayout(const GfxRenderer& renderer, const int requestedTipHeight,
