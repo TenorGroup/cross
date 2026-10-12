@@ -164,6 +164,9 @@ class HomeActivity final : public UiTabListActivity {
   int coverTileTop() const;
   void selectTab(Tab tab);
   bool openLastFolder();
+  std::string lastFolder() const;
+  bool lastFolderAt(int row) const;
+  bool lastFolderRow = false;  // mucTheNho[0] is the last folder of File
   bool restoringNavigation = false;
   void rebuildRows(bool readFolder = true);
   bool buildSettingsGroups(UiScreen& screen);

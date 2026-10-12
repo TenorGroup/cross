@@ -348,28 +348,35 @@ void HomeActivity::selectTab(const Tab tab) {
 #endif
 }
 
-// Choosing the File card opens the last folder of File (founder 12/10/2026), kept across sleep. Read on the
-// input that chose the card, after Home's first frame; a folder gone from the card leaves the card as it was.
-bool HomeActivity::openLastFolder() {
-  if (shell::isUgly()) return false;
-  const std::string path = filebrowser::lastFolder(false, [](const char* p) {
+// The last folder of File in tenor/cross (founder 12/10/2026), kept across sleep; "/" when there is none, it
+// is the root, or the card no longer has it.
+std::string HomeActivity::lastFolder() const {
+  if (shell::isUgly()) return "/";
+  return filebrowser::lastFolder(false, [](const char* p) {
     auto dir = Storage.open(p);
     return static_cast<bool>(dir) && dir.isDirectory();
   });
+}
+
+// A tap on the File card from another card opens the last folder. A step through the cards (buttons, tilt)
+// passes the card by: its first row holds the last folder instead (docGocTheNho).
+bool HomeActivity::openLastFolder() {
+  const std::string path = lastFolder();
   if (path == "/") return false;
+  selectTab(Tab::FOLDER);  // File is the zone of the bar there, and its ‹ comes back to this card
   activityManager.goToFileBrowser(path);
   return true;
 }
 
 void HomeActivity::stepTab(const int direction) {
   const int next = adjacentTab(direction);
-  if (static_cast<Tab>(next) == Tab::FOLDER && openLastFolder()) return;
   selectTab(static_cast<Tab>(next));
   requestUpdate();
 }
 
 void HomeActivity::onTabAction(const int index) {
-  if (!restoringNavigation && static_cast<Tab>(index) == Tab::FOLDER && openLastFolder()) {
+  if (tenorchrome::kTouchShell && !restoringNavigation && static_cast<Tab>(index) == Tab::FOLDER &&
+      activeTabId != Tab::FOLDER && openLastFolder()) {
     app.clearTapFlash();
     return;
   }
@@ -396,10 +403,15 @@ void HomeActivity::rebuildRows(const bool readFolder) {
       folderRowIndices.clear();
       for (size_t fileIndex = 0; fileIndex < mucTheNho.size(); ++fileIndex) {
         const auto& muc = mucTheNho[fileIndex];
-        if (tenorchrome::kTouchShell && !fileSearchMatches(muc, folderSearchQuery)) continue;
+        const bool last = lastFolderRow && fileIndex == 0;
+        if (tenorchrome::kTouchShell && (last ? !folderSearchQuery.empty() : !fileSearchMatches(muc, folderSearchQuery)))
+          continue;
         if (tenorchrome::kTouchShell) folderRowIndices.push_back(static_cast<uint16_t>(fileIndex));
-        // Touch: the File card is the root of File, its rows as a folder's rows (name, icon).
-        if (tenorchrome::kTouchShell) {
+        // The last folder reads as its path, as the path pill of File shows it.
+        if (last) {
+          rowLabels.push_back("/" + muc.substr(0, muc.size() - 1));
+        } else if (tenorchrome::kTouchShell) {
+          // Touch: the File card is the root of File, its rows as a folder's rows (name, icon).
           char name[128];
           formatFileName(muc, name, sizeof(name));
           rowLabels.emplace_back(name);
@@ -1175,6 +1187,15 @@ void HomeActivity::docGocTheNho() {
     return;
   }
   docthumuc::doc("/", SETTINGS.showHiddenFiles, docthumuc::Loc::Sach, dem.get(), DEM_CO, mucTheNho, cap, &mucQuaNhieu);
+  // First row: the last folder of File, a folder entry like the others (relative, trailing '/'). Not a pin.
+  const std::string last = mucQuaNhieu ? "/" : lastFolder();
+  lastFolderRow = last != "/";
+  if (lastFolderRow) mucTheNho.insert(mucTheNho.begin(), last.substr(1) + "/");
+}
+
+bool HomeActivity::lastFolderAt(const int row) const {
+  return activeTabId == Tab::FOLDER && lastFolderRow && row >= 0 && row < static_cast<int>(rowLabels.size()) &&
+         &folderEntry(row) == &mucTheNho.front();
 }
 
 const std::string& HomeActivity::folderEntry(const int row) const {
@@ -1364,6 +1385,7 @@ std::string HomeActivity::favoriteKey(int row) const {
   if (activeTabId == Tab::RECENT && row >= 0 && row < static_cast<int>(recentBooks.size()))
     return filefavorites::keyFor(recentBooks[row].path, false);
   if (activeTabId == Tab::FOLDER && row >= 0 && row < listCount()) {
+    if (lastFolderAt(row)) return {};
     auto path = "/" + folderEntry(row);
     const bool folder = path.back() == '/';
     if (folder) path.pop_back();
@@ -1411,6 +1433,7 @@ bool HomeActivity::toggleFavorite(int row) {
   if (activeTabId == Tab::RECENT && row >= 0 && row < static_cast<int>(recentBooks.size()))
     return filefavorites::toggle(recentBooks[row].path, false);
   if (activeTabId == Tab::FOLDER && row >= 0 && row < listCount()) {
+    if (lastFolderAt(row)) return false;
     auto path = "/" + folderEntry(row);
     const bool folder = path.back() == '/';
     if (folder) path.pop_back();
