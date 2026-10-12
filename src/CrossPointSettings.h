@@ -474,6 +474,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t uglyBatteryHidden = 0;
   // Tenor-only appearance preferences; existing themes retain their own hints.
   uint8_t tenorButtonSymbols = 1;
+  // The front button hints at the foot of a button reader (Button hints). Off: the clock and the battery go to
+  // a strip at the top.
+  uint8_t tenorButtonHints = 1;
   uint8_t tenorSideArrows = 1;
   // Sunlight fading compensation
   uint8_t fadingFix = 0;

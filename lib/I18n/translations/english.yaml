@@ -632,6 +632,7 @@ STR_BUTTON_LABELS: "Button labels"
 STR_LABELS_TEXT: "Text"
 STR_LABELS_SYMBOLS: "Symbols"
 STR_SIDE_ARROW_HINTS: "Side arrows"
+STR_BUTTON_HINTS: "Button hints"
 
 STR_MENU_PIN_HINT: "Hold : Pin"
 STR_MENU_PINNED: "Hold : Unpin"

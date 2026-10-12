@@ -464,6 +464,42 @@ int runTips() {
   return ok ? 0 : 1;
 }
 
+// v1.0.59 Button hints: General status bar Off was the only way to hide the button hints, so a file from before the
+// switch with the bar Off starts with the hints off. Stamped once: the two settings stay apart after that.
+int runButtonHints() {
+  bool ok = true;
+  JsonDocument off = readFixture("settings-v1.0.19.json");
+  ok = expect(off["buttonHintsVersion"].isNull() && off["tenorButtonHints"].isNull(), "old fixture predates the switch") && ok;
+  off["globalStatusBarMode"] = CrossPointSettings::GLOBAL_STATUS_BAR_OFF;
+  SETTINGS.fromJson(off.as<JsonVariantConst>());
+  ok = expect(SETTINGS.tenorButtonHints == 0, "status bar Off before the switch keeps the hints hidden") && ok;
+  ok = expect(SETTINGS.globalStatusBarMode == CrossPointSettings::GLOBAL_STATUS_BAR_OFF, "status bar Off stays Off") && ok;
+  ok = expect(saved()["tenorButtonHints"].as<int>() == 0 && saved()["buttonHintsVersion"].as<int>() == 1,
+              "the move is saved and stamped") && ok;
+
+  JsonDocument small = readFixture("settings-v1.0.19.json");
+  small["globalStatusBarMode"] = CrossPointSettings::GLOBAL_STATUS_BAR_SMALL;
+  SETTINGS.fromJson(small.as<JsonVariantConst>());
+  ok = expect(SETTINGS.tenorButtonHints == 1, "a status bar that was on keeps the hints") && ok;
+
+  JsonDocument chosen = readFixture("settings-v1.0.19.json");
+  chosen["buttonHintsVersion"] = 1;
+  chosen["globalStatusBarMode"] = CrossPointSettings::GLOBAL_STATUS_BAR_OFF;
+  chosen["tenorButtonHints"] = 1;
+  SETTINGS.fromJson(chosen.as<JsonVariantConst>());
+  ok = expect(SETTINGS.tenorButtonHints == 1, "after the stamp, status bar Off leaves the switch alone") && ok;
+
+  chosen["globalStatusBarMode"] = CrossPointSettings::GLOBAL_STATUS_BAR_SMALL;
+  chosen["tenorButtonHints"] = 0;
+  SETTINGS.fromJson(chosen.as<JsonVariantConst>());
+  ok = expect(SETTINGS.tenorButtonHints == 0, "turning the status bar back on keeps the hints hidden") && ok;
+  chosen.remove("tenorButtonHints");
+  SETTINGS.fromJson(chosen.as<JsonVariantConst>());
+  ok = expect(SETTINGS.tenorButtonHints == 1, "a stamped file without the key reloads the default") && ok;
+  std::printf("settings_upgrade=button-hints:%s\n", ok ? "GREEN" : "RED");
+  return ok ? 0 : 1;
+}
+
 int main(int argc, char** argv) {
   if (argc != 2) return 2;
   const std::string mode = argv[1];
@@ -501,5 +537,6 @@ int main(int argc, char** argv) {
   if (mode == "reader-pins") return runReaderPins();
   if (mode == "no-resident-catalog") return runNoResidentCatalog();
   if (mode == "tips") return runTips();
+  if (mode == "button-hints") return runButtonHints();
   return 2;
 }

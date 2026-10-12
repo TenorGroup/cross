@@ -87,6 +87,10 @@ if 'kTouchShell' in header:
     declarations += '\nconstexpr bool kTouchShell = false;\n' + function(header, 'inline bool tipShown(')
     if 'touchBarTop' in header:
         declarations += '\ninline int touchBarTop(int screenHeight) { return screenHeight; }'
+    # Button hints on: the status stays at the foot (the hints-off strip: test_button_hints_v1059.py).
+    declarations += '\nconstexpr int TOUCH_STRIP_HEIGHT = 32;'
+    declarations += '\ninline bool buttonHintsShown() { return !SETTINGS.globalStatusBarHidden(); }'
+    declarations += '\ninline bool statusOnTop() { return false; }\n'
 fixture = Path(__file__).with_name('footer_tips.cpp').read_text()
 fixture = '#include <array>\n' + fixture.replace('struct GfxRenderer {', '''struct GfxRenderer {
   mutable std::array<int, 4> clip = {0, 0, 480, 800};

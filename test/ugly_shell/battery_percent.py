@@ -110,7 +110,8 @@ std::string fit(const GfxRenderer&,Size,const char* value,int) { return value; }
 uint32_t frameSeed=0;
 uint32_t iconFrameSeed() { return frameSeed; }
 '''
-cpp = cpp.replace('namespace ugly {', '''namespace buttonSymbols {
+cpp = cpp.replace('namespace ugly {', '''namespace tenorchrome { inline bool buttonHintsShown() { return true; } }
+namespace buttonSymbols {
 int labelId(const char* value) {
   return static_cast<unsigned char>(value[0])==0xEE && static_cast<unsigned char>(value[1])==0x84
       ? static_cast<unsigned char>(value[2])-0x80 : -1;

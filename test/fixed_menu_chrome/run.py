@@ -226,6 +226,11 @@ declarations.extend(re.findall(r'^(?:bool|int|void|X3ScreenLayout) '
                               r'\([^;]+;', header, re.M))
 declarations.append('inline int touchBarTop(int height) { return height; }')
 declarations.append('inline int tabTop() { return 32; }')
+# Button hints on (the default): the status stays at the foot. The hints-off strip is checked on the simulator
+# (test/reading_stats_simulator/test_button_hints_v1059.py).
+declarations.append('constexpr int TOUCH_STRIP_HEIGHT = 32;')
+declarations.append('inline bool buttonHintsShown() { return !SETTINGS.globalStatusBarHidden(); }')
+declarations.append('inline bool statusOnTop() { return false; }')
 definitions = []
 for name in ('smallFooterSymbolsTopY', 'compactFooterTips', 'tipY', 'x3ScreenLayoutEnabled'):
     if f'tenorchrome::{name}(' not in chrome:

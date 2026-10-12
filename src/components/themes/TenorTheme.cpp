@@ -39,6 +39,11 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
     renderer.setOrientation(orig_orientation);
     return;
   }
+  if (!tenorchrome::buttonHintsShown()) {
+    if (renderer.getRenderMode() == GfxRenderer::BW || !renderer.grayPlanesAreAbsolute()) tenorchrome::drawStatus(renderer);
+    renderer.setOrientation(orig_orientation);
+    return;
+  }
 
   const int pageHeight = renderer.getScreenHeight();
   constexpr int buttonWidth = 80;

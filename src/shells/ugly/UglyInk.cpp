@@ -648,6 +648,7 @@ void pathHints(const GfxRenderer& r, const char* path, const char* note, const b
 
 void statusBar(const GfxRenderer& r, const char* btn1, const char* btn2, const char* btn3, const char* btn4) {
   if (SETTINGS.globalStatusBarHidden()) return;
+  if (!tenorchrome::buttonHintsShown()) btn1 = btn2 = btn3 = btn4 = "";
   const int w = r.getScreenWidth(), h = r.getScreenHeight();
   const int y = h - 20;
   const int level = std::clamp(static_cast<int>(powerManager.getDisplayedBatteryPercentage()), 0, 100);

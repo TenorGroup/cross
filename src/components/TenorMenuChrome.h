@@ -25,6 +25,14 @@ constexpr bool kTouchShell = false;
 #endif
 inline bool enabled() { return kTouchShell || !gpio.hasTouch(); }
 bool x3ScreenLayoutEnabled();
+// The front button hints of a button reader: shown unless the general status bar is Off, or their own switch
+// (Button hints) is off outside a book. A book and every screen opened from it keep them as they were. The touch
+// shell has no switch: a value carried in a settings file changes nothing there.
+bool buttonHintsShown();
+// tenor/cross on a button reader with the hints off: the clock and the battery stand in a strip at the top as on the
+// X4 Pro (the clock at the end the placement setting names), the content starts under the strip and the bar sits
+// 16 px over the foot. The one place that says where they go.
+bool statusOnTop();
 void drawX3ActivityPath(const GfxRenderer& renderer, const char* title);
 void drawX3NavigationPath(const GfxRenderer& renderer, const std::vector<X3PathNode>& nodes, bool file);
 // A tip that names a front button (one of the button symbols U+E100..U+E109) has nothing to point at

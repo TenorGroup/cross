@@ -86,6 +86,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["readerInkWeightVersion"] = readerInk::SCHEMA_VERSION;
   doc["tenorPresetVersion"] = TENOR_PRESET_VERSION;
   doc["tapZonesVersion"] = 1;
+  doc["buttonHintsVersion"] = 1;
   const CrossPointSettings& s = *this;
 
   // Duyet THANG bang tinh, khong chep ra vector rieng: duong nay chay moi lan
@@ -182,6 +183,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   bool needsResave = false;
   if (doc["homeStyle"].isNull()) homeStyle = 0;
   if (doc["tipsEnabled"].isNull()) tipsEnabled = 1;
+  if (doc["tenorButtonHints"].isNull()) tenorButtonHints = 1;
 
   auto clamp = [](uint8_t val, uint8_t maxVal, uint8_t def) -> uint8_t { return val < maxVal ? val : def; };
 
@@ -290,6 +292,13 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   if (doc["globalStatusBarMode"].isNull() && !doc["hideGlobalStatusBar"].isNull()) {
     globalStatusBarMode =
         (doc["hideGlobalStatusBar"] | uint8_t{0}) ? GLOBAL_STATUS_BAR_OFF : GLOBAL_STATUS_BAR_SMALL;
+    needsResave = true;
+  }
+  // v1.0.59 Button hints: before the switch, General status bar Off was the only way to hide the button hints. A file
+  // from then with the bar Off starts with the hints off too, so turning the bar back on later does not bring them
+  // back. Stamped once: after that the two settings stay apart.
+  if (doc["buttonHintsVersion"].isNull()) {
+    if (globalStatusBarMode == GLOBAL_STATUS_BAR_OFF) tenorButtonHints = 0;
     needsResave = true;
   }
   if (doc["readerStatusBarMode"].isNull() && !doc["hideReaderStatusBar"].isNull()) {

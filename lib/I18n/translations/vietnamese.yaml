@@ -632,6 +632,7 @@ STR_BUTTON_LABELS: "Nhãn nút"
 STR_LABELS_TEXT: "Chữ"
 STR_LABELS_SYMBOLS: "Ký hiệu"
 STR_SIDE_ARROW_HINTS: "Mũi tên cạnh"
+STR_BUTTON_HINTS: "Dải biểu tượng nút"
 
 STR_MENU_PIN_HINT: "Giữ : Ghim"
 STR_MENU_PINNED: "Giữ : Gỡ ghim"
