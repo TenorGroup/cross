@@ -24,7 +24,12 @@ static constexpr uint32_t LOG_RTC_MAGIC = 0xDEADBEEF;
 // only reconnects after USB enumerates still has its earliest lines (CMD:LOGDUMP).
 #if TENOR_COLD_LOG
 // Everything sent to the cable lands here and goes to the card after each script step.
+// The lite probe (TENOR_PROBE_LITE) keeps 4 KB so a radio measurement is not skewed by 28 KB of RAM.
+#ifdef TENOR_PROBE_LITE
+static char probeLog[4096];
+#else
 static char probeLog[32768];
+#endif
 static size_t probeLogDropped = 0;
 static portMUX_TYPE probeLogLock = portMUX_INITIALIZER_UNLOCKED;
 static TaskHandle_t probeLogBinaryTask = nullptr;

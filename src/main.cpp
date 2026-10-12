@@ -1365,7 +1365,11 @@ struct CurLogRow {
   uint16_t mv;
   uint8_t imuAwake, shakeAction;
 };
+#ifdef TENOR_PROBE_LITE
+static CurLogRow curLogRows[8];
+#else
 static CurLogRow curLogRows[96];
+#endif
 static uint8_t curLogCount = 0;
 static unsigned long curLogUntilMs = 0, curLogNextMs = 0;
 

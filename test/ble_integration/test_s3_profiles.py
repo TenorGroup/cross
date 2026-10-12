@@ -67,6 +67,21 @@ class S3Profiles(unittest.TestCase):
             self.assertIn(flag, flags)
         self.assertIn("-DARDUINO_USB_MODE=1", option("env:x4pro-ble-probe", "build_unflags"))
 
+    def test_lite_probe(self):
+        # Same cable channel and BLE commands as the probe, with the measurement buffers cut so the
+        # radio is measured on a heap close to the beta's.
+        section = "env:x4pro-ble-probe-lite"
+        self.assertIn(section, INI)
+        flags = option(section, "build_flags").split()
+        probe = option("env:x4pro-ble-probe", "build_flags").split()
+        for flag in probe + ["-DTENOR_PROBE_LITE"]:
+            self.assertIn(flag, flags)
+        self.assertEqual(option(section, "build_unflags"), option("env:x4pro-ble-probe", "build_unflags"))
+        self.assertEqual(option(section, "lib_deps"), option("env:x4pro-ble-probe", "lib_deps"))
+        self.assertEqual(option(section, "custom_i18n_builtin_langs"), option("env:x4pro-ble", "custom_i18n_builtin_langs"))
+        for other in ("x4pro-ble", "x4pro-ble-probe", "x4c-ble", "x4pro-probe", "x4pro-gh_release", "x3-ble"):
+            self.assertNotIn("-DTENOR_PROBE_LITE", option("env:" + other, "build_flags").split(), other)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -142,7 +142,11 @@ void flashDump(const String& path) {
     logSerial.printf("FLASH_DUMP_FAIL:open %s\n", tmp.c_str());
     return;
   }
+#ifdef TENOR_PROBE_LITE
+  static uint8_t buf[512];  // the lite probe keeps RAM for the radio; the dump is slower, not different
+#else
   static uint8_t buf[4096];
+#endif
   const unsigned long started = millis();
   uint32_t crc = 0;  // zlib's CRC32, chained (esp_rom_crc32_le inverts in and out)
   uint32_t done = 0;
