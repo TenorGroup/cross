@@ -75,6 +75,7 @@ struct FontSystem {SdCardFontRegistry data;SdCardFontRegistry& registry(){return
 void releaseBaseSettingsList(){}
 struct Manager {bool sleep=false;bool isSleepTransition(){return sleep;}void deferWrite(std::function<void()> f){f();}}activityManager;
 namespace tenorchrome {int note=0;void noteReaderFootBar(bool open,bool,int){note=open;}}
+namespace shell {bool isUgly(){return false;}}
 class MappedInputManager {
  public:
  enum class Button {Back,Left,Right,Up,Down,Confirm};
@@ -159,7 +160,7 @@ class EpubReaderActivity {
  int panelActionRow(int row)const{return row<0?static_cast<int>(moreItems.size()):row;}
  bool actionPanel()const{return overlay==Overlay::More;}
  std::vector<uint8_t> favoriteRows;
- void activateFavoriteRow(int){}void togglePin(uint8_t){}uint8_t pinOfRow(int)const{return 0xFF;}
+ void activateFavoriteRow(int){}void togglePin(uint8_t){}uint8_t pinOfRow(int)const{return 0xFF;}void showFavoriteActions(int){}
  void openOverlay(Overlay target){overlay=target;textDepth=TextDepth::Rows;spacingDragging=false;pointSizeDraft.clear();if(!toolbarUi)toolbarUi=std::make_unique<ReaderToolbarUi>();toolbarUi->nav().reset();tenorchrome::note=1;}
  void handleOverlayInput();void closeOverlayToPage();void enterFontLevel();void leaveFontLevel();void chooseFontFamily(int);
  void enterTextDepth(TextDepth);void openTextRow(int);void showTextRowPopup(int);void stepMenuPointSize(int);void applyMenuPointSize(uint8_t);uint8_t enteredPointSize()const;

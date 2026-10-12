@@ -1,6 +1,7 @@
 #pragma once
 #include <I18n.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -156,6 +157,25 @@ bool doiGhim(std::vector<T>& ghim, const T muc) {
   // Go ra thi luc nao cung duoc, ke ca khi day; chi viec THEM moi vuong tran.
   if (static_cast<int>(ghim.size()) >= TOI_DA_GHIM) return false;
   ghim.push_back(muc);
+  return true;
+}
+
+// Touch (the order screen): the pins `wanted` (each pinned, each once) in that order, in the places they hold in
+// `ghim`; a pin left out (an action this book lacks) keeps its place. False, and `ghim` unchanged, when one is not
+// pinned. The X3 moves one pin a step at a time (dayBac).
+template <class T>
+bool xepLai(std::vector<T>& ghim, const std::vector<T>& wanted) {
+  std::vector<size_t> slots;
+  for (const T muc : wanted) {
+    size_t at = 0;
+    while (at < ghim.size() && ghim[at] != muc) ++at;
+    if (at == ghim.size()) return false;
+    for (const size_t taken : slots)
+      if (taken == at) return false;
+    slots.push_back(at);
+  }
+  std::sort(slots.begin(), slots.end());
+  for (size_t i = 0; i < slots.size(); ++i) ghim[slots[i]] = wanted[i];
   return true;
 }
 
