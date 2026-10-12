@@ -43,6 +43,7 @@ class OtaUpdater {
     WRONG_DEVICE_ERROR,
     INTEGRITY_ERROR,
     CANCELLED_ERROR,
+    NO_CABLE_ERROR,  // the offered image would take away the cable flash channel
   };
 
   size_t getOtaSize() const { return otaSize; }

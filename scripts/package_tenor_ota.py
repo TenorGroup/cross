@@ -39,6 +39,24 @@ def validate_image(data):
         raise ValueError('Invalid image SHA-256')
 
 
+# Boards built with TENOR_CABLE_FLASH (FirmwareBoardTag.h): their USB download mode is fused off.
+CABLE_BOARDS = ('x4pro',)
+
+
+def keeps_cable(data, board):
+    """True when the image's own tag, the fields after its board tag up to the NUL, carries the
+    cable flash channel (the same rule as board_tag::dropsCable on the device)."""
+    marker = b'CROSSPOINT-BOARD-V1:' + board.encode() + b';'
+    start = data.find(marker)
+    if start < 0:
+        return False
+    start += len(marker)
+    end = start
+    while end < len(data) and end - start < 95 and 0x20 < data[end] < 0x7F:
+        end += 1
+    return b'TENOR-CABLE-V1:1' in data[start:end].split(b';')[:-1]
+
+
 def verified_application(binary, chip, board):
     data = binary.read_bytes()
     validate_image(data)
@@ -47,6 +65,8 @@ def verified_application(binary, chip, board):
     board_marker = b'CROSSPOINT-BOARD-V1:'
     if data.count(board_marker) != 1 or board_marker + board.encode() + b';' not in data:
         raise ValueError(f'Missing or ambiguous {board} board tag')
+    if board in CABLE_BOARDS and not keeps_cable(data, board):
+        raise ValueError(f'The {board} application has no cable flash channel')
     marker = b'TENOR-CROSS-VERSION-V1:'
     if data.count(marker) != 1:
         raise ValueError('Missing or ambiguous tenor/cross product version tag')

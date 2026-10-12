@@ -173,7 +173,7 @@ bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData
 #endif
 
 // The activity around the production install step.
-enum StrId { STR_FIRMWARE_WRONG_DEVICE };
+enum StrId { STR_FIRMWARE_WRONG_DEVICE, STR_FIRMWARE_NO_CABLE };
 const char* tr(StrId) { return "wrong device"; }
 struct FakeFontCache {
   void releaseSdFontCaches() {}

@@ -26,6 +26,8 @@ for board, chip, macro in (('x3-x4', 5, 'FREEINK_DEVICE_X3'), ('x4pro', 9, 'FREE
     flags = ['-std=c++17', '-Wall', '-Wextra', '-Werror', '-Wno-deprecated-declarations',
              '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-DCROSSPOINT_EMULATED=0',
              f'-D{macro}=1', '-DCROSSPOINT_VERSION="v1.0.53"']
+    if chip == 9:
+        flags.append('-DTENOR_CABLE_FLASH=1')  # every X4 Pro build keeps the cable flash channel
     includes = [here / 'stubs', repo / 'lib/JsonParser', repo / 'test/ota_back_cancel/stubs',
                 repo / 'test/file_transfer_back_latch/stubs', repo / 'src/network', repo / 'lib/NetworkTrust']
     sources = [here / 'OtaBoards.cpp', repo / 'src/network/OtaUpdater.cpp',
@@ -33,7 +35,7 @@ for board, chip, macro in (('x3-x4', 5, 'FREEINK_DEVICE_X3'), ('x4pro', 9, 'FREE
                repo / 'lib/JsonParser/ReleaseJsonParser.cpp', repo / 'lib/JsonParser/StreamingJsonParser.cpp']
     subprocess.run([args.cxx, *flags, *['-I' + str(p) for p in includes], *map(str, sources),
                     *([] if sys.platform == 'darwin' else ['-lcrypto']), '-o', str(binary)], check=True)
-    board_tag = b'CROSSPOINT-BOARD-V1:' + (b'x4' if chip == 5 else b'x4pro') + b';'
+    board_tag = b'CROSSPOINT-BOARD-V1:x4;' if chip == 5 else fixture.X4PRO_TAG
     good = bytes(fixture.image(version='v1.0.54', chip=chip, tag=board_tag))
     url = f'https://cross.tenor.vn/firmware/v1.0.54/tenor-cross-v1.0.54-{board}.bin'
     base_asset = {'name': f'tenor-cross-{board}.bin', 'browser_download_url': url,
@@ -71,6 +73,10 @@ for board, chip, macro in (('x3-x4', 5, 'FREEINK_DEVICE_X3'), ('x4pro', 9, 'FREE
          install=8, activate=0)
     case('missing-version', data=bytes(fixture.image(version='v1.0.54', chip=chip, tag=board_tag,
                                                    product_tag=False)), install=8, activate=0)
+    if chip == 9:
+        # A release without the cable channel (v1.0.58 and older) would leave no way back over the cable.
+        case('no-cable-mark', data=bytes(fixture.image(version='v1.0.54', chip=chip,
+                                                     tag=b'CROSSPOINT-BOARD-V1:x4pro;')), install=10, activate=0)
     case('dry-run', dry=1, activate=0)
     case('write-failure', install=5, activate=0)
     case('end-failure', install=5, activate=0)

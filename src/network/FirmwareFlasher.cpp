@@ -65,6 +65,8 @@ const char* resultName(Result r) {
       return "WRITE_FAIL";
     case Result::OTADATA_FAIL:
       return "OTADATA_FAIL";
+    case Result::NO_CABLE:
+      return "NO_CABLE";
   }
   return "?";
 }
@@ -213,6 +215,12 @@ Result validateImageFile(const char* sdPath, size_t partitionSize) {
     mbedtls_sha256_free(&shaCtx);
     file.close();
     return Result::WRONG_BOARD;
+  }
+  if (board_tag::dropsCable(tagScanner)) {
+    LOG_ERR("FLASH", "validate: image has no cable flash channel");
+    mbedtls_sha256_free(&shaCtx);
+    file.close();
+    return Result::NO_CABLE;
   }
 
   // pad_end is the 16-byte aligned offset at which the checksum byte sits at pad_end - 1.

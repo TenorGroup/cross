@@ -86,7 +86,8 @@ const char* errorName(const OtaUpdater::OtaUpdaterError err) {
                                       "OOM_ERROR",
                                       "WRONG_DEVICE_ERROR",
                                       "INTEGRITY_ERROR",
-                                      "CANCELLED_ERROR"};
+                                      "CANCELLED_ERROR",
+                                      "NO_CABLE_ERROR"};
   return static_cast<size_t>(err) < sizeof(names) / sizeof(names[0]) ? names[err] : "?";
 }
 
@@ -380,6 +381,11 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
             tagScanner.matched());
     esp_ota_abort(otaHandle);
     return endAttempt(INTEGRITY_ERROR, "verify");
+  }
+  if (board_tag::dropsCable(tagScanner)) {
+    LOG_ERR("OTA", "Offered image has no cable flash channel");
+    esp_ota_abort(otaHandle);
+    return endAttempt(NO_CABLE_ERROR, "verify");
   }
   esp_err = esp_ota_end(otaHandle);  // verifies the written image
   if (esp_err != ESP_OK) {
