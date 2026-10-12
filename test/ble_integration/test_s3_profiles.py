@@ -51,6 +51,8 @@ class S3Profiles(unittest.TestCase):
                      "-DBLE_PAGE_TURNER_PROBE", "-DBLE_PAGE_TURNER_STACK_PROBE"):
             self.assertIn(flag, flags)
         self.assertNotIn("-DTENOR_UI_ACCEPTANCE", flags)
+        # With every language the probe image was 6,554,990 B, 1,390 B over the 6,553,600 B app slot.
+        self.assertEqual(option("env:x4pro-ble-probe", "custom_i18n_builtin_langs"), "en,vi")
         self.assertIn("-DARDUINO_USB_MODE=0", flags)
         self.assertIn("-DARDUINO_USB_MODE=1", option("env:x4pro-ble-probe", "build_unflags"))
 
