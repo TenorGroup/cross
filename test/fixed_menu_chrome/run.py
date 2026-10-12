@@ -542,7 +542,7 @@ else:
         harness = harness.replace('// PHASE2_LOOKUP',
             'if (phase2Language >= 0) return phase2Translation(id);')
     fixture += harness
-    for name in ('drawFooter', 'homeTipText', 'homeInfoText', 'homeScreenLayout'):
+    for name in ('drawFooter', 'homeTipText', 'missingFileText', 'homeInfoText', 'homeScreenLayout'):
         fixture += '\n' + function(home_source, f'HomeActivity::{name}(')
     fixture = extend_path(fixture, chrome, function, True, ROOT)
     adapter_path = 'src/activities/settings/X3SettingsLayout.h'
@@ -682,7 +682,7 @@ assert 'x3ScreenLayout(renderer)' in function(tabs, 'void UiTabListActivity::bui
 assert 'homeScreenLayout()' in function(home, 'void HomeActivity::buildScreen(')
 assert 'homeScreenLayout()' in function(home, 'void HomeActivity::drawRecentCard(')
 footer = function(home, 'void HomeActivity::drawFooter(')
-assert 'drawInfoInRect' in footer and 'STR_FILE_NOT_FOUND' in footer and 'statsResetTip' in footer
+assert 'drawInfoInRect' in footer and 'missingFileText()' in footer and 'statsResetTip' in footer
 assert 'drawTipInRect' in footer
 print('GREEN: shared tab placement and Home body/tip/info bindings')
 

@@ -23,11 +23,8 @@ class FileBrowserActivity final : public UiListActivity {
 
  private:
   // File actions
-  bool removeDirFile(const std::string& fullPath);
   void showEntryActions();
   void startRename();
-  void renameSelectedFile(const std::string& oldPath, const std::string& oldEntry, const std::string& newStem,
-                          const std::string& extension);
   void deleteSelected();
 
   Mode mode = Mode::Books;
@@ -95,6 +92,9 @@ class FileBrowserActivity final : public UiListActivity {
   bool handleButtons() override;
   bool tooMany = false;  // the folder holds more names than the heap allows: nothing is listed
   bool supportsFavorites() const override { return mode == Mode::Books; }
+  // Buttons: holding Select on a row opens its actions (Pin, Rename, Delete), as on the Recent card.
+  bool buttonHoldOpensRowMenu(int row) const override { return mode == Mode::Books && row >= kSearchRows && row < listCount(); }
+  const char* favoriteHintText() override;
   bool fileList() const override { return true; }
   bool canSearchFiles() const override { return tenorchrome::kTouchShell; }
   const char* fileSearchText() const override { return searchQuery.c_str(); }

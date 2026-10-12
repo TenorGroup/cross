@@ -97,6 +97,10 @@ class HomeActivity final : public UiTabListActivity {
   }
   void showOtherBookMenu();
   void showRecentActions(int index, freeink::ui::Rect anchor = {});
+  // A held File row (hold Select, or a touch hold): Pin or Unpin, Rename (files), Delete, as in the file browser.
+  void showFolderActions(int index);
+  void folderChanged();
+  static const char* missingFileText();
   void showRecentRemovalConfirmation(RecentBook book);
   // Touch: a held cover's menu hangs from the cover (rule 7), not from the whole card.
   void onRowLongPress(int index) override;

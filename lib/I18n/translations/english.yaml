@@ -596,6 +596,7 @@ STR_QUOTES_TRIM_END: "Moving: last word"
 STR_QUOTES_TRIM_HELP_MOVE: "Left, right: move the marked word"
 STR_QUOTES_TRIM_HELP_SWITCH: "Page buttons: switch first or last word"
 STR_QUOTES_TRIM_HELP_BACK: "Back: discard, keep the original"
+STR_QUOTES_TRIM_HELP_TAP: "Tap a word to make it the first or last word kept"
 STR_QUOTES_OF_BOOK: "Quotations in this book"
 STR_QUOTES_RESELECT_MISSING: "Could not find it on the page"
 
@@ -636,6 +637,8 @@ STR_BUTTON_HINTS: "Button hints"
 
 STR_MENU_PIN_HINT: "Hold : Pin"
 STR_MENU_PINNED: "Hold : Unpin"
+STR_FILE_HOLD_ACTIONS: "Hold : Pin, rename, delete"
+STR_RECENT_HOLD_ACTIONS: "Hold : Pin, remove from Recent"
 STR_MENU_SAVE_FAILED: "Could not save menu"
 
 STR_HOME_FAVORITES_HINT: "Hold  on a setting, book or folder to pin or unpin.\nIn Favorites, hold  or  to reorder."
@@ -647,6 +650,7 @@ STR_UNPIN_FAVORITE: "Unpin"
 STR_FILE_SIDE_ACTIONS: "Hold : Preview   : Delete"
 
 STR_FILE_NOT_FOUND: "File or folder not found. Hold  to unpin."
+STR_FILE_NOT_FOUND_TOUCH: "File or folder not found. Touch and hold to unpin."
 
 STR_STATUS_CORNERS: "Battery and clock"
 STR_BATTERY_LEFT_CLOCK_RIGHT: "Battery left, clock right"

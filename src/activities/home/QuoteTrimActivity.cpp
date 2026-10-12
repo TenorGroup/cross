@@ -11,6 +11,7 @@
 
 #include "QuoteDetailActivity.h"
 #include "components/PageScrollbar.h"
+#include "components/TouchScroll.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "shells/Shell.h"
@@ -141,6 +142,31 @@ void QuoteTrimActivity::move(const int direction) {
   requestUpdate();
 }
 
+void QuoteTrimActivity::setBoundary(const int word) {
+  if (word < first || (word <= last && word - first <= last - word)) {
+    movingEnd = false;
+    first = std::min(word, last);
+  } else {
+    movingEnd = true;
+    last = std::max(word, first);
+  }
+  logArea();
+  requestUpdate();
+}
+
+int QuoteTrimActivity::wordAt(const int x, const int y) const {
+  const int lineHeight = renderer.getLineHeight(WORD_FONT_ID);
+  const int top = areaTop(), firstLine = firstShownLine();
+  if (y < top) return -1;
+  const int line = firstLine + (y - top) / lineHeight;
+  if (line >= std::min(lineCount, firstLine + linesPerArea())) return -1;
+  const int space = renderer.getSpaceWidth(WORD_FONT_ID);
+  for (size_t i = 0; i < words.size(); ++i)
+    if (words[i].line == line && x >= words[i].x - space / 2 && x < words[i].x + words[i].width + space / 2)
+      return static_cast<int>(i);
+  return -1;
+}
+
 void QuoteTrimActivity::save() {
   const int total = static_cast<int>(words.size());
   const size_t front = static_cast<size_t>(first);
@@ -186,6 +212,31 @@ void QuoteTrimActivity::loop() {
   if (mappedInput.wasReleased(Button::Confirm)) {
     save();
     return;
+  }
+  // Touch: tap a word to make it the first or the last word kept; an up or down swipe moves the end being set by a
+  // screen of lines, to reach words past this screen; the bar's pill saves.
+  if (tenorchrome::kTouchShell) {
+    int x = 0, y = 0, dy = 0;
+    unsigned long heldMs = 0;
+    if (mappedInput.wasScreenTapped(x, y)) {
+      if (tenorchrome::footActionAt(x, y) == 0) {
+        save();
+        return;
+      }
+      const int word = wordAt(x, y);
+      if (word >= 0) setBoundary(word);
+      return;
+    }
+    if (mappedInput.wasVerticalSwipe(dy, heldMs)) {
+      const int lines = touchscroll::rows(dy, heldMs, renderer.getLineHeight(WORD_FONT_ID), linesPerArea());
+      const int active = movingEnd ? last : first;
+      const int line = std::max(0, std::min(lineCount - 1, static_cast<int>(words[active].line) + lines));
+      int target = active;
+      while (target + 1 < static_cast<int>(words.size()) && words[target].line < line) ++target;
+      while (target > 0 && words[target].line > line) --target;
+      move(target - active);
+      return;
+    }
   }
   if (mappedInput.wasReleased(Button::PageForward) || mappedInput.wasReleased(Button::PageBack)) {
     movingEnd = !movingEnd;
@@ -254,7 +305,11 @@ void QuoteTrimActivity::render(RenderLock&&) {
     y += renderer.getLineHeight(STATUS_FONT_ID) + STATUS_STEP_PAD;
     line(STATUS_FONT_ID, y, moving);
     y += renderer.getLineHeight(STATUS_FONT_ID) + STATUS_STEP_PAD + HELP_GAP;
-    for (const char* help : {tr(STR_QUOTES_TRIM_HELP_MOVE), tr(STR_QUOTES_TRIM_HELP_SWITCH), tr(STR_QUOTES_TRIM_HELP_BACK)}) {
+    // Touch: the help names the tap, not keys the board does not have.
+    const char* helps[] = {tr(STR_QUOTES_TRIM_HELP_MOVE), tr(STR_QUOTES_TRIM_HELP_SWITCH), tr(STR_QUOTES_TRIM_HELP_BACK)};
+    const char* touchHelps[] = {tr(STR_QUOTES_TRIM_HELP_TAP), tr(STR_QUOTES_TRIM_HELP_BACK), nullptr};
+    for (const char* help : tenorchrome::kTouchShell ? touchHelps : helps) {
+      if (!help) continue;
       line(HELP_FONT_ID, y, help);
       y += byHand ? std::max(renderer.getLineHeight(HELP_FONT_ID), 30) : renderer.getLineHeight(HELP_FONT_ID);
     }
@@ -264,6 +319,8 @@ void QuoteTrimActivity::render(RenderLock&&) {
     drawX3Content();
   }
 
+  // Touch: Save is a pill in the bar; its "<" discards.
+  if (tenorchrome::kTouchShell) tenorchrome::noteFootActions(tr(STR_QUOTES_SAVE));
   // Back discards the trim, so its hint says Cancel rather than showing the Back symbol.
   const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), tr(STR_QUOTES_SAVE), tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

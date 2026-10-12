@@ -596,6 +596,7 @@ STR_QUOTES_TRIM_END: "Đang chỉnh chữ cuối"
 STR_QUOTES_TRIM_HELP_MOVE: "Trái, phải: chọn chữ bên cạnh"
 STR_QUOTES_TRIM_HELP_SWITCH: "Nút lật trang: chọn chữ đầu hoặc chữ cuối"
 STR_QUOTES_TRIM_HELP_BACK: "Quay lại: hủy thay đổi"
+STR_QUOTES_TRIM_HELP_TAP: "Chạm một chữ để chọn chữ đầu hoặc chữ cuối"
 STR_QUOTES_OF_BOOK: "Trích dẫn của sách này"
 STR_QUOTES_RESELECT_MISSING: "Không tìm thấy đoạn này trên trang"
 
@@ -636,6 +637,8 @@ STR_BUTTON_HINTS: "Dải biểu tượng nút"
 
 STR_MENU_PIN_HINT: "Giữ : Ghim"
 STR_MENU_PINNED: "Giữ : Gỡ ghim"
+STR_FILE_HOLD_ACTIONS: "Giữ : Ghim, đổi tên, xóa"
+STR_RECENT_HOLD_ACTIONS: "Giữ : Ghim, bỏ khỏi gần đây"
 STR_MENU_SAVE_FAILED: "Không lưu được menu"
 
 STR_HOME_FAVORITES_HINT: "Giữ  trên cài đặt, sách hoặc thư mục để ghim hoặc gỡ.\nTrong Yêu thích, giữ  hoặc  để sắp xếp."
@@ -647,6 +650,7 @@ STR_UNPIN_FAVORITE: "Bỏ ghim"
 STR_FILE_SIDE_ACTIONS: "Giữ : Đọc thử   : Xóa"
 
 STR_FILE_NOT_FOUND: "Không tìm thấy sách/thư mục. Giữ  để gỡ ghim."
+STR_FILE_NOT_FOUND_TOUCH: "Không tìm thấy sách/thư mục. Chạm giữ để gỡ ghim."
 
 STR_STATUS_CORNERS: "Pin và đồng hồ"
 STR_BATTERY_LEFT_CLOCK_RIGHT: "Pin trái, giờ phải"

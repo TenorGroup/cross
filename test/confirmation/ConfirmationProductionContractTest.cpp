@@ -70,7 +70,7 @@ TEST(ConfirmationProductionContract, ActivityMapsEveryTerminalDecisionToIsCancel
 
 TEST(ConfirmationProductionContract, AllFiveCrossCallersProvideTheirOwnedContent) {
   constexpr std::array<const char*, 4> callers{
-      "src/activities/home/FileBrowserActivity.cpp",
+      "src/activities/home/FileActions.cpp",  // the file browser and Home's File card ask through it
       "src/activities/home/HomeActivity.cpp",
       "src/activities/settings/FontDownloadActivity.cpp",
       "src/activities/settings/SdFirmwareUpdateActivity.cpp",

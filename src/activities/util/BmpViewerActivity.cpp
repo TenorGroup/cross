@@ -12,6 +12,7 @@
 #include <algorithm>
 
 #include "CrossPointSettings.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -92,6 +93,9 @@ void BmpViewerActivity::onEnter() {
   if (siblingImages.empty() && !filePath.empty()) {
     loadSiblingImages();
   }
+
+  // Touch: Select has no key, so setting the picture as the sleep screen is a pill in the bar.
+  if (tenorchrome::kTouchShell) tenorchrome::noteFootActions(canSetSleepCover() ? tr(STR_SET_SLEEP_COVER) : nullptr);
 
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
@@ -183,6 +187,8 @@ void BmpViewerActivity::onEnter() {
             break;
           }
           GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+          // Touch: the gray planes cover the whole screen, so the bar ("<" and the pill) goes on them too.
+          if (tenorchrome::kTouchShell && GfxRenderer::preDisplayHook) GfxRenderer::preDisplayHook(renderer);
           if (mode == GfxRenderer::GRAYSCALE_LSB) {
             renderer.copyGrayscaleLsbBuffers();
           } else {
@@ -308,7 +314,9 @@ void BmpViewerActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  int tapX = 0, tapY = 0;
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
+      (tenorchrome::kTouchShell && mappedInput.wasScreenTapped(tapX, tapY) && tenorchrome::footActionAt(tapX, tapY) == 0)) {
     if (canSetSleepCover()) doSetSleepCover();
     return;
   }
