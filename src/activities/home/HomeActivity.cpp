@@ -293,6 +293,7 @@ void HomeActivity::captureNavigation(MenuNavigationState& state) const {
 }
 
 void HomeActivity::onExit() {
+  restoreHomeGhost("exit");
   homeRefresh.leave();
   clearHomeGray();
   freeCoverBuffer();
@@ -306,6 +307,7 @@ void HomeActivity::onResume() {
 }
 
 void HomeActivity::onPause() {
+  restoreHomeGhost("pause");
   homeRefresh.leave();
   // The manager holds RenderLock while pausing an activity.
   clearHomeGray();
@@ -1071,6 +1073,8 @@ void HomeActivity::render(RenderLock&&) {
               static_cast<unsigned long>(millis() - started), kInkX3 ? 0u : 1u);
     }
 #endif
+  } else if (refresh.mode == HomeRefresh::Mode::Restore) {
+    restoreHomeGhost("tab");
   } else if (!showHomeGray()) {
     if (grayRequested && !homeGraySelected && kInkX3) {
       homeGraySelected = false;
@@ -1104,7 +1108,7 @@ void HomeActivity::render(RenderLock&&) {
   // The wake's first frame is up: the main task writes the splash setup() re-armed (onTick).
   if (cleanInitialRefresh) wakeStatePending = true;
   cleanInitialRefresh = false;
-  homeRefresh.painted(recent, shownRecent(), surface);
+  homeRefresh.painted(recent, shownRecent(), surface, millis());
   queueIdleCovers();
 }
 
@@ -2287,7 +2291,38 @@ void HomeActivity::wantThumb(const int index) {
   thumbWanted = static_cast<int8_t>(index);
 }
 
+void HomeActivity::restoreHomeGhost([[maybe_unused]] const char* reason) {
+  if (homeRefresh.count() == 0) return;
+#ifdef TENOR_PRESS_PROBE
+  const uint32_t started = millis();
+  const unsigned swaps = homeRefresh.count();
+#endif
+  HalPowerManager::Lock fullSpeed;
+  renderer.redriveNextRefresh(HalDisplay::FULL_REFRESH);
+  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+  homeRefresh.restored();
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("HOME", "HOME_GHOST_RESTORE waves=1 mode=full rect=0,0,%d,%d ms=%lu swaps=%u reason=%s",
+          renderer.getScreenWidth(), renderer.getScreenHeight(), static_cast<unsigned long>(millis() - started),
+          swaps, reason);
+#endif
+}
+
+void HomeActivity::tickHomeGhost() {
+  RenderLock lock(RenderLock::TryTake{});
+  if (!lock.acquired() || homeRefresh.count() == 0) return;
+  uint8_t contacts = 0;
+  int x = 0, y = 0;
+  const bool touch = mappedInput.touchContactsAt(contacts, x, y) && contacts > 0;
+  bool input = touch || gpio.wasTouchActivity() || mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased();
+  for (int key = 0; !input && key <= static_cast<int>(MappedInputManager::Button::ScreenDown); ++key)
+    input = mappedInput.isPressed(static_cast<MappedInputManager::Button>(key));
+  if (homeRefresh.idle(millis(), activeTabId == Tab::RECENT && !rowMenu.isActive(), input))
+    restoreHomeGhost("idle");
+}
+
 void HomeActivity::onTick() {
+  tickHomeGhost();
   if (wakeStatePending.exchange(false)) saveAppState();
   // A tick that wrote a placeholder leaves the idle step for the next one: the redraw comes first.
   const bool holderDrawn = tickHolders();

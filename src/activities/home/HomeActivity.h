@@ -194,6 +194,8 @@ class HomeActivity final : public UiTabListActivity {
   bool coverRedriveDue();
   HomeRefresh homeRefresh;
   HomeRecentRect refreshBody();
+  void restoreHomeGhost(const char* reason);
+  void tickHomeGhost();
 
   // Cover tile snapshot, so a repaint does not decode the cover again. Only the
   // tile region is kept, not the whole framebuffer.

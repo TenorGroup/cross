@@ -22,6 +22,7 @@ ap.add_argument('--style', type=int, default=0)
 ap.add_argument('--seed', action='store_true')
 ap.add_argument('--check', action='store_true')
 ap.add_argument('--analyze-only', action='store_true')
+ap.add_argument('--count', type=int, choices=[10, 20], default=10)
 a = ap.parse_args()
 root = a.output.resolve()
 root.mkdir(parents=True, exist_ok=True)
@@ -43,14 +44,16 @@ else:
     assert sd.exists(), 'seed the card or copy the baseline card first'
 
 # Cover caches are now warm; the action interval is shorter than the idle restoration delay.
-edges = [3000 + i * 1400 for i in range(10)]
+edges = [3000 + i * 1400 for i in range(a.count)]
 folder = root / 'measure'
 folder.mkdir(exist_ok=True)
 trace = folder / 'trace.bin'
 if not a.analyze_only:
     trace.unlink(missing_ok=True)
 shots = {2400: 'before', edges[0] + 1000: 'after-1', edges[4] + 1000: 'after-5',
-         edges[9] + 1000: 'after-10', edges[9] + 4500: 'idle'}
+         edges[9] + 1000: 'after-10', edges[-1] + 4500: 'idle'}
+if a.count == 20:
+    shots[edges[-1] + 1000] = 'after-20'
 quit_ms = edges[-1] + 5000
 env = {k: v for k, v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')}
 env.update(SDL_VIDEODRIVER='dummy', CROSSPOINT_SIM_SD=str(sd), CROSSPOINT_SIM_WAKE_REASON='power',
@@ -105,7 +108,7 @@ mapping = [f'{i} ' + ' '.join(map(str, box)) for i, box in zip(displays, updates
 (folder / 'windows.txt').write_text('\n'.join(mapping) + '\n')
 summary = dict(device=a.device, style=a.style, frames=frames, edges=edges,
                samples={str(n): [f for f in frames if edges[0] <= f['ms'] < edges[n - 1] + 1200]
-                        for n in (1, 5, 10)})
+                        for n in ((1, 5, 10, 20) if a.count == 20 else (1, 5, 10))})
 (folder / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')
 bad = []
 for n, start in enumerate(edges):
