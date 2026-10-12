@@ -88,6 +88,22 @@ int main() {
     std::puts("state: Settings sort per shell, folder kept, one write");
   }
   {
+    // The File card of Home opens the shell's last folder while it exists, else the root.
+    Storage = {};
+    filebrowser::note(false, "/Truyện", SortMode::Name);
+    filebrowser::note(true, "/Thơ", SortMode::Name);
+    static std::set<std::string> folders;
+    const auto isFolder = [](const char* p) { return folders.count(p) > 0; };
+    folders = {"/Truyện", "/Thơ"};
+    assert(filebrowser::lastFolder(false, isFolder) == "/Truyện");
+    assert(filebrowser::lastFolder(true, isFolder) == "/Thơ");
+    folders.erase("/Truyện");  // renamed or deleted on the card
+    assert(filebrowser::lastFolder(false, isFolder) == "/");
+    filebrowser::note(false, "/", SortMode::Name);
+    assert(filebrowser::lastFolder(false, isFolder) == "/");
+    std::puts("state: the File card opens the last folder while it exists, else the root");
+  }
+  {
     Storage = {};
     Storage.files[std::string(path) + ".davbak"] = R"({"version":1,"crossPath":"/kept","crossSort":1})";
     Storage.files[std::string(path) + ".davtmp"] = "{partial";

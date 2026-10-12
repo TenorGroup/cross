@@ -24,6 +24,8 @@ const State& state();
 void note(bool ugly, const std::string& path, SortMode mode);
 void flush();
 
+// Where the File card of Home opens: the shell's last folder while `isFolder` finds it, else the root.
+std::string lastFolder(bool ugly, bool (*isFolder)(const char*));
 // The order of the running shell's File list, read and chosen in Settings, System.
 SortMode sortNow(bool ugly);
 void chooseSort(bool ugly, SortMode mode);  // memory only

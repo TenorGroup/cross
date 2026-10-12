@@ -49,6 +49,7 @@
 #include "activities/settings/InfoUpdateActivity.h"
 #include "activities/settings/SettingsActivity.h"
 #include "FileBrowserActivity.h"
+#include "FileBrowserState.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/ReadingStatsFormat.h"
@@ -245,7 +246,9 @@ void HomeActivity::onEnter() {
 void HomeActivity::restoreNavigation(const MenuNavigationState& state) {
   MenuNavigationState restored = state;
   if (initialMenuItem != HomeMenuItem::NONE) restored.tab = activeTab();
+  restoringNavigation = true;  // coming back onto a card is no choice of it
   UiTabListActivity::restoreNavigation(restored);
+  restoringNavigation = false;
   // Returning from a book focuses Continue; other tabs retain their cursor memory.
   if (initialMenuItem == HomeMenuItem::RECENT_CONTINUE) {
     RenderLock lock(*this);
@@ -345,13 +348,31 @@ void HomeActivity::selectTab(const Tab tab) {
 #endif
 }
 
+// Choosing the File card opens the last folder of File (founder 12/10/2026), kept across sleep. Read on the
+// input that chose the card, after Home's first frame; a folder gone from the card leaves the card as it was.
+bool HomeActivity::openLastFolder() {
+  if (shell::isUgly()) return false;
+  const std::string path = filebrowser::lastFolder(false, [](const char* p) {
+    auto dir = Storage.open(p);
+    return static_cast<bool>(dir) && dir.isDirectory();
+  });
+  if (path == "/") return false;
+  activityManager.goToFileBrowser(path);
+  return true;
+}
+
 void HomeActivity::stepTab(const int direction) {
   const int next = adjacentTab(direction);
+  if (static_cast<Tab>(next) == Tab::FOLDER && openLastFolder()) return;
   selectTab(static_cast<Tab>(next));
   requestUpdate();
 }
 
 void HomeActivity::onTabAction(const int index) {
+  if (!restoringNavigation && static_cast<Tab>(index) == Tab::FOLDER && openLastFolder()) {
+    app.clearTapFlash();
+    return;
+  }
   selectTab(static_cast<Tab>(index));
   app.clearTapFlash();
 }

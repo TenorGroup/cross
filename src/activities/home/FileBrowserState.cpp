@@ -71,6 +71,11 @@ bool Store::flush() {
 const State& state() { return store.get(); }
 void note(bool ugly, const std::string& path, SortMode mode) { store.note(ugly, path, mode); }
 void flush() { store.flush(); }
+std::string lastFolder(const bool ugly, bool (*isFolder)(const char*)) {
+  const State& saved = store.get();
+  const std::string& path = ugly ? saved.uglyPath : saved.crossPath;
+  return path != "/" && isFolder(path.c_str()) ? path : "/";
+}
 SortMode sortNow(const bool ugly) { return ugly ? store.get().uglySort : store.get().crossSort; }
 void chooseSort(const bool ugly, const SortMode mode) {
   const State& saved = store.get();
