@@ -30,6 +30,7 @@ add_executable(QuoteAnchorStoreTest
 )
 target_include_directories(QuoteAnchorStoreTest BEFORE PRIVATE
   ${REPO_ROOT}/test/history_navigation/stubs
+  ${REPO_ROOT}/lib/Memory
   ${CMAKE_CURRENT_SOURCE_DIR}/stubs
   ${REPO_ROOT}/src
   ${REPO_ROOT}/.pio/libdeps/gh_release/ArduinoJson/src
@@ -37,3 +38,14 @@ target_include_directories(QuoteAnchorStoreTest BEFORE PRIVATE
 target_compile_definitions(QuoteAnchorStoreTest PRIVATE ARDUINOJSON_ENABLE_ARDUINO_STRING=0)
 target_link_libraries(QuoteAnchorStoreTest PRIVATE crosspoint_test_common GTest::gtest_main)
 gtest_discover_tests(QuoteAnchorStoreTest)
+
+execute_process(COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/extract_export.py
+  ${REPO_ROOT} ${CMAKE_CURRENT_BINARY_DIR}/QuotesExport.inc COMMAND_ERROR_IS_FATAL ANY)
+add_executable(QuoteClippingsTest QuoteClippingsTest.cpp ${REPO_ROOT}/src/QuoteStore.cpp)
+target_include_directories(QuoteClippingsTest BEFORE PRIVATE
+  ${REPO_ROOT}/test/history_navigation/stubs ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_BINARY_DIR} ${REPO_ROOT}/src ${REPO_ROOT}/lib/Memory
+  ${REPO_ROOT}/.pio/libdeps/gh_release/ArduinoJson/src)
+target_compile_definitions(QuoteClippingsTest PRIVATE ARDUINOJSON_ENABLE_ARDUINO_STRING=0)
+target_link_libraries(QuoteClippingsTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(QuoteClippingsTest)
