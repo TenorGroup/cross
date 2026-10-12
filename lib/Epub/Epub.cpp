@@ -827,13 +827,21 @@ Epub::IndexStep Epub::indexSome(const BookMetadataCache::StopFn stop) {
   if (!BookMetadataCache::deferredTocReady(cachePath)) {
     step = "toc";
     BookMetadataCache pass(cachePath);
-    ok = pass.beginDeferredTocPass();
+    const bool resumeNcx = !tocNcxItem.empty() && pass.hasDeferredTocProgress(tocNcxItem);
+    ok = pass.beginDeferredTocPass(resumeNcx || tocNavItem.empty() ? tocNcxItem : tocNavItem);
     // EPUB 3 nav first, NCX when that fails, as the one-pass build; a book with neither has no TOC.
     bool parsed = false;
-    if (ok && !tocNavItem.empty()) parsed = parseTocNavFile(&pass, ask);
-    if (ok && !parsed && !stepStopped && !tocNcxItem.empty()) parseTocNcxFile(&pass, ask);
-    // A stopped pass leaves only its temporary file, which the next pass overwrites.
-    ok = !stepStopped && ok && pass.endDeferredTocPass();
+    if (ok && !resumeNcx && !tocNavItem.empty()) parsed = parseTocNavFile(&pass, ask);
+    if (ok && !parsed && !stepStopped && !tocNcxItem.empty()) {
+      if (!resumeNcx && !tocNavItem.empty()) ok = pass.beginDeferredTocPass(tocNcxItem, true);
+      if (ok) parsed = parseTocNcxFile(&pass, ask);
+    }
+    if (ok && stepStopped) {
+      ok = pass.pauseDeferredTocPass();
+    } else if (ok) {
+      ok = parsed || (tocNavItem.empty() && tocNcxItem.empty());
+      if (ok) ok = pass.endDeferredTocPass();
+    }
 #ifdef TENOR_PRESS_PROBE
     printPassProbe("toc_bg", 0);
 #endif

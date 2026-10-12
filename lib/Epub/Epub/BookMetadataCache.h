@@ -73,6 +73,9 @@ class BookMetadataCache {
   bool partial = false;
   // Set by beginDeferredTocPass: TOC entries are written unmatched, buildBookBinFromPart matches them.
   bool deferTocMatch = false;
+  uint16_t deferredResumeCount = 0;
+  uint32_t deferredSeen = 0;
+  uint64_t deferredSourceKey = 0;
 
   HalFile bookFile;
   // Temp file handles during build
@@ -198,7 +201,9 @@ class BookMetadataCache {
   // The background TOC pass: entries are written without their chapter (matched later), so it
   // needs no spine index in memory. endDeferredTocPass keeps the finished pass under its own name
   // and records the entry count; an unfinished pass is never taken for a finished one.
-  bool beginDeferredTocPass();
+  bool beginDeferredTocPass(const std::string& source = {}, bool restart = false);
+  bool pauseDeferredTocPass();
+  bool hasDeferredTocProgress(const std::string& source) const;
   bool endDeferredTocPass();
   // Whether a finished background TOC pass is on the card, and its entry count.
   static bool deferredTocReady(const std::string& cachePath, uint16_t* entries = nullptr);

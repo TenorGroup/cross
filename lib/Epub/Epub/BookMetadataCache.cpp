@@ -34,6 +34,8 @@ constexpr char tmpMetadataFile[] = "/book.meta.tmp";
 constexpr uint8_t METADATA_VERSION = 1;
 constexpr char tmpSpineBinFile[] = "/spine.bin.tmp";
 constexpr char tmpTocBinFile[] = "/toc.bin.tmp";
+constexpr char tocProgressFile[] = "/toc.progress";
+constexpr char tmpTocProgressFile[] = "/toc.progress.tmp";
 // A book indexed in the background (BookMetadataCache::indexesInBackground). book.part holds the
 // chapters and the metadata in book.bin's layout under its own version byte, so neither ever
 // passes for the other. The TOC pass lands in toc.bin, and toc.count, written after it, says it
@@ -321,6 +323,27 @@ bool loadCheckpoint(const std::string& cachePath, const uint16_t spines, const u
   const size_t tocBytes = sizeof(int16_t) * tocs;
   ok = ok && (tocBytes == 0 || file.read(tocSpine, tocBytes) == static_cast<int>(tocBytes)) &&
        file.position() == file.size();
+  file.close();
+  return ok;
+}
+
+constexpr uint8_t TOC_PROGRESS_VERSION = 1;
+constexpr size_t TOC_PROGRESS_BYTES = 1 + 8 + 2 + 4 + 4;
+
+uint32_t tocProgressCheck(uint64_t key, uint16_t count, uint32_t bytes) {
+  return static_cast<uint32_t>(key) ^ static_cast<uint32_t>(key >> 32) ^
+         (static_cast<uint32_t>(count) * 2654435761u) ^ bytes ^ 0x746f6301u;
+}
+
+bool readTocProgress(const std::string& path, uint64_t& key, uint16_t& count, uint32_t& bytes) {
+  HalFile file;
+  if (!Storage.openFileForRead("BMC", path + tocProgressFile, file)) return false;
+  uint8_t version = 0;
+  uint32_t check = 0;
+  const bool ok = file.size() == TOC_PROGRESS_BYTES && readField(file, version) &&
+                  version == TOC_PROGRESS_VERSION && readField(file, key) && readField(file, count) &&
+                  readField(file, bytes) && readField(file, check) && count <= INT16_MAX &&
+                  bytes >= static_cast<uint32_t>(count) * 15u && check == tocProgressCheck(key, count, bytes);
   file.close();
   return ok;
 }
@@ -840,27 +863,87 @@ bool BookMetadataCache::writePart(const BookMetadata& metadata, const TocSource&
   return true;
 }
 
-bool BookMetadataCache::beginDeferredTocPass() {
+bool BookMetadataCache::hasDeferredTocProgress(const std::string& source) const {
+  uint64_t key = 0;
+  uint16_t count = 0;
+  uint32_t bytes = 0;
+  return readTocProgress(cachePath, key, count, bytes) && key == fnvHash64(source);
+}
+
+bool BookMetadataCache::beginDeferredTocPass(const std::string& source, const bool restart) {
+  passOut.reset();
+  if (tocFile) tocFile.close();
   Storage.remove((cachePath + tocCountFile).c_str());
   Storage.remove((cachePath + bookCkptFile).c_str());
-  if (!Storage.openFileForWrite("BMC", cachePath + tmpTocBinFile, tocFile)) return false;
+  deferredSourceKey = fnvHash64(source);
+  deferredResumeCount = 0;
+  deferredSeen = 0;
+  uint64_t key = 0;
+  uint16_t savedCount = 0;
+  uint32_t bytes = 0;
+  if (!restart && readTocProgress(cachePath, key, savedCount, bytes) && key == deferredSourceKey) {
+    tocFile = Storage.open((cachePath + tmpTocBinFile).c_str(), O_RDWR);
+    if (tocFile && bytes <= tocFile.size() && tocFile.seek(bytes)) {
+      deferredResumeCount = savedCount;
+    } else if (tocFile) {
+      tocFile.close();
+    }
+  }
+  if (!tocFile) {
+    Storage.remove((cachePath + tocProgressFile).c_str());
+    if (!Storage.openFileForWrite("BMC", cachePath + tmpTocBinFile, tocFile)) return false;
+  }
   buildMode = true;
   deferTocMatch = true;
-  tocCount = 0;
+  tocCount = deferredResumeCount;
   // Wrapper OOM is fine: createTocEntry falls back to unbuffered writes.
   passOut = makeUniqueNoThrow<serialization::BufferedFileWriter>(tocFile, BUILD_IO_BUFFER_SIZE);
   return true;
+}
+
+bool BookMetadataCache::pauseDeferredTocPass() {
+  if (!deferTocMatch || !tocFile) return false;
+  bool ok = !passOut || passOut->flush();
+  const auto bytes = static_cast<uint32_t>(tocFile.position());
+  passOut.reset();
+  ok = tocFile.sync() && ok;
+  ok = tocFile.close() && ok;
+  buildMode = false;
+  deferTocMatch = false;
+  if (!ok) return false;
+  // Replaying a saved prefix may be interrupted again before it writes a new entry.
+  if (tocCount == deferredResumeCount) return true;
+  const std::string tmp = cachePath + tmpTocProgressFile;
+  const std::string path = cachePath + tocProgressFile;
+  HalFile file;
+  ok = Storage.openFileForWrite("BMC", tmp, file);
+  if (ok) ok = writeField(file, TOC_PROGRESS_VERSION) && writeField(file, deferredSourceKey) &&
+               writeField(file, tocCount) && writeField(file, bytes) &&
+               writeField(file, tocProgressCheck(deferredSourceKey, tocCount, bytes)) && file.sync();
+  if (file) ok = file.close() && ok;
+  if (ok) {
+    Storage.remove(path.c_str());
+    ok = Storage.rename(tmp.c_str(), path.c_str());
+  }
+  if (!ok) Storage.remove(tmp.c_str());
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("BMC", "INDEX_BG cursor=%u bytes=%u saved=%u free=%u largest=%u", static_cast<unsigned>(tocCount),
+          static_cast<unsigned>(bytes), ok ? 1u : 0u, static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
+  return ok;
 }
 
 bool BookMetadataCache::endDeferredTocPass() {
 #ifdef TENOR_PRESS_PROBE
   const unsigned long flushStarted = millis();
 #endif
-  bool ok = !passOut || passOut->flush();
+  bool ok = (!passOut || passOut->flush()) && deferredSeen >= deferredResumeCount;
 #ifdef TENOR_PRESS_PROBE
   logPassWrites("toc_bg", passOut.get(), millis() - flushStarted);
 #endif
   passOut.reset();
+  ok = tocFile.position() == tocFile.size() && tocFile.sync() && ok;
   ok = tocFile.close() && ok;
   buildMode = false;
   deferTocMatch = false;
@@ -880,6 +963,7 @@ bool BookMetadataCache::endDeferredTocPass() {
     Storage.remove(tmpPath.c_str());
     Storage.remove(countPath.c_str());
   }
+  Storage.remove((cachePath + tocProgressFile).c_str());
   return ok;
 }
 
@@ -928,7 +1012,7 @@ bool BookMetadataCache::bookBinReady() const { return Storage.exists((cachePath 
 void BookMetadataCache::removePartFiles() const {
   // book.part last: while it is on the card, Epub::load knows something is left to remove.
   for (const char* name : {tmpBookPartFile, tocDoneFile, tmpTocBinFile, tocCountFile, tmpBookBinFile, bookCkptFile,
-                           tmpBookCkptFile, bookPartFile}) {
+                           tmpBookCkptFile, tocProgressFile, tmpTocProgressFile, bookPartFile}) {
     const std::string path = cachePath + name;
     if (Storage.exists(path.c_str())) Storage.remove(path.c_str());
   }
@@ -983,6 +1067,7 @@ void BookMetadataCache::createTocEntry(const std::string& title, const std::stri
     LOG_DBG("BMC", "createTocEntry called but not in build mode");
     return;
   }
+  if (deferTocMatch && deferredSeen++ < deferredResumeCount) return;
 
 #ifdef TENOR_PRESS_PROBE
   const uint32_t started = micros();
