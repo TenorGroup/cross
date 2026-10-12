@@ -20,6 +20,7 @@ struct Snapshot {
   std::array<solieu::NgayDoc, DAYS> days{};  // oldest first
   size_t count = 0;
   std::array<uint64_t, HOURS> hourMs{};  // reading in each hour of the local day, since the counters began
+  std::array<uint32_t, HOURS> hourTurns{};  // page turns in each hour of the local day, the same way
 
   // A later row for a date replaces the earlier one: RAM's row was read from the card and has only grown.
   // The DAYS newest dates stay, as in Kho, so a clock set years ahead costs one row, not the calendar.
@@ -56,5 +57,12 @@ inline void addHours(std::array<uint32_t, HOURS>& hours, uint32_t endMs, uint32_
     elapsed -= part;
     endMs -= part;
   }
+}
+
+// A page turn counts in the hour of the local day it was recorded in (`endMs`). RAM keeps these since the last save.
+inline void addTurns(std::array<uint16_t, HOURS>& hours, const uint32_t endMs, const uint16_t turns) {
+  if (endMs >= DAY_MS) return;
+  auto& count = hours[endMs / 3600000];
+  count = static_cast<uint16_t>(std::min<uint32_t>(UINT16_MAX, count + turns));
 }
 }  // namespace readinghistory
