@@ -210,7 +210,18 @@ int main() {
     require(pageReads.reads == 2 && r.pageLoadRetryCount == 0, "cached retry did not recover");
     require(pageReads.clears == 0 && pageReads.errors == 0, "recovered read rebuilt or reported an error");
   });
-  test("persistent page read rebuilds once and preserves requested page", [] {
+  test("repeated page allocation failure keeps section and cache", [] {
+    EpubReaderActivity r;
+    r.section->currentPage = 18; pageReads.failures = 2;
+    const auto* original = r.section.get();
+    { RenderLock held; r.loadPageForRender(); }
+    { RenderLock held; r.loadPageForRender(); }
+    require(r.section.get() == original, "allocation failure discarded section");
+    require(pageReads.clears == 0 && pageReads.abandons == 0, "allocation failure erased cache");
+    require(r.requests == 2, "allocation retry was not bounded");
+  });
+  test("corrupt page rebuilds once and preserves requested page", [] {
+    pageReads.corrupt = true;
     EpubReaderActivity r; r.section->currentPage = 18; r.nextPageNumber = 0; pageReads.failures = 2;
     { RenderLock held; r.loadPageForRender(); }
     if (!r.section) { r.section = std::make_unique<Section>(); r.section->currentPage = r.nextPageNumber; }
@@ -220,6 +231,7 @@ int main() {
     require(r.requests == 2, "rebuild was not queued once");
   });
   test("terminal page read error stops with one rebuild and retains retry target", [] {
+    pageReads.corrupt = true;
     EpubReaderActivity r; r.section->currentPage = 18; pageReads.failures = 10;
     for (int n = 0; n <= r.MAX_PAGE_LOAD_RETRIES; ++n) {
       if (!r.section) { r.section = std::make_unique<Section>(); r.section->currentPage = r.nextPageNumber; }

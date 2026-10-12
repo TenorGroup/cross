@@ -3,6 +3,40 @@
 #include <HalMemory.h>
 #include <gtest/gtest.h>
 #include <cstring>
+#include <cstdlib>
+#include <cstddef>
+#include <new>
+
+namespace pageAllocProbe {
+inline bool enabled = false;
+inline size_t limit = SIZE_MAX, live = 0, peak = 0, rejected = 0, epoch = 0;
+struct alignas(std::max_align_t) Header { size_t bytes, epoch; };
+void* allocate(size_t bytes) {
+  if (enabled && bytes > limit) { ++rejected; return nullptr; }
+  auto* p = static_cast<Header*>(std::malloc(sizeof(Header) + bytes));
+  if (!p) return nullptr;
+  *p = {bytes, enabled ? epoch : 0};
+  if (enabled) { live += bytes; peak = std::max(peak, live); }
+  return p + 1;
+}
+void release(void* ptr) {
+  if (!ptr) return;
+  auto* p = static_cast<Header*>(ptr) - 1;
+  if (enabled && p->epoch == epoch) live -= p->bytes;
+  std::free(p);
+}
+void start(size_t maximum = SIZE_MAX) { ++epoch; live = peak = rejected = 0; limit = maximum; enabled = true; }
+}
+void* operator new(size_t bytes) { if (auto* p = pageAllocProbe::allocate(bytes)) return p; throw std::bad_alloc(); }
+void* operator new[](size_t bytes) { return ::operator new(bytes); }
+void* operator new(size_t bytes, const std::nothrow_t&) noexcept { return pageAllocProbe::allocate(bytes); }
+void* operator new[](size_t bytes, const std::nothrow_t&) noexcept { return pageAllocProbe::allocate(bytes); }
+void operator delete(void* p) noexcept { pageAllocProbe::release(p); }
+void operator delete[](void* p) noexcept { pageAllocProbe::release(p); }
+void operator delete(void* p, size_t) noexcept { pageAllocProbe::release(p); }
+void operator delete[](void* p, size_t) noexcept { pageAllocProbe::release(p); }
+void operator delete(void* p, const std::nothrow_t&) noexcept { pageAllocProbe::release(p); }
+void operator delete[](void* p, const std::nothrow_t&) noexcept { pageAllocProbe::release(p); }
 
 namespace {
 Page textPage() {
@@ -164,5 +198,58 @@ TEST(CacheSerialization, ShortWriteAtEveryFieldFailsWholePage) {
     HalFile file;
     file.failAtWriteCall = field;
     EXPECT_FALSE(page.serialize(file)) << "write call=" << field;
+  }
+}
+
+TEST(CacheSerialization, MetadataRefusalStillLoadsTextAndConsumesRecord) {
+  auto page = textPage();
+  while (page.footnotes.size() < Page::MAX_FOOTNOTES_PER_PAGE) page.addFootnote("n", "chapter.xhtml#note");
+  while (page.links.size() < Page::MAX_LINKS_PER_PAGE) page.addLink("chapter2.xhtml", 2, 3, 40, 10);
+  HalFile file;
+  ASSERT_TRUE(page.serialize(file));
+  file.offset = 0;
+  const auto saved = HalMemory::largestBlockBytes;
+  HalMemory::largestBlockBytes = 8192;
+  const auto result = Page::deserialize(file);
+  HalMemory::largestBlockBytes = saved;
+  ASSERT_NE(result, nullptr);
+  EXPECT_EQ(result->elements.size(), 3u);
+  EXPECT_TRUE(result->footnotes.empty());
+  EXPECT_TRUE(result->links.empty());
+  EXPECT_EQ(file.offset, file.bytes.size());
+}
+
+TEST(CacheSerialization, UnknownTagIsCorruptButShortReadIsRetryable) {
+  auto file = validFile();
+  file.bytes[2] = 255;
+  EXPECT_EQ(Page::deserialize(file), nullptr);
+  EXPECT_EQ(Page::loadFailure, Page::LoadFailure::Corrupt);
+  file = validFile();
+  file.failAtCall = 0;
+  EXPECT_EQ(Page::deserialize(file), nullptr);
+  EXPECT_EQ(Page::loadFailure, Page::LoadFailure::Unknown);
+}
+
+TEST(CacheSerialization, MetadataOomHasNoThrowingAllocation) {
+  auto page = textPage();
+  while (page.footnotes.size() < Page::MAX_FOOTNOTES_PER_PAGE) page.addFootnote("n", "chapter.xhtml#note");
+  while (page.links.size() < Page::MAX_LINKS_PER_PAGE) page.addLink("chapter2.xhtml", 2, 3, 40, 10);
+  HalFile file;
+  ASSERT_TRUE(page.serialize(file));
+  for (size_t cap : {SIZE_MAX, size_t(4096)}) {
+    file.offset = 0;
+    pageAllocProbe::start(cap);
+    std::unique_ptr<Page> result;
+    bool threw = false;
+    try { result = Page::deserialize(file); } catch (const std::bad_alloc&) { threw = true; }
+    const auto peak = pageAllocProbe::peak;
+    const auto rejected = pageAllocProbe::rejected;
+    pageAllocProbe::enabled = false;
+    std::cout << "PAGE_HEAP cap=" << cap << " peak=" << peak << " refused=" << rejected << '\n';
+    EXPECT_FALSE(threw);
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->elements.size(), 3u);
+    EXPECT_EQ(result->footnotes.size(), cap == SIZE_MAX ? 16u : 0u);
+    EXPECT_EQ(result->links.size(), cap == SIZE_MAX ? 32u : 0u);
   }
 }

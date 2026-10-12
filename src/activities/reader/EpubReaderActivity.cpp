@@ -1651,8 +1651,13 @@ void EpubReaderActivity::loop() {
     int touchX = 0;
     int touchY = 0;
     if (mappedInput.wasScreenTapped(touchX, touchY)) {
-      const auto* link = EpubReaderUtils::linkAtPoint(currentPageLinks, touchX, touchY, currentPageLinkMarginLeft,
-                                                      currentPageLinkMarginTop);
+      const PageLink* link = nullptr;
+      for (const auto& candidate : currentPageLinks) {
+        if (candidate.contains(touchX - currentPageLinkMarginLeft, touchY - currentPageLinkMarginTop, 6, 28)) {
+          link = &candidate;
+          break;
+        }
+      }
       if (link) {
         navigateToHref(link->href, true);
         return;
@@ -3148,6 +3153,7 @@ void EpubReaderActivity::renderBook() {
 #ifdef TENOR_TURN_TRACE
     tracePaint("LOAD_BEGIN", section->isBuilding() ? "building" : "cache");
 #endif
+    Page::beginLoad();
     auto p = section->loadPage(section->currentPage);
 #ifdef TENOR_TURN_TRACE
     tracePaint("LOAD_END", p ? "ok" : "failed");
@@ -3171,11 +3177,16 @@ void EpubReaderActivity::renderBook() {
         showPendingSyncSaveError();
         return;
       }
-      // A failed SD read or page allocation can recover on the next render.
-      // Retry the existing section first, then allow one cache rebuild per incident.
+      // Retry transient reads and allocation failures against the existing cache.
+      // A validated corrupt record permits one rebuild per incident.
       // Carry the requested page across reset; nextPageNumber may still be the
       // position from when this chapter was opened.
-      if (pageLoadRetryCount == 2) {
+      const bool dropCorrupt = pageLoadRetryCount == 2 && Page::loadFailure == Page::LoadFailure::Corrupt;
+#ifdef TENOR_PRESS_PROBE
+      LOG_INF("ERS", "PAGE_CACHE_%s page=%d reason=%u", dropCorrupt ? "DROP_CORRUPT" : "KEEP",
+              section->currentPage, static_cast<unsigned>(Page::loadFailure));
+#endif
+      if (dropCorrupt) {
         nextPageNumber = section->currentPage;
         section->abandonBuild();
         section->clearCache();

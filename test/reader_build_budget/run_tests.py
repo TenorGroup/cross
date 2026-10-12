@@ -81,7 +81,7 @@ while depth:
     depth += (render[anchor_end] == '{') - (render[anchor_end] == '}')
     anchor_end += 1
 anchor_landing = 'void EpubReaderActivity::anchorLanding() {\n' + render[anchor_start:anchor_end] + '\n}'
-start = render.index('    auto p = section->loadPage(section->currentPage);')
+start = render.index('    Page::beginLoad();') if '    Page::beginLoad();' in render else render.index('    auto p = section->loadPage(section->currentPage);')
 end = render.index('    currentPageVisibleOffset = p->visibleTextOffset;', start)
 page_load = ('void EpubReaderActivity::loadPageForRender() {\n'
              ' auto showPendingSyncSaveError=[]{};\n' + render[start:end] + '\n}')
