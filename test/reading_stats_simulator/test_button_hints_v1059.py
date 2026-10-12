@@ -1,7 +1,7 @@
 """X3 Button hints switch (v1.0.59): the row in Display, the clock and battery strip at the top while the hints are
 off, and the reader left as it was.
 
-TEST_PROGRAM=<simulator_x3_uc8279 program> python3 test_button_hints_v1059.py [switch|layout|reader|all] [--out DIR]
+TEST_PROGRAM=<simulator_x3_uc8279 program> python3 test_button_hints_v1059.py [switch|layout|reader|migration|all] [--out DIR]
 """
 import argparse
 import json
@@ -47,10 +47,16 @@ def run(out, name, script, shots, settings, book=False):
     store = folder / 'sd/.crosspoint'
     store.mkdir(parents=True)
     make_book(folder / 'sd/book.epub')
-    (store / 'settings.json').write_text(json.dumps({**BASE, 'wakeIntoBook': int(book), **settings}))
+    card = {k: v for k, v in {**BASE, 'wakeIntoBook': int(book), **settings}.items() if v is not None}
+    (store / 'settings.json').write_text(json.dumps(card))
     (store / 'state.json').write_text(json.dumps({'showBootScreen': False, 'openEpubPath': '/book.epub' if book else '',
                                                   'lastSleepFromReader': book}))
     (store / 'recent.json').write_text(json.dumps({'books': [{'path': '/book.epub', 'title': 'Book'}]}))
+    return run_card(folder, shots, script)
+
+
+def run_card(folder, shots, script=''):
+    store = folder / 'sd/.crosspoint'
     last = max(shots) if shots else 1500
     env = {k: v for k, v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')}
     env.update(SDL_VIDEODRIVER='dummy', CROSSPOINT_SIM_SD=str(folder / 'sd'), CROSSPOINT_SIM_WAKE_REASON='power',
@@ -59,7 +65,7 @@ def run(out, name, script, shots, settings, book=False):
                CROSSPOINT_SIM_SCREENSHOTS=';'.join(f'{ms}:{folder}/{label}.bmp' for ms, label in shots.items()))
     p = subprocess.run([str(PROGRAM)], cwd=REPO, env=env, capture_output=True, text=True, timeout=90)
     (folder / 'run.log').write_text(p.stdout + p.stderr)
-    assert p.returncode == 0, (name, (p.stdout + p.stderr)[-1500:])
+    assert p.returncode == 0, (folder.name, (p.stdout + p.stderr)[-1500:])
     images = {label: Image.open(folder / f'{label}.bmp').convert('L') for label in shots.values()}
     return images, json.loads((store / 'settings.json').read_text())
 
@@ -126,13 +132,28 @@ def reader(out):
     print('GREEN reader: page and menu identical with the hints on and off', flush=True)
 
 
+def migration(out):
+    # A card from before the switch with General status bar Off: the hints stay hidden after the upgrade, and turning
+    # the bar back on (Small) shows the clock and the battery in the top strip, the hints still off.
+    old = {'globalStatusBarMode': 1, 'buttonHintsVersion': None}
+    _, saved = run(out, 'migrate-off', '', {2500: 'home'}, old)
+    assert saved.get('tenorButtonHints') == 0 and saved.get('buttonHintsVersion') == 1, ('Off moves once', saved)
+    assert saved['globalStatusBarMode'] == 1, 'status bar Off stays Off'
+    store = out / 'migrate-off/sd/.crosspoint/settings.json'
+    store.write_text(json.dumps({**saved, 'globalStatusBarMode': 0}))
+    again, saved = run_card(out / 'migrate-off', {2500: 'home'})
+    assert saved['tenorButtonHints'] == 0, 'turning the bar back on keeps the hints off'
+    assert ink_rows(again['home'], 0, W, 0, STRIP) and not ink_rows(again['home'], 0, W, H - 16, H), 'top strip'
+    print('GREEN migration: status bar Off -> hints off, bar back on -> top strip', flush=True)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('which', nargs='?', default='all', choices=('switch', 'layout', 'reader', 'all'))
+    parser.add_argument('which', nargs='?', default='all', choices=('switch', 'layout', 'reader', 'migration', 'all'))
     parser.add_argument('--out', type=Path)
     args = parser.parse_args()
     out = args.out or Path(tempfile.mkdtemp(prefix='button-hints-'))
     out.mkdir(parents=True, exist_ok=True)
-    for test in (switch, layout, reader):
+    for test in (switch, layout, reader, migration):
         if args.which in ('all', test.__name__):
             test(out)

@@ -72,6 +72,7 @@ add_test(NAME SettingsUpgradeTapZones COMMAND SettingsUpgradeTest tap-zones)
 add_test(NAME SettingsUpgradeReaderPins COMMAND SettingsUpgradeTest reader-pins)
 add_test(NAME SettingsUpgradeNoResidentCatalog COMMAND SettingsUpgradeTest no-resident-catalog)
 add_test(NAME SettingsUpgradeTips COMMAND SettingsUpgradeTest tips)
+add_test(NAME SettingsUpgradeButtonHints COMMAND SettingsUpgradeTest button-hints)
 
 get_target_property(home_sources SettingsUpgradeTest SOURCES)
 get_target_property(home_includes SettingsUpgradeTest INCLUDE_DIRECTORIES)
