@@ -82,6 +82,7 @@ add_subdirectory(confirmation)
 
 add_subdirectory(inflate_stream)
 add_subdirectory(fs_helpers)
+add_subdirectory(file_browser_sort)
 
 add_subdirectory(absolute_grayscale)
 add_subdirectory(mapped_input)

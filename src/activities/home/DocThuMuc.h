@@ -5,6 +5,7 @@
 #include <limits>
 #include <string>
 #include <vector>
+#include "FileBrowserSort.h"
 
 // Doc mot thu muc tren the nho thanh danh sach ten doc duoc.
 //
@@ -28,7 +29,7 @@ enum class Loc : uint8_t {
 // `tran` > 0 la so muc toi da: vuot thi dung doc, `ra` rong, *quaTran = true (ham van tra ve true). Man
 // nao danh sach lon theo so tep tren the thi dat tran; 0 la khong gioi han, nhu moi noi goi cu.
 bool doc(const char* duongDan, bool hienFileAn, Loc loc, char* dem, size_t demCo, std::vector<std::string>& ra,
-         size_t tran = 0, bool* quaTran = nullptr);
+         size_t tran = 0, bool* quaTran = nullptr, filebrowser::SortMode sortMode = filebrowser::SortMode::Name);
 
 // How many names a folder page may hold, from the heap left: the one decision for every screen that lists a
 // card folder (tenor/cross Home and File, and the tenor/ugly Folder page). Each row costs a string slot (the
