@@ -555,10 +555,10 @@ void HomeActivity::activateIndex(const int index) {
   }
 }
 
-bool HomeActivity::handleButtons() {
-  if (folderSearchScanner && (folderSearchScanner->reason() == filesearch::ScanReason::Running ||
-                              folderSearchScanner->reason() == filesearch::ScanReason::Cancelled) &&
-      mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+bool HomeActivity::handleCustomInput() {
+  if (!folderSearchScanner || (folderSearchScanner->reason() != filesearch::ScanReason::Running &&
+                               folderSearchScanner->reason() != filesearch::ScanReason::Cancelled)) return false;
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     RenderLock lock(*this);
     stopFolderRecursiveSearch();
     folderSearchQuery.clear();
@@ -570,6 +570,10 @@ bool HomeActivity::handleButtons() {
     return true;
   }
   tickFolderRecursiveSearch();
+  return true;
+}
+
+bool HomeActivity::handleButtons() {
   if (pendingRecentRemoval) {
     RecentBook book = std::move(*pendingRecentRemoval);
     pendingRecentRemoval.reset();
@@ -1307,7 +1311,8 @@ bool HomeActivity::rowOpens(const int row) const {
   // The enlarged stats tab's page row turns the page in place.
   if (activeTabId == Tab::STATS) return !statsTurnRow(row);
   if (activeTabId == Tab::CAI_DAT) return true;
-  return activeTabId == Tab::FOLDER && row >= 0 && row < listCount() &&
+  return activeTabId == Tab::FOLDER && row >= 0 &&
+         row < (folderRecursiveSearch ? listCount() : static_cast<int>(rowLabels.size())) &&
          !folderEntry(row).empty() && folderEntry(row).back() == '/';
 }
 

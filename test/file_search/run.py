@@ -51,6 +51,7 @@ def main() -> None:
     browser_path = extract_function(source, "std::string FileBrowserActivity::fullPathForVisibleRow")
     home_entry = extract_function(home_source, "const std::string& HomeActivity::folderEntry")
     home_path = extract_function(home_source, "std::string HomeActivity::folderFullPath")
+    home_opens = extract_function(home_source, "bool HomeActivity::rowOpens(")
     for signature in ("void FileBrowserActivity::activateSelected()", "void FileBrowserActivity::deleteSelected()",
                       "void FileBrowserActivity::startRename()"):
         assert "fullPathForVisibleRow(nav.selected)" in extract_function(source, signature)
@@ -72,6 +73,12 @@ class FileBrowserActivity {
 };
 class HomeActivity {
  public:
+  enum class Tab {FOLDER, STATS, CAI_DAT};
+  Tab activeTabId=Tab::FOLDER;
+  std::vector<std::string> rowLabels;
+  int listCount() const {return 0;}
+  bool statsTurnRow(int) const {return false;}
+  bool rowOpens(int row) const;
   std::string folderSearchQuery; mutable std::string folderSearchEntry;
   std::vector<std::string> mucTheNho;
   filesearch::IndexBuffer folderRowIndices;
@@ -80,7 +87,7 @@ class HomeActivity {
   const std::string& folderEntry(int row) const;
   std::string folderFullPath(int row) const;
 };
-''' + browser_entry + browser_path + home_entry + home_path + r'''
+''' + browser_entry + browser_path + home_entry + home_path + home_opens + r'''
 int main() {
  FileBrowserActivity b;
  b.files={"Folder/","Z.epub","Đường 10.epub","Đường 2.epub"}; b.searchQuery="duong";
@@ -94,6 +101,7 @@ int main() {
  for(size_t i=0;i<b.files.size();++i)assert(b.fullPathForVisibleRow(i)=="/books/"+b.files[i]);
  h.folderSearchQuery.clear();assert(filesearch::buildResults(h.mucTheNho,"",h.folderRowIndices));
  for(size_t i=0;i<h.mucTheNho.size();++i)assert(h.folderFullPath(i)=="/"+h.mucTheNho[i]);
+ h.rowLabels=h.mucTheNho;assert(h.rowOpens(0));assert(!h.rowOpens(1));
 }
 ''')
     binary = args.output / "paths"

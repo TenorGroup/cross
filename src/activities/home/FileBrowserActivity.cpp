@@ -704,6 +704,11 @@ bool FileBrowserActivity::handleCustomInput() {
     requestUpdate();
     return true;
   }
+  if (searchScanner && (searchScanner->reason() == filesearch::ScanReason::Running ||
+                        searchScanner->reason() == filesearch::ScanReason::Cancelled)) {
+    tickRecursiveSearch();
+    return true;
+  }
   // Holding PageBack is the hardware-button shortcut for delete: it reaches the
   // same confirm dialog as Delete in the entry-actions popup, for devices with
   // no touch to long-press a row.
@@ -752,7 +757,6 @@ bool FileBrowserActivity::handleCustomInput() {
 
 bool FileBrowserActivity::handleButtons() {
   using Button = MappedInputManager::Button;
-  tickRecursiveSearch();
   if (mode == Mode::Books && basepath != "/" &&
       (mappedInput.wasReleased(Button::Up) || mappedInput.wasReleased(Button::Down))) {
     const int direction = mappedInput.wasReleased(Button::Down) ? 1 : -1;

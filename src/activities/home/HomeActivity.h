@@ -83,6 +83,7 @@ class HomeActivity final : public UiTabListActivity {
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   bool handleButtons() override;
+  bool handleCustomInput() override;
   static constexpr freeink::ui::ActionId ACTION_OTHER_BOOK = ACTION_TAB_USER;
   static void otherBookTrampoline(const freeink::ui::ActionEvent& event, void* user) {
     auto* self = static_cast<HomeActivity*>(user);
