@@ -807,7 +807,7 @@ void SleepActivity::onEnter() {
 void SleepActivity::renderTenorSleepScreen() const {
   releaseSdFontCachesForDecode(renderer);
   if (!SleepGrayPlanes::wanted() && renderBrandScreen(renderer, false)) return;
-  // X3 artwork has a fixed pixel grid. Other panels retain the text fallback.
+  // The art has a fixed pixel grid, drawn for the X3 and the X4 Pro. Other panels retain the text fallback.
   if (!gpio.deviceIsX3()) {
     renderDefaultSleepScreen();
     return;
