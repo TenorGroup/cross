@@ -56,8 +56,9 @@ class S3Profiles(unittest.TestCase):
             self.assertIn(flag, flags)
         self.assertNotIn("-DTENOR_UI_ACCEPTANCE", flags)
         self.assertIn("-DTENOR_HYPH_NO_DE", flags)
-        # With every language the probe image was 6,554,990 B, 1,390 B over the 6,553,600 B app slot.
-        self.assertEqual(option("env:x4pro-ble-probe", "custom_i18n_builtin_langs"), "en,vi")
+        # Without German the probe fits with every language, so it carries the same strings as the beta.
+        self.assertEqual(option("env:x4pro-ble-probe", "custom_i18n_builtin_langs"),
+                         option("env:x4pro-ble", "custom_i18n_builtin_langs"))
         self.assertIn("-DARDUINO_USB_MODE=0", flags)
         self.assertIn("-DARDUINO_USB_MODE=1", option("env:x4pro-ble-probe", "build_unflags"))
 
