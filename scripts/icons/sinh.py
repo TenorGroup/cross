@@ -9,8 +9,9 @@ to a multiple of 8 bits, high bit first, bit 0 = ink. The last field is the opti
 mean row of the ink. The arrays are `inline constexpr`: one copy in the image however many .cpp
 files include the header (a `static const` array is copied into each one that uses it).
 
-Approved 40 px cards use baked grey regular PNGs and selected stroke-3 PNGs. Other 40 px shapes
-keep their existing selected artwork and bake their regular checkerboard. Smaller sizes are unchanged.
+Approved 40 px cards use grey regular PNGs (made by xam.py) and selected stroke-3 PNGs. Other 40 px shapes
+keep their existing selected artwork (stroke 4); their grey regular art is cut out of it by xam.py.
+Smaller sizes are unchanged.
 
 MoonIcon.h is the one asset in the pre-rotated layout of scripts/convert_icon.py (turned 90 degrees
 counter-clockwise, white = 1), drawn by SleepActivity through renderer.drawImage.
@@ -23,6 +24,7 @@ from PIL import Image, ImageChops
 from net import G
 import hinh
 import song
+import xam
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = os.path.join(ROOT, 'src', 'components', 'icons')
@@ -91,16 +93,12 @@ def draw(shape, n, w, bold=False):
             left, top, right, bottom = ImageChops.invert(image.convert('L')).getbbox()
             assert left - (40 - right) in (-1, 0) and top - (40 - bottom) in (-1, 0), (shape, suffix)
             return image.copy()
+    if n == 40 and not bold:
+        # Grey card of an older shape: its selected art (stroke 4) with 2 lanes of every stroke taken away.
+        return xam.grey_image(shape, draw(shape, 40, 4, True), passes=2)
     g = G(n, w)
     hinh.H[shape][1](g)
-    image = g.img()
-    if n == 40 and not bold:
-        pixels = image.load()
-        for row in range(n):
-            for column in range(n):
-                if (row + column) % 2:
-                    pixels[column, row] = 255
-    return image
+    return g.img()
 
 
 def pack(im):
