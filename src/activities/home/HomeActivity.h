@@ -243,7 +243,7 @@ class HomeActivity final : public UiTabListActivity {
 
   // The tenor Recent tab shows one book at a time: ring position N shows recentBooks[N - 1], and
   // the front buttons walk the ring, so they step through the books.
-  static constexpr size_t RECENT_LIMIT = 5;
+  static constexpr size_t RECENT_LIMIT = 7;
   int shownRecent() const;
   // Saved quote each book's card shows during this visit, picked once per book (bit set in
   // cardQuotesPicked) and again after the Quotes screen changed the store; 0 when the book has
