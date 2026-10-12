@@ -28,6 +28,7 @@
 #include "FontCacheManager.h"
 #include "InlineSymbols.h"
 #include "GlyphBitmap.h"
+#include "BitmapRow.h"
 
 namespace {
 constexpr int trackingBetween(const uint32_t leftCp, const uint32_t rightCp, const int8_t tracking) {
@@ -1401,8 +1402,8 @@ bool GfxRenderer::drawBitmapAbsolutePlanes(const Bitmap& bitmap) const {
   // One optional 1bpp plane saves a second SD decode. Allocation failure keeps
   // the existing two-pass path; no full RGB or 2bpp image is retained in RAM.
   auto lsb = heapfloor::array<uint8_t[]>(getBufferSize(), "gray-bitmap");
-  auto row = makeUniqueNoThrow<uint8_t[]>(bitmap.getRowBytes());
-  auto levels = makeUniqueNoThrow<uint8_t[]>((bitmap.getWidth() + 3) / 4);
+  auto row = heapfloor::array<uint8_t[]>(bitmap.getRowBytes(), "bmp-gray-row");
+  auto levels = heapfloor::array<uint8_t[]>((bitmap.getWidth() + 3) / 4, "bmp-gray-levels");
   if (!lsb || !row || !levels || bitmap.rewindToData() != BmpReaderError::Ok) return false;
   memset(lsb.get(), 0xff, getBufferSize());
   memset(frameBuffer, 0xff, getBufferSize());
@@ -1466,8 +1467,9 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
   const int rowsW = std::min({bitmap.getWidth() - 2 * cropPixX, getScreenWidth() - x, maxWidth > 0 ? maxWidth : INT_MAX});
   const int rowsH =
       std::min({bitmap.getHeight() - 2 * cropPixY, getScreenHeight() - y, maxHeight > 0 ? maxHeight : INT_MAX});
-  if (bitmap.is1Bit() && !isScaled && !levelRows && renderMode == BW && x >= 0 && y >= 0 &&
-      drawBitmapRows(bitmap, x, y, cropPixX, cropPixY, rowsW, rowsH, false)) {
+  if (bitmap.isBlackWhite() && !isScaled && !levelRows && renderMode == BW && x >= 0 && y >= 0 &&
+      rowsW > 0 && rowsH > 0) {
+    if (!drawBitmapRows(bitmap, x, y, cropPixX, cropPixY, rowsW, rowsH, false)) return false;
     preserveImagePolarity(x, y, rowsW, rowsH);
     return true;
   }
@@ -1480,10 +1482,10 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
   // IMPORTANT: Use int, not uint8_t, to avoid overflow for images > 1020 pixels wide
   const int outputRowSize = (bitmap.getWidth() + 3) / 4;
   const auto rowBytesSize = static_cast<size_t>(bitmap.getRowBytes());
-  auto rowScratch = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(outputRowSize) + rowBytesSize);
+  auto rowScratch = heapfloor::array<uint8_t[]>(static_cast<size_t>(outputRowSize) + rowBytesSize, "bmp-row");
   // The screen column of each source column, worked out once: the float multiply and floor per
   // pixel cost more than the SD read on the X3 (no FPU), and every row repeats them.
-  auto columnTable = makeUniqueNoThrow<int16_t[]>(static_cast<size_t>(bitmap.getWidth()));
+  auto columnTable = heapfloor::array<int16_t[]>(static_cast<size_t>(bitmap.getWidth()), "bmp-columns");
   if (!rowScratch || !columnTable) {
     LOG_ERR("GFX", "!! Failed to allocate BMP row buffers");
     return false;
@@ -1511,6 +1513,27 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
   for (int bmpX = cropPixX; writesAll && bmpX + 1 < endX; bmpX++) {
     if (columns[bmpX] == columns[bmpX + 1]) columns[bmpX] = -1;
   }
+  bitmaprow::Target rowTarget{getWriteTarget(), panelWidthBytes, panelWidth, panelHeight,
+                              getWriteOriginY(), getWriteRows(), clipLeft_, clipTop_, clipRight_, clipBottom_, {}};
+  for (uint8_t level = 0; level < 4; ++level) {
+    const auto pixel = renderMode == BW ? GrayPlanePixel{level < 3, true}
+        : grayPlanePixel(level, renderMode == GRAYSCALE_MSB, absoluteGrayPlanes);
+    rowTarget.ink[level] = pixel.write ? (pixel.black ? 1 : 2) : 0;
+  }
+  if (levelRows) {
+    for (int row = 0; row < 8; ++row) for (int col = 0; col < 8; ++col) {
+      int px, py;
+      rotateCoordinates(orientation, col, row, &px, &py, panelWidth, panelHeight);
+      for (int level = 0; level < 4; ++level) {
+        if (!(levelRows[level][py & 3] & (0x80 >> (px & 7))))
+          rowTarget.dither[level][row] |= static_cast<uint8_t>(0x80 >> col);
+      }
+    }
+  }
+  const auto writeRow = bitmaprow::writer(orientation, levelRows != nullptr);
+#ifdef TENOR_PRESS_PROBE
+  uint32_t rowReadBytes = 0;
+#endif
   const auto rowOf = [&](const int bmpY) {
     // The BMP's (0, 0) is the bottom-left corner (if the height is positive, top-left if negative).
     // Screen's (0, 0) is the top-left corner.
@@ -1530,6 +1553,9 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
     const uint32_t readStart = micros();
     const auto rowResult = bitmap.readNextRow(outputRow, rowBytes);
     readUs += micros() - readStart;
+#ifdef TENOR_PRESS_PROBE
+    rowReadBytes += bitmap.getRowBytes();
+#endif
     if (rowResult != BmpReaderError::Ok) {
       LOG_ERR("GFX", "Failed to read row %d from bitmap", bmpY);
       return false;
@@ -1547,28 +1573,13 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
       continue;  // the next row lands on the same screen row
     }
 
-    for (int bmpX = cropPixX; bmpX < endX; bmpX++) {
-      const int screenX = columns[bmpX];
-      if (screenX < 0) {
-        continue;
-      }
-
-      const uint8_t val = outputRow[bmpX / 4] >> (6 - ((bmpX * 2) % 8)) & 0x3;
-      if (whiteAsTransparent && val == 3) continue;
-
-      if (levelRows) {
-        int phyX, phyY;
-        rotateCoordinates(orientation, screenX, screenY, &phyX, &phyY, panelWidth, panelHeight);
-        drawPixel(screenX, screenY, !((levelRows[val][phyY & 3] >> (7 - (phyX & 7))) & 1));
-      } else if (renderMode == BW && val < 3) {
-        drawPixel(screenX, screenY);
-      } else if (renderMode == GRAYSCALE_LSB || renderMode == GRAYSCALE_MSB) {
-        const auto pixel = grayPlanePixel(val, renderMode == GRAYSCALE_MSB, absoluteGrayPlanes);
-        if (pixel.write) drawPixel(screenX, screenY, pixel.black);
-      }
-    }
+    writeRow(rowTarget, outputRow, columns, cropPixX, endX, screenY, whiteAsTransparent);
   }
 
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("BMP_ROWS", "ms=%lu bytes=%lu path=%s", static_cast<unsigned long>((micros() - started) / 1000),
+          static_cast<unsigned long>(rowReadBytes), "writer");
+#endif
   const int sourceWidth = bitmap.getWidth() - cropPixX * 2;
   const int sourceHeight = bitmap.getHeight() - cropPixY * 2;
   const int renderedWidth = isScaled ? static_cast<int>(std::floor((sourceWidth - 1) * scale)) + 1 : sourceWidth;
@@ -2547,19 +2558,19 @@ bool GfxRenderer::drawBitmapCover(const Bitmap& bitmap, int x, int y, int width,
   if (width <= 0 || height <= 0 || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0) return false;
   const int sourceW = bitmap.getWidth(), sourceH = bitmap.getHeight();
   // A thumbnail of the card's shape fills the card 1:1, cropped at the centre (v1.0.14).
-  if (sourceW >= width && sourceH >= height && (sourceW == width || sourceH == height) &&
-      drawBitmapRows(bitmap, x, y, (sourceW - width) / 2, (sourceH - height) / 2, width, height, true)) {
+  if (bitmap.isBlackWhite() && sourceW >= width && sourceH >= height && (sourceW == width || sourceH == height)) {
+    if (!drawBitmapRows(bitmap, x, y, (sourceW - width) / 2, (sourceH - height) / 2, width, height, true)) return false;
     preserveImagePolarity(x, y, width, height);
     return true;
   }
   const float scale = std::max(float(width) / sourceW, float(height) / sourceH);
   const float cropX = (sourceW - width / scale) / 2;
   const float cropY = (sourceH - height / scale) / 2;
-  auto* pixels = static_cast<uint8_t*>(malloc((sourceW + 3) / 4));
-  auto* row = static_cast<uint8_t*>(malloc(bitmap.getRowBytes()));
+  auto* pixels = static_cast<uint8_t*>(heapfloor::take((sourceW + 3) / 4, "cover-pixels"));
+  auto* row = static_cast<uint8_t*>(heapfloor::take(bitmap.getRowBytes(), "cover-row"));
   // The source column of each screen column, worked out once: without an FPU the float divide per
   // pixel cost more than the whole row decode (about 480 ms for the 237 x 356 Home card on the X3).
-  auto* columns = static_cast<int16_t*>(malloc(sizeof(int16_t) * width));
+  auto* columns = static_cast<int16_t*>(heapfloor::take(sizeof(int16_t) * width, "cover-columns"));
   if (!pixels || !row || !columns) {
     free(pixels);
     free(row);
@@ -2624,7 +2635,7 @@ bool GfxRenderer::drawBitmapRows(const Bitmap& bitmap, const int x, const int y,
   if (!bitmap.isBlackWhite() || w <= 0 || h <= 0) return false;
   const uint32_t started = micros();
   uint32_t readUs = 0;
-  auto* row = static_cast<uint8_t*>(malloc(bitmap.getRowBytes()));
+  auto* row = static_cast<uint8_t*>(heapfloor::take(bitmap.getRowBytes(), "bmp-raw-row"));
   if (!row) return false;
   bool ok = true;
   for (int r = 0; r < bitmap.getHeight(); ++r) {
@@ -2835,9 +2846,9 @@ bool GfxRenderer::storeBwBuffer() {
 
     const size_t offset = i * BW_BUFFER_CHUNK_SIZE;
     const size_t chunkSize = std::min(BW_BUFFER_CHUNK_SIZE, static_cast<size_t>(frameBufferSize - offset));
-    bwBufferChunks[i] = static_cast<uint8_t*>(malloc(chunkSize));
+    bwBufferChunks[i] = static_cast<uint8_t*>(heapfloor::take(chunkSize, "snapshot"));
 
-    if (!bwBufferChunks[i]) {
+    if (!bwBufferChunks[i] || !heapfloor::judge(frameBufferSize, bwBufferChunks[i], "snapshot")) {
       LOG_ERR("GFX", "!! Failed to allocate BW buffer chunk %zu (%zu bytes)", i, chunkSize);
       // Free previously allocated chunks
       freeBwBufferChunks();
@@ -2845,11 +2856,6 @@ bool GfxRenderer::storeBwBuffer() {
     }
 
     memcpy(bwBufferChunks[i], frameBuffer + offset, chunkSize);
-  }
-  // The chunks are each under 4 KB; the snapshot as a whole goes through the heap floor door.
-  if (!heapfloor::judge(frameBufferSize, bwBufferChunks[0], "snapshot")) {
-    freeBwBufferChunks();
-    return false;
   }
 
   LOG_DBG("GFX", "Stored BW buffer in %zu chunks (%zu bytes each)", bwBufferChunks.size(), BW_BUFFER_CHUNK_SIZE);
