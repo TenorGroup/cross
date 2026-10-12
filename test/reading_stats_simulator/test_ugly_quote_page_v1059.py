@@ -171,6 +171,19 @@ class UglyQuotePageTest(unittest.TestCase):
                 self.assertEqual(len(first), 24)
                 self.assertGreaterEqual(len(set(first.values())), 6, 'the 8 lines are spread over the quotes')
 
+    def test_3_the_select_key_is_the_pens_tick_not_a_cut_word(self):
+        for language in ('EN', 'VI'):
+            with self.subTest(language=language):
+                _, shots = run([dict(text='Short words.')], TO_DETAIL, [(len(TO_DETAIL) - 1, 'f')], language=language)
+                im = shots['f']
+                px = im.load()
+                ink = [(x, y) for y in range(745, 792) for x in range(150, 300) if px[x, y] < 128]
+                self.assertTrue(ink, 'no mark over the Select key')
+                width = max(x for x, _ in ink) - min(x for x, _ in ink) + 1
+                height = max(y for _, y in ink) - min(y for _, y in ink) + 1
+                self.assertLessEqual(width, 34, f'over the Select key: {width} px wide, a word, not the tick')
+                self.assertLessEqual(height, 34)
+
     def test_4_the_facts_stand_centred_in_the_pen_at_every_size_and_hand(self):
         for level in (0, 1):
             for tier in (0, 1, 2):

@@ -575,7 +575,10 @@ void QuoteDetailActivity::render(RenderLock&&) {
   // Each hint names what its button does now: at either end of the list the arrow that
   // would leave it has nothing to do, so it is not shown.
   const bool hasPrevious = index > 0, hasNext = index + 1 < static_cast<int>(ids.size());
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_QUOTES_OPTIONS), hasPrevious ? tr(STR_DIR_LEFT) : "",
+  // The pen's foot bar has room for 3 letters of a label, so under tenor/ugly the Select key shows its tick; the options
+  // it opens are named in the menu that comes up.
+  const char* const confirm = shell::uglyParts() ? tr(STR_SELECT) : tr(STR_QUOTES_OPTIONS);
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirm, hasPrevious ? tr(STR_DIR_LEFT) : "",
                                             hasNext ? tr(STR_DIR_RIGHT) : "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   if (tenorchrome::kTouchShell && !confirmingDelete) {
