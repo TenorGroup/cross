@@ -967,6 +967,52 @@ int SdCardFont::prewarm(TextGetter getter, const void* ctx, uint32_t textCount, 
 
   unsigned long startMs = millis();
 
+  // A retained mini can answer a repeated subset request without rebuilding
+  // the UTF-8 codepoint list. Keep this check before the 2 KB work buffer.
+  auto miniContains = [](const PerStyle& s, uint32_t codepoint) {
+    for (uint32_t i = 0; i < s.miniIntervalCount; i++) {
+      const auto& interval = s.miniIntervals[i];
+      if (codepoint < interval.first) return false;
+      if (codepoint <= interval.last) return true;
+    }
+    return false;
+  };
+  bool residentSubset = true;
+  for (uint8_t si = 0; si < MAX_STYLES && residentSubset; si++) {
+    if (!(styleMask & (1 << si)) || !styles_[si].present) continue;
+    const auto& s = styles_[si];
+    if (s.miniGlyphCount == 0 || (s.miniMetadataOnly && !metadataOnly) ||
+        !miniContains(s, REPLACEMENT_GLYPH)) {
+      residentSubset = false;
+      break;
+    }
+    for (uint32_t ti = 0; ti < textCount && residentSubset; ti++) {
+      const char* text = getter(ctx, ti);
+      if (text == nullptr) continue;
+      const unsigned char* p = reinterpret_cast<const unsigned char*>(text);
+      while (*p) {
+        const uint32_t cp = utf8NextCodepoint(&p);
+        if (cp == 0) break;
+        if (!miniContains(s, cp)) {
+          residentSubset = false;
+          break;
+        }
+      }
+    }
+  }
+  if (residentSubset) {
+    const bool needsKernTopUp = !metadataOnly && loadKernLig && [&] {
+      for (uint8_t si = 0; si < MAX_STYLES; si++) {
+        if ((styleMask & (1 << si)) && styles_[si].present && !styles_[si].miniKernBuilt) return true;
+      }
+      return false;
+    }();
+    if (!needsKernTopUp) {
+      stats_.prewarmTotalMs = millis() - startMs;
+      return 0;
+    }
+  }
+
   // Cap the unique-codepoint budget by what the heap can actually hold as a
   // full mini arena (glyph structs + bitmaps, working headroom left over).
   // Multi-string batches only: a several-hundred-chapter CJK table of
@@ -1630,6 +1676,30 @@ uint16_t SdCardFont::getAdvance(uint32_t codepoint, uint8_t style) const {
     return table[lo].advanceX;
   }
   return 0;
+}
+
+bool SdCardFont::readAdvanceMetadata(uint32_t codepoint, uint8_t style, uint16_t& outAdvance) const {
+  style &= (MAX_STYLES - 1);
+  const auto& s = styles_[style];
+  if (!loaded_ || !s.present) return false;
+  if (advanceTableLookup(style, codepoint, &outAdvance)) return true;
+  int32_t glyphIndex = findGlobalGlyphIndex(s, codepoint);
+  if (glyphIndex < 0) glyphIndex = findGlobalGlyphIndex(s, REPLACEMENT_GLYPH);
+  if (glyphIndex < 0) return false;
+
+  HalFile file;
+  if (!Storage.openFileForRead("SDCF", filePath_, file)) return false;
+  const uint32_t offset = s.glyphsFileOffset + static_cast<uint32_t>(glyphIndex) * sizeof(EpdGlyph);
+  if (!file.seekSet(offset)) {
+    file.close();
+    return false;
+  }
+  EpdGlyph glyph{};
+  const bool ok = file.read(reinterpret_cast<uint8_t*>(&glyph), sizeof(glyph)) == sizeof(glyph);
+  file.close();
+  if (!ok) return false;
+  outAdvance = glyph.advanceX;
+  return true;
 }
 
 // Given a sorted array of unique codepoints, resolve glyph indices per style,
