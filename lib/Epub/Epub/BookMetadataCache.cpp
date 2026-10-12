@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <BufferedFile.h>
 #include <Logging.h>
+#include <HeapFloor.h>
 #include <Serialization.h>
 #include <Utf8.h>
 #include <ZipFile.h>
@@ -67,7 +68,7 @@ constexpr int BOOKBIN_MIN_CHUNK = 64;
 std::mutex sizeWindowLock;
 
 bool metadataSourceKey(const std::string& cachePath, const std::string& sourcePath, uint64_t& key,
-                       uint32_t* readCount = nullptr) {
+                       uint32_t* readCount = nullptr, uint32_t* readBytes = nullptr) {
   key = 14695981039346656037ull;
   const std::string& identityPath = sourcePath.empty() ? cachePath : sourcePath;
   for (const char c : identityPath) {
@@ -83,6 +84,7 @@ bool metadataSourceKey(const std::string& cachePath, const std::string& sourcePa
     const size_t head = std::min<size_t>(sizeof(sample), size);
     if (head && source.read(sample, head) == static_cast<int>(head)) {
       if (readCount) ++*readCount;
+      if (readBytes) *readBytes += head;
       for (size_t i = 0; i < head; ++i) {
         key ^= sample[i];
         key *= 1099511628211ull;
@@ -94,6 +96,7 @@ bool metadataSourceKey(const std::string& cachePath, const std::string& sourcePa
     if (size > sizeof(sample) && source.seek(size - sizeof(sample)) &&
         source.read(sample, sizeof(sample)) == static_cast<int>(sizeof(sample))) {
       if (readCount) ++*readCount;
+      if (readBytes) *readBytes += sizeof(sample);
       for (const uint8_t byte : sample) {
         key ^= byte;
         key *= 1099511628211ull;
@@ -190,6 +193,11 @@ class MetadataReader {
     if (!pod(length) || length > maxStringBytes || !has(length)) {
       valid = false;
       value.clear();
+      return false;
+    }
+    if (maxStringBytes < MAX_METADATA_STRING_BYTES &&
+        !heapfloor::leaves(length + 1, length + 1, ESP.getFreeHeap(), ESP.getMaxAllocHeap())) {
+      valid = false;
       return false;
     }
     value.resize(length);
@@ -327,6 +335,7 @@ bool BookMetadataCache::beginWrite() {
   buildMode = true;
   spineCount = 0;
   tocCount = 0;
+  Storage.remove((cachePath + metadataFile).c_str());
   LOG_DBG("BMC", "Entering write mode");
   return true;
 }
@@ -1093,13 +1102,13 @@ bool BookMetadataCache::loadMetadataOnly(BookMetadata& metadata, uint16_t* spine
   const std::string bookPath = cachePath + bookBinFile;
   HalFile book;
   uint64_t currentSourceKey = 0;
-  uint32_t sourceReads = 0;
+  uint32_t sourceReads = 0, sourceBytes = 0;
   const bool bookStatOk = Storage.openFileForRead("BMC", bookPath, book);
   const uint32_t currentBookSize = bookStatOk ? book.size() : 0;
   if (book) book.close();
-  if (!bookStatOk || currentBookSize != bookSize || !metadataSourceKey(cachePath, sourcePath, currentSourceKey, &sourceReads) ||
+  if (!bookStatOk || currentBookSize != bookSize || !metadataSourceKey(cachePath, sourcePath, currentSourceKey, &sourceReads, &sourceBytes) ||
       sourceKey != currentSourceKey) {
-    Storage.remove(sidecarPath.c_str());
+    // Keep a stale key until a real rebuild; adopting the old book.bin again would certify stale metadata.
     metadata = {};
     return false;
   }
@@ -1108,7 +1117,7 @@ bool BookMetadataCache::loadMetadataOnly(BookMetadata& metadata, uint16_t* spine
   if (lut) *lut = lutOffset;
 #ifdef TENOR_PRESS_PROBE
   LOG_INF("BMC", "META_READ bytes=%u reads=%u ms=%lu free=%u largest=%u spine=%u toc=%u",
-          static_cast<unsigned>(sidecarSize), static_cast<unsigned>(reader.readCount() + sourceReads),
+          static_cast<unsigned>(sidecarSize + sourceBytes), static_cast<unsigned>(reader.readCount() + sourceReads),
           millis() - started, static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
           static_cast<unsigned>(spineCountValue), static_cast<unsigned>(tocCountValue));
 #endif

@@ -8,6 +8,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <vector>
+#include <type_traits>
 
 // Catch corrupt lengths before the host actually attempts a device-sized OOM.
 static size_t largestRequest = 0;
@@ -21,7 +22,7 @@ void* operator new(size_t size) {
 void operator delete(void* p) noexcept { std::free(p); }
 void operator delete(void* p, size_t) noexcept { std::free(p); }
 void* operator new[](size_t size, const std::nothrow_t&) noexcept {
-  if (failReadBuffer && size == 2048) return nullptr;
+  if ((failReadBuffer && size == 2048)) return nullptr;
   return std::malloc(size);
 }
 void operator delete[](void* p, const std::nothrow_t&) noexcept { std::free(p); }
@@ -67,27 +68,90 @@ static void healthyLargeBook() {
   REQUIRE(cache.getSpineEntry(2043).tocIndex == 2043);
   REQUIRE(cache.getCumulativeSize(2043) == 2044u * 25704);
 }
+template <typename Cache = BookMetadataCache>
+static std::unique_ptr<Cache> sourceCache() {
+  if constexpr (std::is_constructible_v<Cache, std::string, std::string>)
+    return std::make_unique<Cache>("/test", "/book.epub");
+  else
+    return std::make_unique<Cache>("/test");
+}
+template <typename Cache>
+static auto metadataRead(Cache& cache, BookMetadataCache::BookMetadata& result, int)
+    -> decltype(cache.loadMetadataOnly(result)) { return cache.loadMetadataOnly(result); }
+template <typename Cache>
+static bool metadataRead(Cache& cache, BookMetadataCache::BookMetadata& result, long) {
+  if (!cache.load()) return false;
+  result = cache.coreMetadata;
+  return true;
+}
 static void metadataSidecarRejectsReplacedSource() {
-  auto book = fixture(3);
-  Storage.files["/test/book.bin"] = book;
-  auto source = std::make_shared<TestFile>();
-  source->bytes.resize(160, 0x31);
-  Storage.files["/book.epub"] = source;
-  {
-    BookMetadataCache cache("/test", "/book.epub");
-    REQUIRE(cache.load());
+  for (int n : {30, 399, 2000, 5000}) {
+    Storage.files.clear();
+    auto book = fixture(n);
+    Storage.files["/test/book.bin"] = book;
+    auto source = std::make_shared<TestFile>();
+    source->bytes.resize(160, 0x31);
+    Storage.files["/book.epub"] = source;
+    REQUIRE(sourceCache()->load());
+    const auto baselineBytes = book->readBytes;
+    const auto baselineReads = book->reads;
+    book->reads = book->readBytes = book->seeks = 0;
+    BookMetadataCache::BookMetadata metadata;
+    auto reader = sourceCache();
+    REQUIRE(metadataRead(*reader, metadata, 0));
+    REQUIRE(metadata.title == "metadata");
+    auto meta = Storage.files.find("/test/book.meta");
+    std::cout << "META n=" << n << " full_bytes=" << baselineBytes << " full_reads=" << baselineReads
+              << " metadata_book_bytes=" << book->readBytes << " metadata_book_reads=" << book->reads;
+    if (meta != Storage.files.end()) std::cout << " sidecar_bytes=" << meta->second->readBytes
+                                              << " sidecar_reads=" << meta->second->reads;
+    std::cout << std::endl;
+    REQUIRE(book->reads == 0);
+    REQUIRE(meta != Storage.files.end());
+    auto adopted = meta->second;
+    REQUIRE(sourceCache()->load());
+    REQUIRE(Storage.files.at("/test/book.meta") == adopted);
+    auto good = adopted->bytes;
+    source->bytes[0] ^= 0x01;
+    REQUIRE(!metadataRead(*reader, metadata, 0));
+    REQUIRE(metadata.title.empty());
+    REQUIRE(sourceCache()->load());
+    REQUIRE(!metadataRead(*reader, metadata, 0));
+    source->bytes[0] ^= 0x01;
+    Storage.files["/test/book.meta"] = adopted;
+    book->bytes.pop_back();
+    REQUIRE(!metadataRead(*reader, metadata, 0));
+    REQUIRE(metadata.title.empty());
+    Storage.files["/test/book.bin"] = fixture(n);
+    Storage.files["/test/book.meta"] = adopted;
+    Storage.files.erase("/book.epub");
+    REQUIRE(!metadataRead(*reader, metadata, 0));
+    Storage.files["/book.epub"] = source;
+    for (size_t length : {size_t(0), size_t(4), good.size() - 1}) {
+      adopted->bytes = std::vector<uint8_t>(good.begin(), good.begin() + length);
+      Storage.files["/test/book.meta"] = adopted;
+      REQUIRE(!metadataRead(*reader, metadata, 0));
+    }
+    for (size_t at : {size_t(0), size_t(15), good.size() - 1}) {
+      adopted->bytes = good;
+      adopted->bytes[at] ^= 1;
+      Storage.files["/test/book.meta"] = adopted;
+      REQUIRE(!metadataRead(*reader, metadata, 0));
+    }
+    Storage.files.erase("/test/book.meta");
+    Storage.files["/test/book.meta.tmp"] = adopted;
+    REQUIRE(!metadataRead(*reader, metadata, 0));
+    Storage.failWrite = true;
+    REQUIRE(sourceCache()->load());
+    Storage.failWrite = false;
+    REQUIRE(!Storage.exists("/test/book.meta"));
+    Storage.failRename = true;
+    REQUIRE(sourceCache()->load());
+    Storage.failRename = false;
+    REQUIRE(!Storage.exists("/test/book.meta"));
+    REQUIRE(sourceCache()->load());
+    REQUIRE(metadataRead(*reader, metadata, 0));
   }
-  REQUIRE(Storage.exists("/test/book.meta"));
-  book->reads = 0;
-  source->reads = 0;
-  BookMetadataCache::BookMetadata metadata;
-  BookMetadataCache reader("/test", "/book.epub");
-  REQUIRE(reader.loadMetadataOnly(metadata));
-  REQUIRE(metadata.title == "metadata");
-  REQUIRE(book->reads == 0);
-  source->bytes[0] ^= 0x01;
-  REQUIRE(!reader.loadMetadataOnly(metadata));
-  REQUIRE(!Storage.exists("/test/book.meta"));
 }
 
 static void truncatedRead() {

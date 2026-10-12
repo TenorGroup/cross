@@ -12,7 +12,7 @@
 struct TestFile {
   std::vector<uint8_t> bytes;
   size_t readable = SIZE_MAX;
-  size_t reads = 0, seeks = 0;
+  size_t reads = 0, seeks = 0, readBytes = 0, opens = 0, writes = 0;
   size_t seekFailureAt = SIZE_MAX;
 };
 class HalFile {
@@ -35,10 +35,12 @@ class HalFile {
     const size_t got = pos < end ? std::min(n, end - pos) : 0;
     if (got) memcpy(dst, data->bytes.data() + pos, got);
     pos += got;
+    data->readBytes += got;
     return static_cast<int>(got);
   }
   size_t write(const void* src, size_t n) {
     if (!data) return 0;
+    ++data->writes;
     if (pos + n > size()) data->bytes.resize(pos + n);
     memcpy(data->bytes.data() + pos, src, n);
     pos += n;
@@ -54,14 +56,17 @@ class HalFile {
 };
 struct TestStorage {
   std::map<std::string, std::shared_ptr<TestFile>> files;
+  bool failWrite = false, failRename = false;
   bool openFileForRead(const char*, const std::string& path, HalFile& out) {
     if (out) out.close();
     auto it = files.find(path);
     if (it == files.end()) return false;
     out.data = it->second;
+    ++out.data->opens;
     return true;
   }
   bool openFileForWrite(const char*, const std::string& path, HalFile& out) {
+    if (failWrite) return false;
     if (out) out.close();
     out.data = files[path] = std::make_shared<TestFile>();
     return true;
@@ -76,7 +81,7 @@ struct TestStorage {
   }
   bool rename(const char* from, const char* to) {
     auto it = files.find(from);
-    if (it == files.end() || files.count(to)) return false;
+    if (failRename || it == files.end() || files.count(to)) return false;
     files[to] = it->second;
     files.erase(it);
     return true;
