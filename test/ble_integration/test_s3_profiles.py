@@ -60,6 +60,11 @@ class S3Profiles(unittest.TestCase):
         self.assertEqual(option("env:x4pro-ble-probe", "custom_i18n_builtin_langs"),
                          option("env:x4pro-ble", "custom_i18n_builtin_langs"))
         self.assertIn("-DARDUINO_USB_MODE=0", flags)
+        # The cable is the only way to update a unit whose USB download mode is fused off: the CDC console
+        # on the OTG port (PUT, SD_FLASH, OTA_STATE, USB_DRIVE) and the USB drive both have to be built in.
+        for flag in ("-DARDUINO_USB_CDC_ON_BOOT=1", "-DFREEINK_DEVICE_X4PRO=1", "-DFREEINK_CAP_USB_MSC=1",
+                     "-DENABLE_SERIAL_LOG"):
+            self.assertIn(flag, flags)
         self.assertIn("-DARDUINO_USB_MODE=1", option("env:x4pro-ble-probe", "build_unflags"))
 
 
