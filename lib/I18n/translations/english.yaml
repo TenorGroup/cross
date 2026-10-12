@@ -596,6 +596,7 @@ STR_QUOTES_TRIM_END: "Moving: last word"
 STR_QUOTES_TRIM_HELP_MOVE: "Left, right: move the marked word"
 STR_QUOTES_TRIM_HELP_SWITCH: "Page buttons: switch first or last word"
 STR_QUOTES_TRIM_HELP_BACK: "Back: discard, keep the original"
+STR_QUOTES_TRIM_HELP_TAP: "Tap a word to make it the first or last word kept"
 STR_QUOTES_OF_BOOK: "Quotations in this book"
 STR_QUOTES_RESELECT_MISSING: "Could not find it on the page"
 

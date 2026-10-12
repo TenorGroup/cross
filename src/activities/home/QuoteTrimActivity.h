@@ -39,6 +39,10 @@ class QuoteTrimActivity final : public Activity {
   void layoutWords();
   const char* wordText(const Word& word) const;
   void move(int direction);
+  // Touch: the word tapped becomes the nearer end of the kept words (outside them, the end on its side).
+  void setBoundary(int word);
+  // Touch: the word under (x, y) on the lines shown, or -1.
+  int wordAt(int x, int y) const;
   void save();
   void cancel();
   int areaTop() const;

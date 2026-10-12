@@ -596,6 +596,7 @@ STR_QUOTES_TRIM_END: "Đang chỉnh chữ cuối"
 STR_QUOTES_TRIM_HELP_MOVE: "Trái, phải: chọn chữ bên cạnh"
 STR_QUOTES_TRIM_HELP_SWITCH: "Nút lật trang: chọn chữ đầu hoặc chữ cuối"
 STR_QUOTES_TRIM_HELP_BACK: "Quay lại: hủy thay đổi"
+STR_QUOTES_TRIM_HELP_TAP: "Chạm một chữ để chọn chữ đầu hoặc chữ cuối"
 STR_QUOTES_OF_BOOK: "Trích dẫn của sách này"
 STR_QUOTES_RESELECT_MISSING: "Không tìm thấy đoạn này trên trang"
 

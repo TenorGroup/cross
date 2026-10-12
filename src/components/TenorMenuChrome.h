@@ -88,6 +88,8 @@ constexpr int FOOT_ACTIONS = 2;
 void noteFootActions(const char* first, const char* second = nullptr);
 // The action pill under a tap at (x, y), 0 for the first, or -1.
 int footActionAt(int x, int y);
+// Where the last bar drew action `index` (a pop-up opened from it hangs from it); width 0 when it drew none.
+TouchBarRect footActionRect(int index);
 // A screen laid over a book's page clears the band of the bar first, so "<" stands on white, not on the
 // page's last line.
 // `air` px of the page above the bar are cleared with it: 12 for a screen laid over the page, FRAME_TO_BAR_GAP for the reader

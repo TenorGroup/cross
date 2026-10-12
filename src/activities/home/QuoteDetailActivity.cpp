@@ -15,6 +15,7 @@
 #include "components/QuoteMarkGlyph.h"
 #include "components/TenorMenuChrome.h"
 #include "components/PageScrollbar.h"
+#include "components/TouchScroll.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "shells/Shell.h"
@@ -154,6 +155,8 @@ void QuoteDetailActivity::onEnter() {
     show(std::max(0, std::min(index, static_cast<int>(ids.size()) - 1)));
   }
   logShown();
+  if (start == Start::Edit && loaded) openMenu(Menu::Edit);
+  else if (start == Start::Delete) openMenu(Menu::Delete);
   requestUpdate();
 }
 
@@ -432,28 +435,55 @@ void QuoteDetailActivity::loop() {
     openMenu(Menu::Options);
     return;
   }
+  // Touch: the bar's pill or a hold on the quote opens its options; a sideways swipe goes to the quote before
+  // or after, an up or down swipe turns the pages of a long one.
+  if (tenorchrome::kTouchShell) {
+    int x = 0, y = 0, dy = 0;
+    unsigned long heldMs = 0;
+    if ((mappedInput.wasScreenTapped(x, y) && tenorchrome::footActionAt(x, y) == 0) ||
+        mappedInput.wasScreenLongPress(x, y)) {
+      openMenu(Menu::Options);
+      return;
+    }
+    const auto swipe = mappedInput.wasSwipe();
+    if (swipe == MappedInputManager::SwipeDir::Left || swipe == MappedInputManager::SwipeDir::Right) {
+      stepQuote(swipe == MappedInputManager::SwipeDir::Left ? 1 : -1);
+      return;
+    }
+    if (mappedInput.wasVerticalSwipe(dy, heldMs)) {
+      const auto m = metrics();
+      stepPage(touchscroll::rows(dy, heldMs, m.bandBottom - quotedetail::bodyTop(m), 1));
+      return;
+    }
+  }
   // Front pair: the quote before or after, in the list's order, stopping at both ends.
   const bool next = mappedInput.wasReleased(Button::Right);
   if (next || mappedInput.wasReleased(Button::Left)) {
-    const int target = index + (next ? 1 : -1);
-    if (target < 0 || target >= static_cast<int>(ids.size())) return;
-    {
-      RenderLock lock(*this);
-      show(target);
-    }
-    logShown();
-    requestUpdate();
+    stepQuote(next ? 1 : -1);
     return;
   }
   // Side buttons: the pages of a quote too long for one screen.
   const bool forward = mappedInput.wasReleased(Button::PageForward);
-  if (forward || mappedInput.wasReleased(Button::PageBack)) {
-    const int target = quotePage + (forward ? 1 : -1);
-    if (target < 0 || target >= pages) return;
-    quotePage = target;
-    logShown();
-    requestUpdate();
+  if (forward || mappedInput.wasReleased(Button::PageBack)) stepPage(forward ? 1 : -1);
+}
+
+void QuoteDetailActivity::stepQuote(const int direction) {
+  const int target = index + direction;
+  if (target < 0 || target >= static_cast<int>(ids.size())) return;
+  {
+    RenderLock lock(*this);
+    show(target);
   }
+  logShown();
+  requestUpdate();
+}
+
+void QuoteDetailActivity::stepPage(const int direction) {
+  const int target = std::max(0, std::min(pages - 1, quotePage + direction));
+  if (target == quotePage) return;
+  quotePage = target;
+  logShown();
+  requestUpdate();
 }
 
 void QuoteDetailActivity::drawQuote() {
@@ -477,7 +507,10 @@ void QuoteDetailActivity::drawQuote() {
   const auto hand = [this](const int fontId, const int x, const int y, const char* text, const ugly::Size size) {
     return ugly::text(renderer, size, x, y + renderer.getFontAscenderSize(fontId), text);
   };
-  if (byHand)
+  // Touch: the strip at the top holds the clock and the battery there; the position goes to its middle note.
+  if (tenorchrome::kTouchShell)
+    tenorchrome::noteStatus(position);
+  else if (byHand)
     hand(POSITION_FONT_ID, quotedetail::headerPositionRight(m) - ugly::width(renderer, ugly::Size::S22, position),
          headerTextY(renderer, POSITION_FONT_ID), position, ugly::Size::S22);
   else
@@ -560,6 +593,8 @@ void QuoteDetailActivity::render(RenderLock&&) {
     x3readerchrome::drawPath(renderer, screenLayout().barRect, icon_tenor_reader_tools_40, tr(STR_QUOTES),
                              confirmingDelete ? nullptr : position);
   }
+  // Touch: the options (Edit, Delete) are a pill in the bar, as Select is on the buttons.
+  if (tenorchrome::kTouchShell) tenorchrome::noteFootActions(confirmingDelete ? nullptr : tr(STR_QUOTES_OPTIONS));
   // The popup draws its own button hints over the screen under it.
   if (popup.processRender(renderer, mappedInput)) return;
   // Each hint names what its button does now: at either end of the list the arrow that

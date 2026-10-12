@@ -486,6 +486,12 @@ int tenorchrome::footActionAt(const int x, const int y) {
   return -1;
 }
 
+tenorchrome::TouchBarRect tenorchrome::footActionRect(const int index) {
+  if (index < 0 || index >= FOOT_ACTIONS || footActionsGeneration != activityManager.activityGeneration()) return {};
+  const auto& r = footActionRects[index];
+  return {r.x, r.y, r.width, r.height};
+}
+
 void tenorchrome::noteHandDrawn() { handDrawnGeneration = activityManager.activityGeneration(); }
 
 const char* tenorchrome::screenTitle() {

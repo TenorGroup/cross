@@ -7,6 +7,7 @@
 
 #include "QuoteStore.h"
 #include "activities/Activity.h"
+#include "components/OptionPopup.h"
 #include "components/QuoteListLayout.h"
 #include "components/TenorMenuChrome.h"
 #include "util/ButtonNavigator.h"
@@ -84,6 +85,14 @@ class QuotesActivity final : public Activity {
   void logPage() const;
   void sortByPlace();
   void cycleOrder();
+  void setOrder(Order next);
+  // Touch: a tap on a row opens it, a hold on a quote offers Edit and Delete, a swipe turns pages, the bar's pill
+  // picks the view. True when the pass was taken.
+  bool touchInput();
+  // The row of the page under y, as an index into `ids` or `books`, or -1.
+  int itemAt(int y) const;
+  void showViewMenu();
+  void showQuoteActions(int item);
   void moveCursor(int direction);
   void flipPages(int pages);
   void activate();
@@ -120,4 +129,10 @@ class QuotesActivity final : public Activity {
   // A quote was deleted or edited below this screen, so whoever opened it reloads too.
   bool storeChanged = false;
   ButtonNavigator cursorNavigator;
+  // Touch: the view picked from the bar and the actions of a held quote.
+  OptionPopup viewMenu;
+  OptionPopup rowMenu;
+  // Touch: where the rows of the page were drawn, for the tap that picks one (rowTops[i] to rowTops[i + 1]).
+  mutable std::array<int16_t, MAX_BOOK_ROWS + 1> rowTops{};
+  mutable int shownRows = 0;
 };

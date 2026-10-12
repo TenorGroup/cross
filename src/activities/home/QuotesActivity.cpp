@@ -9,9 +9,11 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 
 #include "QuoteDetailActivity.h"
 #include "components/PageScrollbar.h"
+#include "components/TouchScroll.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -350,6 +352,10 @@ void QuotesActivity::cycleOrder() {
     case Order::BookPage:
     default: next = Order::BookNewest; break;
   }
+  setOrder(next);
+}
+
+void QuotesActivity::setOrder(const Order next) {
 #ifdef SIMULATOR
   LOG_DBG("QTS", "Quote view %s %s", bookLevel() ? "book" : "all", orderName(static_cast<uint8_t>(next)));
 #endif
@@ -460,6 +466,7 @@ void QuotesActivity::loop() {
     return;
   }
   if (itemCount() <= 0) return;
+  if (touchInput()) return;
   if (mappedInput.wasReleased(Button::Confirm)) {
     activate();
     return;
@@ -486,6 +493,78 @@ void QuotesActivity::loop() {
   // name, never through NavNext/NavPrevious, which fold a side button into the front one.
   cursorNavigator.onPressAndContinuous({Button::Right}, [this] { moveCursor(1); });
   cursorNavigator.onPressAndContinuous({Button::Left}, [this] { moveCursor(-1); });
+}
+
+bool QuotesActivity::touchInput() {
+  if (!tenorchrome::kTouchShell) return false;
+  for (OptionPopup* menu : {&viewMenu, &rowMenu}) {
+    if (!menu->isActive()) continue;
+    menu->handleInput(mappedInput, [this] { requestUpdate(); });
+    return true;
+  }
+  int x = 0, y = 0;
+  if (mappedInput.wasScreenLongPress(x, y)) {
+    const int item = itemAt(y);
+    if (item >= 0 && !showsBooks()) showQuoteActions(item);
+    return true;
+  }
+  int dy = 0;
+  unsigned long heldMs = 0;
+  if (mappedInput.wasVerticalSwipe(dy, heldMs)) {
+    const auto m = metrics();
+    flipPages(touchscroll::rows(dy, heldMs, m.bandBottom - quotelist::contentTop(topRowMetrics()), 1));
+    return true;
+  }
+  if (!mappedInput.wasScreenTapped(x, y)) return false;
+  if (tenorchrome::footActionAt(x, y) == 0) {
+    showViewMenu();
+    return true;
+  }
+  const int item = itemAt(y);
+  if (item < 0) return false;
+  selected = item;
+  activate();
+  return true;
+}
+
+int QuotesActivity::itemAt(const int y) const {
+  for (int i = 0; i < shownRows; ++i)
+    if (y >= rowTops[i] && y < rowTops[i + 1]) return page * perPage() + i;
+  return -1;
+}
+
+void QuotesActivity::showViewMenu() {
+  static constexpr StrId labels[] = {StrId::STR_QUOTES_VIEW_BOOKS,  StrId::STR_QUOTES_VIEW_NEWEST,
+                                     StrId::STR_QUOTES_VIEW_OLDEST, StrId::STR_QUOTES_SORT_NEWEST,
+                                     StrId::STR_QUOTES_SORT_OLDEST, StrId::STR_QUOTES_SORT_PAGE};
+  // A book's quotes sort three ways, the top level shows three views: the pop-up lists the three this level has.
+  const int base = bookLevel() ? static_cast<int>(Order::BookNewest) : 0;
+  std::vector<std::string> names;
+  for (int i = 0; i < 3; ++i) names.emplace_back(I18N.get(labels[base + i]));
+  viewMenu.show(StrId::STR_QUOTES, names, static_cast<int>(order) - base,
+                [this, base](const int pick) { if (pick >= 0) setOrder(static_cast<Order>(base + pick)); });
+  const auto pill = tenorchrome::footActionRect(0);
+  viewMenu.alignValueTo({static_cast<int16_t>(pill.x), static_cast<int16_t>(pill.y), static_cast<int16_t>(pill.width),
+                         static_cast<int16_t>(pill.height)});
+  requestUpdate();
+}
+
+void QuotesActivity::showQuoteActions(const int item) {
+  const int row = item - page * perPage();
+  if (row < 0 || row >= shownRows || item >= static_cast<int>(ids.size())) return;
+  selected = item;
+  static constexpr StrId labels[] = {StrId::STR_QUOTES_MENU_EDIT, StrId::STR_QUOTES_MENU_DELETE};
+  const freeink::ui::Rect anchor{0, rowTops[row], static_cast<int16_t>(renderer.getScreenWidth()),
+                                 static_cast<int16_t>(rowTops[row + 1] - rowTops[row])};
+  rowMenu.showAnchored(anchor, labels, 2, [this, item](const int action) {
+    if (action < 0 || item >= static_cast<int>(ids.size())) return;
+    startActivityForResult(
+        makeUniqueNoThrow<QuoteDetailActivity>(renderer, mappedInput, ids, item, insideReader, openBook,
+                                               action == 0 ? QuoteDetailActivity::Start::Edit
+                                                           : QuoteDetailActivity::Start::Delete),
+        [this](const ActivityResult& result) { onChildDone(result); });
+  });
+  requestUpdate();
 }
 
 void QuotesActivity::ensureWrapped(Block& block, const int maxLines, const int placeFontId) const {
@@ -538,7 +617,9 @@ void QuotesActivity::drawBlocks() const {
   const bool byHand = shell::uglyParts();
   auto y = quotelist::contentTop(topRowMetrics());
   const int first = page * shape.blocks;
+  shownRows = blockCount;
   for (int i = 0; i < blockCount; ++i) {
+    rowTops[i] = y;
     Block& entry = blocks[i];
     ensureWrapped(entry, shape.bodyLines, placeFontId);
     char number[12];
@@ -583,13 +664,16 @@ void QuotesActivity::drawBlocks() const {
     }
     y = static_cast<int16_t>(y + block.height);
   }
+  rowTops[blockCount] = y;
 }
 
 void QuotesActivity::drawBookRows() const {
   const auto m = metrics();
   auto y = quotelist::contentTop(topRowMetrics());
   const int first = page * perPage();
+  shownRows = rowCount;
   for (int i = 0; i < rowCount; ++i) {
+    rowTops[i] = y;
     const auto& entry = rows[i];
     const auto row = quotelist::bookRow(m, y);
     const bool marked = first + i == selected && !tenorchrome::kTouchShell;
@@ -629,6 +713,7 @@ void QuotesActivity::drawBookRows() const {
     renderer.drawText(DATE_FONT_ID, row.dateX + inset, row.dateY, entry.latest.c_str(), !onBlack(marked));
     y = static_cast<int16_t>(y + row.height);
   }
+  rowTops[rowCount] = y;
 }
 
 std::string QuotesActivity::footer() const {
@@ -708,6 +793,17 @@ void QuotesActivity::render(RenderLock&&) {
     }
   }
 
+  // Touch: the view is picked from a pill in the bar, which names the one shown.
+  if (tenorchrome::kTouchShell && itemCount() > 0) {
+    static constexpr StrId views[] = {StrId::STR_QUOTES_VIEW_BOOKS,  StrId::STR_QUOTES_VIEW_NEWEST,
+                                      StrId::STR_QUOTES_VIEW_OLDEST, StrId::STR_QUOTES_SORT_NEWEST,
+                                      StrId::STR_QUOTES_SORT_OLDEST, StrId::STR_QUOTES_SORT_PAGE};
+    // The row over the list names the view in full ("Sort: Newest first"); the pill holds its value alone.
+    const char* view = I18N.get(views[static_cast<uint8_t>(order)]);
+    if (const char* colon = std::strstr(view, ": ")) view = colon + 2;
+    else if (const char* wide = std::strstr(view, "\xEF\xBC\x9A")) view = wide + 3;
+    tenorchrome::noteFootActions(view);
+  }
   // An empty store leaves Back as the only button that does anything.
   const bool any = itemCount() > 0;
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), any ? tr(STR_SELECT) : "", any ? tr(STR_DIR_UP) : "",
@@ -724,6 +820,7 @@ void QuotesActivity::render(RenderLock&&) {
 #ifdef UGLY_FRAME_LOG
   if (shell::uglyParts()) LOG_INF("UGLY", "Quotes frame books=%d items=%d sel=%d", showsBooks(), itemCount(), selected);
 #endif
+  if (viewMenu.processRender(renderer, mappedInput) || rowMenu.processRender(renderer, mappedInput)) return;
   renderer.displayBuffer();
 }
 

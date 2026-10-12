@@ -40,13 +40,16 @@ class QuoteDetailActivity final : public Activity {
   // copied (8 bytes each) so a delete here can close the gap without asking the list.
   // `openBook`, when the reader opened the list, is its loaded book: chapter names of its
   // quotes come from it rather than from a second load of the same book.
+  // What opens with the quote: nothing, or the Edit or Delete step a hold on the list's row asked for (touch).
+  enum class Start : uint8_t { Quote, Edit, Delete };
   QuoteDetailActivity(GfxRenderer& r, MappedInputManager& input, std::vector<quotes::QuoteId> ids, int index,
-                      bool insideReader, std::shared_ptr<Epub> openBook = nullptr)
+                      bool insideReader, std::shared_ptr<Epub> openBook = nullptr, Start start = Start::Quote)
       : Activity("QuoteDetail", r, input),
         ids(std::move(ids)),
         index(index),
         insideReader(insideReader),
-        openBook(std::move(openBook)) {}
+        openBook(std::move(openBook)),
+        start(start) {}
   void onEnter() override;
   void loop() override;
   void render(RenderLock&&) override;
@@ -101,6 +104,10 @@ class QuoteDetailActivity final : public Activity {
 
   OptionPopup popup;
   Menu menu = Menu::None;
+  Start start = Start::Quote;
+  // The quote before or after (-1, 1) and the pages of a long one: the front pair and the side buttons, or swipes.
+  void stepQuote(int direction);
+  void stepPage(int direction);
   int choice = -1;
   bool confirmingDelete = false;
   std::vector<std::string> excerpt;
