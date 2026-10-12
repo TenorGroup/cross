@@ -3,6 +3,7 @@
 #include <PersistableStore.h>
 
 #include "util/ReadingHabits.h"
+#include "util/ReadingHistory.h"
 #include "util/SoLieuDoc.h"
 
 struct BookReadingRecord {
@@ -46,12 +47,16 @@ class ReadingStatsStore : public PersistableStore<ReadingStatsStore> {
   ResetResult resetStatistics(bool all);
   bool saveToFile() const;
   bool loadFromFile();
+  // The long calendar from the card with RAM's newer days laid over it. False when the card has a file
+  // that does not read whole: a save then refuses too, rather than drop the days it cannot read.
+  bool loadHistory(readinghistory::Snapshot& history) const;
   // progress: 0-100, or negative while the book's progress is not known (its index is still
   // being built); the record then keeps the last known one.
   bool activateBook(const std::string& path, int progress, const std::string& title = "");
   bool readBook(const std::string& path, BookReadingRecord& record) const;
 
  private:
+  bool readHistory(readinghistory::Snapshot& history) const;
   bool readBookFile(const std::string& path, BookReadingRecord& record, int memo) const;
 
  public:

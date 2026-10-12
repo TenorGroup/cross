@@ -107,11 +107,78 @@ SnapshotReadResult readOpenSnapshot(HalFile& file, size_t size, JsonDocument& do
   return !error && doc.is<JsonObject>() ? SnapshotReadResult::Ready : SnapshotReadResult::Invalid;
 }
 
+// With 90 days, a long path and title the ledger outgrows a whole-file String (4 KB and up must ask the
+// heap floor). It goes to and from the card through 256 B instead.
+class SnapshotWriter {
+  HalFile& file;
+  char buffer[256];
+  size_t used = 0;
+  bool good = true;
+
+ public:
+  explicit SnapshotWriter(HalFile& out) : file(out) {}
+  bool flush() {
+    if (used && good) good = file.write(buffer, used) == used;
+    used = 0;
+    return good;
+  }
+  size_t write(const uint8_t value) {
+    buffer[used++] = static_cast<char>(value);
+    return used < sizeof(buffer) || flush() ? 1 : 0;
+  }
+  size_t write(const uint8_t* data, const size_t size) {
+    size_t written = 0;
+    while (written < size && write(data[written])) ++written;
+    return written;
+  }
+};
+bool writeLedger(const char* path, const JsonDocument& doc) {
+  if (!Storage.ensureDirectoryExists("/.crosspoint")) return false;
+  auto file = Storage.open(path, O_WRONLY | O_CREAT | O_TRUNC);
+  if (!file) return false;
+  SnapshotWriter out(file);
+  const bool whole = serializeJson(doc, out) == measureJson(doc) && out.flush();
+  const bool closed = file.close();
+  return whole && closed;
+}
+// PersistableStoreBase::readDocFromFileStatus(path, doc, 32768) streamed: the same answers and the same
+// .davbak recovery.
+PersistableStoreBase::ReadResult readLedger(const std::string& path, JsonDocument& doc) {
+  using ReadResult = PersistableStoreBase::ReadResult;
+  const auto parse = [&doc](const std::string& name) {
+    doc.clear();
+    if (!Storage.exists(name.c_str())) return ReadResult::Invalid;
+    auto file = Storage.open(name.c_str());
+    if (!file) return ReadResult::Unavailable;
+    const size_t size = file.size();
+    if (size == 0 || size > 32768) return file.close() && size == 0 ? ReadResult::Invalid : ReadResult::Unavailable;
+    SnapshotReader input(file, size);
+    const auto error = deserializeJson(doc, input);
+    const bool complete = input.finish();
+    const bool closed = file.close();
+    if (!complete || !closed || error == DeserializationError::NoMemory || doc.overflowed())
+      return ReadResult::Unavailable;
+    return error ? ReadResult::Invalid : ReadResult::Ready;
+  };
+  const auto main = parse(path);
+  if (main != ReadResult::Invalid) return main;
+  const std::string backup = path + ".davbak";
+  const auto recovery = parse(backup);
+  if (recovery != ReadResult::Ready) {
+    doc.clear();
+    return recovery;
+  }
+  if (Storage.exists(path.c_str()) && !Storage.remove(path.c_str())) return ReadResult::Ready;
+  Storage.rename(backup.c_str(), path.c_str());
+  return ReadResult::Ready;
+}
+
 // `memo` names the slot that learns the main file is readable when it reads whole, -1 for none.
 bool readSnapshot(const std::string& path, JsonDocument& doc, const int memo = -1) {
   using ReadResult = PersistableStoreBase::ReadResult;
-  const auto read = [&doc](const std::string& file) {
-    const auto result = PersistableStoreBase::readDocFromFileStatus(file.c_str(), doc, 32768);
+  const auto read = [&doc, memo](const std::string& file) {
+    const auto result = memo == MEMO_LEDGER ? readLedger(file, doc)
+                                            : PersistableStoreBase::readDocFromFileStatus(file.c_str(), doc, 32768);
     if (result == ReadResult::Ready && doc.is<JsonObject>()) return ReadResult::Ready;
     doc.clear();
     return result == ReadResult::Unavailable ? result : ReadResult::Invalid;
@@ -144,11 +211,14 @@ bool writeSnapshot(const std::string& path, const JsonDocument& doc, const int m
   if (memo >= 0) knownReadable[memo].clear();  // known again once the new main file is in place
   if (!readable && Storage.exists(path.c_str())) {
     JsonDocument previous;
-    const auto result = PersistableStoreBase::readDocFromFileStatus(path.c_str(), previous, 32768);
+    const auto result = memo == MEMO_LEDGER ? readLedger(path, previous)
+                                            : PersistableStoreBase::readDocFromFileStatus(path.c_str(), previous, 32768);
     if (result == PersistableStoreBase::ReadResult::Unavailable) return false;
     readable = result == PersistableStoreBase::ReadResult::Ready;
   }
-  if (!PersistableStoreBase::writeDocToFile(temporary.c_str(), doc)) return false;
+  if (memo == MEMO_LEDGER ? !writeLedger(temporary.c_str(), doc)
+                          : !PersistableStoreBase::writeDocToFile(temporary.c_str(), doc))
+    return false;
   if (Storage.exists(path.c_str())) {
     // Keep the known readable backup if the main file was interrupted.
     if (readable) {
@@ -198,15 +268,64 @@ BookReadingRecord decodeBook(JsonVariantConst doc) {
   b.startProgress = std::min<uint32_t>(doc["startProgress"] | 0u, 100);
   return b;
 }
+bool supportedSchema(const JsonVariantConst doc) {
+  const auto schema = doc["schema"];
+  return schema.isUnbound() || (schema.is<uint32_t>() && schema.as<uint32_t>() <= 4);
+}
+// One "ngay" row: [date, minutes, turns(, ms under a minute)]. False for a row the store skips.
+bool decodeDay(const JsonVariantConst value, solieu::NgayDoc& day) {
+  if (!value.is<JsonArrayConst>()) return false;
+  const auto o = value.as<JsonArrayConst>();
+  // Date 0 is junk: reading before the clock was ever set has its own bucket, never a row.
+  if (o.size() < 3 || !o[0].is<uint32_t>() || !o[1].is<uint16_t>() || !o[2].is<uint16_t>() || !o[0].as<uint32_t>())
+    return false;
+  day = {o[0].as<uint32_t>(), o[1].as<uint16_t>(), o[2].as<uint16_t>(), 0};
+  if (o.size() >= 4 && o[3].is<uint16_t>() && o[3].as<uint16_t>() < 60000) day.leMs = o[3].as<uint16_t>();
+  return true;
+}
+void encodeDay(JsonArray rows, const solieu::NgayDoc& n) {
+  JsonArray row = rows.add<JsonArray>();
+  row.add(n.ma);
+  row.add(n.phut);
+  row.add(n.trang);
+  if (n.leMs) row.add(n.leMs);
+}
+void encodeHistory(JsonDocument& doc, const readinghistory::Snapshot& history) {
+  const auto rows = doc["ngay"].to<JsonArray>();
+  for (size_t i = 0; i < history.count; ++i) encodeDay(rows, history.days[i]);
+}
 }  // namespace
 
 bool ReadingStatsStore::saveToFile() const {
   if (!writableSchema || !statisticsReadable) return false;
   std::lock_guard<std::mutex> lock(storeMutex);
   if (Storage.exists(RESET_FILE)) return false;
+  readinghistory::Snapshot history;
+  if (!readHistory(history)) return false;
   JsonDocument doc;
   toJson(doc);
+  encodeHistory(doc, history);
   return writeSnapshot(getFilePath(), doc, MEMO_LEDGER);
+}
+bool ReadingStatsStore::loadHistory(readinghistory::Snapshot& history) const {
+  history = {};
+  if (!writableSchema || !statisticsReadable) return false;
+  std::lock_guard<std::mutex> lock(storeMutex);
+  return readHistory(history);
+}
+bool ReadingStatsStore::readHistory(readinghistory::Snapshot& history) const {
+  history = {};
+  const std::string path = getFilePath();
+  if (Storage.exists(path.c_str()) || Storage.exists((path + ".tmp").c_str()) ||
+      Storage.exists((path + ".bak").c_str())) {
+    JsonDocument doc;
+    if (!readSnapshot(path, doc, MEMO_LEDGER) || !supportedSchema(doc.as<JsonVariantConst>())) return false;
+    solieu::NgayDoc day;
+    for (const auto row : doc["ngay"].as<JsonArrayConst>())
+      if (decodeDay(row, day)) history.merge(day);
+  }
+  for (const auto& day : kho.cacNgay()) history.merge(day);
+  return true;
 }
 bool ReadingStatsStore::loadFromFile() {
   std::lock_guard<std::mutex> lock(storeMutex);
@@ -236,18 +355,16 @@ ReadingStatsStore::ResetResult ReadingStatsStore::resetStatistics(const bool all
     doc["schema"] = 4;
     doc["bookEpoch"] = bookEpoch + 1;
   } else {
+    readinghistory::Snapshot history;
+    if (!readHistory(history)) return ResetResult::Failed;
     toJson(doc);
+    encodeHistory(doc, history);
     doc.remove("habits");
   }
   if (doc.overflowed()) return ResetResult::Failed;
   // Commit a preferred snapshot before touching any old main/backup file.
   const std::string temporary = std::string(RESET_FILE) + ".tmp";
-  String encoded;
-  serializeJson(doc, encoded);
-  if (encoded.length() != measureJson(doc)) return ResetResult::Failed;
-  auto file = Storage.open(temporary.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
-  if (!file || file.write(encoded.c_str(), encoded.length()) != encoded.length()) return ResetResult::Failed;
-  if (!file.close() || !Storage.rename(temporary.c_str(), RESET_FILE)) return ResetResult::Failed;
+  if (!writeLedger(temporary.c_str(), doc) || !Storage.rename(temporary.c_str(), RESET_FILE)) return ResetResult::Failed;
   // The committed document was constructed here; parsing it cannot require more
   // title/path capacity than the current store in a habits-only reset.
   statisticsReadable = fromJson(doc.as<JsonVariantConst>());
@@ -405,14 +522,8 @@ void ReadingStatsStore::toJson(JsonDocument& doc) const {
   }
   if (!activeBookPath.empty())
     writeBook(doc["activeBook"].to<JsonObject>(), activeBookPath, activeBook, activeBookTitle, bookEpoch);
-  JsonArray ds = doc["ngay"].to<JsonArray>();
-  for (const auto& n : kho.cacNgay()) {
-    JsonArray dong = ds.add<JsonArray>();
-    dong.add(n.ma);
-    dong.add(n.phut);
-    dong.add(n.trang);
-    if (n.leMs) dong.add(n.leMs);
-  }
+  const JsonArray ds = doc["ngay"].to<JsonArray>();
+  for (const auto& n : kho.cacNgay()) encodeDay(ds, n);
   // Phan doc duoc luc dong ho chua tung dong bo. Giu rieng de tong van dung ma khong ai
   // phai gan bua no vao mot ngay.
   if (kho.msChuaBietNgay()) doc["lacMs"] = kho.msChuaBietNgay();
@@ -424,8 +535,7 @@ void ReadingStatsStore::toJson(JsonDocument& doc) const {
 
 bool ReadingStatsStore::fromJson(const JsonVariantConst doc) {
   ++bookListGeneration;
-  const auto schema = doc["schema"];
-  writableSchema = schema.isUnbound() || (schema.is<uint32_t>() && schema.as<uint32_t>() <= 4);
+  writableSchema = supportedSchema(doc);
   if (!writableSchema) {
     LOG_ERR("STATS", "Unsupported statistics schema retained without changes");
     return false;
@@ -490,20 +600,12 @@ bool ReadingStatsStore::fromJson(const JsonVariantConst doc) {
   activeBookPath = doc["activeBook"]["path"] | "";
   activeBookTitle = doc["activeBook"]["title"] | "";
   activeBook = decodeBook(doc["activeBook"]);
-  if (doc["ngay"].is<JsonArrayConst>()) {
-    for (const JsonVariantConst dong : doc["ngay"].as<JsonArrayConst>()) {
-      if (!dong.is<JsonArrayConst>()) continue;
-      const JsonArrayConst o = dong.as<JsonArrayConst>();
-      if (o.size() < 3) continue;
-      if (!o[0].is<uint32_t>() || !o[1].is<uint16_t>() || !o[2].is<uint16_t>()) continue;
-      const auto ma = o[0].as<uint32_t>();
-      // Ma ngay bang 0 la rac: phan chua biet ngay co thung rieng, khong nam trong day.
-      if (ma == 0) continue;
-      // Use the same merge and retention rule as live updates, in any input order.
-      kho.gopThem(ma, o[1].as<uint16_t>(), o[2].as<uint16_t>());
-      if (o.size() >= 4 && o[3].is<uint16_t>() && o[3].as<uint16_t>() < 60000)
-        kho.gopMilliseconds(ma, o[3].as<uint16_t>());
-    }
+  solieu::NgayDoc n;
+  for (const JsonVariantConst dong : doc["ngay"].as<JsonArrayConst>()) {
+    if (!decodeDay(dong, n)) continue;
+    // Use the same merge and retention rule as live updates, in any input order.
+    kho.gopThem(n.ma, n.phut, n.trang);
+    kho.gopMilliseconds(n.ma, n.leMs);
   }
   kho.datPhanLac(doc["lacPhut"] | 0u, doc["lacTrang"] | 0u);
   const uint32_t remainder = doc["lacMs"] | 0u;
