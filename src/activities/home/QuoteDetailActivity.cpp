@@ -226,12 +226,13 @@ void QuoteDetailActivity::show(const int newIndex) {
   snprintf(page, sizeof(page), tr(STR_QUOTES_DETAIL_PAGE), quote.page + 1);
   pageLine = page;
 
+  if (penPage()) {
+    titleLines.clear();  // the facts are set line by line from the quote's own title, not from these
+    layoutUglyBody();
+    layoutX3Pages();
+    return;
+  }
   if (tenorchrome::x3ScreenLayoutEnabled()) {
-    if (shell::uglyParts()) {
-      layoutUglyBody();
-      layoutX3Pages();
-      return;
-    }
     const int step = metaStep();
     const int metaCount = visitX3Meta(false);
     const auto body = endsWithCloseQuote(quote.text) ? quote.text : quote.text + CLOSE_QUOTE;
@@ -499,6 +500,16 @@ void QuoteDetailActivity::drawQuote() {
                       quotedetail::headerPositionRight(m) - renderer.getTextWidth(POSITION_FONT_ID, position),
                       headerTextY(renderer, POSITION_FONT_ID), position);
 
+  if (penPage() && loaded) {
+    // tenor/ugly on the touch reader: the quote, the facts and the scribbles in the pen under the header, which stays the screen's
+    auto* penCache = renderer.getFontCacheManager();
+    auto penScope = penCache->createPrewarmScope();
+    for (int pass = 0; pass < 2; ++pass) {
+      if (pass == 1) penScope.endScanAndPrewarm();
+      drawUglyPage();
+    }
+    return;
+  }
   const int font = size18 ? NOTOSERIF_18_FONT_ID : NOTOSERIF_16_FONT_ID;
   const int lineHeight = size18 ? m.lineHeight18 : m.lineHeight16;
   const int x = quotedetail::bodyX0(m);
@@ -607,7 +618,7 @@ tenorchrome::X3ScreenLayout QuoteDetailActivity::screenLayout() const { return t
 
 // tenor/ugly writes the facts at its own line pitch, the one its paragraphs use.
 int QuoteDetailActivity::metaStep() const {
-  return shell::uglyParts() ? UGLY_META_STEP : renderer.getLineHeight(SMALL_FONT_ID);
+  return penPage() ? UGLY_META_STEP : renderer.getLineHeight(SMALL_FONT_ID);
 }
 
 void QuoteDetailActivity::positionLabel(char* out, const size_t size) const {
@@ -615,9 +626,9 @@ void QuoteDetailActivity::positionLabel(char* out, const size_t size) const {
 }
 
 int QuoteDetailActivity::visitX3Meta(const bool paint, const int firstLine, const int top) const {
-  const auto body = screenLayout().bodyRect;
+  const auto body = bodyArea();
   const int step = metaStep();
-  const bool hand = shell::uglyParts();
+  const bool hand = penPage();
   const auto measure = [&](const char* line) {
     return hand ? ugly::width(renderer, ugly::Size::S22, line) : renderer.getTextWidth(SMALL_FONT_ID, line);
   };
@@ -649,9 +660,9 @@ int QuoteDetailActivity::visitX3Meta(const bool paint, const int firstLine, cons
 void QuoteDetailActivity::layoutX3Pages() {
   const auto area = metrics();
   const int step = metaStep();
-  if (shell::uglyParts()) {
+  if (penPage()) {
     using namespace ugly::quotepage;
-    const auto body = screenLayout().bodyRect;
+    const auto body = bodyArea();
     const int rowsTop = body.y + BODY_BASE - BODY_ASCENT;
     linesPerPage = capacityFor(body.y, body.bottom());
     bodyPages = uglyMap.pages;
@@ -672,7 +683,7 @@ void QuoteDetailActivity::layoutX3Pages() {
 
 void QuoteDetailActivity::drawX3Content() const {
   const auto body = screenLayout().bodyRect;
-  if (!shell::uglyParts()) {
+  if (!penPage()) {
     char position[48];
     positionLabel(position, sizeof(position));
     tenorchrome::drawInfoInRect(renderer, position,
@@ -684,7 +695,7 @@ void QuoteDetailActivity::drawX3Content() const {
     tenorchrome::drawInfoInRect(renderer, tr(STR_QUOTES_UNREADABLE), {body.x, top, body.width, body.bottom() - top});
     return;
   }
-  if (shell::uglyParts()) {
+  if (penPage()) {
     drawUglyPage();
     return;
   }
@@ -711,7 +722,7 @@ void QuoteDetailActivity::layoutUglyBody() {
   using namespace ugly::quotepage;
   ugly::ensureFonts(renderer);
   uglyBody = utf8ComposeNfc(endsWithCloseQuote(quote.text) ? quote.text : quote.text + CLOSE_QUOTE);
-  const auto body = screenLayout().bodyRect;
+  const auto body = bodyArea();
   const int space = ugly::width(renderer, ugly::Size::S30, "a") / 2 + 4;
   uglyMap = paginate(uglyBody.data(), static_cast<int>(uglyBody.size()), renderer.getScreenWidth() - COLUMN_INSET, space,
                      capacityFor(body.y, body.bottom()), [this](const char* bytes, const int length) {
@@ -724,7 +735,7 @@ void QuoteDetailActivity::drawUglyPage() const {
 #ifdef UGLY_FRAME_LOG
   const unsigned long penStart = millis();
 #endif
-  const auto body = screenLayout().bodyRect;
+  const auto body = bodyArea();
   const int w = renderer.getScreenWidth();
   const int space = ugly::width(renderer, ugly::Size::S30, "a") / 2 + 4;
   const int rowsTop = body.y + BODY_BASE - BODY_ASCENT;
@@ -801,4 +812,14 @@ void QuoteDetailActivity::drawUglyPage() const {
       LOG_INF("UGLY", "QuoteWords page=%d box=%d,%d,%d,%d", quotePage, words[i].x0, words[i].y0, words[i].x1, words[i].y1);
   }
 #endif
+}
+
+bool QuoteDetailActivity::penPage() const {
+  return shell::isUgly() && (tenorchrome::kTouchShell || tenorchrome::x3ScreenLayoutEnabled());
+}
+
+tenorchrome::X3ScreenRect QuoteDetailActivity::bodyArea() const {
+  if (!tenorchrome::kTouchShell) return screenLayout().bodyRect;
+  const int top = quotesHeaderBottom();
+  return {0, top, renderer.getScreenWidth(), metrics().bandBottom - top};
 }

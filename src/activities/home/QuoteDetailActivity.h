@@ -60,6 +60,12 @@ class QuoteDetailActivity final : public Activity {
   // tenor/ugly on the button readers: the quote written by hand, broken into lines and pages in the pen's own widths.
   void layoutUglyBody();
   void drawUglyPage() const;
+  // True when the page is written in the pen: tenor/ugly on the button readers (which draw the screen in the X3 layout) and on
+  // the touch reader.
+  bool penPage() const;
+  // Where the page of the pen is laid out: the body rect of the screen, or on the touch reader what lies between its header and
+  // the foot of the content.
+  tenorchrome::X3ScreenRect bodyArea() const;
 
  private:
   enum class Menu : uint8_t { None, Options, Edit, Delete };
