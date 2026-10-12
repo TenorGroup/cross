@@ -4,6 +4,13 @@
 #include <string>
 #include <vector>
 
+static bool refuseArray = false;
+void* operator new[](size_t size, const std::nothrow_t&) noexcept {
+  if (refuseArray) return nullptr;
+  try { return ::operator new[](size); } catch (...) { return nullptr; }
+}
+void operator delete[](void* memory, const std::nothrow_t&) noexcept { ::operator delete[](memory); }
+
 namespace {
 void require(const bool value, const char* message) {
   if (!value) {
@@ -40,5 +47,11 @@ int main() {
   require(filesearch::nameLess("/z/Book 2.epub", "/a/Book 10.epub"), "natural basename order");
   require(filesearch::nameLess("Đường 2.epub", "Đường xa.epub"), "folded natural order across NFC and NFD");
   require(filesearch::nameLess("/a/Book.epub", "/b/Book.epub"), "raw path tie");
+  refuseArray = true;
+  require(!filesearch::buildResults(names, "sach", results) && results.size() == 0 && results.capacity() == 0,
+          "index OOM clears result without changing source");
+  refuseArray = false;
+  require(names[0] == "10 sach.epub" && filesearch::buildResults(names, "sach", results) && results.size() == 3,
+          "index allocation recovers after refusal");
   std::cout << "file search helper: PASS\n";
 }
