@@ -4,6 +4,7 @@
 // the reader looks each item up twice (its size, then its bytes), each time from a new ZipFile.
 // These cases hold the walk to block reads, a repeated lookup to no walk at all, and the answers
 // to what the zip says, damaged zips included.
+#include "../huge_book/HeapCap.h"
 #include <Arduino.h>
 #include <HalStorage.h>
 #include <ZipFile.h>
@@ -12,6 +13,8 @@
 #include <cstdio>
 #include <string>
 #include <vector>
+
+#include "../../lib/ZipFile/ZipFile.cpp"
 
 EspClass ESP;
 
@@ -124,7 +127,22 @@ class Sink : public Print {
 const std::string PATH = "/sach/khong-lo.epub";
 
 void install(const std::vector<uint8_t>& zip, const std::string& path = PATH) {
-  Storage.files[path] = std::make_shared<const std::vector<uint8_t>>(zip);
+  Storage.files[path] = std::make_shared<std::vector<uint8_t>>(zip);
+}
+
+void clearKnownCache() {
+  for (auto& slot : known) slot = {};
+  knownNext = 0;
+}
+
+std::vector<Entry> chapterBook(const int count) {
+  std::vector<Entry> entries;
+  for (int i = 0; i < count; ++i) entries.push_back({chapter(i), "chapter " + std::to_string(i), "", ""});
+  return entries;
+}
+
+void setHeaderChecksum(std::vector<uint8_t>& index) {
+  put32(index.data() + ZIP_INDEX_HEADER_SUM, indexChecksum(index.data(), ZIP_INDEX_HEADER_SUM));
 }
 
 // What the reader does per item: a new ZipFile for its size, another for its bytes.
@@ -141,6 +159,9 @@ class ZipCentralDir : public ::testing::Test {
  protected:
   void SetUp() override {
     ESP.freeHeap = 200000;
+    storageFaults = {};
+    Storage.files.clear();
+    clearKnownCache();
     install(makeZip(bigBook()));
     // A lookup of another zip first, so nothing this test asks is already known.
     install(makeZip({{"a", "b", "", ""}}), "/khac.epub");
@@ -152,6 +173,7 @@ class ZipCentralDir : public ::testing::Test {
 }  // namespace
 
 TEST_F(ZipCentralDir, FindsTheLastEntryInBlockReads) {
+  storageFaults.failOpen = true;
   size_t size = 0;
   storageCalls = {};
   EXPECT_TRUE(ZipFile(PATH).getInflatedFileSize("OEBPS/cover.jpg", &size));
@@ -293,4 +315,192 @@ TEST_F(ZipCentralDir, DamagedZipsAnswerMissing) {
   // An empty file and a file too small for an EOCD.
   EXPECT_EQ(lookup({}, {"mimetype"}), V{"<missing>"});
   EXPECT_EQ(lookup(std::vector<uint8_t>(10, 0), {"mimetype"}), V{"<missing>"});
+}
+
+TEST_F(ZipCentralDir, SidecarBoundsBackwardReadsAndStorage) {
+  for (int n : {30, 399, 2000, 5000}) {
+    const auto entries = chapterBook(n);
+    const std::string path = "/bounded-" + std::to_string(n) + ".epub";
+    install(makeZip(entries), path);
+    size_t size = 0;
+    ASSERT_TRUE(ZipFile(path).getInflatedFileSize(chapter(n / 2).c_str(), &size));
+    storageCalls = {};
+    heapcap::reset(SIZE_MAX);
+    const bool found = ZipFile(path).getInflatedFileSize(chapter(n / 2 - 1).c_str(), &size);
+    const size_t peak = heapcap::peak;
+    heapcap::stop();
+    const StorageCalls cold = storageCalls;
+    ASSERT_TRUE(found);
+    EXPECT_EQ(size, entries[n / 2 - 1].data.size());
+
+    ZipFile opened(path);
+    ASSERT_TRUE(opened.open());
+    ASSERT_TRUE(opened.getInflatedFileSize(chapter(n / 2 - 2).c_str(), &size));
+    storageCalls = {};
+    heapcap::reset(SIZE_MAX);
+    const bool openedFound = opened.getInflatedFileSize(chapter(n / 2 - 3).c_str(), &size);
+    const size_t openedPeak = heapcap::peak;
+    heapcap::stop();
+    ASSERT_TRUE(openedFound);
+    const StorageCalls warm = storageCalls;
+    opened.close();
+
+    const auto index = Storage.files.find(path + ".zidx");
+    printf("ZIP_MEASURE n=%d cold_bytes=%zu cold_reads=%zu cold_seeks=%zu eocd_reads=%zu "
+           "opened_bytes=%zu opened_reads=%zu opened_seeks=%zu cold_heap=%zu opened_heap=%zu index_bytes=%zu\n",
+           n, cold.bytes, cold.reads, cold.seeks, cold.eocdReads, warm.bytes, warm.reads, warm.seeks, peak, openedPeak,
+           index == Storage.files.end() ? 0u : index->second->size());
+    if (n >= 1000) {
+      EXPECT_NE(index, Storage.files.end());
+      if (index != Storage.files.end()) EXPECT_EQ(index->second->size(), 804u + n * 24u);
+      EXPECT_EQ(cold.reads, 4u);
+      EXPECT_LE(warm.reads, 3u);
+      EXPECT_EQ(cold.indexReads, 2u);
+      EXPECT_EQ(warm.indexReads, 2u);
+    } else {
+      EXPECT_EQ(index, Storage.files.end());
+    }
+  }
+}
+
+TEST_F(ZipCentralDir, SidecarVerifiesTheNameAfterAHashMatch) {
+  const std::string path = "/collision.epub";
+  const auto entries = chapterBook(2000);
+  install(makeZip(entries), path);
+  size_t size = 0;
+  ASSERT_TRUE(ZipFile(path).getInflatedFileSize(chapter(1000).c_str(), &size));
+  auto& index = *Storage.files.at(path + ".zidx");
+
+  std::string target;
+  size_t bucket = 0, first = 0, count = 0, targetRecord = 0;
+  for (int i = 0; i < 2000 && target.empty(); ++i) {
+    const std::string name = chapter(i);
+    const uint64_t hash = ZipFile::fnvHash64(name.data(), name.size());
+    const size_t candidateBucket = hash % ZIP_INDEX_BUCKETS;
+    const size_t candidateFirst = le16(index.data() + ZIP_INDEX_STARTS + candidateBucket * 2);
+    const size_t candidateCount = le16(index.data() + ZIP_INDEX_STARTS + (candidateBucket + 1) * 2) - candidateFirst;
+    for (size_t record = 1; record < candidateCount; ++record) {
+      const uint8_t* wire = index.data() + ZIP_INDEX_HEADER + (candidateFirst + record) * ZIP_INDEX_RECORD;
+      if (le64(wire) == hash) {
+        target = name;
+        bucket = candidateBucket;
+        first = candidateFirst;
+        count = candidateCount;
+        targetRecord = record;
+        break;
+      }
+    }
+  }
+  ASSERT_FALSE(target.empty());
+  ASSERT_GT(targetRecord, 0u);
+
+  uint8_t* falseMatch = index.data() + ZIP_INDEX_HEADER + first * ZIP_INDEX_RECORD;
+  const uint64_t targetHash = ZipFile::fnvHash64(target.data(), target.size());
+  put64(falseMatch, targetHash);
+  put16(falseMatch + 8, target.size());
+  const uint8_t* bucketData = index.data() + ZIP_INDEX_HEADER + first * ZIP_INDEX_RECORD;
+  put32(index.data() + ZIP_INDEX_CHECKSUMS + bucket * 4, indexChecksum(bucketData, count * ZIP_INDEX_RECORD));
+  setHeaderChecksum(index);
+
+  clearKnownCache();
+  storageCalls = {};
+  ASSERT_TRUE(ZipFile(path).getInflatedFileSize(target.c_str(), &size));
+  EXPECT_EQ(size, entries[std::stoi(target.substr(target.size() - 10, 4))].data.size());
+  EXPECT_EQ(storageCalls.indexReads, 2u);
+}
+
+TEST_F(ZipCentralDir, SidecarInvalidatesEverySourceKeyField) {
+  const std::string path = "/stale.epub";
+  const auto entries = chapterBook(2000);
+  install(makeZip(entries), path);
+  size_t size = 0;
+  ASSERT_TRUE(ZipFile(path).getInflatedFileSize(chapter(1000).c_str(), &size));
+  const auto valid = *Storage.files.at(path + ".zidx");
+
+  for (const size_t field : {8u, 16u, 20u, 24u}) {
+    auto damaged = valid;
+    damaged[field] ^= 1;
+    setHeaderChecksum(damaged);
+    Storage.files[path + ".zidx"] = std::make_shared<std::vector<uint8_t>>(damaged);
+    clearKnownCache();
+    storageCalls = {};
+    ASSERT_TRUE(ZipFile(path).getInflatedFileSize(chapter(999).c_str(), &size)) << field;
+    EXPECT_GT(storageCalls.writes, 0u) << field;
+    EXPECT_EQ(*Storage.files.at(path + ".zidx"), valid) << field;
+  }
+}
+
+TEST_F(ZipCentralDir, FailedReplacementKeepsTheCompleteSidecar) {
+  const std::string path = "/atomic.epub";
+  auto entries = chapterBook(2000);
+  install(makeZip(entries), path);
+  size_t size = 0;
+  ASSERT_TRUE(ZipFile(path).getInflatedFileSize(chapter(1000).c_str(), &size));
+  const std::string indexPath = path + ".zidx";
+  const auto previous = *Storage.files.at(indexPath);
+
+  entries.push_back({"OEBPS/new.xhtml", "new", "", ""});
+  install(makeZip(entries), path);
+  for (const size_t failCall : {1u, 2u}) {
+    Storage.files[indexPath] = std::make_shared<std::vector<uint8_t>>(previous);
+    Storage.files.erase(indexPath + ".tmp");
+    Storage.files.erase(indexPath + ".bak");
+    clearKnownCache();
+    storageFaults = {};
+    storageFaults.failRenameCall = failCall;
+    ASSERT_TRUE(ZipFile(path).getInflatedFileSize(chapter(999).c_str(), &size)) << failCall;
+    const auto live = Storage.files.find(indexPath);
+    ASSERT_NE(live, Storage.files.end()) << failCall;
+    EXPECT_EQ(*live->second, previous) << failCall;
+    if (failCall == 1) {
+      EXPECT_EQ(Storage.files.find(indexPath + ".tmp"), Storage.files.end());
+    } else {
+      const auto tmp = Storage.files.find(indexPath + ".tmp");
+      ASSERT_NE(tmp, Storage.files.end());
+      EXPECT_EQ(tmp->second->size(), ZIP_INDEX_HEADER + entries.size() * ZIP_INDEX_RECORD);
+    }
+    EXPECT_EQ(Storage.files.find(indexPath + ".bak"), Storage.files.end()) << failCall;
+  }
+
+  storageFaults = {};
+  clearKnownCache();
+  ASSERT_TRUE(ZipFile(path).getInflatedFileSize(chapter(998).c_str(), &size));
+  EXPECT_EQ(Storage.files.find(indexPath + ".tmp"), Storage.files.end());
+  EXPECT_EQ(Storage.files.at(indexPath)->size(), ZIP_INDEX_HEADER + entries.size() * ZIP_INDEX_RECORD);
+}
+
+TEST_F(ZipCentralDir, InterruptedFirstInstallRecoversTheCompleteTemp) {
+  const std::string path = "/first-install.epub";
+  const auto entries = chapterBook(2000);
+  install(makeZip(entries), path);
+  const std::string indexPath = path + ".zidx";
+  size_t size = 0;
+
+  storageFaults.failRenameCall = 1;
+  ASSERT_TRUE(ZipFile(path).getInflatedFileSize(chapter(999).c_str(), &size));
+  EXPECT_EQ(Storage.files.find(indexPath), Storage.files.end());
+  const auto tmp = Storage.files.find(indexPath + ".tmp");
+  ASSERT_NE(tmp, Storage.files.end());
+  EXPECT_EQ(tmp->second->size(), ZIP_INDEX_HEADER + entries.size() * ZIP_INDEX_RECORD);
+
+  storageFaults = {};
+  clearKnownCache();
+  ASSERT_TRUE(ZipFile(path).getInflatedFileSize(chapter(998).c_str(), &size));
+  EXPECT_EQ(Storage.files.find(indexPath + ".tmp"), Storage.files.end());
+  EXPECT_EQ(Storage.files.at(indexPath)->size(), ZIP_INDEX_HEADER + entries.size() * ZIP_INDEX_RECORD);
+}
+
+TEST_F(ZipCentralDir, HeapFloorRefusalFallsBackWithoutAbort) {
+  const std::string path = "/heap-floor.epub";
+  const auto entries = chapterBook(2000);
+  install(makeZip(entries), path);
+  ESP.freeHeap = 12000;
+  clearKnownCache();
+  heapcap::reset(12000);
+  size_t size = 0;
+  EXPECT_TRUE(ZipFile(path).getInflatedFileSize(chapter(999).c_str(), &size));
+  EXPECT_EQ(size, entries[999].data.size());
+  EXPECT_EQ(heapcap::aborts, 0u);
+  EXPECT_EQ(Storage.files.find(path + ".zidx"), Storage.files.end());
+  heapcap::stop();
 }

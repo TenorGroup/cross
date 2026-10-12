@@ -18,7 +18,7 @@ struct TestFile {
 };
 // Card calls, each an SD transaction's worth of overhead on the device.
 struct CardCalls {
-  size_t reads = 0, writes = 0, seeks = 0, opens = 0;
+  size_t reads = 0, writes = 0, seeks = 0, opens = 0, readBytes = 0, writeBytes = 0;
 };
 inline CardCalls cardCalls;
 class HalFile {
@@ -56,6 +56,7 @@ class HalFile {
     const size_t got = pos < size() ? std::min(n, size() - pos) : 0;
     if (got) memcpy(dst, data->bytes.data() + pos, got);
     pos += got;
+    cardCalls.readBytes += got;
     return static_cast<int>(got);
   }
   size_t write(const void* src, size_t n) {
@@ -65,6 +66,7 @@ class HalFile {
     if (pos + n > size()) data->bytes.resize(pos + n);
     memcpy(data->bytes.data() + pos, src, n);
     pos += n;
+    cardCalls.writeBytes += n;
     return n;
   }
   bool sync() { return true; }

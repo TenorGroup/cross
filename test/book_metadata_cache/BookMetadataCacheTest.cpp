@@ -8,10 +8,12 @@
 #include <iostream>
 #include <stdexcept>
 #include <vector>
+#include <type_traits>
 
 // Catch corrupt lengths before the host actually attempts a device-sized OOM.
 static size_t largestRequest = 0;
 static bool failReadBuffer = false;
+static bool failHrefIndex = false;
 void* operator new(size_t size) {
   largestRequest = std::max(largestRequest, size);
   if (size > 1024 * 1024) throw std::bad_alloc();
@@ -21,7 +23,7 @@ void* operator new(size_t size) {
 void operator delete(void* p) noexcept { std::free(p); }
 void operator delete(void* p, size_t) noexcept { std::free(p); }
 void* operator new[](size_t size, const std::nothrow_t&) noexcept {
-  if (failReadBuffer && size == 2048) return nullptr;
+  if ((failReadBuffer && size == 2048) || (failHrefIndex && (size == 399 * 12 || size == 30 * 12))) return nullptr;
   return std::malloc(size);
 }
 void operator delete[](void* p, const std::nothrow_t&) noexcept { std::free(p); }
@@ -67,6 +69,143 @@ static void healthyLargeBook() {
   REQUIRE(cache.getSpineEntry(2043).tocIndex == 2043);
   REQUIRE(cache.getCumulativeSize(2043) == 2044u * 25704);
 }
+template <typename Cache = BookMetadataCache>
+static std::unique_ptr<Cache> sourceCache() {
+  if constexpr (std::is_constructible_v<Cache, std::string, std::string>)
+    return std::make_unique<Cache>("/test", "/book.epub");
+  else
+    return std::make_unique<Cache>("/test");
+}
+template <typename Cache>
+static auto metadataRead(Cache& cache, BookMetadataCache::BookMetadata& result, int)
+    -> decltype(cache.loadMetadataOnly(result)) { return cache.loadMetadataOnly(result); }
+template <typename Cache>
+static bool metadataRead(Cache& cache, BookMetadataCache::BookMetadata& result, long) {
+  if (!cache.load()) return false;
+  result = cache.coreMetadata;
+  return true;
+}
+static void metadataSidecarRejectsReplacedSource() {
+  for (int n : {30, 399, 2000, 5000}) {
+    Storage.files.clear();
+    auto book = fixture(n);
+    Storage.files["/test/book.bin"] = book;
+    auto source = std::make_shared<TestFile>();
+    source->bytes.resize(160, 0x31);
+    Storage.files["/book.epub"] = source;
+    REQUIRE(sourceCache()->load());
+    const auto baselineBytes = book->readBytes;
+    const auto baselineReads = book->reads;
+    book->reads = book->readBytes = book->seeks = 0;
+    BookMetadataCache::BookMetadata metadata;
+    auto reader = sourceCache();
+    REQUIRE(metadataRead(*reader, metadata, 0));
+    REQUIRE(metadata.title == "metadata");
+    auto meta = Storage.files.find("/test/book.meta");
+    std::cout << "META n=" << n << " full_bytes=" << baselineBytes << " full_reads=" << baselineReads
+              << " metadata_book_bytes=" << book->readBytes << " metadata_book_reads=" << book->reads;
+    if (meta != Storage.files.end()) std::cout << " sidecar_bytes=" << meta->second->readBytes
+                                              << " sidecar_reads=" << meta->second->reads;
+    std::cout << std::endl;
+    REQUIRE(book->reads == 0);
+    REQUIRE(meta != Storage.files.end());
+    auto adopted = meta->second;
+    REQUIRE(sourceCache()->load());
+    REQUIRE(Storage.files.at("/test/book.meta") == adopted);
+    auto good = adopted->bytes;
+    source->bytes[0] ^= 0x01;
+    REQUIRE(!metadataRead(*reader, metadata, 0));
+    REQUIRE(metadata.title.empty());
+    REQUIRE(sourceCache()->load());
+    REQUIRE(!metadataRead(*reader, metadata, 0));
+    source->bytes[0] ^= 0x01;
+    Storage.files["/test/book.meta"] = adopted;
+    book->bytes.pop_back();
+    REQUIRE(!metadataRead(*reader, metadata, 0));
+    REQUIRE(metadata.title.empty());
+    Storage.files["/test/book.bin"] = fixture(n);
+    Storage.files["/test/book.meta"] = adopted;
+    Storage.files.erase("/book.epub");
+    REQUIRE(!metadataRead(*reader, metadata, 0));
+    Storage.files["/book.epub"] = source;
+    for (size_t length : {size_t(0), size_t(4), good.size() - 1}) {
+      adopted->bytes = std::vector<uint8_t>(good.begin(), good.begin() + length);
+      Storage.files["/test/book.meta"] = adopted;
+      REQUIRE(!metadataRead(*reader, metadata, 0));
+    }
+    for (size_t at : {size_t(0), size_t(15), good.size() - 1}) {
+      adopted->bytes = good;
+      adopted->bytes[at] ^= 1;
+      Storage.files["/test/book.meta"] = adopted;
+      REQUIRE(!metadataRead(*reader, metadata, 0));
+    }
+    Storage.files.erase("/test/book.meta");
+    Storage.files["/test/book.meta.tmp"] = adopted;
+    REQUIRE(!metadataRead(*reader, metadata, 0));
+    Storage.failWrite = true;
+    REQUIRE(sourceCache()->load());
+    Storage.failWrite = false;
+    REQUIRE(!Storage.exists("/test/book.meta"));
+    Storage.failRename = true;
+    REQUIRE(sourceCache()->load());
+    Storage.failRename = false;
+    REQUIRE(!Storage.exists("/test/book.meta"));
+    REQUIRE(sourceCache()->load());
+    REQUIRE(metadataRead(*reader, metadata, 0));
+  }
+}
+
+static void smallHrefIndexReadsAndFallback() {
+  for (int count : {30, 399}) {
+    std::vector<uint8_t> expected;
+    for (bool refuse : {false, true}) {
+      Storage.files.clear();
+      BookMetadataCache cache("/test");
+      REQUIRE(cache.beginWrite() && cache.beginContentOpfPass());
+      for (int i = 0; i < count; ++i) cache.createSpineEntry("chapter" + std::to_string(i) + ".xhtml");
+      REQUIRE(cache.endContentOpfPass());
+      auto spine = Storage.files.at("/test/spine.bin.tmp");
+      failHrefIndex = refuse;
+      REQUIRE(cache.beginTocPass());
+      failHrefIndex = false;
+      for (int i = 0; i < count; ++i)
+        cache.createTocEntry("Title", "chapter" + std::to_string(i) + ".xhtml", "", 0);
+      REQUIRE(cache.endTocPass());
+      std::cout << "HREF n=" << count << " refused=" << refuse << " reads=" << spine->reads
+                << " bytes=" << spine->readBytes << " seeks=" << spine->seeks << std::endl;
+      if (!refuse) {
+        REQUIRE(spine->reads < static_cast<size_t>(count) * 7);
+        expected = Storage.files.at("/test/toc.bin.tmp")->bytes;
+      } else {
+        REQUIRE(spine->reads > static_cast<size_t>(count) * count);
+        REQUIRE(Storage.files.at("/test/toc.bin.tmp")->bytes == expected);
+      }
+    }
+  }
+}
+
+static void sizeJumpReadFailureIsBounded() {
+  for (int count : {399, 2000, 5000}) {
+    auto f = fixture(count);
+    Storage.files["/test/book.bin"] = f;
+    BookMetadataCache cache("/test");
+    REQUIRE(cache.load());
+    f->opens = f->reads = f->readBytes = f->seeks = 0;
+    f->readable = 0;
+    const auto result = cache.getSpineIndexForSize(97u * 25704);
+    std::cout << "SIZE failed n=" << count << " result=" << result << " opens=" << f->opens
+              << " reads=" << f->reads << " bytes=" << f->readBytes << " seeks=" << f->seeks << std::endl;
+    REQUIRE(result == -1);
+    REQUIRE(f->opens <= 1);
+    f->readable = SIZE_MAX;
+    f->opens = f->reads = f->readBytes = f->seeks = 0;
+    REQUIRE(cache.getSpineIndexForSize(97u * 25704) == 96);
+    REQUIRE(f->opens <= 1);
+    std::cout << "SIZE ready n=" << count << " opens=" << f->opens << " reads=" << f->reads
+              << " bytes=" << f->readBytes << " seeks=" << f->seeks << std::endl;
+  }
+}
+
 static void truncatedRead() {
   auto f = fixture();
   f->readable = 98304;
@@ -298,6 +437,9 @@ int main(int argc, char** argv) {
                {"large lookup records and buffer OOM", lookupWindowsHandleLargeRecordsAndBufferFailure},
                {"cursor runtime failure", cursorRuntimeFailure},
                {"healthy 2044 chapters", healthyLargeBook},
+               {"metadata sidecar source identity", metadataSidecarRejectsReplacedSource},
+               {"small href index and fallback", smallHrefIndexReadsAndFallback},
+               {"size jump read failure is bounded", sizeJumpReadFailureIsBounded},
                {"96KiB read failure", truncatedRead},
                {"runtime seek failure", runtimeSeekFailure},
                {"oversized title", oversizedTitle},

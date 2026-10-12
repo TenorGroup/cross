@@ -1,6 +1,5 @@
 add_executable(ZipCentralDirTest
   ZipCentralDirTest.cpp
-  ${REPO_ROOT}/lib/ZipFile/ZipFile.cpp
   ${REPO_ROOT}/lib/miniz/src/InflateStream.cpp
   ${REPO_ROOT}/lib/miniz/src/miniz_impl.c
   ${REPO_ROOT}/lib/Memory/BuildScratch.cpp

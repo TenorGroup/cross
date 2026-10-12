@@ -15,3 +15,5 @@ target_link_libraries(CssParserTest PRIVATE
 )
 
 gtest_discover_tests(CssParserTest)
+add_test(NAME CssParserTest.EpubDedupChecksNames
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/epub_dedup.py)

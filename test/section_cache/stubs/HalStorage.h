@@ -1,5 +1,7 @@
 #pragma once
 #include <algorithm>
+#include <Arduino.h>
+#include <string_view>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
@@ -97,12 +99,15 @@ inline bool failRename = false;
 inline bool failRemove = false;
 inline bool failSeek = false;
 inline bool failClose = false;
+inline bool dropHeapOnDd = false;
+inline unsigned heapDrops = 0;
 inline unsigned hit = 0;
 inline size_t hitOffset = std::numeric_limits<size_t>::max();
 inline void reset() {
   target.clear(); writeOffset = readOffset = std::numeric_limits<size_t>::max();
   writeEndOffset = readEndOffset = hitOffset = std::numeric_limits<size_t>::max();
   failOnce = shortReadOnce = failFlush = failRename = failRemove = failSeek = failClose = false; hit = 0;
+  dropHeapOnDd = false; heapDrops = 0;
 }
 inline bool selected(const std::string& path) { return !target.empty() && path.ends_with(target); }
 }
@@ -121,6 +126,12 @@ class HalFile {
     if (shortRead) { storageFault::shortReadOnce = false; ++storageFault::hit; storageFault::hitOffset = at; }
     const int actual = file_ ? static_cast<int>(std::fread(buffer, 1, shortRead && count ? count - 1 : count, file_)) : -1;
     if (storageMetrics::enabled) storageMetrics::recordRead(path_, at, actual > 0 ? static_cast<size_t>(actual) : 0);
+    if (storageFault::dropHeapOnDd && path_.ends_with(".html") && actual > 0 &&
+        std::string_view(static_cast<const char*>(buffer), actual).find("data-dd=") != std::string_view::npos) {
+      storageFault::dropHeapOnDd = false;
+      ++storageFault::heapDrops;
+      ESP.maxAlloc = 9000;
+    }
     return actual;
   }
   size_t write(const void* buffer, size_t count) {

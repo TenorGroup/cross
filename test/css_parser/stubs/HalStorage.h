@@ -5,6 +5,11 @@
 #include <string>
 #include <utility>
 
+namespace cssIo {
+inline size_t reads = 0, bytes = 0, seeks = 0;
+inline void reset() { reads = bytes = seeks = 0; }
+}
+
 class HalFile {
  public:
   HalFile() = default;
@@ -30,14 +35,27 @@ class HalFile {
 
   int read(void* buffer, size_t count) {
     if (!file_) return -1;
-    return static_cast<int>(std::fread(buffer, 1, count, file_));
+    ++cssIo::reads;
+    const size_t n = std::fread(buffer, 1, count, file_);
+    cssIo::bytes += n;
+    return static_cast<int>(n);
   }
 
   size_t write(const void* buffer, size_t count) { return file_ ? std::fwrite(buffer, 1, count, file_) : 0; }
 
   size_t write(uint8_t byte) { return write(&byte, 1); }
 
-  bool seekCur(size_t count) { return file_ && std::fseek(file_, static_cast<long>(count), SEEK_CUR) == 0; }
+  bool seek(size_t offset) {
+    ++cssIo::seeks;
+    return file_ && std::fseek(file_, static_cast<long>(offset), SEEK_SET) == 0;
+  }
+
+  bool seekCur(size_t count) {
+    ++cssIo::seeks;
+    return file_ && std::fseek(file_, static_cast<long>(count), SEEK_CUR) == 0;
+  }
+
+  bool sync() { return file_ && std::fflush(file_) == 0; }
 
   bool close() {
     if (!file_) return false;

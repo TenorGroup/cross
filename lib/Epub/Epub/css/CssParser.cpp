@@ -3,6 +3,9 @@
 #include <Logging.h>
 #include <HeapFloor.h>
 #include <Memory.h>
+#ifdef TENOR_PRESS_PROBE
+#include <Arduino.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -310,74 +313,65 @@ std::string_view CssParser::selectorAt(const size_t index) const {
   return {selectorPool_.get() + entry.offset, entry.length};
 }
 
-CssParser::PoolResult CssParser::ensureEntryCapacity(const size_t needed) {
-  if (needed <= entryCapacity_) return PoolResult::Ready;
-  if (needed > MAX_RULES) return PoolResult::Limit;
+CssParser::PoolResult CssParser::ensureCapacity(const size_t entries, const size_t selectors, const size_t styles) {
+  if (entries > MAX_RULES || selectors > SELECTOR_POOL_CAP || styles > MAX_UNIQUE_STYLES) return PoolResult::Limit;
+  const auto capacityFor = [](size_t current, const size_t needed, const size_t initial, const size_t limit) {
+    if (needed <= current) return current;
+    size_t capacity = current ? current * 2 : initial;
+    while (capacity < needed) capacity *= 2;
+    return std::min(capacity, limit);
+  };
+  const size_t entriesCapacity = capacityFor(entryCapacity_, entries, 128, MAX_RULES);
+  const size_t selectorsCapacity = capacityFor(selectorPoolCapacity_, selectors, 4096, SELECTOR_POOL_CAP);
+  const size_t stylesCapacity = capacityFor(styleCapacity_, styles, 16, MAX_UNIQUE_STYLES);
+  std::unique_ptr<SelectorEntry[]> grownEntries;
+  std::unique_ptr<char[]> grownSelectors;
+  std::unique_ptr<CssStyle[]> grownStyles;
+  if (entriesCapacity != entryCapacity_) grownEntries = heapfloor::array<SelectorEntry[]>(entriesCapacity, "css-entries");
+  if (entriesCapacity != entryCapacity_ && !grownEntries) return PoolResult::OutOfMemory;
+  if (selectorsCapacity != selectorPoolCapacity_) grownSelectors = heapfloor::array<char[]>(selectorsCapacity, "css-selectors");
+  if (selectorsCapacity != selectorPoolCapacity_ && !grownSelectors) return PoolResult::OutOfMemory;
+  if (stylesCapacity != styleCapacity_) grownStyles = heapfloor::array<CssStyle[]>(stylesCapacity, "css-styles");
+  if (stylesCapacity != styleCapacity_ && !grownStyles) return PoolResult::OutOfMemory;
 
-  size_t capacity = entryCapacity_ ? entryCapacity_ * 2u : 128u;
-  while (capacity < needed) capacity *= 2u;
-  capacity = std::min(capacity, MAX_RULES);
-  auto grown = makeUniqueNoThrow<SelectorEntry[]>(capacity);
-  if (!grown) {
-    LOG_ERR("CSS", "OOM: selector index (%zu entries)", capacity);
-    return PoolResult::OutOfMemory;
+  // Commit together so a refused rule gives every temporary allocation back.
+  if (grownEntries) {
+    if (entryCount_) memcpy(grownEntries.get(), entries_.get(), entryCount_ * sizeof(SelectorEntry));
+    entries_ = std::move(grownEntries);
+    entryCapacity_ = static_cast<uint16_t>(entriesCapacity);
   }
-  if (entryCount_ > 0) memcpy(grown.get(), entries_.get(), entryCount_ * sizeof(SelectorEntry));
-  entries_ = std::move(grown);
-  entryCapacity_ = static_cast<uint16_t>(capacity);
+  if (grownSelectors) {
+    if (selectorPoolSize_) memcpy(grownSelectors.get(), selectorPool_.get(), selectorPoolSize_);
+    selectorPool_ = std::move(grownSelectors);
+    selectorPoolCapacity_ = static_cast<uint32_t>(selectorsCapacity);
+  }
+  if (grownStyles) {
+    for (size_t i = 0; i < styleCount_; ++i) grownStyles[i] = stylePool_[i];
+    stylePool_ = std::move(grownStyles);
+    styleCapacity_ = static_cast<uint16_t>(stylesCapacity);
+  }
   return PoolResult::Ready;
 }
 
-CssParser::PoolResult CssParser::ensureSelectorPoolCapacity(const size_t needed) {
-  if (needed <= selectorPoolCapacity_) return PoolResult::Ready;
-  if (needed > SELECTOR_POOL_CAP) return PoolResult::Limit;
-
-  size_t capacity = selectorPoolCapacity_ ? selectorPoolCapacity_ * 2u : 4096u;
-  while (capacity < needed) capacity *= 2u;
-  capacity = std::min(capacity, SELECTOR_POOL_CAP);
-  auto grown = heapfloor::array<char[]>(capacity, "css-selectors");
-  if (!grown) {
-    LOG_ERR("CSS", "OOM: selector pool (%zu bytes)", capacity);
-    return PoolResult::OutOfMemory;
-  }
-  if (selectorPoolSize_ > 0) memcpy(grown.get(), selectorPool_.get(), selectorPoolSize_);
-  selectorPool_ = std::move(grown);
-  selectorPoolCapacity_ = static_cast<uint32_t>(capacity);
-  return PoolResult::Ready;
-}
-
-CssParser::PoolResult CssParser::ensureStyleCapacity(const size_t needed) {
-  if (needed <= styleCapacity_) return PoolResult::Ready;
-  if (needed > MAX_UNIQUE_STYLES) return PoolResult::Limit;
-
-  size_t capacity = styleCapacity_ ? styleCapacity_ * 2u : 16u;
-  while (capacity < needed) capacity *= 2u;
-  capacity = std::min(capacity, MAX_UNIQUE_STYLES);
-  auto grownStyles = makeUniqueNoThrow<CssStyle[]>(capacity);
-  if (!grownStyles) {
-    LOG_ERR("CSS", "OOM: style pool (%zu styles)", capacity);
-    return PoolResult::OutOfMemory;
-  }
-  for (size_t i = 0; i < styleCount_; ++i) grownStyles[i] = stylePool_[i];
-  stylePool_ = std::move(grownStyles);
-  styleCapacity_ = static_cast<uint16_t>(capacity);
-  return PoolResult::Ready;
-}
-
-CssParser::PoolResult CssParser::internStyle(const CssStyle& style, uint16_t& indexOut) {
+int CssParser::existingStyleIndex(const CssStyle& style) const {
   uint8_t wire[STYLE_WIRE_BYTES];
   encodeStyleWire(style, wire);
   for (uint16_t i = 0; i < styleCount_; ++i) {
     uint8_t existingWire[STYLE_WIRE_BYTES];
     encodeStyleWire(stylePool_[i], existingWire);
-    if (memcmp(existingWire, wire, STYLE_WIRE_BYTES) == 0) {
-      indexOut = i;
-      return PoolResult::Ready;
-    }
+    if (memcmp(existingWire, wire, STYLE_WIRE_BYTES) == 0) return i;
   }
+  return -1;
+}
 
-  const PoolResult capacityResult = ensureStyleCapacity(static_cast<size_t>(styleCount_) + 1);
-  if (capacityResult != PoolResult::Ready) return capacityResult;
+CssParser::PoolResult CssParser::internStyle(const CssStyle& style, uint16_t& indexOut) {
+  const int existing = existingStyleIndex(style);
+  if (existing >= 0) {
+    indexOut = static_cast<uint16_t>(existing);
+    return PoolResult::Ready;
+  }
+  const PoolResult result = ensureCapacity(entryCount_, selectorPoolSize_, static_cast<size_t>(styleCount_) + 1);
+  if (result != PoolResult::Ready) return result;
   stylePool_[styleCount_] = style;
   indexOut = styleCount_++;
   return PoolResult::Ready;
@@ -411,19 +405,14 @@ CssParser::RuleInsertResult CssParser::insertOrMerge(const std::string_view sele
     return RuleInsertResult::Merged;
   }
 
-  const PoolResult entryResult = ensureEntryCapacity(static_cast<size_t>(entryCount_) + 1);
-  if (entryResult == PoolResult::Limit) return RuleInsertResult::Limit;
-  if (entryResult == PoolResult::OutOfMemory) return RuleInsertResult::OutOfMemory;
-
   const size_t requiredSelectorBytes = static_cast<size_t>(selectorPoolSize_) + selector.size();
-  const PoolResult selectorResult = ensureSelectorPoolCapacity(requiredSelectorBytes);
-  if (selectorResult == PoolResult::Limit) return RuleInsertResult::Limit;
-  if (selectorResult == PoolResult::OutOfMemory) return RuleInsertResult::OutOfMemory;
-
-  uint16_t styleIndex = 0;
-  const PoolResult styleResult = internStyle(style, styleIndex);
-  if (styleResult == PoolResult::Limit) return RuleInsertResult::Limit;
-  if (styleResult == PoolResult::OutOfMemory) return RuleInsertResult::OutOfMemory;
+  const int existing = existingStyleIndex(style);
+  const PoolResult result = ensureCapacity(static_cast<size_t>(entryCount_) + 1, requiredSelectorBytes,
+                                          static_cast<size_t>(styleCount_) + (existing < 0 ? 1 : 0));
+  if (result == PoolResult::Limit) return RuleInsertResult::Limit;
+  if (result == PoolResult::OutOfMemory) return RuleInsertResult::OutOfMemory;
+  const uint16_t styleIndex = existing >= 0 ? static_cast<uint16_t>(existing) : styleCount_++;
+  if (existing < 0) stylePool_[styleIndex] = style;
 
   const uint32_t selectorOffset = selectorPoolSize_;
   char* destination = selectorPool_.get() + selectorOffset;
@@ -914,7 +903,90 @@ constexpr char rulesCache[] = "/css_rules.cache";
 constexpr char rulesCacheTmp[] = "/css_rules.cache.tmp";
 constexpr char rulesCacheBackup[] = "/css_rules.cache.bak";
 constexpr uint8_t CSS_CACHE_FLAG_PARTIAL = 1 << 0;
-constexpr uint8_t CSS_CACHE_KNOWN_FLAGS = CSS_CACHE_FLAG_PARTIAL;
+constexpr uint8_t CSS_CACHE_FLAG_CHECKSUM = 1 << 1;
+constexpr uint8_t CSS_CACHE_KNOWN_FLAGS = CSS_CACHE_FLAG_PARTIAL | CSS_CACHE_FLAG_CHECKSUM;
+
+namespace {
+uint32_t checksumBytes(uint32_t checksum, const void* data, const size_t length) {
+  const auto* bytes = static_cast<const uint8_t*>(data);
+  for (size_t i = 0; i < length; ++i) {
+    checksum ^= bytes[i];
+    checksum *= 16777619u;
+  }
+  return checksum;
+}
+
+uint32_t cacheHeaderChecksum(const uint8_t flags, const uint16_t count, const uint32_t bodyBytes,
+                             const uint32_t bodyChecksum) {
+  const uint8_t header[] = {CssParser::CSS_CACHE_VERSION, flags, static_cast<uint8_t>(count),
+                           static_cast<uint8_t>(count >> 8)};
+  uint32_t checksum = checksumBytes(2166136261u, header, sizeof(header));
+  checksum = checksumBytes(checksum, &bodyBytes, sizeof(bodyBytes));
+  return checksumBytes(checksum, &bodyChecksum, sizeof(bodyChecksum));
+}
+
+class CacheInput {
+  HalFile& file;
+  uint8_t buffer[512];
+  size_t position = 0, buffered = 0, remaining;
+  uint32_t checksum = 2166136261u;
+  size_t consumed = 0;
+ public:
+  size_t bytes = 0, reads = 0;
+  explicit CacheInput(HalFile& source) : file(source), remaining(source.available()) {}
+  bool read(void* destination, const size_t length, const bool hash = true) {
+    if (length > remaining + buffered - position) return false;
+    auto* target = static_cast<uint8_t*>(destination);
+    for (size_t copied = 0; copied < length;) {
+      if (position == buffered) {
+        buffered = std::min(remaining, sizeof(buffer));
+        const int received = file.read(buffer, buffered);
+        ++reads;
+        if (received > 0) bytes += static_cast<size_t>(received);
+        if (received != static_cast<int>(buffered)) return false;
+        remaining -= buffered;
+        position = 0;
+      }
+      const size_t count = std::min(length - copied, buffered - position);
+      memcpy(target + copied, buffer + position, count);
+      position += count;
+      copied += count;
+    }
+    consumed += length;
+    if (hash) checksum = checksumBytes(checksum, destination, length);
+    return true;
+  }
+  template <typename T> bool pod(T& value) { return read(&value, sizeof(value)); }
+  bool finish(const uint8_t flags, const uint16_t count) {
+    if (flags & CSS_CACHE_FLAG_CHECKSUM) {
+      const size_t bodyBytes = consumed;
+      uint32_t footer[3] = {};
+      if (!read(footer, sizeof(footer), false) || footer[0] != bodyBytes || footer[1] != checksum ||
+          footer[2] != cacheHeaderChecksum(flags, count, footer[0], footer[1])) return false;
+    }
+    return remaining == 0 && position == buffered;
+  }
+};
+
+bool readCacheHeader(CacheInput& input, uint8_t& flags, uint16_t& count) {
+  uint8_t version = 0;
+  return input.pod(version) && version == CssParser::CSS_CACHE_VERSION && input.pod(flags) &&
+         (flags & ~CSS_CACHE_KNOWN_FLAGS) == 0 && input.pod(count) && count <= MAX_RULES;
+}
+
+#ifdef TENOR_PRESS_PROBE
+struct CacheProbe {
+  CacheInput& input;
+  const char* stage;
+  unsigned long started = millis();
+  ~CacheProbe() {
+    LOG_INF("CSS", "CSS_CACHE stage=%s bytes=%u reads=%u ms=%lu free=%u largest=%u", stage,
+            static_cast<unsigned>(input.bytes), static_cast<unsigned>(input.reads), millis() - started,
+            static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  }
+};
+#endif
+}  // namespace
 
 bool CssParser::hasCache() const { return Storage.exists((cachePath + rulesCache).c_str()); }
 
@@ -943,6 +1015,7 @@ bool CssParser::restoreCacheBackupIfNeeded() const {
 }
 
 void CssParser::deleteCache() const {
+  cacheNeedsRebuild_ = true;
   if (hasCache()) Storage.remove((cachePath + rulesCache).c_str());
   Storage.remove((cachePath + rulesCacheTmp).c_str());
   Storage.remove((cachePath + rulesCacheBackup).c_str());
@@ -958,43 +1031,52 @@ CssParser::CacheStatus CssParser::inspectCache() const {
     return CacheStatus::Invalid;
   }
 
-  uint8_t version = 0;
-  uint8_t flags = 0;
-  uint16_t ruleCount = 0;
-  if (file.read(&version, sizeof(version)) != sizeof(version) || version != CSS_CACHE_VERSION ||
-      file.read(&flags, sizeof(flags)) != sizeof(flags) || (flags & ~CSS_CACHE_KNOWN_FLAGS) != 0 ||
-      file.read(&ruleCount, sizeof(ruleCount)) != sizeof(ruleCount) || ruleCount > MAX_RULES) {
-    return CacheStatus::Invalid;
+#ifdef TENOR_PRESS_PROBE
+  const unsigned long started = millis();
+#endif
+  uint8_t header[4] = {};
+  const size_t fileBytes = file.available();
+  if (file.read(header, sizeof(header)) != sizeof(header) || header[0] != CSS_CACHE_VERSION ||
+      (header[1] & ~CSS_CACHE_KNOWN_FLAGS) != 0) return CacheStatus::Invalid;
+  uint8_t flags = header[1];
+  uint16_t ruleCount = static_cast<uint16_t>(header[2] | (header[3] << 8));
+  if (ruleCount > MAX_RULES) return CacheStatus::Invalid;
+  if (flags & CSS_CACHE_FLAG_CHECKSUM) {
+    uint32_t footer[3] = {};
+    if (fileBytes < sizeof(header) + sizeof(footer) || !file.seek(fileBytes - sizeof(footer)) ||
+        file.read(footer, sizeof(footer)) != sizeof(footer) || footer[0] != fileBytes - sizeof(footer) ||
+        footer[0] < sizeof(header) + ruleCount * (sizeof(uint16_t) + 1 + STYLE_WIRE_BYTES) ||
+        footer[0] > sizeof(header) + ruleCount * (sizeof(uint16_t) + STYLE_WIRE_BYTES) + SELECTOR_POOL_CAP ||
+        footer[2] != cacheHeaderChecksum(flags, ruleCount, footer[0], footer[1])) return CacheStatus::Invalid;
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("CSS", "CSS_CACHE stage=inspect bytes=16 reads=2 ms=%lu free=%u largest=%u", millis() - started,
+            static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
+    return flags & CSS_CACHE_FLAG_PARTIAL ? CacheStatus::Partial : CacheStatus::Complete;
   }
-
-  const bool partial = (flags & CSS_CACHE_FLAG_PARTIAL) != 0;
-  if (!partial) {
-    // Complete caches are fully validated while hydrating, avoiding a second
-    // payload scan on every EPUB open.
-    return CacheStatus::Complete;
-  }
-
-  const auto skipBytes = [&file](const size_t byteCount) {
-    return static_cast<size_t>(file.available()) >= byteCount && file.seekCur(byteCount);
-  };
-  size_t selectorBytes = 0;
+  // Legacy v12 caches have no checksum footer; validate their records without retaining rules.
+  if (!file.seek(0)) return CacheStatus::Invalid;
+  CacheInput input(file);
+#ifdef TENOR_PRESS_PROBE
+  CacheProbe probe{input, "inspect_legacy"};
+#endif
+  if (!readCacheHeader(input, flags, ruleCount)) return CacheStatus::Invalid;
+  size_t selectorBytes = 0, previousLength = 0;
+  char selector[MAX_SELECTOR_LENGTH], previous[MAX_SELECTOR_LENGTH];
   for (uint16_t i = 0; i < ruleCount; ++i) {
-    uint16_t selectorLen = 0;
-    if (file.read(&selectorLen, sizeof(selectorLen)) != sizeof(selectorLen) || selectorLen == 0 ||
-        selectorLen > MAX_SELECTOR_LENGTH) {
-      return CacheStatus::Invalid;
-    }
-    selectorBytes += selectorLen;
-    if (selectorBytes > SELECTOR_POOL_CAP || !skipBytes(static_cast<size_t>(selectorLen) + STYLE_WIRE_BYTES)) {
-      return CacheStatus::Invalid;
-    }
+    uint16_t length = 0;
+    if (!input.pod(length) || length == 0 || length > MAX_SELECTOR_LENGTH) return CacheStatus::Invalid;
+    selectorBytes += length;
+    uint8_t wire[STYLE_WIRE_BYTES];
+    CssStyle style;
+    if (selectorBytes > SELECTOR_POOL_CAP || !input.read(selector, length) || !input.read(wire, sizeof(wire)) ||
+        !decodeStyleWire(wire, style)) return CacheStatus::Invalid;
+    if (i && std::string_view(previous, previousLength) >= std::string_view(selector, length)) return CacheStatus::Invalid;
+    memcpy(previous, selector, length);
+    previousLength = length;
   }
-
-  if (file.available() != 0) {
-    return CacheStatus::Invalid;
-  }
-
-  return CacheStatus::Partial;
+  if (!input.finish(flags, ruleCount)) return CacheStatus::Invalid;
+  return flags & CSS_CACHE_FLAG_PARTIAL ? CacheStatus::Partial : CacheStatus::Complete;
 }
 
 bool CssParser::saveToCache(const bool complete) const {
@@ -1014,9 +1096,14 @@ bool CssParser::saveToCache(const bool complete) const {
   }
 
   bool writeOk = true;
-  const auto writeBytes = [&file, &writeOk](const void* data, const size_t size) {
+  uint32_t checksum = 2166136261u, bodyBytes = 0;
+  const auto writeBytes = [&file, &writeOk, &checksum, &bodyBytes](const void* data, const size_t size) {
     if (writeOk && size > 0 && file.write(data, size) != size) {
       writeOk = false;
+    }
+    if (writeOk) {
+      checksum = checksumBytes(checksum, data, size);
+      bodyBytes += size;
     }
   };
   const auto writeByte = [&writeBytes](const uint8_t value) { writeBytes(&value, sizeof(value)); };
@@ -1025,7 +1112,8 @@ bool CssParser::saveToCache(const bool complete) const {
 
   // A partial cache can style the current low-memory session, but the next
   // EPUB load must retry the source stylesheets instead of trusting it.
-  writeByte(complete ? 0 : CSS_CACHE_FLAG_PARTIAL);
+  const uint8_t flags = CSS_CACHE_FLAG_CHECKSUM | (complete ? 0 : CSS_CACHE_FLAG_PARTIAL);
+  writeByte(flags);
 
   // Write rule count
   const uint16_t ruleCount = entryCount_;
@@ -1045,9 +1133,11 @@ bool CssParser::saveToCache(const bool complete) const {
     if (!writeOk) break;
   }
 
-  if (!writeOk || !file.close()) {
+  const uint32_t footer[] = {bodyBytes, checksum, cacheHeaderChecksum(flags, ruleCount, bodyBytes, checksum)};
+  writeOk = writeOk && file.write(footer, sizeof(footer)) == sizeof(footer) && file.sync();
+  const bool closed = file.close();
+  if (!writeOk || !closed) {
     LOG_ERR("CSS", "Failed to write temporary CSS cache");
-    file.close();
     Storage.remove(tmpPath.c_str());
     return false;
   }
@@ -1073,6 +1163,7 @@ bool CssParser::saveToCache(const bool complete) const {
 
   Storage.remove(backupPath.c_str());
 
+  cacheNeedsRebuild_ = false;
   LOG_DBG("CSS", "Saved %u rules to %s cache", ruleCount, complete ? "complete" : "partial");
   return true;
 }
@@ -1092,36 +1183,15 @@ CssParser::CacheLoadResult CssParser::loadFromCache() {
   // Clear existing rules
   clear();
 
-  // Read and verify version
-  uint8_t version = 0;
-  if (file.read(&version, 1) != 1 || version != CssParser::CSS_CACHE_VERSION) {
-    LOG_DBG("CSS", "Cache version mismatch (got %u, expected %u), removing stale cache for rebuild", version,
-            CssParser::CSS_CACHE_VERSION);
-    // Explicitly close() file before calling Storage.remove()
-    file.close();
-    Storage.remove((cachePath + rulesCache).c_str());
-    return CacheLoadResult::Invalid;
-  }
-
+  CacheInput input(file);
+#ifdef TENOR_PRESS_PROBE
+  CacheProbe probe{input, "hydrate"};
+#endif
   uint8_t flags = 0;
-  if (file.read(&flags, sizeof(flags)) != sizeof(flags) || (flags & ~CSS_CACHE_KNOWN_FLAGS) != 0) {
-    LOG_DBG("CSS", "Invalid CSS cache flags: %u", flags);
-    return CacheLoadResult::Invalid;
-  }
-
-  // Read rule count
   uint16_t ruleCount = 0;
-  if (file.read(&ruleCount, sizeof(ruleCount)) != sizeof(ruleCount)) {
-    return CacheLoadResult::Invalid;
-  }
+  if (!readCacheHeader(input, flags, ruleCount)) return CacheLoadResult::Invalid;
 
-  if (ruleCount > MAX_RULES) {
-    LOG_DBG("CSS", "Invalid cache rule count (%u > %zu)", ruleCount, MAX_RULES);
-    clear();
-    return CacheLoadResult::Invalid;
-  }
-
-  const PoolResult entryCapacityResult = ensureEntryCapacity(ruleCount);
+  const PoolResult entryCapacityResult = ensureCapacity(ruleCount, 0, 0);
   if (entryCapacityResult == PoolResult::OutOfMemory) {
     clear();
     return CacheLoadResult::LowMemory;
@@ -1141,7 +1211,7 @@ CssParser::CacheLoadResult CssParser::loadFromCache() {
   for (uint16_t i = 0; i < ruleCount; ++i) {
     // Read selector string
     uint16_t selectorLen = 0;
-    if (file.read(&selectorLen, sizeof(selectorLen)) != sizeof(selectorLen)) {
+    if (!input.pod(selectorLen)) {
       clear();
       return CacheLoadResult::Invalid;
     }
@@ -1152,13 +1222,13 @@ CssParser::CacheLoadResult CssParser::loadFromCache() {
       return CacheLoadResult::Invalid;
     }
 
-    if (file.read(selectorBuffer.get(), selectorLen) != selectorLen) {
+    if (!input.read(selectorBuffer.get(), selectorLen)) {
       clear();
       return CacheLoadResult::Invalid;
     }
 
     uint8_t styleWire[STYLE_WIRE_BYTES];
-    if (file.read(styleWire, sizeof(styleWire)) != sizeof(styleWire)) {
+    if (!input.read(styleWire, sizeof(styleWire))) {
       clear();
       return CacheLoadResult::Invalid;
     }
@@ -1185,12 +1255,13 @@ CssParser::CacheLoadResult CssParser::loadFromCache() {
     }
   }
 
-  if (file.available() != 0) {
+  if (!input.finish(flags, ruleCount)) {
     clear();
     return CacheLoadResult::Invalid;
   }
 
   const bool partial = (flags & CSS_CACHE_FLAG_PARTIAL) != 0;
   LOG_DBG("CSS", "Loaded %u rules from %s cache", ruleCount, partial ? "partial" : "complete");
+  cacheNeedsRebuild_ = false;
   return CacheLoadResult::Complete;
 }

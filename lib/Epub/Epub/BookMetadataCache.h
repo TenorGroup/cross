@@ -63,6 +63,7 @@ class BookMetadataCache {
 
  private:
   std::string cachePath;
+  std::string sourcePath;
   uint32_t lutOffset;
   uint16_t spineCount;
   uint16_t tocCount;
@@ -72,6 +73,10 @@ class BookMetadataCache {
   bool partial = false;
   // Set by beginDeferredTocPass: TOC entries are written unmatched, buildBookBinFromPart matches them.
   bool deferTocMatch = false;
+  bool heapRefused = false;
+  uint16_t deferredResumeCount = 0;
+  uint32_t deferredSeen = 0;
+  uint64_t deferredSourceKey = 0;
 
   HalFile bookFile;
   // Temp file handles during build
@@ -96,15 +101,16 @@ class BookMetadataCache {
   // Reads the totals of the window starting at `first` into `window`. Called under the size lock.
   bool readSizeWindow(int first) const;
 
-  // Index for fast href→spineIndex lookup (used only for large EPUBs). The
-  // key is the low 48 bits of the FNV-1a 64-bit hash: eight bytes per spine
-  // item instead of sixteen, and still no expected collision at 32k items.
+  // The hash narrows the lookup; the stored file offset verifies the full href.
   struct SpineHrefIndexEntry {
     uint32_t hashLow;
     uint16_t hashHigh;
     int16_t spineIndex;
+    uint32_t offset = 0;
     bool operator<(const SpineHrefIndexEntry& o) const {
-      return hashHigh < o.hashHigh || (hashHigh == o.hashHigh && hashLow < o.hashLow);
+      return hashHigh < o.hashHigh ||
+             (hashHigh == o.hashHigh &&
+              (hashLow < o.hashLow || (hashLow == o.hashLow && spineIndex < o.spineIndex)));
     }
     bool sameKey(const SpineHrefIndexEntry& o) const { return hashHigh == o.hashHigh && hashLow == o.hashLow; }
   };
@@ -112,7 +118,7 @@ class BookMetadataCache {
     const uint64_t hash = fnvHash64(href);
     return {static_cast<uint32_t>(hash), static_cast<uint16_t>(hash >> 32), spineIndex};
   }
-  std::deque<SpineHrefIndexEntry> spineHrefIndex;
+  std::unique_ptr<SpineHrefIndexEntry[]> spineHrefIndex;
   bool useSpineHrefIndex = false;
 
   static constexpr uint16_t LARGE_SPINE_THRESHOLD = 400;
@@ -152,8 +158,14 @@ class BookMetadataCache {
  public:
   BookMetadata coreMetadata;
 
-  explicit BookMetadataCache(std::string cachePath)
-      : cachePath(std::move(cachePath)), lutOffset(0), spineCount(0), tocCount(0), loaded(false), buildMode(false) {}
+  explicit BookMetadataCache(std::string cachePath, std::string sourcePath = {})
+      : cachePath(std::move(cachePath)),
+        sourcePath(std::move(sourcePath)),
+        lutOffset(0),
+        spineCount(0),
+        tocCount(0),
+        loaded(false),
+        buildMode(false) {}
   ~BookMetadataCache() = default;
 
   // Building phase (stream to disk immediately)
@@ -190,7 +202,9 @@ class BookMetadataCache {
   // The background TOC pass: entries are written without their chapter (matched later), so it
   // needs no spine index in memory. endDeferredTocPass keeps the finished pass under its own name
   // and records the entry count; an unfinished pass is never taken for a finished one.
-  bool beginDeferredTocPass();
+  bool beginDeferredTocPass(const std::string& source = {}, bool restart = false);
+  bool pauseDeferredTocPass();
+  bool hasDeferredTocProgress(const std::string& source) const;
   bool endDeferredTocPass();
   // Whether a finished background TOC pass is on the card, and its entry count.
   static bool deferredTocReady(const std::string& cachePath, uint16_t* entries = nullptr);
@@ -198,6 +212,7 @@ class BookMetadataCache {
   // it answers true, or on any failure, nothing of the build is left behind and false is returned.
   // Needs a cache loaded from book.part.
   bool buildBookBinFromPart(const std::string& epubPath, StopFn stop);
+  bool wasHeapRefused() const { return heapRefused; }
   // Whether the card holds an index this cache can load (book.bin, or book.part).
   static bool indexOnCard(const std::string& cachePath);
   // Whether the background build has left book.bin on the card, not loaded yet.
@@ -242,6 +257,9 @@ class BookMetadataCache {
   // Reading phase (read mode). With `allowPartial`, a missing book.bin falls back to book.part.
   // `stop` is asked while the records are checked; a stopped load fails.
   bool load(bool allowPartial = false, StopFn stop = nullptr);
+  // Read the small metadata sidecar and stat book.bin without validating its records.
+  bool loadMetadataOnly(BookMetadata& metadata, uint16_t* spine = nullptr, uint16_t* toc = nullptr,
+                        uint32_t* lut = nullptr) const;
   bool isPartial() const { return partial; }
   SpineEntry getSpineEntry(int index);
   TocEntry getTocEntry(int index);

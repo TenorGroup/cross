@@ -63,10 +63,16 @@ class ZipFile {
   bool lastCentralDirPosValid = false;
 
   bool loadFileStatSlim(const char* filename, FileStatSlim* fileStat);
+  bool buildZipIndex();
+  template <typename Targets, typename Sizes>
+  int fillSizes(Targets& targets, size_t count, Sizes& sizes, size_t sizeCount);
+  int loadZipIndexEntry(const char* filename, FileStatSlim* fileStat);
+  int loadZipIndexPath(const std::string& indexPath, const char* filename, FileStatSlim* fileStat);
   // Every walk of the central directory: block reads from `from` (0: its start), and with `wrap` on
   // from its start up to `from`. `visit` returns true to stop. False when the zip cannot be read.
   using Visit = bool (*)(void* ctx, const CentralEntry& entry);
-  bool walkCentralDir(uint32_t from, bool wrap, const char* kind, Visit visit, void* ctx);
+  bool walkCentralDir(uint32_t from, bool wrap, const char* kind, Visit visit, void* ctx,
+                      unsigned* readCount = nullptr, size_t* readBytes = nullptr);
   // This zip as it is on the card now (path, size, directory), for lookups remembered across objects.
   uint64_t zipKey() const;
   long getDataOffset(const FileStatSlim& fileStat);
@@ -86,6 +92,7 @@ class ZipFile {
   // targets must be sorted by (hash, len). sizes[target.index] receives uncompressedSize.
   // Returns number of targets matched.
   int fillUncompressedSizes(std::deque<SizeTarget>& targets, std::deque<uint32_t>& sizes);
+  int fillUncompressedSizes(SizeTarget* targets, size_t count, uint32_t* sizes);
   // Due to the memory required to run each of these, it is recommended to not preopen the zip file for multiple
   // These functions will open and close the zip as needed
   uint8_t* readFileToMemory(const char* filename, size_t* size = nullptr, bool trailingNullByte = false);

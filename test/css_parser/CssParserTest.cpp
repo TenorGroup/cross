@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstring>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <iterator>
 #include <limits>
 #include <new>
@@ -30,12 +32,45 @@ bool enabled = false;
 bool rejectNothrow = false;
 size_t calls = 0;
 size_t bytes = 0;
+size_t nothrowCalls = 0;
+size_t failNothrowAt = 0;
+size_t heldBytes = 0;
+size_t peakBytes = 0;
+struct Held {
+  void* pointer = nullptr;
+  size_t size = 0;
+};
+Held held[64];
+
+void retain(void* pointer, size_t size) {
+  if (!pointer) return;
+  for (auto& item : held) {
+    if (!item.pointer) {
+      item = {pointer, size};
+      heldBytes += size;
+      peakBytes = std::max(peakBytes, heldBytes);
+      return;
+    }
+  }
+  std::abort();
+}
+void release(void* pointer) {
+  for (auto& item : held) {
+    if (item.pointer == pointer && pointer) {
+      heldBytes -= item.size;
+      item = {};
+      return;
+    }
+  }
+}
 
 void reset() {
   enabled = false;
   rejectNothrow = false;
   calls = 0;
   bytes = 0;
+  nothrowCalls = failNothrowAt = 0;
+  peakBytes = heldBytes;
 }
 
 void record(const size_t size) {
@@ -108,20 +143,36 @@ void* operator new[](const std::size_t size) {
 
 void* operator new(const std::size_t size, const std::nothrow_t&) noexcept {
   resolveAllocationProbe::record(size);
-  if (resolveAllocationProbe::rejectNothrow) return nullptr;
-  return std::malloc(size == 0 ? 1 : size);
+  ++resolveAllocationProbe::nothrowCalls;
+  if (resolveAllocationProbe::rejectNothrow ||
+      resolveAllocationProbe::nothrowCalls == resolveAllocationProbe::failNothrowAt) return nullptr;
+  void* pointer = std::malloc(size == 0 ? 1 : size);
+  resolveAllocationProbe::retain(pointer, size);
+  return pointer;
 }
 
 void* operator new[](const std::size_t size, const std::nothrow_t&) noexcept {
   return ::operator new(size, std::nothrow);
 }
 
-void operator delete(void* memory) noexcept { std::free(memory); }
-void operator delete[](void* memory) noexcept { std::free(memory); }
-void operator delete(void* memory, const std::size_t) noexcept { std::free(memory); }
-void operator delete[](void* memory, const std::size_t) noexcept { std::free(memory); }
-void operator delete(void* memory, const std::nothrow_t&) noexcept { std::free(memory); }
-void operator delete[](void* memory, const std::nothrow_t&) noexcept { std::free(memory); }
+void operator delete(void* memory) noexcept { resolveAllocationProbe::release(memory); std::free(memory); }
+void operator delete[](void* memory) noexcept { resolveAllocationProbe::release(memory); std::free(memory); }
+void operator delete(void* memory, const std::size_t) noexcept {
+  resolveAllocationProbe::release(memory);
+  std::free(memory);
+}
+void operator delete[](void* memory, const std::size_t) noexcept {
+  resolveAllocationProbe::release(memory);
+  std::free(memory);
+}
+void operator delete(void* memory, const std::nothrow_t&) noexcept {
+  resolveAllocationProbe::release(memory);
+  std::free(memory);
+}
+void operator delete[](void* memory, const std::nothrow_t&) noexcept {
+  resolveAllocationProbe::release(memory);
+  std::free(memory);
+}
 
 namespace {
 
@@ -296,14 +347,14 @@ TEST_F(CssParserTest, PartialCacheIsValidatedDuringInspection) {
   EXPECT_EQ(writer.inspectCache(), CssParser::CacheStatus::Invalid);
 }
 
-TEST_F(CssParserTest, CompleteCacheDefersPayloadValidationToHydration) {
+TEST_F(CssParserTest, CompleteCacheRejectsTruncationDuringInspection) {
   CssParser writer(cachePath());
   ASSERT_EQ(loadCss(writer, ".a { font-weight: bold; }\n"), CssParser::ParseResult::Complete);
   ASSERT_TRUE(writer.saveToCache(true));
 
   const auto size = fs::file_size(cacheFile());
   fs::resize_file(cacheFile(), size - 1);
-  EXPECT_EQ(writer.inspectCache(), CssParser::CacheStatus::Complete);
+  EXPECT_EQ(writer.inspectCache(), CssParser::CacheStatus::Invalid);
 
   CssParser reader(cachePath());
   EXPECT_EQ(reader.loadFromCache(), CssParser::CacheLoadResult::Invalid);
@@ -385,6 +436,118 @@ TEST_F(CssParserTest, CacheHydrationRejectsNonFiniteStyleLengths) {
     CssParser reader(cachePath());
     EXPECT_EQ(reader.loadFromCache(), CssParser::CacheLoadResult::Invalid);
     EXPECT_TRUE(reader.empty());
+  }
+}
+
+TEST_F(CssParserTest, InspectionChecksHeaderAndHydrationChecksPayloadWithoutEarlyAllocation) {
+  CssParser writer(cachePath());
+  ASSERT_EQ(loadCss(writer, ".alpha { text-indent: 2px; }\n"), CssParser::ParseResult::Complete);
+  ASSERT_TRUE(writer.saveToCache(true));
+  auto valid = readCache();
+  CssParser reader(cachePath());
+  resolveAllocationProbe::nothrowCalls = 0;
+  resolveAllocationProbe::rejectNothrow = true;
+  EXPECT_EQ(reader.inspectCache(), CssParser::CacheStatus::Complete);
+  resolveAllocationProbe::rejectNothrow = false;
+  EXPECT_EQ(resolveAllocationProbe::nothrowCalls, 0u);
+  EXPECT_TRUE(reader.empty());
+  valid[kCacheHeaderBytes + sizeof(uint16_t) + 1] = 'b';
+  writeCache(valid);
+  EXPECT_EQ(reader.inspectCache(), CssParser::CacheStatus::Complete);
+  EXPECT_EQ(reader.loadFromCache(), CssParser::CacheLoadResult::Invalid);
+  EXPECT_TRUE(reader.empty());
+}
+
+TEST_F(CssParserTest, FailedGrowthRetainsOnlyPreviouslyAcceptedStorage) {
+  for (size_t fault = 1; fault <= 3; ++fault) {
+    SCOPED_TRACE(fault);
+    CssParser parser(cachePath());
+    std::string css;
+    for (size_t i = 0; i < 128; ++i) {
+      std::string selector = ".r" + std::to_string(i);
+      selector.resize(32, 'x');
+      css += selector + " { text-indent: " + std::to_string(i + 1) + "px; }\n";
+    }
+    ASSERT_EQ(loadCss(parser, css), CssParser::ParseResult::Complete);
+    ASSERT_EQ(parser.ruleCount(), 128u);
+    const size_t retained = resolveAllocationProbe::heldBytes;
+    resolveAllocationProbe::failNothrowAt = resolveAllocationProbe::nothrowCalls + fault;
+    EXPECT_EQ(loadCss(parser, ".next { text-indent: 999px; }\n"), CssParser::ParseResult::Partial);
+    resolveAllocationProbe::failNothrowAt = 0;
+    EXPECT_EQ(parser.ruleCount(), 128u);
+    EXPECT_EQ(resolveAllocationProbe::heldBytes, retained);
+    std::string name = "r127"; name.resize(31, 'x');
+    EXPECT_FLOAT_EQ(parser.resolveStyle("p", name).textIndent.value, 128.0f);
+    EXPECT_FALSE(parser.resolveStyle("p", "next").hasTextIndent());
+  }
+}
+
+TEST_F(CssParserTest, InspectionAndHydrationMeasurements) {
+  for (size_t n : {30u, 399u, 2000u, 5000u}) {
+    CssParser writer(cachePath());
+    std::string css;
+    for (size_t i = 0; i < n; ++i) css += ".r" + std::to_string(i) + " { font-weight: bold; }\n";
+    loadCss(writer, css);
+    ASSERT_TRUE(writer.saveToCache(true));
+    const size_t rules = writer.ruleCount();
+    writer.clear();
+    CssParser reader(cachePath());
+    cssIo::reset();
+    resolveAllocationProbe::reset();
+    const auto started = std::chrono::steady_clock::now();
+    const auto status = reader.inspectCache();
+    const auto inspectMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now()-started).count();
+    const auto inspectBytes = cssIo::bytes;
+    const auto inspectReads = cssIo::reads;
+    const auto inspectSeeks = cssIo::seeks;
+    const auto inspectPeak = resolveAllocationProbe::peakBytes;
+    EXPECT_EQ(status, CssParser::CacheStatus::Complete);
+    EXPECT_TRUE(reader.empty());
+    cssIo::reset();
+    resolveAllocationProbe::reset();
+    const auto hydrateStart = std::chrono::steady_clock::now();
+    EXPECT_EQ(reader.loadFromCache(), CssParser::CacheLoadResult::Complete);
+    const auto hydrateMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now()-hydrateStart).count();
+    EXPECT_EQ(reader.ruleCount(), rules);
+    std::cout << "CSS_MEASURE n=" << n << " rules=" << rules << " inspect_bytes=" << inspectBytes
+              << " inspect_reads=" << inspectReads << " inspect_seeks=" << inspectSeeks
+              << " inspect_pool_peak=" << inspectPeak << " inspect_ms=" << inspectMs
+              << " hydrate_bytes=" << cssIo::bytes << " hydrate_reads=" << cssIo::reads
+              << " hydrate_seeks=" << cssIo::seeks << " hydrate_pool_peak=" << resolveAllocationProbe::peakBytes
+              << " hydrate_ms=" << hydrateMs << '\n';
+  }
+}
+
+TEST_F(CssParserTest, HeaderAndFooterDamageIsRejectedBeforeHydration) {
+  CssParser writer(cachePath());
+  ASSERT_EQ(loadCss(writer, ".a { font-weight: bold; }\n"), CssParser::ParseResult::Complete);
+  ASSERT_TRUE(writer.saveToCache(true));
+  const auto valid = readCache();
+  for (size_t at : std::vector<size_t>{0, 1, 2, 3, valid.size() - 12, valid.size() - 8, valid.size() - 4}) {
+    auto damaged = valid;
+    damaged[at] ^= 1;
+    writeCache(damaged);
+    CssParser reader(cachePath());
+    EXPECT_EQ(reader.inspectCache(), CssParser::CacheStatus::Invalid) << at;
+    EXPECT_TRUE(reader.empty());
+  }
+}
+
+TEST_F(CssParserTest, LegacyCacheRemainsReadableWithoutRebuild) {
+  CssParser writer(cachePath());
+  ASSERT_EQ(loadCss(writer, ".a { font-weight: bold; }\n"), CssParser::ParseResult::Complete);
+  for (bool complete : {false, true}) {
+    ASSERT_TRUE(writer.saveToCache(complete));
+    auto legacy = readCache();
+    ASSERT_TRUE(legacy[1] & 2);
+    legacy[1] &= ~2;
+    legacy.resize(legacy.size() - 12);
+    writeCache(legacy);
+    CssParser reader(cachePath());
+    EXPECT_EQ(reader.inspectCache(), complete ? CssParser::CacheStatus::Complete : CssParser::CacheStatus::Partial);
+    EXPECT_EQ(reader.loadFromCache(), CssParser::CacheLoadResult::Complete);
+    EXPECT_EQ(reader.resolveStyle("p", "a").fontWeight, CssFontWeight::Bold);
+    EXPECT_EQ(readCache(), legacy);
   }
 }
 

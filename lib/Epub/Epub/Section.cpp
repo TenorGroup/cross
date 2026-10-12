@@ -94,6 +94,16 @@ constexpr uint32_t HEADER_SIZE =
 constexpr size_t BUILD_START_KEEP_FONT_CACHE_FREE = 64 * 1024;
 constexpr size_t BUILD_START_KEEP_FONT_CACHE_LARGEST = 32 * 1024;
 constexpr size_t PARKED_ANCHOR_RESERVE = 4;
+constexpr size_t DD_MAX_PREFIXES = 8;
+
+bool ddPrefixHeapAvailable(const size_t bytes, [[maybe_unused]] const char* stage) {
+  if (heapfloor::leaves(bytes, bytes, ESP.getFreeHeap(), ESP.getMaxAllocHeap())) return true;
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("SCT", "DD_REPLAY_REFUSE stage=%s bytes=%u free=%u largest=%u", stage, static_cast<unsigned>(bytes),
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
+  return false;
+}
 
 using ParkedAnchor = std::pair<std::string, uint16_t>;
 
@@ -371,6 +381,10 @@ bool Section::loadBuildCss(BuildContext* ctx) {
       if (cacheResult == CssParser::CacheLoadResult::Invalid) {
         LOG_ERR("SCT", "Failed to load CSS from cache free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
                 static_cast<unsigned>(ESP.getMaxAllocHeap()));
+        if (ctx->cssParser->hasCache() || ctx->cssParser->cacheNeedsRebuild()) {
+          ctx->cssParser->deleteCache();
+          return false;
+        }
       }
     }
   } else {
@@ -464,9 +478,8 @@ std::unique_ptr<ChapterHtmlSlimParser> Section::makeBuildParser(BuildContext* ct
       spec.embeddedStyle, ctxPtr->contentBase, ctxPtr->imageBasePath, spec.imageRendering, ctxPtr->tocAnchors, popupFn,
       ctxPtr->cssParser, spec.paragraphIndent, spec.letterSpacing, spec.wordSpacing);
   if (parser && ctxPtr->ddOn) {
-    parser->resumePointFn = [ctxPtr](const ChapterHtmlSlimParser::ResumePoint& point, const std::string& prefix,
+    parser->resumePointFn = [this, ctxPtr](const ChapterHtmlSlimParser::ResumePoint& point, const std::string& prefix,
                                      const uint16_t prologBytes) {
-      constexpr size_t MAX_PREFIXES = 8;
       auto& prefixes = ctxPtr->ddPrefixes;
       size_t id = prefixes.size();
       for (size_t i = prefixes.size(); i-- > 0;) {
@@ -475,11 +488,24 @@ std::unique_ptr<ChapterHtmlSlimParser> Section::makeBuildParser(BuildContext* ct
           break;
         }
       }
+      if (prologBytes > ChapterHtmlSlimParser::MAX_CHECKPOINT_PREFIX ||
+          prefix.size() > ChapterHtmlSlimParser::MAX_CHECKPOINT_PREFIX - prologBytes) {
+        ctxPtr->ddLastValid = false;
+        return;
+      }
       if (id == prefixes.size()) {
-        if (prefixes.size() == MAX_PREFIXES || prefix.size() > UINT16_MAX) {
-          ctxPtr->ddLastValid = false;  // a later page goes back to a point before this one
+        if (prefixes.size() == DD_MAX_PREFIXES) {
+          ctxPtr->ddLastValid = false;
           return;
         }
+        const size_t tableBytes = prefixes.capacity() < DD_MAX_PREFIXES ? DD_MAX_PREFIXES * sizeof(std::string) : 0;
+        if (!ddPrefixHeapAvailable(prefix.size() + 1 + tableBytes, "record")) {
+          ctxPtr->ddLastValid = false;
+          buildStarved_ = true;
+          ctxPtr->parser->requestCheckpoint();
+          return;
+        }
+        if (tableBytes) prefixes.reserve(DD_MAX_PREFIXES);
         prefixes.push_back(prefix);
       }
       ctxPtr->ddProlog = prologBytes;
@@ -509,7 +535,10 @@ bool Section::ddComplete(const uint32_t htmlSize) const {
   uint8_t prefixes = 0, complete = 0;
   return serialization::readPod(f, magic) && serialization::readPod(f, size) && serialization::readPod(f, count) &&
          serialization::readPod(f, prolog) && serialization::readPod(f, prefixes) &&
-         serialization::readPod(f, complete) && magic == DD_MAGIC && size == htmlSize && complete == 1;
+         serialization::readPod(f, complete) && magic == DD_MAGIC && size == htmlSize && complete == 1 &&
+         prolog <= ChapterHtmlSlimParser::MAX_CHECKPOINT_PREFIX && prolog <= htmlSize && count > 0 &&
+         prefixes > 0 && prefixes <= DD_MAX_PREFIXES &&
+         DD_HEADER + static_cast<uint64_t>(count) * sizeof(DdRecord) + 2u * prefixes <= f.size();
 }
 
 bool Section::ddOpen(BuildContext& ctx, const bool seed) {
@@ -522,7 +551,7 @@ bool Section::ddOpen(BuildContext& ctx, const bool seed) {
   ctx.ddOn = Storage.openFileForWrite("SCT", tmp, ctx.dd) &&
              ctx.dd.write(std::array<uint8_t, DD_HEADER>{}.data(), DD_HEADER) == DD_HEADER;
   if (!ctx.ddOn) {
-    ctx.dd.close();
+    if (ctx.dd) ctx.dd.close();
     Storage.remove(tmp.c_str());
     return false;
   }
@@ -534,7 +563,8 @@ bool Section::ddOpen(BuildContext& ctx, const bool seed) {
       !serialization::readPod(old, size) || !serialization::readPod(old, count) ||
       !serialization::readPod(old, prolog) || !serialization::readPod(old, prefixes) ||
       !serialization::readPod(old, complete) || magic != DD_MAGIC || size != htmlSize || count == 0 ||
-      DD_HEADER + static_cast<uint64_t>(count) * sizeof(DdRecord) > old.size())
+      DD_HEADER + static_cast<uint64_t>(count) * sizeof(DdRecord) > old.size() || prolog > htmlSize ||
+      prolog > ChapterHtmlSlimParser::MAX_CHECKPOINT_PREFIX || prefixes > DD_MAX_PREFIXES)
     return true;
   DdRecord block[16];
   for (uint32_t i = 0; i < count;) {
@@ -552,7 +582,15 @@ bool Section::ddOpen(BuildContext& ctx, const bool seed) {
   for (uint8_t i = 0; i < prefixes; ++i) {
     uint16_t length = 0;
     std::string prefix;
-    if (!serialization::readPod(old, length) || length > old.size()) break;
+    if (!serialization::readPod(old, length) || old.position() > old.size() ||
+        length > old.size() - old.position() || length > ChapterHtmlSlimParser::MAX_CHECKPOINT_PREFIX - prolog)
+      break;
+    const size_t tableBytes = ctx.ddPrefixes.capacity() < DD_MAX_PREFIXES ? DD_MAX_PREFIXES * sizeof(std::string) : 0;
+    if (!ddPrefixHeapAvailable(static_cast<size_t>(length) + 1 + tableBytes, "seed")) {
+      buildStarved_ = true;
+      break;
+    }
+    if (tableBytes) ctx.ddPrefixes.reserve(DD_MAX_PREFIXES);
     prefix.resize(length);
     if (old.read(prefix.data(), length) != static_cast<int>(length)) break;
     ctx.ddPrefixes.push_back(std::move(prefix));
@@ -787,7 +825,7 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
   // Resume points: a build from the chapter top writes them; one resumed from a partial carries the
   // points already on the card on (the next-chapter look-ahead leaves a 3-page partial behind).
   if (!preview_) ddOpen(*ctx, partial_);
-  if (!loadBuildCss(ctx.get())) {
+  if (buildStarved_ || !loadBuildCss(ctx.get())) {
     ddClose(*ctx, false, false);
     ctx->lut.close();
     Storage.remove(lutTmpPath().c_str());
@@ -1177,6 +1215,11 @@ bool Section::buildSomeMore(const int maxPages) {
       return false;
     }
     const auto status = build_->parser->parseStep();
+    if (buildStarved_) {  // A DD prefix could not leave enough heap during this step.
+      build_->bytesConsumed = build_->parser->parseBytesConsumed();
+      parkBuild();
+      return false;
+    }
     if (status == ChapterHtmlSlimParser::ParseStatus::Error || build_->failed) {
       LOG_ERR("SCT", "Parse error during incremental build free=%u largest=%u",
               static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
@@ -1238,7 +1281,8 @@ std::unique_ptr<Page> Section::previewPage(const ReaderRenderSpec& spec, const u
     if (!serialization::readPod(dd, magic) || !serialization::readPod(dd, size) || !serialization::readPod(dd, count) ||
         !serialization::readPod(dd, prolog) || !serialization::readPod(dd, prefixCount) ||
         !serialization::readPod(dd, complete) || magic != DD_MAGIC || size != html.size() || count == 0 ||
-        prolog > html.size() || prolog > ChapterHtmlSlimParser::MAX_CHECKPOINT_PREFIX)
+        prolog > html.size() || prolog > ChapterHtmlSlimParser::MAX_CHECKPOINT_PREFIX ||
+        prefixCount == 0 || prefixCount > DD_MAX_PREFIXES)
       return reject("dd_header");
     const uint64_t prefixOffset = DD_HEADER + static_cast<uint64_t>(count) * sizeof(DdRecord);
     if (prefixOffset > dd.size()) return reject("dd_bounds");
@@ -1261,19 +1305,22 @@ std::unique_ptr<Page> Section::previewPage(const ReaderRenderSpec& spec, const u
     if (pageStart - (found ? best.visible : 0) > PREVIEW_MAX_CHARS) return reject("distance");
     if (found) {
       if (best.prefix >= prefixCount || !dd.seek(static_cast<uint32_t>(prefixOffset))) return reject("dd_prefix");
-      std::string prefix;
       for (uint8_t i = 0; i <= best.prefix; ++i) {
         uint16_t length = 0;
         if (!serialization::readPod(dd, length) || dd.position() > dd.size() ||
             length > dd.size() - dd.position() ||
             static_cast<size_t>(prolog) + length > ChapterHtmlSlimParser::MAX_CHECKPOINT_PREFIX)
           return reject("dd_prefix_length");
-        prefix.resize(length);
-        if (dd.read(prefix.data(), length) != static_cast<int>(length)) return reject("dd_prefix_read");
+        if (i != best.prefix) {
+          if (!dd.seek(dd.position() + length)) return reject("dd_prefix_read");
+          continue;
+        }
+        const size_t replayBytes = static_cast<size_t>(prolog) + length;
+        if (!ddPrefixHeapAvailable(replayBytes + 1, "preview")) return reject("dd_prefix_heap");
+        replay.resize(replayBytes);
+        if (html.read(replay.data(), prolog) != static_cast<int>(prolog)) return reject("html_prolog");
+        if (dd.read(replay.data() + prolog, length) != static_cast<int>(length)) return reject("dd_prefix_read");
       }
-      replay.resize(prolog);
-      if (html.read(replay.data(), prolog) != static_cast<int>(prolog)) return reject("html_prolog");
-      replay += prefix;
       point = ChapterHtmlSlimParser::ResumePoint{best.offset, best.visible, best.imageCounter};
     }
   }
