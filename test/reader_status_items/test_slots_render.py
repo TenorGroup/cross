@@ -43,6 +43,7 @@ cpp = r'''
 #include "Utf8.h"
 #include "activities/reader/ReaderStatusLayout.h"
 constexpr int SMALL_FONT_ID = 0;
+constexpr int STATUS_CORNER_INSET = 8;
 struct EpdFontFamily {enum Style {REGULAR};};
 struct CrossPointSettings {
  enum {STATUS_BAR_CLOCK_HIDE=0,HIDE_PROGRESS=2,XTC_STATUS_BAR_HIDE=0};
@@ -107,7 +108,7 @@ namespace tenorchrome {
  struct BatteryInkBounds {int top;int height;};
  BatteryInkBounds batteryInkBounds(const GfxRenderer&,int,int);
  int statusTextY(int height,bool){return height-40;}
- void drawReaderSlots(const GfxRenderer&,const char*,int,int,float,bool,bool,int64_t,int64_t,const char* = nullptr);
+ void drawReaderSlots(const GfxRenderer&,const char*,int,int,float,bool,bool,int64_t,int64_t,const char* = nullptr,bool = true);
 }
 using namespace tenorchrome;
 ''' + metric_body + '\n' + body + r'''
@@ -153,6 +154,37 @@ void chapterRegression(bool tail){
  SETTINGS.percent=true;
  printf("chapter_%s:GREEN (%d production painter cases, UTF-8, cross/ugly)\n",tail?"tail":"layout",cases);
 }
+void titleInBottomStrip(){
+ using S=CrossPointSettings;
+ const std::string longName="Chương 12: Gã Lá Nhỏ Và Những Người Bạn ở cuối con đường rất dài";
+ int cases=0;
+ for(int screen:{480,528})for(int size:{8,10,12})for(bool ugly:{false,true})for(bool shortName:{false,true})
+  for(int top:{S::BOOK_TITLE,S::CHAPTER_TITLE}){
+   rough=ugly;GfxRenderer r;r.w=screen;r.advance=size;powerManager.percentage=100;
+   SETTINGS.spec={};SETTINGS.spec.slotsEnabled=true;SETTINGS.spec.topTitleMode=top;
+   SETTINGS.spec.slots={S::STATUS_SLOT_BATTERY,S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS,S::STATUS_SLOT_CLOCK};
+   ink.clear();clockstatus::valid=true;
+   const std::string name=shortName?"Mở đầu":longName;
+   drawReaderSlots(r,name.c_str(),1,12,3.0f,true,false,-1,-1);
+   const Ink* title=nullptr;const Ink* counts=nullptr;const Ink* clock=nullptr;int batteryEnd=0;
+   for(const auto& painted:ink){
+     assert(painted.y>=100);
+     if(painted.text=="~1/12  3%")counts=&painted;
+     else if(painted.text=="12:34")clock=&painted;
+     else if(painted.text=="icon"||painted.text=="100%")batteryEnd=std::max(batteryEnd,painted.x+painted.w);
+     else if(painted.text.starts_with(name.substr(0,6)))title=&painted;
+   }
+   assert(title&&counts&&clock&&batteryEnd>0);
+   const int gapLeft=ugly?12:14,gapMiddle=ugly?12:8,gapRight=ugly?12:14;
+   assert(title->x>=batteryEnd+gapLeft);
+   assert(title->x+title->w+gapMiddle<=counts->x);
+   assert(counts->x+counts->w+gapRight==clock->x);
+   if(shortName)assert(title->text==(ugly?name:name+":"));
+   else assert(title->text.find("…")!=std::string::npos);
+   ++cases;
+  }
+ printf("title_bottom:GREEN (%d production painter cases, name inside the bottom strip, .53 order)\n",cases);
+}
 int main(int argc,char** argv){
  using S=CrossPointSettings;
  if(argc>1&&!strcmp(argv[1],"preview")){
@@ -170,10 +202,10 @@ int main(int argc,char** argv){
  if(argc>1&&strcmp(argv[1],"all")){
    chapterRegression(!strcmp(argv[1],"tail"));return 0;
  }
- chapterRegression(true);chapterRegression(false);
+ chapterRegression(true);chapterRegression(false);titleInBottomStrip();
  for(int screen:{480,528})for(int size:{8,10,12})for(bool ugly:{false,true})for(bool swapped:{false,true}) {
    GfxRenderer r;r.w=screen;r.advance=size;rough=ugly;
-   SETTINGS.spec={};SETTINGS.spec.slotsEnabled=true;SETTINGS.spec.topTitleMode=S::CHAPTER_TITLE;
+   SETTINGS.spec={};SETTINGS.spec.slotsEnabled=true;SETTINGS.spec.topTitleMode=S::HIDE_TITLE;
    SETTINGS.spec.slots={swapped?S::STATUS_SLOT_BATTERY:S::STATUS_SLOT_CLOCK,
                        S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS,
                        swapped?S::STATUS_SLOT_CLOCK:S::STATUS_SLOT_BATTERY};
@@ -215,21 +247,30 @@ int main(int argc,char** argv){
                      known?"Mở\nđầu một chương có tên dài để kiểm tra cắt giữa UTF-8 chapter end":nullptr);
      const auto lane=(item==S::STATUS_SLOT_CHAPTER_NAME||item==S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS)&&slot==1
        ? readerstatus::Cell{20,screen-40} : readerstatus::cell(screen,slot);
-     int bottom=0,header=0;
+     int bottom=0,header=0,named=0;
+     std::vector<Ink> items;
      for(const auto& painted:ink){
        assert(painted.x>=0&&painted.x+painted.w<=screen);
        assert(painted.y>=0&&painted.y+painted.h<=r.h);
-       if(painted.y<100){++header;assert(top!=S::HIDE_TITLE);}
-       else{++bottom;assert(painted.x>=lane.x&&painted.x+painted.w<=lane.x+lane.width);}
+       if(painted.y<100)++header;
+       else if(top!=S::HIDE_TITLE&&painted.text.starts_with("A long")){++named;assert(painted.x>=12&&painted.x+painted.w<=screen-12);}
+       else{
+         ++bottom;items.push_back(painted);
+         if(top==S::HIDE_TITLE||slot!=1)assert(painted.x>=lane.x&&painted.x+painted.w<=lane.x+lane.width);
+         else assert(painted.x>=12&&painted.x+painted.w<=screen-12);
+       }
      }
-     assert(header==(top==S::HIDE_TITLE?0:1));
+     assert(header==0);
+     // A long chapter name in the centre may leave the name no room; otherwise the name is always drawn.
+     if(slot==1&&item==S::STATUS_SLOT_CHAPTER_NAME&&known)assert(named<=(top!=S::HIDE_TITLE));
+     else assert(named==(top!=S::HIDE_TITLE));
      const bool visible=item!=S::STATUS_SLOT_NONE&&(item<S::STATUS_SLOT_CHAPTER_NAME||slot==1);
      assert((bottom>0)==visible);
      if(!known&&visible&&item!=S::STATUS_SLOT_BATTERY){
-       assert(bottom==1&&ink.back().text==(item==S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS?"-  -":"-"));
+       assert(bottom==1&&items.back().text==(item==S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS?"-  -":"-"));
      }
-     if(known&&item==S::STATUS_SLOT_CHAPTER_NAME&&slot==1){
-       const auto& label=ink.back().text;
+     if(known&&item==S::STATUS_SLOT_CHAPTER_NAME&&slot==1&&top==S::HIDE_TITLE){
+       const auto& label=items.back().text;
        const char* name="Mở đầu một chương có tên dài để kiểm tra cắt giữa UTF-8 chapter end";
        assert(bottom==1&&label.find('\n')==std::string::npos);
        assert(label==r.truncatedText(0,name,lane.width));

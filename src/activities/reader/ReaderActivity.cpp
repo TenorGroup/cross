@@ -375,14 +375,14 @@ void ReaderActivity::readingMargins(int& top, int& right, int& bottom, int& left
     constexpr int TOP_BREATHING_ROOM = 3;
     const int inkSafeTop =
         maxInkTop > 0 ? std::max(margin, maxInkTop - renderer.getFontAscenderSize(fontId)) : margin + 1;
-    top = std::max(inkSafeTop + TOP_BREATHING_ROOM, readerStatusTopReserve());
+    top = inkSafeTop + TOP_BREATHING_ROOM;
     right = margin;  // Keep the reader text inset equal on both sides.
     bottom = std::max(margin, preview                            ? static_cast<int>(PREVIEW_FOOTER_HEIGHT)
                               : readerStatusBarHeight() == 0 ? 0
                                                                  : tenorchrome::readerBottomReserve());
     return;
   }
-  top = std::max(top + margin, readerStatusTopReserve());
+  top += margin;
   right += margin;
   left += margin;
   bottom += std::max(margin, static_cast<int>(readerStatusBarHeight()));
@@ -393,12 +393,6 @@ uint8_t ReaderActivity::readerStatusBarHeight() const {
   if (!preview && spec.slotsEnabled && !spec.textLaneVisible(true)) return 0;
   return preview ? PREVIEW_FOOTER_HEIGHT
                  : UITheme::getInstance().getStatusBarHeight(UITheme::StatusBarScope::Reader);
-}
-
-int ReaderActivity::readerStatusTopReserve() const {
-  const auto spec = SETTINGS.statusBarSpec();
-  return !preview && spec.slotsEnabled && spec.topTitleMode != CrossPointSettings::HIDE_TITLE
-             ? 12 + renderer.getLineHeight(SMALL_FONT_ID) + 4 : 0;
 }
 
 void ReaderActivity::drawPreviewFooter() const {

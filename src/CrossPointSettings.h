@@ -724,6 +724,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     // concern: pass halClock.isAvailable(), or true for layout reservation.
     bool textLaneVisible(bool clockAvailable) const {
       if (slotsEnabled) {
+        if (topTitleMode != HIDE_TITLE) return true;
         for (const auto slot : slots)
           if (slot != STATUS_SLOT_NONE && (slot != STATUS_SLOT_CLOCK || clockAvailable)) return true;
         return false;

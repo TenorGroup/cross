@@ -128,6 +128,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["readerStatusLeft"] = status.slots[0];
   doc["readerStatusCenter"] = status.slots[1];
   doc["readerStatusRight"] = status.slots[2];
+  doc["readerStatusVersion"] = 1;
 
   // Front button remap - managed by RemapFrontButtons sub-activity, not in SettingsList.
   doc["frontButtonBack"] = frontButtonBack;
@@ -318,6 +319,14 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   readerStatusLeft = statusValue("readerStatusLeft", STATUS_SLOT_CHAPTER_NAME, STATUS_SLOT_NONE);
   readerStatusCenter = statusValue("readerStatusCenter", STATUS_SLOT_COUNT, STATUS_SLOT_NONE);
   readerStatusRight = statusValue("readerStatusRight", STATUS_SLOT_CHAPTER_NAME, STATUS_SLOT_NONE);
+  // Version 1: a centre of chapter pages was what was left once the custom bar dropped the book
+  // percent, so it gets both once, unless a corner already shows the percent.
+  if ((doc["readerStatusVersion"] | uint8_t{0}) < 1) {
+    if (readerStatusSlotsEnabled && readerStatusCenter == STATUS_SLOT_CHAPTER_PAGES &&
+        readerStatusLeft != STATUS_SLOT_BOOK_PERCENT && readerStatusRight != STATUS_SLOT_BOOK_PERCENT)
+      readerStatusCenter = STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS;
+    needsResave = true;
+  }
   statusBarItemsMode = doc["statusBarItemsMode"] | uint8_t{0xFF};
   if (statusBarItemsMode != readerStatusBarMode) {
     adoptReaderStatusItems();
@@ -608,11 +617,15 @@ CrossPointSettings::StatusBarSpec CrossPointSettings::statusBarSpec() const {
       statusBarProgressBar != HIDE_PROGRESS ? static_cast<uint8_t>((statusBarProgressBarThickness + 1) * 2) : 0;
   spec.xtcMode = xtcStatusBarMode;
   spec.topTitleMode = spec.titleMode;
-  spec.slots = {spec.showsClock() ? STATUS_SLOT_CLOCK : spec.showBattery ? STATUS_SLOT_BATTERY : STATUS_SLOT_NONE,
+  // The corners the default bar draws: the clock on the side it was asked for, the battery opposite.
+  const bool clockLeft = spec.clockMode == STATUS_BAR_CLOCK_LEFT;
+  const uint8_t clockSlot = spec.showsClock() ? STATUS_SLOT_CLOCK : STATUS_SLOT_NONE;
+  const uint8_t batterySlot = spec.showBattery ? STATUS_SLOT_BATTERY : STATUS_SLOT_NONE;
+  spec.slots = {clockLeft ? clockSlot : batterySlot,
                 spec.showChapterPageCount ? (spec.showBookProgressPercent ? STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS
                                                                          : STATUS_SLOT_CHAPTER_PAGES)
                                          : spec.showBookProgressPercent ? STATUS_SLOT_BOOK_PERCENT : STATUS_SLOT_NONE,
-                spec.showBattery && spec.showsClock() ? STATUS_SLOT_BATTERY : STATUS_SLOT_NONE};
+                clockLeft ? batterySlot : clockSlot};
   if (statusBarItemsMode == readerStatusBarMode && readerStatusSlotsEnabled) {
     spec.slotsEnabled = true;
     spec.topTitleMode = readerStatusTop;

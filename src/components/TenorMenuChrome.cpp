@@ -883,7 +883,7 @@ tenorchrome::BatteryInkBounds tenorchrome::batteryInkBounds(const GfxRenderer& r
 void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const int currentPage,
                                  const int pageCount, const float bookProgress, const bool estimated,
                                  const bool bookmarked, const int64_t chapterSeconds, const int64_t bookSeconds,
-                                 const char* chapterName) {
+                                 const char* chapterName, const bool titleIsName) {
   using S = CrossPointSettings;
   const auto spec = SETTINGS.statusBarSpec();
   if (SETTINGS.readerStatusBarHidden() || !spec.slotsEnabled) return;
@@ -899,15 +899,6 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
   const auto fit = [&](const char* value, int room) {
     return rough ? ugly::fit(r, ugly::Size::S22, value, room) : r.truncatedText(font, value, room);
   };
-  if (spec.topTitleMode != S::HIDE_TITLE) {
-    const int mark = bookmarked ? 18 : 0;
-    const int room = std::max(0, r.getScreenWidth() - 24 - mark);
-    const auto name = fit(title ? title : "", room);
-    if (width(name.c_str()) <= room) text(12 + mark, 8, name.c_str());
-    if (bookmarked)
-      inlineSymbols::drawShape(r, inlineSymbols::Shape::Star,
-                               18, inlineSymbols::markTopOnCapitals(r, font, 8, 10) + 5, 10, true);
-  }
   const int y = statusTextY(r.getScreenHeight(), false);
   const auto batteryInk = batteryInkBounds(r, font, y);
   const int markTop = inlineSymbols::markTopOnCapitals(r, font, y, 10);
@@ -915,11 +906,28 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
     inlineSymbols::drawShape(r, inlineSymbols::Shape::Star, 6, markTop + 5, 10, true);
   const bool chapterMiddle = spec.slots[1] == S::STATUS_SLOT_CHAPTER_NAME ||
                              spec.slots[1] == S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS;
+  // The book or chapter name shares the bottom strip, in the order and spacing of the default bar:
+  // left corner, name, the centre item set against the right corner, right corner.
+  const bool named = spec.topTitleMode != S::HIDE_TITLE;
+  const int screen = r.getScreenWidth();
+  const int gapLeft = rough ? 12 : 14, gapMiddle = rough ? 12 : 8, gapRight = rough ? 12 : 14;
+  const int edge = rough ? 14 : STATUS_CORNER_INSET;
   const int chapterOrder[] = {0, 2, 1};
   int paintedWidths[3] = {};
+  int centerX = -1;
+  const auto leftEnd = [&] { return paintedWidths[0] ? readerstatus::cell(screen, 0).x + paintedWidths[0] : edge; };
+  const auto rightStart = [&] {
+    const auto corner = readerstatus::cell(screen, 2);
+    return paintedWidths[2] ? corner.x + corner.width - paintedWidths[2] : screen - edge;
+  };
+  const auto place = [&](readerstatus::Cell lane, int slot, int measured) {
+    if (!named || slot != 1) return readerstatus::textX(lane, slot, measured);
+    return centerX = lane.x + lane.width - measured;
+  };
   for (int index = 0; index < 3; ++index) {
-    const int slot = chapterMiddle ? chapterOrder[index] : index;
-    auto lane = readerstatus::cell(r.getScreenWidth(), slot);
+    const int slot = chapterMiddle || named ? chapterOrder[index] : index;
+    auto lane = readerstatus::cell(screen, slot);
+    if (named && slot == 1) lane = {leftEnd() + gapLeft, std::max(0, rightStart() - gapRight - leftEnd() - gapLeft)};
     char value[64] = "";
     switch (spec.slots[slot]) {
       case S::STATUS_SLOT_NONE: continue;
@@ -934,7 +942,7 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
         const int block = iconWidth + (value[0] ? width(value) + 6 : 0);
         if (block > lane.width) continue;
         paintedWidths[slot] = block;
-        const int x = readerstatus::textX(lane, slot, block);
+        const int x = place(lane, slot, block);
         if (rough) ugly::battery(r, x, y + 10, percent);
         else {
           r.drawRect(x, batteryInk.top, 24, batteryInk.height, 1, true);
@@ -955,7 +963,7 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
           if (bookProgress >= 0)
             snprintf(value + used, sizeof(value) - used, "  %.0f%%", std::clamp(bookProgress, 0.0f, 100.0f));
           else snprintf(value + used, sizeof(value) - used, "  -");
-          lane = readerstatus::chapterCell(r.getScreenWidth(), paintedWidths[0], paintedWidths[2]);
+          if (!named) lane = readerstatus::chapterCell(screen, paintedWidths[0], paintedWidths[2]);
         }
         break;
       case S::STATUS_SLOT_BOOK_PERCENT:
@@ -972,10 +980,10 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
         if (slot != 1) continue;
         std::string name = chapterName && *chapterName ? chapterName : "-";
         for (char separator : {'\n', '\r', '\t'}) std::replace(name.begin(), name.end(), separator, ' ');
-        lane = readerstatus::chapterCell(r.getScreenWidth(), paintedWidths[0], paintedWidths[2]);
+        if (!named) lane = readerstatus::chapterCell(screen, paintedWidths[0], paintedWidths[2]);
         const auto label = fit(name.c_str(), lane.width);
         const int measured = width(label.c_str());
-        if (measured <= lane.width) text(readerstatus::textX(lane, slot, measured), y, label.c_str());
+        if (measured <= lane.width) text(place(lane, slot, measured), y, label.c_str());
         continue;
       }
       default: continue;
@@ -984,8 +992,8 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
     const int measured = width(label.c_str());
     if (measured <= lane.width) {
       paintedWidths[slot] = measured;
-      int x = readerstatus::textX(lane, slot, measured);
-      if (spec.slots[slot] == S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS) {
+      int x = place(lane, slot, measured);
+      if (spec.slots[slot] == S::STATUS_SLOT_CHAPTER_AND_BOOK_PROGRESS && !named) {
         if (rough) {
           const auto ink = ugly::textBounds(r, ugly::Size::S22, label.c_str());
           x = (r.getScreenWidth() - (ink.x1 - ink.x0)) / 2 - ink.x0;
@@ -997,6 +1005,18 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
       text(x, y, label.c_str());
     }
   }
+  if (!named) return;
+  const int start = leftEnd() + gapLeft;
+  const int mark = bookmarked ? 16 : 0;
+  // The colon only separates a name from what follows it; alone, or after a note, it would dangle.
+  const bool colon = !rough && titleIsName && centerX >= 0;
+  const int colonWidth = colon ? width(":") : 0;
+  const int room = std::max(0, (centerX >= 0 ? centerX : rightStart() - gapRight) - gapMiddle - start - mark);
+  std::string name = fit(title ? title : "", std::max(0, room - colonWidth));
+  if (bookmarked) inlineSymbols::drawShape(r, inlineSymbols::Shape::Star, start + 6, markTop + 5, 10, true);
+  if (name.empty() || width(name.c_str()) + colonWidth > room) return;
+  if (colon) name += ":";
+  text(start + mark, y, name.c_str());
 }
 
 void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int currentPage, int pageCount,
@@ -1004,7 +1024,7 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
                              bool titleIsName) {
   const bool trongTrinhDoc = title != nullptr;
   if (trongTrinhDoc && SETTINGS.statusBarSpec().slotsEnabled) {
-    drawReaderSlots(r, title, currentPage, pageCount, bookProgress, estimated, bookmarked);
+    drawReaderSlots(r, title, currentPage, pageCount, bookProgress, estimated, bookmarked, -1, -1, nullptr, titleIsName);
     return;
   }
   if (trongTrinhDoc ? SETTINGS.readerStatusBarHidden() : SETTINGS.globalStatusBarHidden()) return;
