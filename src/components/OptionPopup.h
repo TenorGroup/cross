@@ -650,13 +650,23 @@ class OptionPopup {
     for (const auto& label : ownedStrings)
       textWidth = std::max(textWidth, renderer.getTextWidth(font, label.c_str(), EpdFontFamily::REGULAR));
     const int maxWidth = screen.width - 2 * tenorchrome::FOOT_BACK_X;
-    const int w = inFrame ? frameRect.width : std::min(maxWidth,
-        textWidth + (actions ? 68 : 2 * TEXT_X + (marked && !narrow ? MARK + 12 : 0)));
-    const int captionX = inFrame ? frameRect.x : tenorchrome::FOOT_BACK_X;
     // The caption and the subject of a question, wrapped inside the frame.
     fui::TextStyle head;
     head.font = fui::GfxRendererTarget::FONT_BODY;
     head.maxLines = 6;
+    const char* heads[2] = {title.empty() || hasAnchor ? nullptr : title.c_str(),
+                            headline.empty() ? nullptr : headline.c_str()};
+    // The frame is as wide as its caption and subject ask too, up to the screen's room; past that they wrap by word.
+    int headWidth = 0;
+    for (const char* text : heads) {
+      if (!text) continue;
+      head.bold = text == heads[0];
+      headWidth = std::max<int>(headWidth, frame.target().measureText(head.font, text, head).width);
+    }
+    const int w = inFrame ? frameRect.width : std::min(maxWidth,
+        std::max(textWidth + (actions ? 68 : 2 * TEXT_X + (marked && !narrow ? MARK + 12 : 0)),
+                 headWidth ? headWidth + 2 * TEXT_X : 0));
+    const int captionX = inFrame ? frameRect.x : tenorchrome::FOOT_BACK_X;
     const int lh = frame.target().lineHeight(head.font);
     const fui::Rect headRect{static_cast<int16_t>(captionX + TEXT_X), 0, static_cast<int16_t>(w - 2 * TEXT_X), 1};
     // Wrapped once a show (a long warning costs more than the rest of the popup), kept for its repaints.
@@ -664,8 +674,6 @@ class OptionPopup {
       headLaid = true;
       headLines.clear();
       boldLines = 0;
-      const char* heads[2] = {title.empty() || hasAnchor ? nullptr : title.c_str(),
-                              headline.empty() ? nullptr : headline.c_str()};
       for (const char* text : heads) {
         if (!text) continue;
         head.bold = text == heads[0];
