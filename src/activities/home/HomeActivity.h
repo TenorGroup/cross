@@ -15,6 +15,7 @@
 #include "components/HomeExcerptStyle.h"
 #include "components/HomeSettingsLayout.h"
 #include "components/HomeRecentLayout.h"
+#include "HomeRefresh.h"
 #include <HalMemory.h>
 #include <IdleWork.h>
 
@@ -191,6 +192,8 @@ class HomeActivity final : public UiTabListActivity {
   // Home took over from a book: its first frame drives the cover again (coverRedriveDue).
   bool leftBook;
   bool coverRedriveDue();
+  HomeRefresh homeRefresh;
+  HomeRecentRect refreshBody();
 
   // Cover tile snapshot, so a repaint does not decode the cover again. Only the
   // tile region is kept, not the whole framebuffer.
