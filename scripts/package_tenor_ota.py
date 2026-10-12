@@ -8,9 +8,10 @@ import struct
 from pathlib import Path
 
 
-def validate_image(data):
-    """Check the unsigned ESP image framing before producing its OTA digest."""
-    if len(data) < 80 or len(data) > 0x640000 or data[0] != 0xE9:
+def validate_image(data, limit=0x640000):
+    """Check the unsigned ESP image framing before producing its OTA digest. `limit` is the app slot of
+    partitions.csv; a tool that flashes a device checks the slot that device has instead."""
+    if len(data) < 80 or len(data) > limit or data[0] != 0xE9:
         raise ValueError('Invalid application image or partition size')
     if not 1 <= data[1] <= 16 or data[23] not in (0, 1):
         raise ValueError('Invalid segment count or image digest flag')
@@ -43,18 +44,23 @@ def validate_image(data):
 CABLE_BOARDS = ('x4pro',)
 
 
-def keeps_cable(data, board):
-    """True when the image's own tag, the fields after its board tag up to the NUL, carries the
-    cable flash channel (the same rule as board_tag::dropsCable on the device)."""
+def tag_fields(data, board):
+    """The fields of the image's own tag, after its board tag up to the NUL, each without its ';'."""
     marker = b'CROSSPOINT-BOARD-V1:' + board.encode() + b';'
     start = data.find(marker)
     if start < 0:
-        return False
+        return []
     start += len(marker)
     end = start
     while end < len(data) and end - start < 95 and 0x20 < data[end] < 0x7F:
         end += 1
-    return b'TENOR-CABLE-V1:1' in data[start:end].split(b';')[:-1]
+    return data[start:end].split(b';')[:-1]
+
+
+def keeps_cable(data, board):
+    """True when the image's own tag carries the cable flash channel (the same rule as
+    board_tag::dropsCable on the device)."""
+    return b'TENOR-CABLE-V1:1' in tag_fields(data, board)
 
 
 def verified_application(binary, chip, board):

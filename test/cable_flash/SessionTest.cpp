@@ -425,6 +425,19 @@ TEST(CableSession, BeginLinesAreCheckedBeforeAnythingOpens) {
   EXPECT_FALSE(cableflash::parseBegin(("-5 " + sha + " v1").c_str(), b));
 }
 
+TEST(CableSession, TheMacToolsFrameIsReadAsSent) {
+  // tools/nap.py's frame(DATA, 0x5eed1234, 0, 0, b"abc"); test/cable_tool/test_nap.py holds the same bytes.
+  const char* hex = "54434631010003003412ed5e0000000000000000297516ab616263";
+  Bench bench;
+  for (size_t i = 0; hex[i]; i += 2) bench.port.bytes.push_back(static_cast<uint8_t>(std::stoi(std::string(hex + i, 2), nullptr, 16)));
+  cableflash::Begin begin;
+  begin.size = 70000;
+  EXPECT_EQ(bench.go(begin), cableflash::Result::Silence);  // three bytes, then the cable goes quiet
+  ASSERT_GE(bench.port.lines.size(), 2u);
+  EXPECT_EQ(bench.port.lines[1], "TCF1 ACK 0 3");
+  EXPECT_EQ(std::string(bench.slot.written.begin(), bench.slot.written.end()), "abc");
+}
+
 // Host time of a whole 6.3 MB session, relative only (cap59/log keeps the numbers).
 TEST(CableSession, HostTimeOfAReleaseSizedImage) {
   const auto image = makeImage(kThisTag, 9, 6330000);

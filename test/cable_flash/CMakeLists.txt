@@ -24,3 +24,6 @@ if(NOT APPLE)
   target_link_libraries(CableFlashSessionTest PRIVATE crypto)
 endif()
 gtest_discover_tests(CableFlashSessionTest)
+
+# tools/nap.py, the computer's side, against fake ports, a fake X4 Pro and a fake esptool.
+add_test(NAME CableFlashTool COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/test/cable_tool/test_nap.py)
