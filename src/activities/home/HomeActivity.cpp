@@ -31,6 +31,7 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "DocThuMuc.h"
+#include "FileActions.h"
 #include "HomeRows.h"
 #include "FileFavorites.h"
 #include "MappedInputManager.h"
@@ -791,6 +792,7 @@ const char* HomeActivity::homeTipText() {
   if (activeTabId == Tab::FOLDER && ringPos() == 0) return tr(STR_FOLDER_HOLD);
   if (activeTabId == Tab::FAVORITES && rowItems.empty()) return tr(STR_HOME_FAVORITES_HINT);
   if (!supportsFavorites() || favoriteSaveFailed) return nullptr;
+  if (activeTabId == Tab::FOLDER && ringPos() > 0) return tr(STR_FILE_HOLD_ACTIONS);
   return UiListActivity::favoriteHintText();
 }
 
@@ -1359,10 +1361,15 @@ bool HomeActivity::rowOpens(const int row) const {
 }
 
 bool HomeActivity::buttonHoldOpensRowMenu(const int row) const {
+  if (activeTabId == Tab::FOLDER) return row >= 0 && row < listCount();
   return activeTabId == Tab::RECENT && row >= 0 && row < static_cast<int>(recentBooks.size());
 }
 
 void HomeActivity::onRowLongPress(const int index) {
+  if (activeTabId == Tab::FOLDER) {
+    showFolderActions(index);
+    return;
+  }
   if (activeTabId == Tab::RECENT) {
     showRecentActions(index, tenorchrome::kTouchShell
         ? recentCoverAt(index) : fui::Rect{});
@@ -1382,6 +1389,40 @@ void HomeActivity::onRowAction(const fui::ActionEvent& event) {
     return;
   }
   UiTabListActivity::onRowAction(event);
+}
+
+void HomeActivity::showFolderActions(const int index) {
+  if (index < 0 || index >= listCount()) return;
+  const bool folder = folderEntry(index).back() == '/';
+  const StrId labels[] = {rowIsPinned(index) ? StrId::STR_UNPIN_FAVORITE : StrId::STR_PIN_FAVORITE,
+                          folder ? StrId::STR_DELETE : StrId::STR_RENAME, StrId::STR_DELETE};
+  const int count = folder ? 2 : 3;
+  const std::string path = folderFullPath(index);
+  const auto selected = [this, index, path, folder](const int action) {
+    if (action == 0) {
+      queuePinToggle(index);
+    } else if (action == 1 && !folder) {
+      fileactions::rename(*this, renderer, mappedInput, path, [this](const std::string&) { folderChanged(); });
+    } else {
+      fileactions::confirmDelete(*this, renderer, mappedInput, path, [this] { folderChanged(); });
+    }
+  };
+  if (tenorchrome::kTouchShell) {
+    showRowMenu(labels, count, selected, ACTION_ROW, index);
+    return;
+  }
+  rowMenu.show(StrId::STR_FILENAME, labels, count, 0, selected);
+  requestUpdate();
+}
+
+void HomeActivity::folderChanged() {
+  {
+    RenderLock lock(*this);
+    rebuildRows(true);
+    activeNav().selected = std::min<int>(activeNav().selected, listCount());
+    activeNav().followOnBuild = true;
+  }
+  requestUpdate();
 }
 
 void HomeActivity::showOtherBookMenu() {
