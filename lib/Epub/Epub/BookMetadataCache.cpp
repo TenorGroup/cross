@@ -497,6 +497,7 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
 
 bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const BookMetadata& metadata,
                                          const BookBinSource& source, const StopFn stop) {
+  heapRefused = false;
 #ifdef TENOR_PRESS_PROBE
   const unsigned long lutsStarted = millis();
   unsigned long tocScanMs = 0, zipSizeMs = 0, spineOutMs = 0;
@@ -504,13 +505,26 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
 #endif
   const uint16_t spines = source.spines;
   const uint16_t tocs = source.tocs;
+  const size_t tocBytes = source.resolveToc ? static_cast<size_t>(tocs) * sizeof(int16_t) : 0;
+  const size_t minimumWorking = tocBytes + 3 * BUILD_IO_BUFFER_SIZE +
+                                std::min<int>(spines, BOOKBIN_MIN_CHUNK) * BOOKBIN_ITEM_BYTES;
+  if (source.resolveToc && (ESP.getFreeHeap() < minimumWorking + BOOKBIN_HEAP_RESERVE ||
+      !heapfloor::leaves(tocBytes, tocBytes, ESP.getFreeHeap(), ESP.getMaxAllocHeap()))) {
+    heapRefused = true;
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("BMC", "INDEX_BG heap_refused need=%u free=%u largest=%u", static_cast<unsigned>(minimumWorking),
+              static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
+    return false;
+  }
   const std::string outPath = cachePath + source.outFile;
   // The chapter of every TOC entry, when the TOC pass left them unmatched: two bytes per entry,
   // taken before the chunk budget below.
   std::unique_ptr<int16_t[]> tocSpine;
   if (source.resolveToc && tocs > 0) {
-    tocSpine = makeUniqueNoThrow<int16_t[]>(tocs);
+    tocSpine = heapfloor::array<int16_t[]>(tocs, "toc-match");
     if (!tocSpine) {
+      heapRefused = true;
       LOG_ERR("BMC", "No heap for the TOC match");
       return false;
     }
@@ -652,10 +666,12 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
 
   ZipFile zip(epubPath);
   // Pre-open zip file to speed up size calculations
-  if (chunk < std::min<int>(spines, BOOKBIN_MIN_CHUNK) || !zip.open()) {
+  if (chunk < std::min<int>(spines, BOOKBIN_MIN_CHUNK)) {
+    heapRefused = true;
     LOG_ERR("BMC", "Could not size spine items: chunk %d, heap %u", chunk, static_cast<unsigned>(ESP.getFreeHeap()));
-    return abandon();
+    return giveUp();
   }
+  if (!zip.open()) return abandon();
   // NOTE: We intentionally skip calling loadAllFileStatSlims() here.
   // For large EPUBs (2000+ chapters), pre-loading all ZIP central directory entries
   // into memory causes OOM crashes on ESP32-C3's limited ~380KB RAM.
@@ -679,7 +695,14 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
 
     // Zip lookup targets of this chunk, by the hash of each item's path. They also match the
     // unmatched TOC entries of a background build to their chapters.
-    std::deque<ZipFile::SizeTarget> targets(useBatchSizes ? count : 0);
+    auto targets = useBatchSizes ? heapfloor::array<ZipFile::SizeTarget[]>(count, "book-targets") : nullptr;
+    auto spineToTocIndex = heapfloor::array<int16_t[]>(count, "book-toc");
+    auto spineSizes = heapfloor::array<uint32_t[]>(count, "book-sizes");
+    if ((useBatchSizes && !targets) || !spineToTocIndex || !spineSizes) {
+      heapRefused = true;
+      return giveUp();
+    }
+    std::fill_n(spineToTocIndex.get(), count, static_cast<int16_t>(-1));
     const size_t chunkStart = spineIn.position();
     if (useBatchSizes) {
       for (int i = 0; i < count; i++) {
@@ -687,25 +710,24 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
         targets[i] = {ZipFile::fnvHash64(path.c_str(), path.size()), static_cast<uint16_t>(path.size()),
                       static_cast<uint16_t>(i)};
       }
-      std::sort(targets.begin(), targets.end(), targetLess);
+      std::sort(targets.get(), targets.get() + count, targetLess);
       spineIn.seek(chunkStart);
     }
 
     // First TOC entry of each spine item in this chunk, in one TOC pass.
-    std::deque<int16_t> spineToTocIndex(count, -1);
     tocIn.seek(0);
     for (int j = 0; j < tocs; j++) {
       if (stopped(j)) return giveUp();
       const TocEntry tocEntry = readTocEntryFrom(tocIn);
       int spineIndex = tocEntry.spineIndex;
       if (tocSpine) {
-        if (tocSpine[j] < 0 && !targets.empty()) {
+        if (tocSpine[j] < 0 && targets != nullptr) {
           // The first chapter with this path, as the in-memory index of the one-pass build chose.
           const ZipFile::SizeTarget key{ZipFile::fnvHash64(tocEntry.href.data(), tocEntry.href.size()),
                                         static_cast<uint16_t>(tocEntry.href.size()), 0};
           int found = -1;
-          for (auto it = std::lower_bound(targets.begin(), targets.end(), key, targetLess);
-               it != targets.end() && it->hash == key.hash && it->len == key.len; ++it) {
+          for (auto it = std::lower_bound(targets.get(), targets.get() + count, key, targetLess);
+               it != targets.get() + count && it->hash == key.hash && it->len == key.len; ++it) {
             if (found < 0 || it->index < found) found = it->index;
           }
           if (found >= 0) tocSpine[j] = static_cast<int16_t>(first + found);
@@ -722,9 +744,8 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
     tocScanMs += millis() - stepStarted;
     stepStarted = millis();
 #endif
-    std::deque<uint32_t> spineSizes(count, 0);
     if (useBatchSizes) {
-      const int matched = zip.fillUncompressedSizes(targets, spineSizes);
+      const int matched = zip.fillUncompressedSizes(targets.get(), count, spineSizes.get());
       LOG_DBG("BMC", "Batch lookup matched %d/%d spine items", matched, count);
       (void)matched;
     }
@@ -806,6 +827,9 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
 }
 
 bool BookMetadataCache::writePart(const BookMetadata& metadata, const TocSource& source) {
+  heapRefused = !heapfloor::leaves(2 * BUILD_IO_BUFFER_SIZE + 2048, BUILD_IO_BUFFER_SIZE,
+                                  ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  if (heapRefused) return false;
   // Leftovers of an earlier background build belong to another chapter list, and a book.bin this
   // build could not load (another cache version, damaged) would stand in front of book.part.
   removePartFiles();

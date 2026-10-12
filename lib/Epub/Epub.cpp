@@ -848,6 +848,8 @@ Epub::IndexStep Epub::indexSome(const BookMetadataCache::StopFn stop) {
   } else if (!bookMetadataCache->bookBinReady()) {
     step = "book";
     ok = bookMetadataCache->buildBookBinFromPart(filepath, ask);
+    // Reader retries More without charging either failure counter.
+    if (!ok && bookMetadataCache->wasHeapRefused()) return IndexStep::More;
   } else {
     step = "load";
     auto full = makeUniqueNoThrow<BookMetadataCache>(cachePath, filepath);

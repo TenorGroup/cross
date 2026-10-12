@@ -37,6 +37,26 @@ class ZipFile {
   explicit ZipFile(const std::string&) {}
   bool open() { return true; }
   bool close() { return true; }
+  int fillUncompressedSizes(SizeTarget* targets, const size_t count, uint32_t* sizes) {
+    if (!count) return 0;
+    ++zipModel.scans;
+    int matched = 0;
+    for (const auto& [name, size] : zipModel.entries) {
+      ++zipModel.scannedEntries;
+      const SizeTarget key{fnvHash64(name.data(), name.size()), static_cast<uint16_t>(name.size()), 0};
+      auto it = std::lower_bound(targets, targets + count, key, [](const SizeTarget& a, const SizeTarget& b) {
+        return a.hash < b.hash || (a.hash == b.hash && a.len < b.len);
+      });
+      for (; it != targets + count && it->hash == key.hash && it->len == key.len; ++it) {
+        if (it->index < count) {
+          sizes[it->index] = size;
+          matched++;
+        }
+      }
+      if (matched >= static_cast<int>(count)) break;
+    }
+    return matched;
+  }
   int fillUncompressedSizes(std::deque<SizeTarget>& targets, std::deque<uint32_t>& sizes) {
     if (targets.empty()) return 0;
     ++zipModel.scans;

@@ -774,6 +774,57 @@ TEST(BackgroundIndex, InterruptedNavAppendsAfterSavedEntries) {
   }
 }
 
+namespace {
+template <typename T>
+auto heapRefused(const T& cache, int) -> decltype(cache.wasHeapRefused()) { return cache.wasHeapRefused(); }
+template <typename T>
+bool heapRefused(const T&, long) { return false; }
+}
+
+TEST(BackgroundIndex, RadioHeapRefusalKeepsChapterListAndCheckpoint) {
+  for (int n : {2000, 5000}) {
+    const Book book = makeBook(Kind::Split, n);
+    const auto expected = onePassBookBin(book);
+    resetCard(book);
+    ASSERT_TRUE(writeChapterList(book) && tocStep(book));
+    BookMetadataCache part(cachePath);
+    ASSERT_TRUE(part.load(true));
+    stopAfter = n == 5000 ? 65 : 30;
+    stopAsked = 0;
+    heapcap::reset(60 * 1024);
+    const bool first = part.buildBookBinFromPart(epubPath, stopCounter);
+    heapcap::stop();
+    ASSERT_FALSE(first);
+    const auto chapterList = fileBytes(partPath);
+    const auto checkpoint = fileBytes(cachePath + "/book.ckpt");
+    ASSERT_FALSE(checkpoint.empty());
+    const auto temporary = fileBytes(cachePath + "/book.bin.tmp");
+    for (int retry = 0; retry < 4; ++retry) {
+      cardCalls = {};
+      heapcap::reset(RADIO_HEAP);
+      const bool built = part.buildBookBinFromPart(epubPath, nullptr);
+      const size_t peak = heapcap::peak;
+      const unsigned aborts = heapcap::aborts;
+      heapcap::stop();
+      printf("MERGE_REFUSE n=%d retry=%d built=%d peak=%zu writes=%zu bytes=%zu aborts=%u\n",
+             n, retry, built, peak, cardCalls.writes, cardCalls.writeBytes, aborts);
+      EXPECT_FALSE(built);
+      EXPECT_TRUE(heapRefused(part, 0));
+      EXPECT_EQ(aborts, 0u);
+      EXPECT_EQ(fileBytes(partPath), chapterList);
+      EXPECT_EQ(fileBytes(cachePath + "/book.ckpt"), checkpoint);
+      EXPECT_EQ(fileBytes(cachePath + "/book.bin.tmp"), temporary);
+      EXPECT_FALSE(Storage.exists(binPath.c_str()));
+    }
+    heapcap::reset(OPEN_HEAP);
+    const bool resumed = part.buildBookBinFromPart(epubPath, nullptr);
+    heapcap::stop();
+    ASSERT_TRUE(resumed);
+    EXPECT_FALSE(heapRefused(part, 0));
+    EXPECT_EQ(fileBytes(binPath), expected);
+  }
+}
+
 TEST(BackgroundIndex, PausingDuringReplayKeepsThePreviousCursor) {
   const auto append = [](BookMetadataCache& pass, int count) {
     for (int i = 0; i < count; ++i) pass.createTocEntry("Title", "chapter" + std::to_string(i), "", 0);

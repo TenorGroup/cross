@@ -658,37 +658,44 @@ bool ZipFile::getInflatedFileSize(const char* filename, size_t* size) {
   return true;
 }
 
-int ZipFile::fillUncompressedSizes(std::deque<SizeTarget>& targets, std::deque<uint32_t>& sizes) {
-  if (targets.empty()) {
-    return 0;
-  }
-
+template <typename Targets, typename Sizes>
+int ZipFile::fillSizes(Targets& targets, const size_t count, Sizes& sizes, const size_t sizeCount) {
+  if (count == 0) return 0;
   struct Fill {
-    std::deque<SizeTarget>& targets;
-    std::deque<uint32_t>& sizes;
-    int matched;
-  } fill{targets, sizes, 0};
-  walkCentralDir(0, false, "sizes",
-                 [](void* ctx, const CentralEntry& entry) {
-                   auto* f = static_cast<Fill*>(ctx);
-                   if (!entry.name) return false;
-                   const uint64_t hash = fnvHash64(entry.name, entry.nameLen);
-                   const SizeTarget key = {hash, entry.nameLen, 0};
-                   auto it = std::lower_bound(f->targets.begin(), f->targets.end(), key,
-                                              [](const SizeTarget& a, const SizeTarget& b) {
-                                                return a.hash < b.hash || (a.hash == b.hash && a.len < b.len);
-                                              });
-                   while (it != f->targets.end() && it->hash == hash && it->len == entry.nameLen) {
-                     if (it->index < f->sizes.size()) {
-                       f->sizes[it->index] = entry.uncompressedSize;
-                       f->matched++;
-                     }
-                     ++it;
-                   }
-                   return f->matched >= static_cast<int>(f->targets.size());
-                 },
-                 &fill);
+    Targets& targets;
+    Sizes& sizes;
+    size_t count, sizeCount;
+    int matched = 0;
+  } fill{targets, sizes, count, sizeCount};
+  walkCentralDir(0, false, "sizes", [](void* ctx, const CentralEntry& entry) {
+    auto& f = *static_cast<Fill*>(ctx);
+    if (!entry.name) return false;
+    const uint64_t hash = fnvHash64(entry.name, entry.nameLen);
+    size_t lo = 0, hi = f.count;
+    while (lo < hi) {
+      const size_t mid = lo + (hi - lo) / 2;
+      const auto& target = f.targets[mid];
+      if (target.hash < hash || (target.hash == hash && target.len < entry.nameLen)) lo = mid + 1;
+      else hi = mid;
+    }
+    while (lo < f.count && f.targets[lo].hash == hash && f.targets[lo].len == entry.nameLen) {
+      if (f.targets[lo].index < f.sizeCount) {
+        f.sizes[f.targets[lo].index] = entry.uncompressedSize;
+        ++f.matched;
+      }
+      ++lo;
+    }
+    return f.matched >= static_cast<int>(f.count);
+  }, &fill);
   return fill.matched;
+}
+
+int ZipFile::fillUncompressedSizes(std::deque<SizeTarget>& targets, std::deque<uint32_t>& sizes) {
+  return fillSizes(targets, targets.size(), sizes, sizes.size());
+}
+
+int ZipFile::fillUncompressedSizes(SizeTarget* targets, const size_t count, uint32_t* sizes) {
+  return targets && sizes ? fillSizes(targets, count, sizes, count) : 0;
 }
 
 uint8_t* ZipFile::readFileToMemory(const char* filename, size_t* size, const bool trailingNullByte) {

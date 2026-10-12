@@ -12,6 +12,10 @@ class ZipFile {
   bool open() { return true; }
   void close() {}
   static uint64_t fnvHash64(const char*, size_t) { return 0; }
+  int fillUncompressedSizes(SizeTarget*, size_t count, uint32_t* sizes) {
+    for (size_t i = 0; i < count; ++i) sizes[i] = 100;
+    return count;
+  }
   int fillUncompressedSizes(const std::deque<SizeTarget>&, std::deque<uint32_t>& sizes) {
     for (auto& size : sizes) size = 100;
     return sizes.size();

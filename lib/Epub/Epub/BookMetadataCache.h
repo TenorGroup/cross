@@ -73,6 +73,7 @@ class BookMetadataCache {
   bool partial = false;
   // Set by beginDeferredTocPass: TOC entries are written unmatched, buildBookBinFromPart matches them.
   bool deferTocMatch = false;
+  bool heapRefused = false;
   uint16_t deferredResumeCount = 0;
   uint32_t deferredSeen = 0;
   uint64_t deferredSourceKey = 0;
@@ -211,6 +212,7 @@ class BookMetadataCache {
   // it answers true, or on any failure, nothing of the build is left behind and false is returned.
   // Needs a cache loaded from book.part.
   bool buildBookBinFromPart(const std::string& epubPath, StopFn stop);
+  bool wasHeapRefused() const { return heapRefused; }
   // Whether the card holds an index this cache can load (book.bin, or book.part).
   static bool indexOnCard(const std::string& cachePath);
   // Whether the background build has left book.bin on the card, not loaded yet.
