@@ -337,6 +337,8 @@ inline void forEachBaseSetting(const std::function<void(SettingInfo&&)>& emit) {
     emit(SettingInfo::Enum(StrId::STR_HIDE_GLOBAL_STATUS_BAR, &CrossPointSettings::globalStatusBarMode,
                           {StrId::STR_STATUS_BAR_SMALL, StrId::STR_STATE_OFF, StrId::STR_STATUS_BAR_LARGE},
                           "globalStatusBarMode", StrId::STR_CAT_DISPLAY));
+    emit(SettingInfo::Toggle(StrId::STR_BUTTON_HINTS, &CrossPointSettings::tenorButtonHints, "tenorButtonHints",
+                            StrId::STR_CAT_DISPLAY));
     emit(SettingInfo::Toggle(StrId::STR_TIPS, &CrossPointSettings::tipsEnabled, "tipsEnabled",
                             StrId::STR_CAT_DISPLAY));
     emit(SettingInfo::Toggle(StrId::STR_SIDE_ARROW_HINTS, &CrossPointSettings::tenorSideArrows, "tenorSideArrows",
@@ -780,8 +782,9 @@ inline bool settingHiddenInShell(const SettingInfo& setting) {
 
 inline int deviceSettingsTab(const SettingInfo& setting) {
   if (settingHiddenOnThisBoard(setting) || settingHiddenInShell(setting)) return -1;
-  // X4 Pro: three rows made for front buttons do nothing here. They leave the lists, not the saved file.
+  // X4 Pro: four rows made for front buttons do nothing here. They leave the lists, not the saved file.
   if (BoardConfig::isX4Pro() && (setting.nameId == StrId::STR_SIDE_ARROW_HINTS || setting.nameId == StrId::STR_BUTTON_LABELS ||
+                                 setting.nameId == StrId::STR_BUTTON_HINTS ||
                                  setting.nameId == StrId::STR_READER_MENU_STYLE))
     return -1;
   if (setting.valuePtr == &CrossPointSettings::sleepScreen ||
