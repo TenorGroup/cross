@@ -1,6 +1,7 @@
-"""X3 Button hints switch (v1.0.59): the row in Display.
+"""X3 Button hints switch (v1.0.59): the row in Display, the clock and battery strip at the top while the hints are
+off, and the reader left as it was.
 
-TEST_PROGRAM=<simulator_x3_uc8279 program> python3 test_button_hints_v1059.py [switch|all] [--out DIR]
+TEST_PROGRAM=<simulator_x3_uc8279 program> python3 test_button_hints_v1059.py [switch|layout|reader|all] [--out DIR]
 """
 import argparse
 import json
@@ -11,7 +12,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageChops
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
@@ -82,13 +83,56 @@ def switch(out):
     print('GREEN switch: Display row 3 toggles tenorButtonHints 1 -> 0', flush=True)
 
 
+def layout(out):
+    shots = {}
+    for clock in (1, 2):
+        for hints in (1, 0):
+            images, _ = run(out, f'home-c{clock}-h{hints}', '', {2500: 'home'},
+                            {'statusBarClock': clock, 'tenorButtonHints': hints})
+            shots[clock, hints] = images['home']
+    result = {}
+    for clock in (1, 2):
+        off, on = shots[clock, 0], shots[clock, 1]
+        rows = ink_rows(off, 0, W, 0, STRIP)
+        assert rows and max(rows) < STRIP - 2, ('clock and battery in the top strip', clock, rows[-3:] if rows else rows)
+        left, right = ink_box(off, (0, 0, W // 2, STRIP)), ink_box(off, (W // 2, 0, W, STRIP))
+        assert left and right, ('one item at each end of the strip', clock, left, right)
+        assert not ink_rows(off, 0, W, STRIP, 48), ('content starts 16 px under the strip', clock)
+        assert not ink_rows(off, 0, W, H - 16, H), ('the bar sits 16 px over the foot', clock)
+        assert ink_rows(on, 0, W, H - 16, H), ('hints on keep the foot band', clock)
+        centre = [(b[1] + b[3] - 1) / 2 for b in (left, right)]
+        assert abs(centre[0] - centre[1]) <= 0.5, ('clock and battery share a centre line', clock, centre)
+        result[clock] = {'left': left, 'right': right, 'centre_delta': centre[0] - centre[1]}
+    # One placement setting for both places: the clock moves to the other end of the strip.
+    clock_right = shots[1, 0].crop(result[1]['right'])
+    clock_left = shots[2, 0].crop(result[2]['left'])
+    assert ImageChops.difference(clock_right, clock_left).getbbox() is None, 'the same clock ink at either end'
+    # General status bar Off keeps its old meaning: no hints, no clock, no battery, whatever the switch says.
+    a, _ = run(out, 'off-h1', '', {2500: 'home'}, {'globalStatusBarMode': 1, 'tenorButtonHints': 1})
+    b, _ = run(out, 'off-h0', '', {2500: 'home'}, {'globalStatusBarMode': 1, 'tenorButtonHints': 0})
+    assert ImageChops.difference(a['home'], b['home']).getbbox() is None, 'status bar Off ignores the switch'
+    print('GREEN layout:', json.dumps(result), flush=True)
+
+
+def reader(out):
+    frames = {}
+    for hints in (1, 0):
+        images, _ = run(out, f'reader-h{hints}', '2600:CONFIRM', {2300: 'page', 4200: 'menu'},
+                        {'tenorButtonHints': hints, 'readerTapTip': 0}, book=True)
+        frames[hints] = images
+    for label in ('page', 'menu'):
+        diff = ImageChops.difference(frames[1][label], frames[0][label]).getbbox()
+        assert diff is None, ('the reader does not change with the switch', label, diff)
+    print('GREEN reader: page and menu identical with the hints on and off', flush=True)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('which', nargs='?', default='all', choices=('switch', 'all'))
+    parser.add_argument('which', nargs='?', default='all', choices=('switch', 'layout', 'reader', 'all'))
     parser.add_argument('--out', type=Path)
     args = parser.parse_args()
     out = args.out or Path(tempfile.mkdtemp(prefix='button-hints-'))
     out.mkdir(parents=True, exist_ok=True)
-    for test in (switch,):
+    for test in (switch, layout, reader):
         if args.which in ('all', test.__name__):
             test(out)

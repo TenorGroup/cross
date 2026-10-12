@@ -50,7 +50,8 @@ const ThemeMetrics& UITheme::getMetrics() const {
   // Touch capability and footer visibility can change after the first layout.
   // Refresh the cached metrics when either input changes.
   const bool touch = gpio.hasTouch();
-  const bool statusBarHidden = SETTINGS.globalStatusBarHidden();
+  // The hints off with the status in the top strip free the foot as the status bar Off does.
+  const bool statusBarHidden = SETTINGS.globalStatusBarHidden() || tenorchrome::statusOnTop();
   const uint8_t textSize = normalizedUiTextSize(SETTINGS.uiTextSize);
   if (!metricsValid || touch != metricsForTouch || statusBarHidden != metricsForHiddenStatusBar ||
       textSize != metricsForTextSize) {
@@ -144,7 +145,7 @@ int UITheme::getStatusBarHeight(StatusBarScope scope) {
     const auto spec = SETTINGS.statusBarSpec();
     if (spec.slotsEnabled && !spec.textLaneVisible(true)) return 0;
     if (tenorchrome::enabled()) return tenorchrome::statusHeight();
-  } else if (SETTINGS.globalStatusBarHidden()) {
+  } else if (SETTINGS.globalStatusBarHidden() || tenorchrome::statusOnTop()) {
     return 0;
   } else if (tenorchrome::enabled()) {
     return tenorchrome::statusHeight(SETTINGS.globalStatusBarLarge());

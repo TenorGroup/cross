@@ -95,6 +95,10 @@ declarations.extend(re.findall(r'^(?:bool|int|void|X3ScreenLayout) '
                               r'tipY|tipTopY|tipLineCount|tipHeight|uglyTipTop|drawTip|drawTipInRect|drawInfoInRect)'
                               r'\([^;]+;', header, re.M))
 declarations.append('inline int touchBarTop(int height) { return height; }')
+# Button hints on: the status stays at the foot (the hints-off strip: test_button_hints_v1059.py).
+declarations.append('constexpr int TOUCH_STRIP_HEIGHT = 32;')
+declarations.append('inline bool buttonHintsShown() { return !SETTINGS.globalStatusBarHidden(); }')
+declarations.append('inline bool statusOnTop() { return false; }')
 if not args.tip_only:
     declarations.append('''struct PhaseInk { X3ScreenRect rect; std::string text; bool tip; };
 std::vector<PhaseInk> phaseInk;

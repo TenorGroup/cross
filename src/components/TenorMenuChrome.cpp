@@ -1050,7 +1050,7 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   const int batteryWidth = lon ? 32 : 26;
   // Touch shell: outside the reader the clock and the battery sit on the header row, battery rightmost;
   // the foot of the screen belongs to the tab bar.
-  const bool top = kTouchShell && !trongTrinhDoc;
+  const bool top = !trongTrinhDoc && (kTouchShell || statusOnTop());
   const int fontChu = top ? UI_10_FONT_ID : lon ? UI_12_FONT_ID : SMALL_FONT_ID;
   const int y = top ? TOUCH_STRIP_HEIGHT - 3 - r.getTextInkBottom(fontChu, "0123456789", EpdFontFamily::REGULAR)
                     : statusTextY(r.getScreenHeight(), lon, paddingBottom);
@@ -1068,11 +1068,16 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   const int batteryBlock = batteryWidth + (hienPhanTram ? BATTERY_TEXT_GAP + batteryTextWidth : 0);
   // Pin nam o ben DOI dien voi dong ho (hoac ben trai khi khong hien dong ho), nen
   // muc 5 (ten chuong & pin) khong day pin sang phai nhu khi vang dong ho.
-  const bool batteryRight = top || (hienGio && swap);
+  const bool batteryRight = (top && kTouchShell) || (hienGio && swap);
   const int batteryBlockX = batteryRight ? width - STATUS_CORNER_INSET - batteryBlock : STATUS_CORNER_INSET;
   if (hienGio) {
-    int clockX = top ? STRIP_LEFT : swap ? STATUS_CORNER_INSET : width - STATUS_CORNER_INSET - timeWidth;
-    if (top) {
+    // The strip's clock stands STRIP_LEFT in from its end, at the left or (X3, battery left) the right.
+    const bool stripLeft = top && batteryRight;
+    int clockX = stripLeft ? STRIP_LEFT
+                 : top     ? width - STRIP_LEFT - timeWidth
+                 : swap    ? STATUS_CORNER_INSET
+                           : width - STATUS_CORNER_INSET - timeWidth;
+    if (stripLeft) {
       const auto* oldGlyph = r.getFontMap().at(lon ? UI_12_FONT_ID : SMALL_FONT_ID).getGlyph(clock[0], EpdFontFamily::REGULAR);
       const auto* newGlyph = r.getFontMap().at(fontChu).getGlyph(clock[0], EpdFontFamily::REGULAR);
       if (oldGlyph && newGlyph) clockX += oldGlyph->left - newGlyph->left;
@@ -1102,6 +1107,7 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
     }
   }
   if (top) {
+    if (!kTouchShell) return;
     HeaderBackTapTarget::strip = true;
     drawStripMiddle(r, y, hienGio ? STRIP_LEFT + timeWidth : STRIP_LEFT, batteryBlockX, fontChu);
     return;
@@ -1223,13 +1229,24 @@ bool tenorchrome::x3ScreenLayoutEnabled() {
   return !kTouchShell && enabled();
 }
 
+bool tenorchrome::buttonHintsShown() {
+  return !SETTINGS.globalStatusBarHidden() &&
+         (kTouchShell || SETTINGS.tenorButtonHints || activityManager.isReaderActivity());
+}
+
+bool tenorchrome::statusOnTop() {
+  return x3ScreenLayoutEnabled() && !shell::uglyParts() && !SETTINGS.globalStatusBarHidden() && !buttonHintsShown();
+}
+
 tenorchrome::X3ScreenLayout tenorchrome::x3ScreenLayout(const GfxRenderer& renderer, const int requestedTipHeight,
                                                        const int informationHeight) {
   const int width = renderer.getScreenWidth();
   const int height = renderer.getScreenHeight();
   int bandTop = height;
   int barBottom = height - 16;
-  if (!SETTINGS.globalStatusBarHidden()) {
+  const bool top = statusOnTop();
+  const int bodyTop = top ? TOUCH_STRIP_HEIGHT + 16 : 16;
+  if (!SETTINGS.globalStatusBarHidden() && !top) {
     const bool large = SETTINGS.globalStatusBarLarge();
     const int statusFont = large ? UI_12_FONT_ID : SMALL_FONT_ID;
     bandTop = std::min(large ? statusIconTopY(height, true) : smallFooterSymbolsTopY(renderer),
@@ -1246,14 +1263,14 @@ tenorchrome::X3ScreenLayout tenorchrome::x3ScreenLayout(const GfxRenderer& rende
   const int barTop = barBottom - tabHeight();
   const int tips = (SETTINGS.tipsEnabled ? std::max(0, requestedTipHeight) : 0) + std::max(0, informationHeight);
   const int tipTop = tips ? barTop - 4 - tips : barTop;
-  return {{0, 16, width, std::max(0, tipTop - 8 - 16)},
+  return {{0, bodyTop, width, std::max(0, tipTop - 8 - bodyTop)},
           {24, tipTop, width - 48, tips},
           {0, barTop, width, tabHeight()},
           {0, bandTop, width, height - bandTop}};
 }
 
 bool tenorchrome::compactFooterTips(const bool hasTextHints) {
-  return !kTouchShell && enabled() && SETTINGS.tenorButtonSymbols && !SETTINGS.globalStatusBarHidden() &&
+  return !kTouchShell && enabled() && SETTINGS.tenorButtonSymbols && !SETTINGS.globalStatusBarHidden() && !statusOnTop() &&
          !SETTINGS.globalStatusBarLarge() && !hasTextHints;
 }
 
