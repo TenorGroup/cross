@@ -306,6 +306,11 @@ bool named(const char* const (&names)[N], const char* activityName) {
 // name from the one before it.
 char noted[96] = {};
 uint32_t notedGeneration = UINT32_MAX;
+// The screen's own bar actions (noteFootActions) and where the last bar drew them.
+char footActions[tenorchrome::FOOT_ACTIONS][48] = {};
+uint32_t footActionsGeneration = UINT32_MAX;
+struct FootActionRect { int x = 0, y = 0, width = 0, height = 0; };
+FootActionRect footActionRects[tenorchrome::FOOT_ACTIONS];
 uint32_t handDrawnGeneration = UINT32_MAX;
 ugly::MarkState backMark;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
@@ -466,6 +471,21 @@ void tenorchrome::noteScreenTitle(const char* title) {
   notedGeneration = activityManager.activityGeneration();
 }
 
+void tenorchrome::noteFootActions(const char* first, const char* second) {
+  snprintf(footActions[0], sizeof(footActions[0]), "%s", first ? first : "");
+  snprintf(footActions[1], sizeof(footActions[1]), "%s", second ? second : "");
+  footActionsGeneration = activityManager.activityGeneration();
+}
+
+int tenorchrome::footActionAt(const int x, const int y) {
+  if (footActionsGeneration != activityManager.activityGeneration()) return -1;
+  for (int i = 0; i < FOOT_ACTIONS; ++i) {
+    const auto& r = footActionRects[i];
+    if (r.width > 0 && x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height) return i;
+  }
+  return -1;
+}
+
 void tenorchrome::noteHandDrawn() { handDrawnGeneration = activityManager.activityGeneration(); }
 
 const char* tenorchrome::screenTitle() {
@@ -570,6 +590,24 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
     }
   }
 #endif
+  // The screen's own actions, from the bar's right end leftwards; the name pill keeps what is left of them.
+  int right = rect.x + rect.width;
+  for (auto& r2 : footActionRects) r2 = {};
+  if (!pen && footActionsGeneration == activityManager.activityGeneration()) {
+    constexpr int ACTION_PAD = 20, actionFont = UI_12_FONT_ID;
+    for (int i = FOOT_ACTIONS - 1; i >= 0; --i) {
+      if (!footActions[i][0]) continue;
+      const int room = right - (x + SIZE + FOOT_PILL_GAP);
+      const auto pill = layoutPathPill(r, actionFont, footActions[i], room, ACTION_PAD, ACTION_PAD);
+      if (pill.width <= 0) break;
+      right -= pill.width;
+      r.fillRoundedRect(right, y, pill.width, SIZE, SIZE / 2, Color::White);
+      drawPillRing(r, right, y, pill.width, SIZE, 2, true);
+      drawPillLabel(r, actionFont, pill.text.c_str(), right, y, pill.width, SIZE);
+      footActionRects[i] = {right, y, pill.width, SIZE};
+      right -= FOOT_PILL_GAP;
+    }
+  }
   // Paper with a foot of its own keeps that foot: no zone icon, no name.
   if (bar == FootBar::BackOnly || pen) return;
   // The zone's icon, alone in its ring: a tap leads to the zone's root.
@@ -583,7 +621,7 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
   if (!*title) return;
   constexpr int PAD_LEFT = 18, PAD_RIGHT = 22, font = UI_12_FONT_ID;
   x += SIZE + FOOT_PILL_GAP;
-  const int room = rect.x + rect.width - x;
+  const int room = right - x;
   const std::string name = std::strchr(title, '/') ? title
       : r.truncatedText(font, title, std::max(0, room - PAD_LEFT - PAD_RIGHT), EpdFontFamily::REGULAR);
   drawPathPill(r, font, name.c_str(), x, y, room, SIZE, PAD_LEFT, PAD_RIGHT, true);
