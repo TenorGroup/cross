@@ -71,4 +71,9 @@ bool Store::flush() {
 const State& state() { return store.get(); }
 void note(bool ugly, const std::string& path, SortMode mode) { store.note(ugly, path, mode); }
 void flush() { store.flush(); }
+SortMode sortNow(const bool ugly) { return ugly ? store.get().uglySort : store.get().crossSort; }
+void chooseSort(const bool ugly, const SortMode mode) {
+  const State& saved = store.get();
+  store.note(ugly, ugly ? saved.uglyPath : saved.crossPath, mode);
+}
 }  // namespace filebrowser

@@ -72,6 +72,22 @@ int main() {
   }
   std::puts("state: short write, sync, close and rename faults keep the old file and can retry");
   {
+    // Settings, System, Sort: the running shell's order, its folder kept.
+    Storage = {};
+    filebrowser::note(false, "/Truyện", SortMode::Name);
+    filebrowser::note(true, "/Thơ", SortMode::Name);
+    filebrowser::chooseSort(false, SortMode::Modified);
+    filebrowser::chooseSort(true, SortMode::Size);
+    assert(filebrowser::sortNow(false) == SortMode::Modified && filebrowser::sortNow(true) == SortMode::Size);
+    assert(filebrowser::state().crossPath == "/Truyện" && filebrowser::state().uglyPath == "/Thơ");
+    assert(Storage.writes == 0);
+    filebrowser::flush();
+    assert(Storage.writes == 1);
+    Store wake;
+    assert(wake.get().crossSort == SortMode::Modified && wake.get().uglySort == SortMode::Size);
+    std::puts("state: Settings sort per shell, folder kept, one write");
+  }
+  {
     Storage = {};
     Storage.files[std::string(path) + ".davbak"] = R"({"version":1,"crossPath":"/kept","crossSort":1})";
     Storage.files[std::string(path) + ".davtmp"] = "{partial";

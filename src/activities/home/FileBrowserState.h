@@ -23,4 +23,11 @@ class Store {
 const State& state();
 void note(bool ugly, const std::string& path, SortMode mode);
 void flush();
+
+// The order of the running shell's File list, read and chosen in Settings, System.
+SortMode sortNow(bool ugly);
+void chooseSort(bool ugly, SortMode mode);  // memory only
+// The Settings row, for the running shell, with one write after the next frame (FileBrowserActivity.cpp).
+SortMode settingsSort();
+void chooseSettingsSort(SortMode mode);
 }  // namespace filebrowser

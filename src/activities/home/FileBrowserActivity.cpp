@@ -308,6 +308,13 @@ void FileBrowserActivity::onEnter() {
   }
 }
 
+// Settings changes the order; the write waits for the next frame, as the File screen's own does.
+filebrowser::SortMode filebrowser::settingsSort() { return sortNow(shell::isUgly()); }
+void filebrowser::chooseSettingsSort(const SortMode mode) {
+  chooseSort(shell::isUgly(), mode);
+  activityManager.deferWrite(&flush);
+}
+
 void FileBrowserActivity::onExit() {
   rememberDirectory();
   if (mode == Mode::Books) {
