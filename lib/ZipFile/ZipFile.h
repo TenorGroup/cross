@@ -64,11 +64,13 @@ class ZipFile {
 
   bool loadFileStatSlim(const char* filename, FileStatSlim* fileStat);
   bool buildZipIndex();
-  bool loadZipIndexEntry(const char* filename, FileStatSlim* fileStat);
+  int loadZipIndexEntry(const char* filename, FileStatSlim* fileStat);
+  int loadZipIndexPath(const std::string& indexPath, const char* filename, FileStatSlim* fileStat);
   // Every walk of the central directory: block reads from `from` (0: its start), and with `wrap` on
   // from its start up to `from`. `visit` returns true to stop. False when the zip cannot be read.
   using Visit = bool (*)(void* ctx, const CentralEntry& entry);
-  bool walkCentralDir(uint32_t from, bool wrap, const char* kind, Visit visit, void* ctx);
+  bool walkCentralDir(uint32_t from, bool wrap, const char* kind, Visit visit, void* ctx,
+                      unsigned* readCount = nullptr, size_t* readBytes = nullptr);
   // This zip as it is on the card now (path, size, directory), for lookups remembered across objects.
   uint64_t zipKey() const;
   long getDataOffset(const FileStatSlim& fileStat);
