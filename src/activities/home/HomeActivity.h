@@ -8,6 +8,8 @@
 #include <vector>
 
 #include "./FileBrowserActivity.h"
+#include "components/FileSearchScan.h"
+#include "components/FileSearchHalAdapter.h"
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
 #include "activities/UiTabListActivity.h"
@@ -73,7 +75,11 @@ class HomeActivity final : public UiTabListActivity {
   void onTabAction(int index) override;
   void stepTab(int direction) override;
 
-  int listCount() const override { return static_cast<int>(rowItems.size()); }
+  int listCount() const override {
+    if (activeTabId == Tab::FOLDER && folderRecursiveSearch && folderSearchScanner)
+      return static_cast<int>(folderSearchScanner->resultCount());
+    return static_cast<int>(rowItems.size());
+  }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   bool handleButtons() override;
@@ -180,8 +186,21 @@ class HomeActivity final : public UiTabListActivity {
   // Noi dung goc the nho, cho the Folder. Thu muc mang dau '/' o cuoi.
   std::vector<std::string> mucTheNho;
   std::string folderSearchQuery;
-  std::vector<uint16_t> folderRowIndices;
+  filesearch::IndexBuffer folderRowIndices;
+  static void searchRow(void* ctx, uint16_t index, freeink::ui::ListItem& item);
+  char searchRowName[512]{}, searchRowFolder[512]{};
+  bool folderRecursiveSearch = false;
+  bool folderSearchIncomplete = false;
+  bool folderSearchCancelled = false;
+  std::unique_ptr<filesearch::Scanner> folderSearchScanner;
+  std::unique_ptr<filesearch::HalStorageAdapter> folderSearchStorage;
+  std::unique_ptr<filesearch::HalScanHooks> folderSearchHooks;
+  mutable std::string folderSearchEntry;
   const std::string& folderEntry(int row) const;
+  std::string folderFullPath(int row) const;
+  void startFolderRecursiveSearch();
+  void tickFolderRecursiveSearch();
+  void stopFolderRecursiveSearch();
   void docGocTheNho();
 
   std::vector<RecentBook> recentBooks;
