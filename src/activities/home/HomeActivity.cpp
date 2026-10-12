@@ -2514,7 +2514,9 @@ void HomeActivity::writeMissingThumb(const int index) {
       }
       LOG_INF("HOME", "Home thumb book=%d size=%dx%d ms=%lu", q.book, q.width, q.height,
               static_cast<unsigned long>(millis() - started));
-      wrote = Storage.exists(touchCoverPath(recentBooks[q.book].coverBmpPath, q.width, q.height).c_str()) || wrote;
+      const auto& written = recentBooks[q.book].coverBmpPath;
+      wrote = Storage.exists((homeInkEnabled() ? tenorink::cachePath(written, q.width, q.height, homeGraySelected)
+                                               : touchCoverPath(written, q.width, q.height)).c_str()) || wrote;
     }
     // A cover that could not be made leaves the frame as it is: drawing it again is a refresh for nothing.
     thumbBatchWrote = thumbBatchWrote || wrote;
@@ -3027,6 +3029,10 @@ void HomeActivity::drawTouchCover(const HomeRecentRect& rect, const int index) {
     const bool holder = coverless(index);
     if (!holder) queueTouchThumb(index, rect.w, rect.h);
     drawHolder(holder, rect.x, rect.y, rect.w, rect.h);
+  } else if (tenorchrome::kTouchShell && homeInkEnabled() && !homeGraySelected &&
+             !Storage.exists(tenorink::cachePath(book.coverBmpPath, rect.w, rect.h, false).c_str())) {
+    // The four-level stand-in loses its grays in one bit: make the dithered one-bit cover.
+    queueTouchThumb(index, rect.w, rect.h);
   }
   homeCoverCorners(renderer, rect.x, rect.y, rect.w, rect.h);
   LOG_INF("HOME", "Home cover book=%d rect=%d,%d,%d,%d native=%u", index, rect.x, rect.y, rect.w, rect.h,
