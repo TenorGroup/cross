@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -68,7 +69,20 @@ class TextBlock final : public Block {
   const uint8_t* stylesArr = nullptr;
   const uint8_t* focusBoundaryArr = nullptr;  // null when !focusPresent
   const char* textArr = nullptr;
-  std::vector<std::string> rubyTexts;
+  struct RubyText {
+    uint16_t word = 0;
+    uint16_t length = 0;
+    std::unique_ptr<char[]> text;
+  };
+  static constexpr size_t MAX_RUBIES = 128;
+  static constexpr size_t MAX_RUBY_BYTES = 8192;
+  std::unique_ptr<RubyText[]> rubyTexts;
+  uint16_t rubyCount = 0;
+  uint16_t rubyCapacity = 0;
+  uint16_t rubyBytes = 0;
+  bool rubyPresent = false;
+  bool rubyRefused = false;
+  char* appendRuby(uint16_t word, size_t length);
   // Layout-only metadata. ChapterHtmlSlimParser moves it into Page::links
   // immediately; cached TextBlocks therefore keep the same compact format.
   std::vector<LinkSpan> linkSpans;
@@ -110,7 +124,8 @@ class TextBlock final : public Block {
   uint16_t getDropCapHeight() const { return dropCapHeight; }
   bool hasRuby() const;
   int getRubyShift(int ascender) const { return hasRuby() ? (ascender / 2) : 0; }
-  const std::vector<std::string>& getRubyTexts() const { return rubyTexts; }
+  size_t getRubyCount() const { return rubyCount; }
+  std::string_view getRubyText(uint16_t word) const;
   std::vector<LinkSpan> takeLinkSpans() { return std::move(linkSpans); }
 
   void render(const GfxRenderer& renderer, int fontId, int x, int y) const;

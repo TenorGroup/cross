@@ -2,7 +2,7 @@
 
 #include <Epub.h>
 #include <Epub/FootnoteEntry.h>
-#include <Epub/PageLink.h>
+#include <Epub/Page.h>
 #include <Epub/Section.h>
 #include <Epub/blocks/ImageBlock.h>
 
@@ -272,8 +272,8 @@ class EpubReaderActivity final : public ReaderActivity {
   std::vector<EpubReaderMenuActivity::MenuItem> moreItems;
 
   // Footnote support
-  std::vector<FootnoteEntry> currentPageFootnotes;
-  std::vector<PageLink> currentPageLinks;
+  Page::Footnotes currentPageFootnotes;
+  Page::Links currentPageLinks;
   int currentPageLinkMarginLeft = 0;
   int currentPageLinkMarginTop = 0;
   struct SavedPosition {
@@ -363,6 +363,8 @@ class EpubReaderActivity final : public ReaderActivity {
   // (X3 r29). Once ahead, each turn lays out one page, as with one.
   static constexpr int LOOK_AHEAD_PAGES = 2;
   int lookAheadPage = -1;
+  int lookAheadWorkPage = -1;
+  unsigned long lookAheadStartedMs = 0;
   // The next chapter's first pages, laid out on a quiet pass on the last page of a whole chapter,
   // once per chapter and visit (prepareNextChapter).
   static constexpr unsigned long NEXT_CHAPTER_QUIET_MS = 1500;

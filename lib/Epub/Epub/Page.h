@@ -74,14 +74,54 @@ class PageHorizontalRule final : public PageElement {
   static std::unique_ptr<PageHorizontalRule> deserialize(HalFile& file);
 };
 
+// Optional page metadata has a bounded, fallible allocation path.
+template <typename T, size_t Limit>
+class PageMetadata {
+  std::unique_ptr<T[]> entries;
+  size_t count = 0;
+  size_t capacity = 0;
+
+ public:
+  PageMetadata() = default;
+  PageMetadata(PageMetadata&& other) noexcept { *this = std::move(other); }
+  PageMetadata& operator=(PageMetadata&& other) noexcept {
+    entries = std::move(other.entries);
+    count = std::exchange(other.count, 0);
+    capacity = std::exchange(other.capacity, 0);
+    return *this;
+  }
+  bool resize(size_t wanted);
+  bool append(const T& value) {
+    const size_t index = count;
+    if (!resize(index + 1)) return false;
+    entries[index] = value;
+    return true;
+  }
+  size_t size() const { return count; }
+  bool empty() const { return count == 0; }
+  void clear() { entries.reset(); count = capacity = 0; }
+  T& operator[](size_t index) { return entries[index]; }
+  const T& operator[](size_t index) const { return entries[index]; }
+  T* begin() { return entries.get(); }
+  T* end() { return count ? entries.get() + count : entries.get(); }
+  const T* begin() const { return entries.get(); }
+  const T* end() const { return count ? entries.get() + count : entries.get(); }
+};
+
 class Page {
  public:
   // the list of block index and line numbers on this page
   std::vector<std::unique_ptr<PageElement>> elements;
-  std::vector<FootnoteEntry> footnotes;
   static constexpr uint16_t MAX_FOOTNOTES_PER_PAGE = 16;
-  std::vector<PageLink> links;
   static constexpr uint16_t MAX_LINKS_PER_PAGE = 32;
+  using Footnotes = PageMetadata<FootnoteEntry, MAX_FOOTNOTES_PER_PAGE>;
+  using Links = PageMetadata<PageLink, MAX_LINKS_PER_PAGE>;
+  Footnotes footnotes;
+  Links links;
+  enum class LoadFailure : uint8_t { Unknown, Allocation, Corrupt };
+  // Page reads, including this status, run under RenderLock.
+  static inline LoadFailure loadFailure = LoadFailure::Unknown;
+  static void beginLoad() { loadFailure = LoadFailure::Unknown; }
 
   // Zero-based visible-codepoint offset where this page starts. Not part of the serialized page
   // body (it lives in the section's visible-offset LUT); Section::loadPage* fills it in from the
@@ -96,7 +136,7 @@ class Page {
     entry.number[sizeof(entry.number) - 1] = '\0';
     strncpy(entry.href, href, sizeof(entry.href) - 1);
     entry.href[sizeof(entry.href) - 1] = '\0';
-    footnotes.push_back(entry);
+    footnotes.append(entry);
   }
 
   bool addLink(const char* href, int16_t x, int16_t y, int16_t width, int16_t height) {
@@ -107,14 +147,13 @@ class Page {
     if (hrefLen == 0 || hrefLen == sizeof(PageLink::href)) {
       return false;
     }
-    links.emplace_back();
-    auto& link = links.back();
+    PageLink link;
     memcpy(link.href, href, hrefLen + 1);
     link.x = x;
     link.y = y;
     link.width = width;
     link.height = height;
-    return true;
+    return links.append(link);
   }
 
   void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) const;

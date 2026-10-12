@@ -81,14 +81,14 @@ while depth:
     depth += (render[anchor_end] == '{') - (render[anchor_end] == '}')
     anchor_end += 1
 anchor_landing = 'void EpubReaderActivity::anchorLanding() {\n' + render[anchor_start:anchor_end] + '\n}'
-start = render.index('    auto p = section->loadPage(section->currentPage);')
+start = render.index('    Page::beginLoad();') if '    Page::beginLoad();' in render else render.index('    auto p = section->loadPage(section->currentPage);')
 end = render.index('    currentPageVisibleOffset = p->visibleTextOffset;', start)
 page_load = ('void EpubReaderActivity::loadPageForRender() {\n'
              ' auto showPendingSyncSaveError=[]{};\n' + render[start:end] + '\n}')
 # Constants and state declarations come from the real header, avoiding a second policy.
 declarations = []
 for line in header.splitlines():
-    if re.match(r'  (?:static constexpr (?:size_t|int) (?:BACKGROUND_BUILD|BUILD_WINDOW|BUILD_PAGES|PARTIAL_REBUILD|RENDER_MIN_FREE_HEAP|THUMB_IDLE|LOOK_AHEAD_PAGES)|static constexpr unsigned long (?:BUILD_POPUP_DEADLINE_MS|RADIO_RELEASE_TIMEOUT_MS)|static constexpr uint8_t MAX_PAGE_LOAD_RETRIES|uint8_t (?:pageLoadRetryCount|pendingThumbCount)|size_t parkedParserFootprint|unsigned long (?:lastRenderCompleteMs|radioSettledMs)|int (?:idlePrewarmSpine|idlePrewarmPage|pendingThumbHeight|lookAheadPage)|bool (?:buildHeapPaused|backgroundBuildSuspended|backgroundBuildFailed|partialRebuildStartFailed|buildPopupPending|buildPopupRefreshing|radioReleasedForBuild|fontsShedForBuild|pendingThumbGeneration|coverRefPending)|uint16_t buildViewport)', line):
+    if re.match(r'  (?:static constexpr (?:size_t|int) (?:BACKGROUND_BUILD|BUILD_WINDOW|BUILD_PAGES|PARTIAL_REBUILD|RENDER_MIN_FREE_HEAP|THUMB_IDLE|LOOK_AHEAD_PAGES)|static constexpr unsigned long (?:BUILD_POPUP_DEADLINE_MS|RADIO_RELEASE_TIMEOUT_MS)|static constexpr uint8_t MAX_PAGE_LOAD_RETRIES|uint8_t (?:pageLoadRetryCount|pendingThumbCount)|size_t parkedParserFootprint|unsigned long (?:lastRenderCompleteMs|radioSettledMs|lookAheadStartedMs)|int (?:idlePrewarmSpine|idlePrewarmPage|pendingThumbHeight|lookAheadPage|lookAheadWorkPage)|bool (?:buildHeapPaused|backgroundBuildSuspended|backgroundBuildFailed|partialRebuildStartFailed|buildPopupPending|buildPopupRefreshing|radioReleasedForBuild|fontsShedForBuild|pendingThumbGeneration|coverRefPending)|uint16_t buildViewport)', line):
         declarations.append(line)
 fixture = pathlib.Path(__file__).with_name('fixture.hpp').read_text().replace('@@FIELDS@@', '\n'.join(declarations))
 layout_hook = 'EpubReaderActivity::pageAwaitsLayout(' in cpp

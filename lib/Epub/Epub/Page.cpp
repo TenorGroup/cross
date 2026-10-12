@@ -4,7 +4,31 @@
 #include <HalMemory.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <HeapFloor.h>
 #include <Serialization.h>
+
+template <typename T, size_t Limit>
+bool PageMetadata<T, Limit>::resize(const size_t wanted) {
+  if (wanted > Limit) return false;
+  if (wanted > capacity) {
+    const size_t grownCount = std::min(Limit, std::max(wanted, capacity * 2));
+    auto grown = heapfloor::array<T[]>(grownCount, "page-metadata");
+    if (!grown) {
+      LOG_ERR("PGE", "Optional page metadata refused (%u bytes)", static_cast<unsigned>(grownCount * sizeof(T)));
+#ifdef TENOR_PRESS_PROBE
+      LOG_INF("PGE", "PAGE_ALLOC_REFUSE kind=metadata bytes=%u", static_cast<unsigned>(grownCount * sizeof(T)));
+#endif
+      return false;
+    }
+    if (count) std::copy(begin(), end(), grown.get());
+    entries = std::move(grown);
+    capacity = grownCount;
+  }
+  count = wanted;
+  return true;
+}
+template class PageMetadata<FootnoteEntry, Page::MAX_FOOTNOTES_PER_PAGE>;
+template class PageMetadata<PageLink, Page::MAX_LINKS_PER_PAGE>;
 
 namespace {
 
@@ -200,9 +224,11 @@ bool Page::serialize(HalFile& file) const {
 }
 
 std::unique_ptr<Page> Page::deserialize(HalFile& file) {
+  beginLoad();
   serialization::CheckedReader reader(file);
   auto page = makeUniqueNoThrow<Page>();
   if (!page) {
+    loadFailure = LoadFailure::Allocation;
     LOG_ERR("PGE", "Deserialization failed: could not allocate Page");
     return nullptr;
   }
@@ -214,8 +240,12 @@ std::unique_ptr<Page> Page::deserialize(HalFile& file) {
   // Counts are checked against bytes left before reserve; this also prevents
   // truncated headers from requesting an allocation.
   constexpr size_t minElementBytes = 1 + 3 * sizeof(uint16_t) + sizeof(uint8_t);
-  if (!reader.ok() || reader.remaining() < 2 * sizeof(uint16_t) ||
-      count > (reader.remaining() - 2 * sizeof(uint16_t)) / minElementBytes) return nullptr;
+  if (!reader.ok()) return nullptr;
+  if (reader.remaining() < 2 * sizeof(uint16_t) ||
+      count > (reader.remaining() - 2 * sizeof(uint16_t)) / minElementBytes) {
+    loadFailure = LoadFailure::Corrupt;
+    return nullptr;
+  }
   if (count > HalMemory::getDefaultHeap().largestBlockBytes / sizeof(decltype(page->elements)::value_type)) {
     return nullptr;
   }
@@ -244,6 +274,7 @@ std::unique_ptr<Page> Page::deserialize(HalFile& file) {
       }
       page->elements.push_back(std::move(rule));
     } else {
+      loadFailure = LoadFailure::Corrupt;
       LOG_ERR("PGE", "Deserialization failed: Unknown tag %u", tag);
       return nullptr;
     }
@@ -255,13 +286,14 @@ std::unique_ptr<Page> Page::deserialize(HalFile& file) {
   if (!reader.ok() || fnCount > MAX_FOOTNOTES_PER_PAGE ||
       !reader.has(static_cast<size_t>(fnCount) * (sizeof(FootnoteEntry::number) + sizeof(FootnoteEntry::href)) +
                   sizeof(uint16_t))) {
+    if (reader.ok()) loadFailure = LoadFailure::Corrupt;
     LOG_ERR("PGE", "Invalid footnote count %u", fnCount);
     return nullptr;
   }
-  if (fnCount > HalMemory::getDefaultHeap().largestBlockBytes / sizeof(FootnoteEntry)) return nullptr;
-  page->footnotes.resize(fnCount);
+  const bool keepFootnotes = page->footnotes.resize(fnCount);
   for (uint16_t i = 0; i < fnCount; i++) {
-    auto& entry = page->footnotes[i];
+    FootnoteEntry discarded{};
+    auto& entry = keepFootnotes ? page->footnotes[i] : discarded;
     if (!reader.read(entry.number, sizeof(entry.number)) ||
         !reader.read(entry.href, sizeof(entry.href))) {
       LOG_ERR("PGE", "Failed to read footnote %u", i);
@@ -275,13 +307,14 @@ std::unique_ptr<Page> Page::deserialize(HalFile& file) {
   reader.pod(linkCount);
   if (!reader.ok() || linkCount > MAX_LINKS_PER_PAGE ||
       !reader.has(static_cast<size_t>(linkCount) * (sizeof(PageLink::href) + 4 * sizeof(int16_t)))) {
+    if (reader.ok()) loadFailure = LoadFailure::Corrupt;
     LOG_ERR("PGE", "Invalid link count %u", linkCount);
     return nullptr;
   }
-  if (linkCount > HalMemory::getDefaultHeap().largestBlockBytes / sizeof(PageLink)) return nullptr;
-  page->links.resize(linkCount);
+  const bool keepLinks = page->links.resize(linkCount);
   for (uint16_t i = 0; i < linkCount; i++) {
-    auto& link = page->links[i];
+    PageLink discarded;
+    auto& link = keepLinks ? page->links[i] : discarded;
     if (!reader.read(link.href, sizeof(link.href))) {
       LOG_ERR("PGE", "Failed to read link %u", i);
       return nullptr;
@@ -292,6 +325,7 @@ std::unique_ptr<Page> Page::deserialize(HalFile& file) {
     reader.pod(link.width);
     reader.pod(link.height);
     if (!reader.ok() || link.href[0] == '\0' || link.width <= 0 || link.height <= 0) {
+      if (reader.ok()) loadFailure = LoadFailure::Corrupt;
       LOG_ERR("PGE", "Invalid link geometry %u", i);
       return nullptr;
     }

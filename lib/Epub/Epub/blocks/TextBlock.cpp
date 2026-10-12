@@ -46,15 +46,7 @@ TextBlock::TextBlock(const std::vector<std::string>& words, const std::vector<in
                      const std::vector<EpdFontFamily::Style>& wordStyles, const std::vector<uint8_t>& focusBoundary,
                      const std::vector<uint16_t>& focusSuffixX, const BlockStyle& blockStyle,
                      std::vector<std::string> rubyTexts, std::vector<LinkSpan> linkSpans)
-    : blockStyle(blockStyle), rubyTexts(std::move(rubyTexts)), linkSpans(std::move(linkSpans)) {
-  // Same invariant as deserialize(): a block never holds an all-empty rubyTexts, so a
-  // ruby-less line costs nothing beyond its arena. The layout engine hands one over for
-  // every line it extracts, ruby or not; release it here rather than carrying it for the
-  // block's lifetime. Move-assigning an empty vector frees the buffer (clear() would not).
-  if (!hasRuby()) {
-    this->rubyTexts = std::vector<std::string>{};
-  }
-
+    : blockStyle(blockStyle), linkSpans(std::move(linkSpans)) {
   // Focus annotations are optional: empty vectors mean no word in this block has a split.
   // When present, they must be sized in lockstep with words[].
   const bool hasFocus = !focusBoundary.empty();
@@ -70,6 +62,7 @@ TextBlock::TextBlock(const std::vector<std::string>& words, const std::vector<in
 
   numWords = static_cast<uint16_t>(words.size());
   focusPresent = hasFocus;
+
   if (numWords == 0) {
     return;  // valid empty block, no arena
   }
@@ -127,13 +120,56 @@ TextBlock::TextBlock(const std::vector<std::string>& words, const std::vector<in
       boundary[i] = focusBoundary[i];
     }
   }
+  for (uint16_t i = 0; i < numWords && i < rubyTexts.size(); ++i) {
+    if (rubyTexts[i].empty()) continue;
+    if (char* text = appendRuby(i, rubyTexts[i].size())) {
+      memcpy(text, rubyTexts[i].data(), rubyTexts[i].size());
+    }
+  }
+  // New layout reserves ruby space only for annotations retained in the cache.
+  rubyPresent = rubyCount != 0;
 }
 
-bool TextBlock::hasRuby() const {
-  for (const auto& rt : rubyTexts) {
-    if (!rt.empty()) return true;
+char* TextBlock::appendRuby(const uint16_t word, const size_t length) {
+  rubyPresent = true;
+  if (rubyRefused) return nullptr;
+  const auto refuse = [&]() -> char* {
+    rubyRefused = true;
+    LOG_ERR("TXB", "Ruby omitted after allocation refusal or line limit");
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("TXB", "RUBY_ALLOC_REFUSE count=%u bytes=%u", rubyCount, static_cast<unsigned>(length));
+#endif
+    return nullptr;
+  };
+  if (rubyCount == MAX_RUBIES || length > MAX_RUBY_ANNOTATION_BYTES ||
+      length >= MAX_RUBY_BYTES - rubyBytes) return refuse();
+  if (rubyCount == rubyCapacity) {
+    const size_t capacity = std::min(MAX_RUBIES, std::max(size_t(1), size_t(rubyCapacity) * 2));
+    auto grown = heapfloor::array<RubyText[]>(capacity, "ruby-entries");
+    if (!grown) return refuse();
+    for (uint16_t i = 0; i < rubyCount; ++i) grown[i] = std::move(rubyTexts[i]);
+    rubyTexts = std::move(grown);
+    rubyCapacity = capacity;
   }
-  return false;
+  auto text = heapfloor::array<char[]>(length + 1, "ruby-text");
+  if (!text) return refuse();
+  char* data = text.get();
+  rubyTexts[rubyCount++] = {word, static_cast<uint16_t>(length), std::move(text)};
+  rubyBytes += length + 1;
+  return data;
+}
+
+bool TextBlock::hasRuby() const { return rubyPresent; }
+
+std::string_view TextBlock::getRubyText(const uint16_t word) const {
+  size_t first = 0, end = rubyCount;
+  while (first < end) {
+    const size_t middle = first + (end - first) / 2;
+    if (rubyTexts[middle].word < word) first = middle + 1;
+    else end = middle;
+  }
+  if (first == rubyCount || rubyTexts[first].word != word) return {};
+  return {rubyTexts[first].text.get(), rubyTexts[first].length};
 }
 
 void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int x, const int y) const {
@@ -144,37 +180,6 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
 
   const bool scanning = renderer.isFontCacheScanning();
   const int ascender = renderer.getFontAscenderSize(fontId);
-
-  // Resolve ruby positions. Layout (extractLine) has already reserved extraStartOffset on the
-  // left and extraEndOffset on the right, so the centered rubyX is always within the page margins.
-  struct RubyDrawInfo {
-    int x;
-    std::string text;
-    BidiUtils::BidiBaseDir baseDir;
-  };
-  const bool blockHasRuby = hasRuby();
-  std::vector<RubyDrawInfo> rubies;
-  if (blockHasRuby) {
-    rubies.resize(numWords);
-    for (uint16_t i = 0; i < numWords; i++) {
-      if (i < rubyTexts.size() && !rubyTexts[i].empty() && (wordStyle(i) & EpdFontFamily::RUBY_CONTINUE) == 0) {
-        int groupWordCount = 1;
-        while (i + groupWordCount < numWords && (wordStyle(i + groupWordCount) & EpdFontFamily::RUBY_CONTINUE) != 0) {
-          groupWordCount++;
-        }
-        int groupActualWidth = 0;
-        for (int k = 0; k < groupWordCount; ++k) {
-          groupActualWidth += renderer.getTextAdvanceX(fontId, wordText(i + k), wordStyle(i + k));
-        }
-        const int rubyWidth = renderer.getTextAdvanceX(fontId, rubyTexts[i].c_str(), EpdFontFamily::SUP);
-        const int leaderWordX = xposArr[i] + x;
-        const auto baseDir =
-            static_cast<BidiUtils::BidiBaseDir>(BidiUtils::detectParagraphLevel(wordText(i), blockStyle.isRtl ? 1 : 0));
-        rubies[i] = {leaderWordX - (rubyWidth - groupActualWidth) / 2, rubyTexts[i], baseDir};
-        i += groupWordCount - 1;
-      }
-    }
-  }
 
   struct DecorationLineTracker {
     EpdFontFamily::Style style;
@@ -208,8 +213,6 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
     }
   };
 
-  // Loop-invariant: hoisted out of the word loop so rubyTexts is scanned once,
-  // not once per word.
   const int rubyShift = getRubyShift(ascender);
 
   for (uint16_t i = 0; i < numWords; i++) {
@@ -256,12 +259,17 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
       renderer.drawText(fontId, drawX, wordY, word, true, currentStyle, baseDir, letterSpacing);
     }
 
-    // Horizontal ruby text rendering
-    if (blockHasRuby && i < rubyTexts.size() && !rubyTexts[i].empty() &&
-        (wordStyle(i) & EpdFontFamily::RUBY_CONTINUE) == 0) {
-      const int rubyY = wordY - ascender;
-      renderer.drawText(fontId, rubies[i].x, rubyY, rubies[i].text.c_str(), true, EpdFontFamily::SUP,
-                        rubies[i].baseDir);
+    const auto ruby = getRubyText(i);
+    if (!ruby.empty() && (currentStyle & EpdFontFamily::RUBY_CONTINUE) == 0) {
+      int groupWordCount = 1;
+      while (i + groupWordCount < numWords && (wordStyle(i + groupWordCount) & EpdFontFamily::RUBY_CONTINUE) != 0)
+        ++groupWordCount;
+      int groupWidth = 0;
+      for (int k = 0; k < groupWordCount; ++k)
+        groupWidth += renderer.getTextAdvanceX(fontId, wordText(i + k), wordStyle(i + k));
+      const int rubyWidth = renderer.getTextAdvanceX(fontId, ruby.data(), EpdFontFamily::SUP);
+      const int rubyX = wordX - (rubyWidth - groupWidth) / 2;
+      renderer.drawText(fontId, rubyX, wordY - ascender, ruby.data(), true, EpdFontFamily::SUP, baseDir);
     }
 
     if (scanning) {
@@ -351,7 +359,7 @@ bool TextBlock::serialize(HalFile& file) const {
   }
 
   // Ruby text data: a length and the text per word. A line without ruby is a zero length per word.
-  if (rubyTexts.empty()) {
+  if (rubyCount == 0) {
     static constexpr uint8_t kZeroLengths[64] = {};
     for (size_t left = static_cast<size_t>(numWords) * sizeof(uint32_t); left > 0;) {
       const size_t chunk = std::min(left, sizeof(kZeroLengths));
@@ -360,7 +368,9 @@ bool TextBlock::serialize(HalFile& file) const {
     }
   } else {
     for (size_t i = 0; i < numWords; i++) {
-      if (!serialization::writeString(file, (i < rubyTexts.size()) ? rubyTexts[i] : std::string())) return false;
+      const auto ruby = getRubyText(i);
+      if (!serialization::writePod(file, static_cast<uint32_t>(ruby.size())) ||
+          (!ruby.empty() && file.write(reinterpret_cast<const uint8_t*>(ruby.data()), ruby.size()) != ruby.size())) return false;
     }
   }
 
@@ -454,31 +464,20 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
     }
   }
 
-  // Ruby text data. Ruby is a CJK feature, so for nearly every book every entry here
-  // is the empty string. Materializing the vector regardless costs wordCount * 24 bytes
-  // (sizeof(std::string)) plus a heap block per line, held for as long as the page is
-  // resident -- several KB of DRAM on a full page, none of it ever read. An empty
-  // rubyTexts is already the "no ruby" representation: hasRuby() reports false and every
-  // other reader is guarded by `i < rubyTexts.size()`, so allocate lazily and only once a
-  // non-empty annotation actually shows up.
-  //
-  // `scratch` is reused across words: readString() resizes it to the incoming length and
-  // overwrites every byte, so a moved-from value carries nothing into the next iteration.
-  std::string scratch;
-  for (uint16_t i = 0; i < wc; i++) {
-    // Query the heap only when an annotation needs an allocation. Empty ruby
-    // fields are the common path and require no heap walk or allocation.
-    if (!reader.string(scratch, MAX_RUBY_ANNOTATION_BYTES, [](size_t bytes) {
-          const size_t largest = HalMemory::getDefaultHeap().largestBlockBytes;
-          // Allow for std::string growth rounding and its NUL terminator.
-          return largest > 2 && bytes <= (largest - 2) / 2;
-        })) return nullptr;
-    if (scratch.empty()) continue;
-    if (block->rubyTexts.empty()) {
-      if (wc > HalMemory::getDefaultHeap().largestBlockBytes / sizeof(std::string)) return nullptr;
-      block->rubyTexts.resize(wc);
+  for (uint16_t i = 0; i < wc; ++i) {
+    uint32_t length = 0;
+    if (!reader.pod(length) || length > MAX_RUBY_ANNOTATION_BYTES || !reader.has(length)) return nullptr;
+    if (length == 0) continue;
+    if (char* text = block->appendRuby(i, length)) {
+      if (!reader.read(text, length)) return nullptr;
+    } else {
+      char discarded[64];
+      while (length) {
+        const size_t bytes = std::min(size_t(length), sizeof(discarded));
+        if (!reader.read(discarded, bytes)) return nullptr;
+        length -= bytes;
+      }
     }
-    block->rubyTexts[i] = std::move(scratch);
   }
 
   // Style (alignment + margins/padding/indent)

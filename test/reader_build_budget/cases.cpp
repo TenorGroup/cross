@@ -210,7 +210,18 @@ int main() {
     require(pageReads.reads == 2 && r.pageLoadRetryCount == 0, "cached retry did not recover");
     require(pageReads.clears == 0 && pageReads.errors == 0, "recovered read rebuilt or reported an error");
   });
-  test("persistent page read rebuilds once and preserves requested page", [] {
+  test("repeated page allocation failure keeps section and cache", [] {
+    EpubReaderActivity r;
+    r.section->currentPage = 18; pageReads.failures = 2;
+    const auto* original = r.section.get();
+    { RenderLock held; r.loadPageForRender(); }
+    { RenderLock held; r.loadPageForRender(); }
+    require(r.section.get() == original, "allocation failure discarded section");
+    require(pageReads.clears == 0 && pageReads.abandons == 0, "allocation failure erased cache");
+    require(r.requests == 2, "allocation retry was not bounded");
+  });
+  test("corrupt page rebuilds once and preserves requested page", [] {
+    pageReads.corrupt = true;
     EpubReaderActivity r; r.section->currentPage = 18; r.nextPageNumber = 0; pageReads.failures = 2;
     { RenderLock held; r.loadPageForRender(); }
     if (!r.section) { r.section = std::make_unique<Section>(); r.section->currentPage = r.nextPageNumber; }
@@ -220,6 +231,7 @@ int main() {
     require(r.requests == 2, "rebuild was not queued once");
   });
   test("terminal page read error stops with one rebuild and retains retry target", [] {
+    pageReads.corrupt = true;
     EpubReaderActivity r; r.section->currentPage = 18; pageReads.failures = 10;
     for (int n = 0; n <= r.MAX_PAGE_LOAD_RETRIES; ++n) {
       if (!r.section) { r.section = std::make_unique<Section>(); r.section->currentPage = r.nextPageNumber; }
@@ -631,8 +643,8 @@ int main() {
     r.backgroundTick();
     require(r.section->resumes == 0, "look-ahead ran while the page was still settling");
     clockMs += 500;
-    r.backgroundTick();
-    require(r.section->resumes == 1 && r.section->pageCount > 19, "next page was not laid out on a quiet pass");
+    for (int pass = 0; pass < 80; ++pass) r.backgroundTick();
+    require(r.section->resumes == 1 && r.section->pageCount == 21, "next page was not laid out on a quiet pass");
     require(r.section->isBuildParked() && r.section->parks == 2, "parser was not handed back after the look-ahead");
     require(freeink::ble::stopForIdleCalls == 0, "look-ahead touched the radio");
     for (int n = 0; n < 10; ++n) r.backgroundTick();
@@ -677,7 +689,7 @@ int main() {
     r.backgroundTick();
     require(r.section->starts == 0, "extension started while the page was still settling");
     clockMs += 500;
-    r.backgroundTick();
+    for (int pass = 0; pass < 80; ++pass) r.backgroundTick();
     require(r.section->starts == 1 && r.section->pageCount > 3, "next page was not laid out ahead of the first turn");
     require(r.section->isBuildParked(), "parser was not handed back after the look-ahead");
     for (int n = 0; n < 10; ++n) r.backgroundTick();
@@ -697,7 +709,7 @@ int main() {
     ESP.free = 52136; ESP.largest = 26612;  // after the radio start, r27-ui
     r.lastRenderCompleteMs = clockMs;
     clockMs += 500;
-    r.backgroundTick();
+    for (int pass = 0; pass < 80; ++pass) r.backgroundTick();
     require(r.section->pageCount > r.section->currentPage + 1, "the page after the current one is not laid out");
     require(r.section->isBuildParked(), "parser was not handed back after the look-ahead");
     const int ticks = r.section->ticks;
@@ -718,7 +730,7 @@ int main() {
     ESP.free = 53144; ESP.largest = 31732;  // BLE-live heap on the X3 in r29
     r.lastRenderCompleteMs = clockMs;
     clockMs += 500;
-    r.backgroundTick();
+    for (int pass = 0; pass < 80; ++pass) r.backgroundTick();
     require(r.section->pageCount > 2, "the second page past the one on screen is not laid out");
     require(r.section->isBuildParked(), "parser was not handed back after the look-ahead");
     const int ticks = r.section->ticks;
@@ -728,7 +740,7 @@ int main() {
     r.section->currentPage = 1;
     r.lastRenderCompleteMs = clockMs;
     clockMs += 500;
-    r.backgroundTick();
+    for (int pass = 0; pass < 80; ++pass) r.backgroundTick();
     require(r.section->pageCount == 4, "a turn inside the look-ahead did not keep two pages ready");
   });
   test("look-ahead window opens when the radio's start ends, not at the paint", [] {

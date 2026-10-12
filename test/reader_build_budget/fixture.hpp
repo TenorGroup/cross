@@ -158,7 +158,7 @@ struct Gui {
     if (display) { require(!panelRefreshing, "a popup went up over a refresh still running"); ++blockingPopups; }
   }
 } GUI;
-struct PageReadState { int failures = 0, reads = 0, clears = 0, abandons = 0, errors = 0; } pageReads;
+struct PageReadState { bool corrupt = false; int failures = 0, reads = 0, clears = 0, abandons = 0, errors = 0; } pageReads;
 struct ReaderRenderer {
   uint32_t frameBufferLoans = 0;
   uint32_t frameBufferLoanCount() const { return frameBufferLoans; }
@@ -181,6 +181,11 @@ using GfxRenderer = ReaderRenderer;
 struct ReaderPaceStub {
   void suspend() {}
   template <class... Args> void turned(Args&&...) {}
+};
+struct Page {
+  enum class LoadFailure : uint8_t { Unknown, Allocation, Corrupt };
+  static inline LoadFailure loadFailure = LoadFailure::Unknown;
+  static void beginLoad() { loadFailure = LoadFailure::Unknown; }
 };
 struct Section {
   int currentPage = 4, pageCount = 19, oldPages = 19, builtPages = 4;
@@ -205,7 +210,7 @@ struct Section {
     require(RenderLock::busy, "load without render lock");
     require(page == currentPage, "read changed target");
     ++pageReads.reads;
-    if (pageReads.failures > 0) { --pageReads.failures; return nullptr; }
+    if (pageReads.failures > 0) { --pageReads.failures; ::Page::loadFailure = pageReads.corrupt ? ::Page::LoadFailure::Corrupt : ::Page::LoadFailure::Allocation; return nullptr; }
     return std::make_unique<Page>();
   }
   void abandonBuild() { ++pageReads.abandons; building = false; }
@@ -293,7 +298,10 @@ struct CoverThumbCapture : ImageBlock::ThumbHook {
 };
 template <class T, class... A>
 std::unique_ptr<T> makeUniqueNoThrow(A&&... args) { return std::make_unique<T>(std::forward<A>(args)...); }
+struct HalPowerManager { struct Lock {}; };
 struct Gpio {
+  bool wasTouchActivity() const { return false; }
+  bool rawInputActive() const { return false; }
   bool usbChanged = false;
   bool wasUsbStateChanged() const { return usbChanged; }
 } gpio;

@@ -1215,7 +1215,8 @@ void EpubReaderActivity::loop() {
   // button edge, or has turns queued behind the paint, handles them first; the idle work
   // waits for a quiet pass.
   const bool inputThisPass =
-      mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() || pendingManualTurn != 0 || pendingExternalTurn != 0;
+      mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() || gpio.wasTouchActivity() ||
+      pendingManualTurn != 0 || pendingExternalTurn != 0;
   if (!inputThisPass && textCloseFrame.load(std::memory_order_acquire) == 2) {
     RenderLock lock(RenderLock::TryTake{});
     if (lock.acquired() && textCloseFrame.load(std::memory_order_acquire) == 2) flushTextSettingsLocked();
@@ -1282,8 +1283,12 @@ void EpubReaderActivity::loop() {
   }
   {
     RenderLock lock(RenderLock::TryTake{});
+    const bool quietLookAhead = lock.acquired() && section && lookAheadWorkPage == section->currentPage &&
+                                !inputThisPass && !gpio.rawInputActive() &&
+                                millis() - lookAheadStartedMs < BUILD_WINDOW_MAX_MS;
     if (lock.acquired() && section && section->isBuilding() && !section->isBuildParked() &&
-        (backgroundBuildSuspended || backgroundBuildFailed || deferBackgroundBuildForBle() || !buildTickHeapGate())) {
+        (backgroundBuildSuspended || backgroundBuildFailed ||
+         (deferBackgroundBuildForBle() && !quietLookAhead) || !buildTickHeapGate())) {
       suspendBackgroundBuild();
       backgroundBuildParkedThisLoop = section && section->isBuildParked();
     }
@@ -1307,36 +1312,63 @@ void EpubReaderActivity::loop() {
     }
   }
 
-  // With the radio up the parser stays parked (deferBackgroundBuildForBle) and the reader
-  // sits on the last laid-out page, so every turn resumed the parser inside the paint:
-  // 140 to 400 ms on the X3 before the page could even load. Once the page has been on
-  // the panel for a beat, lay out the next pages here instead, once per page. It takes
-  // the same heap the paint's own resume takes, never while the radio is still
-  // allocating its start, and the park below hands the parser straight back.
-  // A book reopened on the last page of its partial cache has no parser to resume: the radio
-  // starts before the extension can, so the extension starts here, as the first turn's paint
-  // would start it (780 ms inside that paint on the X3).
+  // Lay out two pages ahead while the shown page is quiet. Each main pass does
+  // one parser step, then polls input again. Keep the parser between these steps
+  // while heap permits, and release it when the target or time budget is reached.
+  // A partial cache at its last page also starts its extension here.
   if (bleturner::status().starting) radioSettledMs = millis();
   const unsigned long sincePaint = std::min(millis() - lastRenderCompleteMs, millis() - radioSettledMs);
-  // Conditions that do not read the section; the rest is read under the lock below.
-  const bool lookAheadWindow = !inputThisPass && !backgroundBuildFailed && !backgroundBuildParkedThisLoop &&
-                               deferBackgroundBuildForBle() && !bleturner::status().starting &&
-                               lastRenderCompleteMs != 0 && sincePaint > BUILD_WINDOW_QUIET_MS &&
-                               sincePaint < BUILD_WINDOW_LATEST_MS;
-  if (lookAheadWindow || (!inputThisPass && !backgroundBuildParkedThisLoop)) {
+  bool lookAheadStepped = false;
+  {
     RenderLock lock(RenderLock::TryTake{});
+    const auto inputSource = [&]() -> const char* {
+      if (pendingExternalTurn != 0) return "ble";
+      if (gpio.wasTouchActivity()) return "gpio";
+      if (inputThisPass || gpio.rawInputActive()) {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+        return "gpio";
+#else
+        return "key";
+#endif
+      }
+      return nullptr;
+    };
+    const char* pendingInput = inputSource();
+    if (lock.acquired() && pendingInput) {
+#ifdef TENOR_PRESS_PROBE
+      if (lookAheadWorkPage >= 0)
+        LOG_INF("ERS", "LOOK_AHEAD_YIELD src=%s ms=%lu", pendingInput, millis() - lookAheadStartedMs);
+#endif
+      lookAheadPage = -1;
+      lookAheadWorkPage = -1;
+    }
+    if (lock.acquired() && (!section || lookAheadWorkPage != section->currentPage ||
+                            millis() - lookAheadStartedMs >= BUILD_WINDOW_MAX_MS))
+      lookAheadWorkPage = -1;
+    const bool continuing = lock.acquired() && section && lookAheadWorkPage == section->currentPage;
+    const bool lookAheadWindow = !pendingInput && !backgroundBuildFailed && !backgroundBuildParkedThisLoop &&
+                                 deferBackgroundBuildForBle() && !bleturner::status().starting &&
+                                 lastRenderCompleteMs != 0 && sincePaint > BUILD_WINDOW_QUIET_MS &&
+                                 (continuing ? millis() - lookAheadStartedMs < BUILD_WINDOW_MAX_MS
+                                             : sincePaint < BUILD_WINDOW_LATEST_MS);
     const bool lookAhead =
         lock.acquired() && lookAheadWindow && section &&
-        (section->isBuildParked() ||
+        ((continuing && section->isBuilding()) || section->isBuildParked() ||
          (section->isPartial() && !section->isBuilding() && !partialRebuildStartFailed && buildViewportWidth > 0)) &&
         lookAheadPage != section->currentPage &&
         section->currentPage + LOOK_AHEAD_PAGES >= static_cast<int>(section->pageCount);
-    if (lock.acquired() &&
+    if (lock.acquired() && !pendingInput &&
         (lookAhead || (!inputThisPass && !backgroundBuildParkedThisLoop && backgroundBuildWanted() &&
                        backgroundBuildCanTick()))) {
+      if (lookAhead && !continuing) {
+        lookAheadWorkPage = section->currentPage;
+        lookAheadStartedMs = millis();
+      }
+      lookAheadStepped = lookAhead;
+      if (lookAhead) backgroundBuildSuspended = false;
+      [[maybe_unused]] HalPowerManager::Lock fullSpeed;
       BackgroundBuildFrameGuard frameGuard(*this);
-      if (lookAhead) lookAheadPage = section->currentPage;
-      const unsigned long tickStarted = millis();
+      [[maybe_unused]] const unsigned long tickStarted = millis();
 #ifdef TENOR_PRESS_PROBE
       if (lookAhead) buildprobe::reset();
 #endif
@@ -1350,17 +1382,7 @@ void EpubReaderActivity::loop() {
           !section->startBuild(SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight))) {
         partialRebuildStartFailed = true;
         LOG_ERR("ERS", "Failed to start look-ahead extension build");
-      } else if (![&] {
-                   // One tick is about 20 ms of parsing and often adds no page, so the look-ahead
-                   // keeps ticking until the pages after this one are laid out; handing the parser
-                   // back after one tick left the first turn to lay it out in its paint (r27-ui).
-                   bool ticked = section->buildSomeMore(BACKGROUND_BUILD_PAGES_PER_TICK);
-                   while (lookAhead && ticked && !section->isBuildComplete() &&
-                          static_cast<int>(section->pageCount) <= section->currentPage + LOOK_AHEAD_PAGES &&
-                          millis() - tickStarted < static_cast<unsigned long>(BUILD_WINDOW_MAX_MS))
-                     ticked = section->buildSomeMore(BACKGROUND_BUILD_PAGES_PER_TICK);
-                   return ticked;
-                 }()) {
+      } else if (!section->buildSomeMore(BACKGROUND_BUILD_PAGES_PER_TICK)) {
         if (section->buildStarved()) {
           // The build is parked with its pages intact. The next foreground demand
           // resumes it, freeing the radio first if it has to.
@@ -1375,13 +1397,27 @@ void EpubReaderActivity::loop() {
       } else if (section->isBuildComplete() && applyDeferredReposition()) {
         requestUpdate();
       }
+      if (lookAhead && section) {
+        if ([[maybe_unused]] const char* pending = inputSource()) {
+#ifdef TENOR_PRESS_PROBE
+          LOG_INF("ERS", "LOOK_AHEAD_YIELD src=%s ms=%lu", pending, millis() - tickStarted);
+#endif
+          lookAheadPage = -1;
+          lookAheadWorkPage = -1;
+        } else if (section->isBuildComplete() ||
+                   static_cast<int>(section->pageCount) > section->currentPage + LOOK_AHEAD_PAGES) {
+          lookAheadPage = section->currentPage;
+          lookAheadWorkPage = -1;
+        }
+      }
 #ifdef TENOR_UI_ACCEPTANCE
       if (section) {
         traceBuildTickEnd("background");
       }
 #endif
-      // A tick can cross the budget while laying out a paragraph. Release before the next frame.
-      suspendBackgroundBuild();
+      // Keep a healthy parser between quiet steps. Parking can parse to a checkpoint
+      // or rewind to the last one, so doing it at every yield repeats layout work.
+      if (!lookAhead || lookAheadWorkPage < 0 || !buildTickHeapGate()) suspendBackgroundBuild();
 #ifdef TENOR_TURN_TRACE
       if (lookAhead)
         LOG_INF("ERS", "LOOK_AHEAD start=%u pages=%u ms=%lu", startedExtension,
@@ -1392,6 +1428,9 @@ void EpubReaderActivity::loop() {
 #endif
     }
   }
+
+  // The next main pass polls GPIO, probe contacts and BLE before another layout step.
+  if (lookAheadStepped) return;
 
   catchUpTick(inputThisPass);
 
@@ -1651,8 +1690,13 @@ void EpubReaderActivity::loop() {
     int touchX = 0;
     int touchY = 0;
     if (mappedInput.wasScreenTapped(touchX, touchY)) {
-      const auto* link = EpubReaderUtils::linkAtPoint(currentPageLinks, touchX, touchY, currentPageLinkMarginLeft,
-                                                      currentPageLinkMarginTop);
+      const PageLink* link = nullptr;
+      for (const auto& candidate : currentPageLinks) {
+        if (candidate.contains(touchX - currentPageLinkMarginLeft, touchY - currentPageLinkMarginTop, 6, 28)) {
+          link = &candidate;
+          break;
+        }
+      }
       if (link) {
         navigateToHref(link->href, true);
         return;
@@ -3148,6 +3192,7 @@ void EpubReaderActivity::renderBook() {
 #ifdef TENOR_TURN_TRACE
     tracePaint("LOAD_BEGIN", section->isBuilding() ? "building" : "cache");
 #endif
+    Page::beginLoad();
     auto p = section->loadPage(section->currentPage);
 #ifdef TENOR_TURN_TRACE
     tracePaint("LOAD_END", p ? "ok" : "failed");
@@ -3171,11 +3216,16 @@ void EpubReaderActivity::renderBook() {
         showPendingSyncSaveError();
         return;
       }
-      // A failed SD read or page allocation can recover on the next render.
-      // Retry the existing section first, then allow one cache rebuild per incident.
+      // Retry transient reads and allocation failures against the existing cache.
+      // A validated corrupt record permits one rebuild per incident.
       // Carry the requested page across reset; nextPageNumber may still be the
       // position from when this chapter was opened.
-      if (pageLoadRetryCount == 2) {
+      const bool dropCorrupt = pageLoadRetryCount == 2 && Page::loadFailure == Page::LoadFailure::Corrupt;
+#ifdef TENOR_PRESS_PROBE
+      LOG_INF("ERS", "PAGE_CACHE_%s page=%d reason=%u", dropCorrupt ? "DROP_CORRUPT" : "KEEP",
+              section->currentPage, static_cast<unsigned>(Page::loadFailure));
+#endif
+      if (dropCorrupt) {
         nextPageNumber = section->currentPage;
         section->abandonBuild();
         section->clearCache();
