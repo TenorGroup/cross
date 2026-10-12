@@ -97,13 +97,12 @@ class BookMetadataCache {
   // Reads the totals of the window starting at `first` into `window`. Called under the size lock.
   bool readSizeWindow(int first) const;
 
-  // Index for fast href→spineIndex lookup (used only for large EPUBs). The
-  // key is the low 48 bits of the FNV-1a 64-bit hash: eight bytes per spine
-  // item instead of sixteen, and still no expected collision at 32k items.
+  // The hash narrows the lookup; the stored file offset verifies the full href.
   struct SpineHrefIndexEntry {
     uint32_t hashLow;
     uint16_t hashHigh;
     int16_t spineIndex;
+    uint32_t offset = 0;
     bool operator<(const SpineHrefIndexEntry& o) const {
       return hashHigh < o.hashHigh ||
              (hashHigh == o.hashHigh &&
@@ -115,7 +114,7 @@ class BookMetadataCache {
     const uint64_t hash = fnvHash64(href);
     return {static_cast<uint32_t>(hash), static_cast<uint16_t>(hash >> 32), spineIndex};
   }
-  std::deque<SpineHrefIndexEntry> spineHrefIndex;
+  std::unique_ptr<SpineHrefIndexEntry[]> spineHrefIndex;
   bool useSpineHrefIndex = false;
 
   static constexpr uint16_t LARGE_SPINE_THRESHOLD = 400;

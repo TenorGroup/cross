@@ -388,32 +388,40 @@ bool BookMetadataCache::beginTocPass() {
 #ifdef TENOR_PRESS_PROBE
   const unsigned long indexStarted = millis();
 #endif
-  if (spineCount > 0) {
-    // Small books also use the bounded index: the old linear path reread the spine for every TOC item.
-    const uint32_t reserve = spineCount < LARGE_SPINE_THRESHOLD ? 1024u : INDEX_HEAP_RESERVE;
-    const uint32_t needed = static_cast<uint32_t>(spineCount) * sizeof(SpineHrefIndexEntry) + reserve;
-    if (ESP.getFreeHeap() < needed) {
-      LOG_ERR("BMC", "Href index needs %u B for %d spine items, %u free; using linear lookup", needed, spineCount,
-              static_cast<unsigned>(ESP.getFreeHeap()));
-      useSpineHrefIndex = false;
-    } else {
-      spineHrefIndex.clear();
-      spineHrefIndex.resize(spineCount);
-      spineFile.seek(0);
-      for (int i = 0; i < spineCount; i++) {
-        spineHrefIndex[i] = hrefKey(readSpineEntry(spineFile).href, static_cast<int16_t>(i));
-      }
-      std::sort(spineHrefIndex.begin(), spineHrefIndex.end());
-      spineFile.seek(0);
-      useSpineHrefIndex = true;
-      LOG_DBG("BMC", "Using href index for %d spine items", spineCount);
+  spineHrefIndex.reset();
+  useSpineHrefIndex = false;
+  const size_t needed = static_cast<size_t>(spineCount) * sizeof(SpineHrefIndexEntry);
+  if (spineCount && ESP.getFreeHeap() >= needed + INDEX_HEAP_RESERVE) {
+    spineHrefIndex = heapfloor::array<SpineHrefIndexEntry[]>(spineCount, "href-index");
+  }
+  [[maybe_unused]] size_t indexBytes = 0, indexReads = 0;
+  if (spineHrefIndex) {
+    MetadataReader input(spineFile, spineFile.size());
+    if (!input.seek(0)) return false;
+    for (int i = 0; i < spineCount; ++i) {
+      const auto offset = static_cast<uint32_t>(input.position());
+      const auto entry = readSpineEntryFrom(input);
+      if (!input.ok()) return false;
+      spineHrefIndex[i] = hrefKey(entry.href, static_cast<int16_t>(i));
+      spineHrefIndex[i].offset = offset;
     }
+    indexBytes = input.position();
+    indexReads = input.readCount();
+    std::sort(spineHrefIndex.get(), spineHrefIndex.get() + spineCount);
+    useSpineHrefIndex = true;
+  } else if (spineCount >= LARGE_SPINE_THRESHOLD) {
+    LOG_ERR("BMC", "No heap for %u href entries", static_cast<unsigned>(spineCount));
+    tocFile.close();
+    spineFile.close();
+    return false;
   } else {
-    useSpineHrefIndex = false;
+    LOG_ERR("BMC", "Href index unavailable; using linear lookup for %u entries", static_cast<unsigned>(spineCount));
   }
 #ifdef TENOR_PRESS_PROBE
-  LOG_INF("BMC", "INDEX_SPLIT href_index ms=%lu spines=%d bytes=%u enabled=%u", millis() - indexStarted, spineCount,
-          static_cast<unsigned>(spineHrefIndex.size() * sizeof(SpineHrefIndexEntry)), useSpineHrefIndex ? 1u : 0u);
+  LOG_INF("BMC", "INDEX_SPLIT href_index entries=%u reads=%u bytes=%u ms=%lu free=%u largest=%u enabled=%u",
+          static_cast<unsigned>(spineCount), static_cast<unsigned>(indexReads), static_cast<unsigned>(indexBytes),
+          millis() - indexStarted, static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()), useSpineHrefIndex ? 1u : 0u);
 #endif
 
   // Wrapper OOM is fine: createTocEntry falls back to unbuffered writes.
@@ -437,8 +445,7 @@ bool BookMetadataCache::endTocPass() {
   tocFile.close();
   spineFile.close();
 
-  spineHrefIndex.clear();
-  spineHrefIndex.shrink_to_fit();
+  spineHrefIndex.reset();
   useSpineHrefIndex = false;
 
   return flushed;
@@ -986,9 +993,15 @@ void BookMetadataCache::createTocEntry(const std::string& title, const std::stri
     // Matched to its chapter by buildBookBinFromPart.
   } else if (useSpineHrefIndex) {
     const auto key = hrefKey(href, 0);
-    const auto it = std::lower_bound(spineHrefIndex.begin(), spineHrefIndex.end(), key);
-    if (it != spineHrefIndex.end() && it->sameKey(key)) {
-      spineIndex = it->spineIndex;
+    auto* end = spineHrefIndex.get() + spineCount;
+    for (auto* it = std::lower_bound(spineHrefIndex.get(), end, key); it != end && it->sameKey(key); ++it) {
+      MetadataReader input(spineFile, spineFile.size());
+      std::string candidate;
+      if (!input.seek(it->offset) || !input.string(candidate)) break;
+      if (candidate == href) {
+        spineIndex = it->spineIndex;
+        break;
+      }
     }
 
     if (spineIndex == -1) {

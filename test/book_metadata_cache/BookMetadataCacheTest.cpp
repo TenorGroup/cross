@@ -13,6 +13,7 @@
 // Catch corrupt lengths before the host actually attempts a device-sized OOM.
 static size_t largestRequest = 0;
 static bool failReadBuffer = false;
+static bool failHrefIndex = false;
 void* operator new(size_t size) {
   largestRequest = std::max(largestRequest, size);
   if (size > 1024 * 1024) throw std::bad_alloc();
@@ -22,7 +23,7 @@ void* operator new(size_t size) {
 void operator delete(void* p) noexcept { std::free(p); }
 void operator delete(void* p, size_t) noexcept { std::free(p); }
 void* operator new[](size_t size, const std::nothrow_t&) noexcept {
-  if ((failReadBuffer && size == 2048)) return nullptr;
+  if ((failReadBuffer && size == 2048) || (failHrefIndex && (size == 399 * 12 || size == 30 * 12))) return nullptr;
   return std::malloc(size);
 }
 void operator delete[](void* p, const std::nothrow_t&) noexcept { std::free(p); }
@@ -151,6 +152,35 @@ static void metadataSidecarRejectsReplacedSource() {
     REQUIRE(!Storage.exists("/test/book.meta"));
     REQUIRE(sourceCache()->load());
     REQUIRE(metadataRead(*reader, metadata, 0));
+  }
+}
+
+static void smallHrefIndexReadsAndFallback() {
+  for (int count : {30, 399}) {
+    std::vector<uint8_t> expected;
+    for (bool refuse : {false, true}) {
+      Storage.files.clear();
+      BookMetadataCache cache("/test");
+      REQUIRE(cache.beginWrite() && cache.beginContentOpfPass());
+      for (int i = 0; i < count; ++i) cache.createSpineEntry("chapter" + std::to_string(i) + ".xhtml");
+      REQUIRE(cache.endContentOpfPass());
+      auto spine = Storage.files.at("/test/spine.bin.tmp");
+      failHrefIndex = refuse;
+      REQUIRE(cache.beginTocPass());
+      failHrefIndex = false;
+      for (int i = 0; i < count; ++i)
+        cache.createTocEntry("Title", "chapter" + std::to_string(i) + ".xhtml", "", 0);
+      REQUIRE(cache.endTocPass());
+      std::cout << "HREF n=" << count << " refused=" << refuse << " reads=" << spine->reads
+                << " bytes=" << spine->readBytes << " seeks=" << spine->seeks << std::endl;
+      if (!refuse) {
+        REQUIRE(spine->reads < static_cast<size_t>(count) * 7);
+        expected = Storage.files.at("/test/toc.bin.tmp")->bytes;
+      } else {
+        REQUIRE(spine->reads > static_cast<size_t>(count) * count);
+        REQUIRE(Storage.files.at("/test/toc.bin.tmp")->bytes == expected);
+      }
+    }
   }
 }
 
@@ -386,6 +416,7 @@ int main(int argc, char** argv) {
                {"cursor runtime failure", cursorRuntimeFailure},
                {"healthy 2044 chapters", healthyLargeBook},
                {"metadata sidecar source identity", metadataSidecarRejectsReplacedSource},
+               {"small href index and fallback", smallHrefIndexReadsAndFallback},
                {"96KiB read failure", truncatedRead},
                {"runtime seek failure", runtimeSeekFailure},
                {"oversized title", oversizedTitle},
