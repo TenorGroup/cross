@@ -51,6 +51,7 @@
 #include "FileBrowserActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
+#include "activities/util/ListOrderActivity.h"
 #include "components/ReadingStatsFormat.h"
 #include "components/ReadingStatsView.h"
 #include "util/CoverRef.h"
@@ -1366,6 +1367,28 @@ void HomeActivity::onRowLongPress(const int index) {
   if (activeTabId == Tab::RECENT) {
     showRecentActions(index, tenorchrome::kTouchShell
         ? recentCoverAt(index) : fui::Rect{});
+    return;
+  }
+  // Touch: a held favourite offers Unpin and, with two or more, Reorder (the X3 holds Left or Right).
+  if (tenorchrome::kTouchShell && !shell::isUgly() && activeTabId == Tab::FAVORITES && index >= 0 &&
+      index < static_cast<int>(favoriteKeys.size())) {
+    const StrId labels[] = {StrId::STR_UNPIN_FAVORITE, StrId::STR_REORDER};
+    showRowMenu(labels, favoriteKeys.size() > 1 ? 2 : 1, [this, index](const int action) {
+      if (action == 0) {
+        queuePinToggle(index);
+        return;
+      }
+      startActivityForResult(
+          std::make_unique<ListOrderActivity>(renderer, mappedInput, rowLabels, index,
+                                              [this, keys = favoriteKeys](const std::vector<int>& order) {
+                                                std::vector<std::string> next;
+                                                for (const int i : order) next.push_back(keys[i]);
+                                                RenderLock lock(*this);
+                                                favoriteSaveFailed = !menucustom::arrangePins(next);
+                                                favoritesChanged();
+                                              }),
+          nullptr);
+    }, ACTION_ROW, index);
     return;
   }
   UiListActivity::onRowLongPress(index);
