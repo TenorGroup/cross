@@ -1,6 +1,7 @@
 #include "QuoteStore.h"
 
 #include <HalStorage.h>
+#include <HeapFloor.h>
 #include <Logging.h>
 #include <PersistableStore.h>
 
@@ -356,6 +357,163 @@ bool latestSaved(QuoteId& id) {
 void forgetLatestSaved() {
   if (Storage.exists(LATEST)) Storage.remove(LATEST);
 }
+
+namespace {
+
+// One bounded arena per request; document storage is reused for each record.
+class ClippingArena : public ArduinoJson::Allocator {
+ public:
+  static constexpr size_t CAPACITY = 8192;
+  explicit ClippingArena(uint8_t* memory) : memory(memory) {}
+  void reset() { used = 0; }
+  void* allocate(size_t size) override {
+    const size_t total = rounded(size);
+    if (size > CAPACITY || total > CAPACITY - used) return nullptr;
+    auto* header = new (memory + used) Header{size};
+    used += total;
+    return header + 1;
+  }
+  void deallocate(void* ptr) override {
+    if (!ptr) return;
+    auto* header = static_cast<Header*>(ptr) - 1;
+    const size_t start = reinterpret_cast<uint8_t*>(header) - memory;
+    if (start + rounded(header->size) == used) used = start;
+  }
+  void* reallocate(void* ptr, size_t size) override {
+    if (!ptr) return allocate(size);
+    auto* header = static_cast<Header*>(ptr) - 1;
+    const size_t old = header->size;
+    const size_t start = reinterpret_cast<uint8_t*>(header) - memory;
+    if (size <= CAPACITY && start + rounded(old) == used && rounded(size) <= CAPACITY - start) {
+      used = start + rounded(size);
+      header->size = size;
+      return ptr;
+    }
+    if (size <= old) return ptr;
+    void* next = allocate(size);
+    if (next) memcpy(next, ptr, old);
+    return next;
+  }
+
+ private:
+  struct alignas(std::max_align_t) Header { size_t size; };
+  static size_t rounded(size_t size) {
+    return (sizeof(Header) + size + alignof(Header) - 1) & ~(alignof(Header) - 1);
+  }
+  uint8_t* memory;
+  size_t used = 0;
+};
+
+class ClippingReader {
+ public:
+  explicit ClippingReader(HalFile& file) : file(file), remaining(file.size()) {}
+  int read() {
+    if (cursor == end) {
+      if (!remaining) return -1;
+      const size_t request = std::min(remaining, sizeof(buffer));
+      const int got = file.read(buffer, request);
+      if (got <= 0 || static_cast<size_t>(got) > request) { broken = true; return -1; }
+      remaining -= static_cast<size_t>(got);
+      cursor = 0;
+      end = static_cast<size_t>(got);
+    }
+    return buffer[cursor++];
+  }
+  bool broken = false;
+
+ private:
+  HalFile& file;
+  size_t remaining, cursor = 0, end = 0;
+  uint8_t buffer[256];
+};
+
+// Gathers the small pieces of a record so the web server sends about 1 KB at a time, not a chunk
+// per line. Lives in the same block as the arena (one trip through the heap floor).
+class ClippingOut {
+ public:
+  static constexpr size_t CAPACITY = 1024;
+  ClippingOut(uint8_t* memory, const std::function<bool(const char*, size_t)>& sink) : memory(memory), sink(sink) {}
+  bool put(const char* text) {
+    for (size_t left = strlen(text); left;) {
+      if (used == CAPACITY && !flush()) return false;
+      const size_t take = std::min(left, CAPACITY - used);
+      memcpy(memory + used, text, take);
+      used += take;
+      text += take;
+      left -= take;
+    }
+    return true;
+  }
+  bool flush() {
+    const bool ok = !used || sink(reinterpret_cast<const char*>(memory), used);
+    used = 0;
+    return ok;
+  }
+
+ private:
+  uint8_t* memory;
+  const std::function<bool(const char*, size_t)>& sink;
+  size_t used = 0;
+};
+
+void clippingLocation(char* out, const size_t capacity, JsonDocument& doc) {
+  const uint32_t page = static_cast<uint32_t>(std::max(0, doc["page"] | 0)) + 1;
+  const uint32_t chapter = static_cast<uint32_t>(std::max(0, doc["spine"] | 0)) + 1;
+  const int prefix = snprintf(out, capacity, "- Your Highlight on Page %u | Chapter %u", page, chapter);
+  const uint32_t date = doc["day"] | 0u;
+  const unsigned year = date / 10000, month = date / 100 % 100, day = date % 100;
+  if (year < 2020 || year > 2196 || month < 1 || month > 12 || day < 1 || day > 31) return;
+  static constexpr const char* months[] = {"January", "February", "March", "April", "May", "June",
+                                         "July", "August", "September", "October", "November", "December"};
+  static constexpr const char* weekdays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+  static constexpr unsigned offsets[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+  const unsigned y = year - (month < 3 ? 1 : 0);
+  const unsigned weekday = (y + y / 4 - y / 100 + y / 400 + offsets[month - 1] + day) % 7;
+  const int added = snprintf(out + prefix, capacity - prefix, " | Added on %s, %s %u, %u",
+                            weekdays[weekday], months[month - 1], day, year);
+  const unsigned minute = doc["gio"] | static_cast<unsigned>(NO_MINUTE);
+  if (minute >= 1440) return;
+  const unsigned hour = minute / 60;
+  snprintf(out + prefix + added, capacity - prefix - added, ", %02u:%02u %s",
+           hour % 12 ? hour % 12 : 12, minute % 60, hour >= 12 ? "PM" : "AM");
+}
+
+}  // namespace
+
+size_t streamKindle(const std::function<bool(const char*, size_t)>& sink) {
+  auto memory = heapfloor::array<uint8_t[]>(ClippingArena::CAPACITY + ClippingOut::CAPACITY, "quote-export");
+  if (!memory || !sink) return SIZE_MAX;
+  ClippingArena arena(memory.get());
+  ClippingOut out(memory.get() + ClippingArena::CAPACITY, sink);
+  if (!out.put("\xEF\xBB\xBF") || !out.flush()) return SIZE_MAX;
+  size_t emitted = 0;
+  bool ok = true;
+  forEachId([&](const QuoteId id) {
+    auto file = Storage.open(filePath(nameOf(id)).c_str());
+    if (!file) { ok = false; return false; }
+    if (file.size() > 16384) return true;
+    arena.reset();
+    JsonDocument doc(&arena);
+    ClippingReader input(file);
+    const auto error = deserializeJson(doc, input, DeserializationOption::NestingLimit(2));
+    const bool closed = file.close();
+    if (input.broken || !closed || error == DeserializationError::NoMemory) { ok = false; return false; }
+    if (error || (doc["schema"] | 0) != 1) return true;
+    const char* text = doc["text"] | "";
+    const char* path = doc["path"] | "";
+    const char* title = doc["title"] | "";
+    if (!*text || strlen(text) > MAX_BYTES || strlen(path) > 1024 || strlen(title) > 512) return true;
+    char location[192];
+    clippingLocation(location, sizeof(location), doc);
+    ok = out.put(*title ? title : path) && out.put("\n") && out.put(location) && out.put("\n\n") &&
+         out.put(text) && out.put("\n==========\n");
+    if (ok) ++emitted;
+    return ok;
+  });
+  // What was gathered before a read failure still goes out: the partial file ends at a record.
+  return out.flush() && ok ? emitted : SIZE_MAX;
+}
+
 void listNames(const uint32_t book, std::vector<QuoteId>& ids) {
   ids.clear();
   forEachId([&](const QuoteId id) {

@@ -15,6 +15,7 @@ using String = std::string;
 struct IoCounts {
   size_t opens=0, directoryOpens=0, entryOpens=0, fullPathFileOpens=0;
   size_t readCalls=0, bytesRead=0, readFiles=0, parses=0, readDocs=0, exists=0;
+  size_t writeOpens=0, writes=0, mkdirs=0;
   size_t removes=0, renames=0, mutationsWithOpenHandle=0, yieldedMs=0;
 };
 inline IoCounts io;
@@ -53,6 +54,7 @@ class HalFile {
   HalFile(const std::string& path, int flags=O_RDONLY, bool entry=false) {
     ++io.opens;
     const bool writable=flags & O_WRONLY;
+    if(writable) ++io.writeOpens;
     if (!entry && writable && storageFault.operation==StorageFaultOperation::OpenWrite &&
         path==fixtureRoot+storageFault.path) { ++storageFault.hits; return; }
     if (!entry && !(flags & O_WRONLY) && readFault.fullPath && readFault.openFails &&
@@ -99,6 +101,7 @@ class HalFile {
     return ferror(h->fp) ? -1 : static_cast<int>(n);
   }
   size_t write(const char* p,size_t n) {
+    ++io.writes;
     if(h && h->writable && storageFault.operation==StorageFaultOperation::Write &&
        h->name==fixtureRoot+storageFault.path) { ++storageFault.hits; return 0; }
     return h && h->fp ? fwrite(p,1,n,h->fp) : 0;
@@ -131,7 +134,7 @@ struct FakeStorage {
     if(openEntries[fixtureRoot+a] || openEntries[fixtureRoot+b]) ++io.mutationsWithOpenHandle;
     return ::rename((fixtureRoot+a).c_str(),(fixtureRoot+b).c_str())==0;
   }
-  bool ensureDirectoryExists(const char* p) const { std::filesystem::create_directories(fixtureRoot+p); return true; }
+  bool ensureDirectoryExists(const char* p) const { ++io.mkdirs; std::filesystem::create_directories(fixtureRoot+p); return true; }
   bool mkdir(const char* p) const { return ensureDirectoryExists(p); }
   std::string readFile(const char* p) const {
     if(readFault.fullPath && readFault.path==p) {
