@@ -155,6 +155,22 @@ class UglyQuotePageTest(unittest.TestCase):
                          letters(TITLE + 'Chapter 29' + '11/10/2026 17:12' + 'Page 9'), 'a fact under the quote is missing')
         self.assertEqual(pages[(0, total)]['pages'], total)
 
+    def test_2_every_quote_has_its_line_of_abuse_and_it_stays_when_the_quote_is_met_again(self):
+        quotes = [dict(text='Quote number %d about a quiet morning by the river.' % n, slot=n % 16, minute=600 + 3 * n)
+                  for n in range(24)]
+        for language in ('EN', 'VI'):
+            with self.subTest(language=language):
+                log, _ = run(quotes, TO_DETAIL + ['RIGHT'] * 23 + ['LEFT'] * 3 + ['RIGHT'] * 3, language=language)
+                rs = renders(log)
+                first = {}
+                for r in rs:
+                    first.setdefault(r['quote'], r['quip'])
+                    self.assertEqual(first[r['quote']], r['quip'], 'the same quote changed its line')
+                    self.assertEqual(r['quipText'], yaml_quips(language)[r['quip']])
+                    self.assertLessEqual(r['quipRows'], 2, 'the line of abuse runs into the rule under it')
+                self.assertEqual(len(first), 24)
+                self.assertGreaterEqual(len(set(first.values())), 6, 'the 8 lines are spread over the quotes')
+
     def test_4_the_facts_stand_centred_in_the_pen_at_every_size_and_hand(self):
         for level in (0, 1):
             for tier in (0, 1, 2):

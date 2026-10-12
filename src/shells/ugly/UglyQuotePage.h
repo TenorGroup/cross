@@ -113,4 +113,14 @@ inline int capacityFor(const int areaTop, const int areaBottom) {
   return room < 0 ? 1 : room / ROW_PITCH + 1;
 }
 
+// The 8 lines of abuse a quote can earn; the same quote always gets the same one.
+inline constexpr int QUIPS = 8;
+inline int quipIndex(const uint64_t id) {
+  uint64_t h = id + 0x9e3779b97f4a7c15ull;
+  h = (h ^ (h >> 30)) * 0xbf58476d1ce4e5b9ull;
+  h = (h ^ (h >> 27)) * 0x94d049bb133111ebull;
+  h ^= h >> 31;
+  return static_cast<int>(h % QUIPS);
+}
+
 }  // namespace ugly::quotepage

@@ -195,4 +195,19 @@ TEST(QuotePageGeometry, CapacityFillsTheAreaAndTheLastRowKeepsItsTailAboveTheFlo
   EXPECT_EQ(capacityFor(16, 100), 1);
 }
 
+TEST(QuoteQuip, TheSameQuoteAlwaysEarnsTheSameLineAndTheLinesAreSpread) {
+  std::set<int> seen;
+  for (uint64_t id = 1; id <= 400; ++id) {
+    const uint64_t key = id * 0x10000001b3ull;
+    ASSERT_EQ(quipIndex(key), quipIndex(key));
+    ASSERT_GE(quipIndex(key), 0);
+    ASSERT_LT(quipIndex(key), QUIPS);
+    seen.insert(quipIndex(key));
+  }
+  EXPECT_EQ(seen.size(), static_cast<size_t>(QUIPS));
+  // Quotes kept a minute apart (ids differ in the low bits only) do not all share one line.
+  std::set<int> neighbours;
+  for (uint64_t id = 0xa1b2c3d400000000ull; id < 0xa1b2c3d400000000ull + 16; ++id) neighbours.insert(quipIndex(id));
+  EXPECT_GE(neighbours.size(), 4u);
+}
 }  // namespace

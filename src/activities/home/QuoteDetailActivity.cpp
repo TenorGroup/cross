@@ -74,6 +74,10 @@ constexpr int CHEVRON_CLEARANCE = 6;
 constexpr unsigned long FAILURE_MS = 1500;
 
 constexpr char OPEN_QUOTE[] = "\xe2\x80\x9c";
+// The 8 lines of abuse a quote can earn at the head of its page under tenor/ugly (ugly::quotepage::quipIndex picks one).
+constexpr StrId QUIP_LINES[ugly::quotepage::QUIPS] = {
+    StrId::STR_UGLY_QUOTE_QUIP_1, StrId::STR_UGLY_QUOTE_QUIP_2, StrId::STR_UGLY_QUOTE_QUIP_3, StrId::STR_UGLY_QUOTE_QUIP_4,
+    StrId::STR_UGLY_QUOTE_QUIP_5, StrId::STR_UGLY_QUOTE_QUIP_6, StrId::STR_UGLY_QUOTE_QUIP_7, StrId::STR_UGLY_QUOTE_QUIP_8};
 constexpr char CLOSE_QUOTE[] = "\xe2\x80\x9d";
 
 // The chapter by number and, when the book's own table of contents names it, by name. The
@@ -717,8 +721,11 @@ void QuoteDetailActivity::drawUglyPage() const {
   const int w = renderer.getScreenWidth();
   const int space = ugly::width(renderer, ugly::Size::S30, "a") / 2 + 4;
   const int rowsTop = body.y + BODY_BASE - BODY_ASCENT;
-  // the margin of a school notebook
+  // the margin of a school notebook, the line of abuse and the rule under it
   ugly::line(renderer, 26, body.y + 32, 27, body.bottom() - 20, 501, 1);
+  [[maybe_unused]] const int quipRows = ugly::paragraph(renderer, ugly::Size::S22, COLUMN_X, body.y + QUIP_BASE, w - COLUMN_INSET, QUIP_PITCH,
+                                       I18N.get(QUIP_LINES[quipIndex(ids[index])]));
+  ugly::underline(renderer, COLUMN_X, w - 32, body.y + RULE_Y, 17, 2);
   const bool onBody = quotePage < bodyPages;
   if (onBody) {
     if (quotePage == 0) {
@@ -751,9 +758,10 @@ void QuoteDetailActivity::drawUglyPage() const {
   [[maybe_unused]] const int scrapCount = 0;
 #ifdef UGLY_FRAME_LOG
   if (!renderer.isFontCacheScanning()) {
-    LOG_INF("UGLY", "QuotePage quote=%d page=%d/%d bodyPages=%d rows=%d lines=%d scraps=%d ms=%lu free=%u largest=%u %s",
-            index, quotePage + 1, pages, bodyPages, linesPerPage, uglyMap.lines, scrapCount,
-            millis() - penStart, static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()), "");
+    LOG_INF("UGLY", "QuotePage quote=%d page=%d/%d bodyPages=%d rows=%d lines=%d quip=%d quipRows=%d scraps=%d ms=%lu free=%u largest=%u %s",
+            index, quotePage + 1, pages, bodyPages, linesPerPage, uglyMap.lines, quipIndex(ids[index]), quipRows, scrapCount,
+            millis() - penStart, static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
+            I18N.get(QUIP_LINES[quipIndex(ids[index])]));
   }
 #endif
 }
