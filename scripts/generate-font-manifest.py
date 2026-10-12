@@ -216,10 +216,11 @@ def build_manifest(
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,31}", family_name):
             raise ValueError(f"Invalid family name: {family_name}")
         files = families[family_name]
+        family_pack = packs or any(path.suffix == '.cpfontpack' for path in files)
 
         # Read styles from the first file (all files in a family have the
         # same styles since they're generated from the same source fonts).
-        if packs:
+        if family_pack:
             if len(files) != 1:
                 raise ValueError(f'Expected one pack per family: {family_name}')
             with zipfile.ZipFile(files[0]) as archive:
@@ -253,9 +254,9 @@ def build_manifest(
         used_script_tags.update(scripts)
 
         file_entries = []
-        for filepath in sorted(files, key=lambda path: path.name if packs else download_name(path)):
-            name = filepath.name if packs else download_name(filepath)
-            if packs and name != f'{family_name}.cpfontpack':
+        for filepath in sorted(files, key=lambda path: path.name if family_pack else download_name(path)):
+            name = filepath.name if family_pack else download_name(filepath)
+            if family_pack and name != f'{family_name}.cpfontpack':
                 raise ValueError(f'Invalid pack filename: {name}')
             if name.lower() in download_targets:
                 raise ValueError(f'Duplicate download target: {name}')
@@ -267,7 +268,7 @@ def build_manifest(
                     "crc32": compute_crc32(filepath),
                 }
             )
-            if packs:
+            if family_pack:
                 file_entries[-1].update(url=base_url + name,
                                        sha256=hashlib.sha256(filepath.read_bytes()).hexdigest())
 
@@ -356,13 +357,12 @@ def main():
             print(f"CẢNH BÁO: không thấy {desc_path}, dùng tên họ font làm mô tả", file=sys.stderr)
 
     print(f"Đang quét {input_dir} tìm file font...")
-    families = {}
-    if args.packs:
-        for filepath in sorted(input_dir.rglob('*.cpfontpack')):
-            if filepath.is_file():
-                families.setdefault(filepath.stem, []).append(filepath)
-    else:
-        families = scan_cpfont_files(input_dir)
+    families = {} if args.packs else scan_cpfont_files(input_dir)
+    packed_families = {}
+    for filepath in sorted(input_dir.rglob('*.cpfontpack')):
+        if filepath.is_file():
+            packed_families.setdefault(filepath.stem, []).append(filepath)
+    families.update(packed_families)
 
     if not families:
         print("LỖI: không tìm thấy file .cpfont nào", file=sys.stderr)
@@ -377,7 +377,7 @@ def main():
     if args.assets_output:
         for files in families.values():
             for filepath in files:
-                target = args.assets_output / (filepath.name if args.packs else download_name(filepath))
+                target = args.assets_output / (filepath.name if filepath.suffix == '.cpfontpack' else download_name(filepath))
                 target.parent.mkdir(parents=True, exist_ok=True)
                 if target.resolve() != filepath.resolve():
                     shutil.copyfile(filepath, target)

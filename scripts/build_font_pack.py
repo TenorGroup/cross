@@ -6,6 +6,8 @@ import argparse
 import ast
 import hashlib
 import json
+import math
+import unicodedata
 import re
 import struct
 import sys
@@ -25,6 +27,54 @@ RECIPE = 'reader-outline-v3-ramp'
 STRENGTHS = (0, 16, 32, 48, 64, 96)
 STYLE_NAMES = ('regular', 'bold', 'italic', 'bolditalic')
 ZIP_TIME = (1980, 1, 1, 0, 0, 0)
+
+
+def vietnamese_repertoire():
+    vowels = 'aăâeêioôơuưy'
+    tones = ('', '\u0300', '\u0301', '\u0309', '\u0303', '\u0323')
+    letters = {unicodedata.normalize('NFC', vowel + tone)
+               for vowel in vowels + vowels.upper() for tone in tones}
+    letters.update('bcdđghklmnpqrstvxBCDĐGHKLMNPQRSTVX')
+    return ({ord(letter) for letter in letters},
+            {ord(mark) for letter in letters for mark in unicodedata.normalize('NFD', letter)})
+
+
+def reading_quality(data, line_factor):
+    if not math.isfinite(line_factor) or line_factor <= 0:
+        raise ValueError('Line spacing factor must be finite and positive')
+    nfc, nfd = vietnamese_repertoire()
+    required = nfc | nfd | {0xFFFD}
+    _, styles = read_font(data)
+    top, bottom = 0, 0
+    for style in styles:
+        records = {cp: (glyph, bitmap) for cp, glyph, bitmap in style['records']}
+        missing = required - records.keys()
+        if missing:
+            raise ValueError('Missing reading glyphs: ' + ', '.join(f'U+{cp:04X}' for cp in sorted(missing)))
+        for cp in sorted(required):
+            glyph, bitmap = records[cp]
+            pixels = weights.unpack((glyph, bitmap))
+            rows = pixels.any(axis=1).nonzero()[0]
+            if not len(rows):
+                raise ValueError(f'Empty reading glyph: style {style["toc"][0]} U+{cp:04X}')
+            # NFC is the reader's normalized text. Include the replacement in the ink span.
+            if cp in nfc or cp == 0xFFFD:
+                top = min(top, int(rows[0]) - glyph[4])
+                bottom = max(bottom, int(rows[-1]) - glyph[4])
+    steps = [int(style['toc'][3] * line_factor + 0.5) for style in styles]
+    gap = min(steps) - (bottom - top + 1)
+    if gap < 1:
+        raise ValueError(f'Line spacing crowds ink: step {min(steps)}, ink {bottom - top + 1}, gap {gap}')
+    return {'nfc': len(nfc), 'nfd': len(nfd), 'replacement': True,
+            'line_factor': line_factor, 'line_step': min(steps),
+            'ink_span': bottom - top + 1, 'gap_pixels': gap}
+
+
+def ofl_license(path):
+    data = Path(path).read_bytes()
+    if b'SIL OPEN FONT LICENSE Version 1.1' not in data and b'SIL Open Font License, Version 1.1' not in data:
+        raise ValueError('Source license must contain OFL 1.1')
+    return data
 
 
 def builtin_intervals():
@@ -120,7 +170,7 @@ def entry_name(family, size, level):
 
 def build_pack(family, style_fonts, sizes, strengths, intervals, license_path, output,
                pnum=False, force_autohint=False, builtin_family=None, base_dir=None,
-               fallback_style_fonts=None):
+               fallback_style_fonts=None, line_factor=1.2):
     if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,63}', family):
         raise ValueError('Family must be a safe ASCII filename')
     sizes = sorted(sizes)
@@ -132,9 +182,7 @@ def build_pack(family, style_fonts, sizes, strengths, intervals, license_path, o
         raise ValueError('Expected 1..4 styles with identifiers 0..3')
     if builtin_family and not pnum:
         raise ValueError('Builtin reader parity requires pnum')
-    license_data = Path(license_path).read_bytes()
-    if not license_data.strip():
-        raise ValueError('Source license must not be empty')
+    license_data = ofl_license(license_path)
     sources = {style: {'path': str(Path(filename).resolve()),
                        'sha256': weights.sha(Path(filename).read_bytes()),
                        'pnum': pnum, 'force_autohint': force_autohint}
@@ -157,7 +205,7 @@ def build_pack(family, style_fonts, sizes, strengths, intervals, license_path, o
     payloads = {'OFL.txt': license_data}
     if fallback_style_fonts:
         fallback_license = Path(next(iter(fallback_style_fonts.values()))).parent / 'OFL.txt'
-        payloads['OFL.txt'] += b'\n\nFallback font license:\n\n' + fallback_license.read_bytes()
+        payloads['OFL.txt'] += b'\n\nFallback font license:\n\n' + ofl_license(fallback_license)
         metadata['fallback_sources'] = {
             str(style): {'name': Path(filename).name, 'sha256': weights.sha(Path(filename).read_bytes())}
             for style, filename in sorted(fallback_style_fonts.items())}
@@ -199,7 +247,8 @@ def build_pack(family, style_fonts, sizes, strengths, intervals, license_path, o
                 name = entry_name(family, size, level)
                 payloads[name] = data
                 metadata['entries'].append({'path': name, 'point_size': size, 'level': level,
-                                            'layout_signature': signature, 'ink_bounds': ink_bounds(data)})
+                                            'layout_signature': signature, 'ink_bounds': ink_bounds(data),
+                                            'reading_quality': reading_quality(data, line_factor)})
         metadata['entries'].append({'path': 'OFL.txt'})
         for entry in metadata['entries']:
             data = payloads[entry['path']]
@@ -231,6 +280,7 @@ def main():
     parser.add_argument('--license', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--pnum', action='store_true')
+    parser.add_argument('--line-factor', type=float, default=1.2)
     parser.add_argument('--force-autohint', action='store_true')
     parser.add_argument('--builtin-family', choices=('notoserif', 'notosans'))
     args = parser.parse_args()
@@ -241,7 +291,7 @@ def main():
     metadata = build_pack(args.family, fonts, [int(size) for size in args.sizes.split(',')],
                           [int(strength) for strength in args.strengths.split(',')], intervals,
                           args.license, args.output, args.pnum, args.force_autohint, args.builtin_family,
-                          args.base_dir, fallbacks)
+                          args.base_dir, fallbacks, args.line_factor)
     print(json.dumps({'output': str(args.output), 'bytes': args.output.stat().st_size,
                       'sha256': weights.sha(args.output.read_bytes()),
                       'entries': len(metadata['entries']) + 1,

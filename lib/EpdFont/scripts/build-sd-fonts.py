@@ -26,6 +26,7 @@ Usage:
 """
 
 import argparse
+import hashlib
 import os
 import shutil
 import subprocess
@@ -169,6 +170,9 @@ def resolve_font_path(style_spec: dict, family_name: str, style_name: str) -> Pa
     else:
         raise ValueError(f"{family_name}/{style_name}: must have 'path' or 'url'")
 
+    if 'sha256' in style_spec and hashlib.sha256(resolved.read_bytes()).hexdigest() != style_spec['sha256']:
+        raise ValueError(f'Source hash mismatch: {family_name}/{style_name}')
+
     # If variable font axes are specified, extract a static instance
     if "variable" in style_spec:
         resolved = extract_static_instance(
@@ -202,8 +206,26 @@ def build_family(
         resolved_styles = {}
         for style_name, style_spec in styles.items():
             resolved_styles[style_name] = resolve_font_path(style_spec, name, style_name)
-    except (FileNotFoundError, RuntimeError) as e:
+    except (FileNotFoundError, RuntimeError, ValueError) as e:
         return name, False, str(e)
+
+    if 'pack' in family:
+        sys.path.insert(0, str(SCRIPT_DIR.parents[2] / 'scripts'))
+        import build_font_pack as pack
+        try:
+            recipe = family['pack']
+            license_path = resolve_font_path(family['license'], name, 'license')
+            fallback_path = resolve_font_path(family['fallback'], name, 'fallback')
+            fonts = {pack.STYLE_NAMES.index(style): str(path) for style, path in resolved_styles.items()}
+            coverage = pack.builtin_intervals() if intervals == 'builtin' else pack.converter.resolve_intervals(intervals)
+            pack.build_pack(name, fonts, family['sizes'], pack.STRENGTHS, coverage, license_path,
+                            output_dir / f'{name}.cpfontpack', pnum=recipe.get('pnum', False),
+                            force_autohint=family.get('force_autohint', False),
+                            fallback_style_fonts={style: str(fallback_path) for style in fonts},
+                            line_factor=recipe['line_factor'])
+            return name, True, ''
+        except (OSError, ValueError, KeyError) as error:
+            return name, False, str(error)
 
     # Build the fontconvert_sdcard.py command
     cmd = [sys.executable, str(FONTCONVERT)]
@@ -417,8 +439,8 @@ def main():
             if success:
                 # Count output files
                 family_dir = output_base / name
-                count = len(list(family_dir.glob("*.cpfont")))
-                size = sum(f.stat().st_size for f in family_dir.glob("*.cpfont"))
+                count = len(list(family_dir.glob("*.cpfont*")))
+                size = sum(f.stat().st_size for f in family_dir.glob("*.cpfont*"))
                 print(f"  OK: {name} ({count} file, {size / 1024 / 1024:.1f} MB)")
             else:
                 print(f"  THẤT BẠI: {name}: {message}", file=sys.stderr)
@@ -426,9 +448,9 @@ def main():
 
     # Summary
     print("\n=== Tổng kết ===\n")
-    total_files = len(list(output_base.rglob("*.cpfont")))
-    total_size = sum(f.stat().st_size for f in output_base.rglob("*.cpfont"))
-    print(f"Tổng: {total_files} file .cpfont ({total_size / 1024 / 1024:.1f} MB)")
+    total_files = len(list(output_base.rglob("*.cpfont*")))
+    total_size = sum(f.stat().st_size for f in output_base.rglob("*.cpfont*"))
+    print(f"Tổng: {total_files} file font ({total_size / 1024 / 1024:.1f} MB)")
 
     if failed:
         print(f"\nCác họ font thất bại: {', '.join(failed)}", file=sys.stderr)
