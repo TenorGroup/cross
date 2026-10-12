@@ -205,6 +205,48 @@ class UglyQuotePageTest(unittest.TestCase):
                     self.assertLessEqual(max(x for x, _ in body), 500)
                     self.assertEqual(cross_pills.find(im), [], 'a tenor/cross pill')
 
+    def test_5_the_scribbles_stay_clear_of_the_words_and_come_back_the_same(self):
+        short = {'EN': 'If ice-pleasure consists, to some degree, in novelty, then ice must melt in order to be desirable.',
+                 'VI': 'Đi cho biết đó biết đây, ở nhà với mẹ biết ngày nào khôn.'}
+        cases = [('EN', level, tier) for level in (0, 1) for tier in (0, 1, 2)] + [('VI', 1, 0), ('VI', 0, 2)]
+        for language, level, tier in cases:
+            with self.subTest(language=language, level=level, tier=tier):
+                quotes = [dict(text=short[language])]
+                keys = TO_DETAIL + ['BACK', 'CONFIRM']
+                shots = [(len(TO_DETAIL) - 1, 'first'), (len(keys) - 1, 'again')]
+                log, with_ = run(quotes, keys, shots, tier=tier, level=level, language=language)
+                _, without = run(quotes, TO_DETAIL, [(len(TO_DETAIL) - 1, 'f')], tier=tier, level=level, language=language,
+                                 env=dict(CROSSPOINT_SIM_UGLY_SCRAP='0'))
+                r = renders(log)[-1]
+                self.assertGreaterEqual(r['scrapCount'], 3, 'a short page has scribbles on it')
+                self.assertEqual(ImageChops.difference(with_['first'], with_['again']).getbbox(), None,
+                                 'the page drew other scribbles when it was drawn again')
+                added = added_ink(with_['first'], without['f'])
+                self.assertGreater(len(added), 300)
+                near = dilate(without['f'], 3).load()
+                boxes = [s[2] for s in r['scraps']]
+                for x, y in added:
+                    self.assertGreater(near[x, y], 128, f'a scribble pixel at {x},{y} is within 3 px of the page')
+                    self.assertTrue(any(b[0] - 1 <= x < b[2] + 1 and b[1] - 1 <= y < b[3] + 1 for b in boxes),
+                                    f'a scribble pixel at {x},{y} is outside every box the page kept for them')
+                for i, a in enumerate(boxes):
+                    for k in r['keep']:
+                        self.assertFalse(meets(a, k, 14), f'scribble box {a} comes within 14 px of the words {k}')
+                    for b in boxes[i + 1:]:
+                        self.assertFalse(meets(a, b))
+
+    def test_6_a_page_full_of_words_has_no_scribble_and_a_short_last_page_has_some(self):
+        text = long_text(1010)
+        keys = TO_DETAIL + ['DOWN'] * 7
+        log, _ = run([dict(text=text, title='Eros')], keys)
+        pages = last_of_each_page(renders(log))
+        total = max(p for _, p in pages)
+        for page in range(1, total):
+            self.assertEqual(pages[(0, page)]['scrapCount'], 0, f'page {page} is full of words')
+        _, shots = run([dict(text=text, title='Eros')], TO_DETAIL, [(len(TO_DETAIL) - 1, 'f')])
+        _, bare = run([dict(text=text, title='Eros')], TO_DETAIL, [(len(TO_DETAIL) - 1, 'f')], env=dict(CROSSPOINT_SIM_UGLY_SCRAP='0'))
+        self.assertEqual(ImageChops.difference(shots['f'], bare['f']).getbbox(), None, 'a full page was scribbled on')
+
 
 if __name__ == '__main__':
     unittest.main()

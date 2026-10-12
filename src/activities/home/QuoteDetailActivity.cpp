@@ -11,6 +11,9 @@
 
 #include <algorithm>
 #include <cstdio>
+#ifdef SIMULATOR
+#include <cstdlib>
+#endif
 
 #include "QuoteTrimActivity.h"
 #include "components/QuoteMarkGlyph.h"
@@ -20,6 +23,7 @@
 #include "fontIds.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglyInk.h"
+#include "shells/ugly/UglyScrap.h"
 
 namespace quotetext {
 std::string clipped(const std::string& text, const size_t limit) {
@@ -724,20 +728,29 @@ void QuoteDetailActivity::drawUglyPage() const {
   const int w = renderer.getScreenWidth();
   const int space = ugly::width(renderer, ugly::Size::S30, "a") / 2 + 4;
   const int rowsTop = body.y + BODY_BASE - BODY_ASCENT;
+  // Every part of the page that is words, kept clear by the scribbles below.
+  ugly::scrap::Rect words[24];
+  int wordRects = 0;
+  const auto keepClear = [&](const ugly::scrap::Rect& rect) {
+    if (wordRects < 24) words[wordRects++] = rect;
+  };
   // the margin of a school notebook, the line of abuse and the rule under it
   ugly::line(renderer, 26, body.y + 32, 27, body.bottom() - 20, 501, 1);
   [[maybe_unused]] const int quipRows = ugly::paragraph(renderer, ugly::Size::S22, COLUMN_X, body.y + QUIP_BASE, w - COLUMN_INSET, QUIP_PITCH,
                                        I18N.get(QUIP_LINES[quipIndex(ids[index])]));
   ugly::underline(renderer, COLUMN_X, w - 32, body.y + RULE_Y, 17, 2);
+  keepClear({COLUMN_X - 6, body.y + QUIP_BASE - 26, w - 26, body.y + RULE_Y + 8});
   const bool onBody = quotePage < bodyPages;
   if (onBody) {
     if (quotePage == 0) {
       ugly::text(renderer, ugly::Size::S38, 42, body.y + MARK_BASE, OPEN_QUOTE);
+      keepClear({36, body.y + MARK_BASE - 38, 84, body.y + MARK_BASE + 10});
     }
     const int rows = quotePage + 1 < bodyPages ? linesPerPage : uglyMap.lastLines;
     int pos = uglyMap.start[quotePage];
     for (int row = 0; row < rows; ++row) {
       const int baseline = body.y + BODY_BASE + row * ROW_PITCH;
+      int lineWidth = 0;
       pos = nextLine(
           uglyBody.data(), static_cast<int>(uglyBody.size()), pos, w - COLUMN_INSET, space,
           [this](const char* bytes, const int length) {
@@ -750,21 +763,42 @@ void QuoteDetailActivity::drawUglyPage() const {
             if (!renderer.isFontCacheScanning())
               LOG_INF("UGLY", "QuoteWord page=%d row=%d x=%d y=%d %s", quotePage, row, COLUMN_X + x, baseline, word.c_str());
 #endif
-          });
+          },
+          nullptr, &lineWidth);
+      keepClear({COLUMN_X - 6, baseline - BODY_ASCENT - 8, COLUMN_X + lineWidth + 8, baseline + BODY_DESCENT + 4});
     }
   }
   const int metaStart = onBody ? 0 : metaOnLast + (quotePage - bodyPages) * metaPerPage;
   const int metaTop = onBody ? rowsTop + uglyMap.lastLines * ROW_PITCH + META_GAP : rowsTop;
   if (!onBody || quotePage + 1 == bodyPages) {
     visitX3Meta(true, metaStart, metaTop);
+    const int step = metaStep();
+    const int shown = std::min(visitX3Meta(false) - metaStart, std::max(0, (body.bottom() - metaTop) / step));
+    if (shown > 0) keepClear({24, metaTop, w - 24, metaTop + shown * step});
   }
-  [[maybe_unused]] const int scrapCount = 0;
+  // The scribbles of the empty part of the page, the same ones every time this quote's page is drawn.
+  ugly::scrap::Item scraps[ugly::scrap::MAX_ITEMS];
+  int scrapCount = 0;
+  bool scribble = wordRects < 24;
+#ifdef SIMULATOR
+  if (const char* env = std::getenv("CROSSPOINT_SIM_UGLY_SCRAP")) scribble = scribble && std::atoi(env) != 0;
+#endif
+  if (scribble) {
+    scrapCount = ugly::scrap::place({44, body.y, w - 20, body.bottom() - 6}, words, wordRects,
+                                    ugly::scrap::seedOf(ids[index], quotePage), scraps, ugly::scrap::MAX_ITEMS);
+    ugly::scrap::draw(renderer, scraps, scrapCount);
+  }
 #ifdef UGLY_FRAME_LOG
   if (!renderer.isFontCacheScanning()) {
     LOG_INF("UGLY", "QuotePage quote=%d page=%d/%d bodyPages=%d rows=%d lines=%d quip=%d quipRows=%d scraps=%d ms=%lu free=%u largest=%u %s",
             index, quotePage + 1, pages, bodyPages, linesPerPage, uglyMap.lines, quipIndex(ids[index]), quipRows, scrapCount,
             millis() - penStart, static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
             I18N.get(QUIP_LINES[quipIndex(ids[index])]));
+    for (int i = 0; i < scrapCount; ++i)
+      LOG_INF("UGLY", "QuoteScrap page=%d kind=%d pic=%d box=%d,%d,%d,%d", quotePage, static_cast<int>(scraps[i].kind),
+              scraps[i].pic, scraps[i].box.x0, scraps[i].box.y0, scraps[i].box.x1, scraps[i].box.y1);
+    for (int i = 0; i < wordRects; ++i)
+      LOG_INF("UGLY", "QuoteWords page=%d box=%d,%d,%d,%d", quotePage, words[i].x0, words[i].y0, words[i].x1, words[i].y1);
   }
 #endif
 }
