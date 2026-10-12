@@ -83,6 +83,11 @@ struct Fixture {
     for (const auto& key : renderer.keys) if (key.text == label) return true;
     return false;
   }
+  int keyWidth(const std::string& label) {
+    render();
+    for (const auto& key : renderer.keys) if (key.text == label) return key.width;
+    return 0;
+  }
   void touchKey(const std::string& label) {
     render();
     for (const auto& key : renderer.keys) {
@@ -160,6 +165,8 @@ static void run(const std::string& test) {
     I18N.language = Language::VI;
     Fixture vi("");
     require(vi.hasKey("VI"), "Vietnamese must start with Telex enabled");
+    // The label rect is 37 wide with a single unit and 58 with the shipped 3 units; EN at the largest text size needs about 50.
+    require(vi.keyWidth("VI") >= 50, "Telex key too narrow for the EN label at large text sizes");
     vi.touchKey("a"); vi.touchKey("a"); vi.touchKey("s");
     require(vi.completed() == "ấ", "touch keys did not produce NFC Vietnamese");
     vi.touchKey("VI");

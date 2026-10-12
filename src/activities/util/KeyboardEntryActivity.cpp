@@ -59,11 +59,11 @@ const fui::KeyboardLayout& telexLayout(const bool shifted, const bool enabled) {
   const int shift = shifted ? 1 : 0;
   const int mode = enabled ? 1 : 0;
   const char* label = enabled ? "VI" : "EN";
-  bottom[mode][0] = {"?123", nullptr, fui::KeyKind::Mode, fui::StateNormal, fui::QWERTY_KEY_MODE, 2, true, nullptr};
-  bottom[mode][1] = {"Shift", nullptr, fui::KeyKind::Shift, fui::StateNormal, fui::QWERTY_KEY_SHIFT, 2, true, nullptr};
-  bottom[mode][2] = {label, nullptr, fui::KeyKind::Normal, fui::StateNormal, TELEX_KEY, 1, true, nullptr};
-  bottom[mode][3] = {"Space", nullptr, fui::KeyKind::Space, fui::StateNormal, fui::QWERTY_KEY_SPACE, 3, true, nullptr};
-  bottom[mode][4] = {"OK", nullptr, fui::KeyKind::Ok, fui::StateNormal, fui::QWERTY_KEY_ENTER, 2, true, nullptr};
+  bottom[mode][0] = {"?123", nullptr, fui::KeyKind::Mode, fui::StateNormal, fui::QWERTY_KEY_MODE, 4, true, nullptr};
+  bottom[mode][1] = {"Shift", nullptr, fui::KeyKind::Shift, fui::StateNormal, fui::QWERTY_KEY_SHIFT, 3, true, nullptr};
+  bottom[mode][2] = {label, nullptr, fui::KeyKind::Normal, fui::StateNormal, TELEX_KEY, 3, true, nullptr};
+  bottom[mode][3] = {"Space", nullptr, fui::KeyKind::Space, fui::StateNormal, fui::QWERTY_KEY_SPACE, 6, true, nullptr};
+  bottom[mode][4] = {"OK", nullptr, fui::KeyKind::Ok, fui::StateNormal, fui::QWERTY_KEY_ENTER, 4, true, nullptr};
   for (int i = 0; i < 4; ++i) rows[mode][i] = base.rows[i];
   rows[mode][4] = {bottom[mode], 5, 0};
   layouts[mode][shift] = {rows[mode], 5};
