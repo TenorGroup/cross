@@ -298,7 +298,10 @@ struct CoverThumbCapture : ImageBlock::ThumbHook {
 };
 template <class T, class... A>
 std::unique_ptr<T> makeUniqueNoThrow(A&&... args) { return std::make_unique<T>(std::forward<A>(args)...); }
+struct HalPowerManager { struct Lock {}; };
 struct Gpio {
+  bool wasTouchActivity() const { return false; }
+  bool rawInputActive() const { return false; }
   bool usbChanged = false;
   bool wasUsbStateChanged() const { return usbChanged; }
 } gpio;

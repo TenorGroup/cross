@@ -643,8 +643,8 @@ int main() {
     r.backgroundTick();
     require(r.section->resumes == 0, "look-ahead ran while the page was still settling");
     clockMs += 500;
-    r.backgroundTick();
-    require(r.section->resumes == 1 && r.section->pageCount > 19, "next page was not laid out on a quiet pass");
+    for (int pass = 0; pass < 80; ++pass) r.backgroundTick();
+    require(r.section->resumes == 1 && r.section->pageCount == 21, "next page was not laid out on a quiet pass");
     require(r.section->isBuildParked() && r.section->parks == 2, "parser was not handed back after the look-ahead");
     require(freeink::ble::stopForIdleCalls == 0, "look-ahead touched the radio");
     for (int n = 0; n < 10; ++n) r.backgroundTick();
@@ -689,7 +689,7 @@ int main() {
     r.backgroundTick();
     require(r.section->starts == 0, "extension started while the page was still settling");
     clockMs += 500;
-    r.backgroundTick();
+    for (int pass = 0; pass < 80; ++pass) r.backgroundTick();
     require(r.section->starts == 1 && r.section->pageCount > 3, "next page was not laid out ahead of the first turn");
     require(r.section->isBuildParked(), "parser was not handed back after the look-ahead");
     for (int n = 0; n < 10; ++n) r.backgroundTick();
@@ -709,7 +709,7 @@ int main() {
     ESP.free = 52136; ESP.largest = 26612;  // after the radio start, r27-ui
     r.lastRenderCompleteMs = clockMs;
     clockMs += 500;
-    r.backgroundTick();
+    for (int pass = 0; pass < 80; ++pass) r.backgroundTick();
     require(r.section->pageCount > r.section->currentPage + 1, "the page after the current one is not laid out");
     require(r.section->isBuildParked(), "parser was not handed back after the look-ahead");
     const int ticks = r.section->ticks;
@@ -730,7 +730,7 @@ int main() {
     ESP.free = 53144; ESP.largest = 31732;  // BLE-live heap on the X3 in r29
     r.lastRenderCompleteMs = clockMs;
     clockMs += 500;
-    r.backgroundTick();
+    for (int pass = 0; pass < 80; ++pass) r.backgroundTick();
     require(r.section->pageCount > 2, "the second page past the one on screen is not laid out");
     require(r.section->isBuildParked(), "parser was not handed back after the look-ahead");
     const int ticks = r.section->ticks;
@@ -740,7 +740,7 @@ int main() {
     r.section->currentPage = 1;
     r.lastRenderCompleteMs = clockMs;
     clockMs += 500;
-    r.backgroundTick();
+    for (int pass = 0; pass < 80; ++pass) r.backgroundTick();
     require(r.section->pageCount == 4, "a turn inside the look-ahead did not keep two pages ready");
   });
   test("look-ahead window opens when the radio's start ends, not at the paint", [] {

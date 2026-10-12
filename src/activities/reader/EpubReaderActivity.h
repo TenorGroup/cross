@@ -363,6 +363,8 @@ class EpubReaderActivity final : public ReaderActivity {
   // (X3 r29). Once ahead, each turn lays out one page, as with one.
   static constexpr int LOOK_AHEAD_PAGES = 2;
   int lookAheadPage = -1;
+  int lookAheadWorkPage = -1;
+  unsigned long lookAheadStartedMs = 0;
   // The next chapter's first pages, laid out on a quiet pass on the last page of a whole chapter,
   // once per chapter and visit (prepareNextChapter).
   static constexpr unsigned long NEXT_CHAPTER_QUIET_MS = 1500;
