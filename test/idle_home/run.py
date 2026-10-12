@@ -314,6 +314,7 @@ struct HomeActivity {
   int steps = 0, thumbs = 0;
   bool tickHolders() { return holderWrote; }
   void idleStep() { ++steps; }
+  void tickHomeGhost() {}
   void writeMissingThumb(int) { ++thumbs; }
   void onTick();
 };

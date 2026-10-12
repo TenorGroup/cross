@@ -294,7 +294,7 @@ void HomeActivity::captureNavigation(MenuNavigationState& state) const {
 
 void HomeActivity::onExit() {
   stopFolderRecursiveSearch();
-  restoreHomeGhost("exit");
+  handOffHomeGhost();
   homeRefresh.leave();
   clearHomeGray();
   freeCoverBuffer();
@@ -308,7 +308,7 @@ void HomeActivity::onResume() {
 }
 
 void HomeActivity::onPause() {
-  restoreHomeGhost("pause");
+  handOffHomeGhost();
   homeRefresh.leave();
   // The manager holds RenderLock while pausing an activity.
   clearHomeGray();
@@ -2425,13 +2425,24 @@ void HomeActivity::restoreHomeGhost([[maybe_unused]] const char* reason) {
   const unsigned swaps = homeRefresh.count();
 #endif
   HalPowerManager::Lock fullSpeed;
-  renderer.redriveNextRefresh(HalDisplay::FULL_REFRESH);
-  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+  // A fast pass that drives every pixel clears the swaps' ghosts without the full waveform's flash.
+  renderer.redriveNextRefresh(HalDisplay::FAST_REFRESH);
+  renderer.displayBuffer(HalDisplay::FAST_REFRESH);
   homeRefresh.restored();
 #ifdef TENOR_PRESS_PROBE
-  LOG_INF("HOME", "HOME_GHOST_RESTORE waves=1 mode=full rect=0,0,%d,%d ms=%lu swaps=%u reason=%s",
+  LOG_INF("HOME", "HOME_GHOST_RESTORE waves=1 mode=fast_redrive rect=0,0,%d,%d ms=%lu swaps=%u reason=%s",
           renderer.getScreenWidth(), renderer.getScreenHeight(), static_cast<unsigned long>(millis() - started),
           swaps, reason);
+#endif
+}
+
+// Leaving Home: the next screen's first pass drives every pixel instead of Home drawing itself again.
+void HomeActivity::handOffHomeGhost() {
+  if (homeRefresh.count() == 0) return;
+  renderer.redriveNextRefresh(HalDisplay::FAST_REFRESH);
+  homeRefresh.restored();
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("HOME", "HOME_GHOST_HANDOFF mode=fast_redrive");
 #endif
 }
 
