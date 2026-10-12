@@ -95,6 +95,9 @@ class FileBrowserActivity final : public UiListActivity {
   bool handleButtons() override;
   bool tooMany = false;  // the folder holds more names than the heap allows: nothing is listed
   bool supportsFavorites() const override { return mode == Mode::Books; }
+  // Buttons: holding Select on a row opens its actions (Pin, Rename, Delete), as on the Recent card.
+  bool buttonHoldOpensRowMenu(int row) const override { return mode == Mode::Books && row >= kSearchRows && row < listCount(); }
+  const char* favoriteHintText() override;
   bool fileList() const override { return true; }
   bool canSearchFiles() const override { return tenorchrome::kTouchShell; }
   const char* fileSearchText() const override { return searchQuery.c_str(); }

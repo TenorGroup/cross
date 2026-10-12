@@ -532,31 +532,21 @@ void FileBrowserActivity::showEntryActions() {
   }
 
   const bool isDirectory = entryForVisibleRow(nav.selected).back() == '/';
-  // Touch has no Select to hold, so the menu carries the pin, and a tap already opens: Pin or Unpin,
-  // Rename, Delete, anchored to the row.
-  enum class Do : uint8_t { Open, Pin, Delete, Rename };
-  Do actions[4];
-  StrId labels[4];
+  // The same actions on both devices: Pin or Unpin, Rename (files), Delete. Select or a tap already opens.
+  enum class Do : uint8_t { Pin, Delete, Rename };
+  Do actions[3];
+  StrId labels[3];
   int count = 0;
   const auto add = [&](const Do what, const StrId label) {
     actions[count] = what;
     labels[count++] = label;
   };
-  if (tenorchrome::kTouchShell) {
-    add(Do::Pin, rowIsPinned(nav.selected) ? StrId::STR_UNPIN_FAVORITE : StrId::STR_PIN_FAVORITE);
-    if (!isDirectory) add(Do::Rename, StrId::STR_RENAME);
-    add(Do::Delete, StrId::STR_DELETE);
-  } else {
-    add(Do::Open, StrId::STR_OPEN);
-    add(Do::Delete, StrId::STR_DELETE);
-    if (!isDirectory) add(Do::Rename, StrId::STR_RENAME);
-  }
+  add(Do::Pin, rowIsPinned(nav.selected) ? StrId::STR_UNPIN_FAVORITE : StrId::STR_PIN_FAVORITE);
+  if (!isDirectory) add(Do::Rename, StrId::STR_RENAME);
+  add(Do::Delete, StrId::STR_DELETE);
   const auto onSelect = [this, actions, count](const int index) {
     if (index < 0 || index >= count) return;
     switch (actions[index]) {
-      case Do::Open:
-        activateSelected();
-        break;
       case Do::Pin:
         queuePinToggle();
         break;
@@ -1039,6 +1029,12 @@ void FileBrowserActivity::drawFooter() {
   const auto labels = mappedInput.mapLabels(backLabel, confirmLabel, listCount() <= 1 ? "" : tr(STR_DIR_UP),
                                             listCount() <= 1 ? "" : tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+}
+
+const char* FileBrowserActivity::favoriteHintText() {
+  if (favoriteSaveFailed || mode != Mode::Books || nav.selected < kSearchRows || nav.selected >= listCount())
+    return UiListActivity::favoriteHintText();
+  return tr(STR_FILE_HOLD_ACTIONS);
 }
 
 std::string FileBrowserActivity::screenTip() {
