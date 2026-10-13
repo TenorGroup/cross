@@ -16,6 +16,8 @@
 #include <RecoverableFile.h>
 #include <Serialization.h>
 
+#include <algorithm>
+
 #include "Epub/css/CssParser.h"
 #include "Page.h"
 #include "hyphenation/Hyphenator.h"
@@ -67,7 +69,8 @@ namespace {
 //      <ul>/<ol> containers contribute their own margins/padding to child insets;
 //      Hangul words wrap at spaces (with hyphenation on they may also split at a
 //      line end) and justification no longer stretches between syllables.
-constexpr uint8_t SECTION_FILE_VERSION = 55;
+// v56: Preserve paragraph continuity and top spacing across soft flushes.
+constexpr uint8_t SECTION_FILE_VERSION = 56;
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects
@@ -2065,18 +2068,27 @@ std::optional<uint16_t> Section::getPageForVisibleTextOffset(const uint32_t offs
     return std::nullopt;
   }
 
-  if (!f.seek(visibleLutOffset)) return std::nullopt;
+  if (!f.seek(visibleLutOffset)) {
+    LOG_ERR("SCT", "Failed to seek visible-text LUT");
+    return std::nullopt;
+  }
   uint16_t result = 0;
   uint32_t lastPageStart = 0;
-  for (uint16_t page = 0; page < count; page++) {
-    uint32_t pageStart;
-    if (!serialization::readPod(f, pageStart)) return std::nullopt;
-    lastPageStart = pageStart;
-    if (preferFirstAtOffset && pageStart == offset) {
-      return page;
+  constexpr uint32_t BATCH_PAGE_COUNT = 32;
+  uint32_t starts[BATCH_PAGE_COUNT];  // 128-byte stack buffer; offsets stay in file order for ties.
+  for (uint32_t base = 0; base < count; base += BATCH_PAGE_COUNT) {
+    const uint32_t batch = std::min<uint32_t>(BATCH_PAGE_COUNT, count - base);
+    const size_t bytes = batch * sizeof(uint32_t);
+    if (f.read(starts, bytes) != static_cast<int>(bytes)) {
+      LOG_ERR("SCT", "Failed to read visible-text LUT batch");
+      return std::nullopt;
     }
-    if (pageStart > offset) break;
-    result = page;
+    for (uint32_t i = 0; i < batch; ++i) {
+      lastPageStart = starts[i];
+      if (lastPageStart > offset) return result;
+      result = static_cast<uint16_t>(base + i);
+      if (preferFirstAtOffset && lastPageStart == offset) return result;
+    }
   }
   if (partial && offset > lastPageStart) {
     return std::nullopt;

@@ -317,8 +317,9 @@ void testAdvanceGrowthFailure() {
   const std::string text = utf8Text(cps);
   HalFile::readCalls = 0;
   allocationProbe::reset();
-  allocationProbe::failMin = 600;
-  allocationProbe::failMax = 4096;
+  // Refuse the codepoint buffer's growth (128 -> 256 slots, +2 reserved). The advance table's
+  // pre-grow before it is optional and its failure is not this case.
+  allocationProbe::failMin = allocationProbe::failMax = (256 + 2) * sizeof(uint32_t);
   allocationProbe::failOnce = allocationProbe::enabled = true;
   const int result = font.buildAdvanceTable(text.c_str(), 1);
   allocationProbe::enabled = false;

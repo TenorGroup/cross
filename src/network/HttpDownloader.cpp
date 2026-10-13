@@ -49,6 +49,11 @@ constexpr int HTTP_POLL_TIMEOUT_MS = 0;
 constexpr size_t READ_CHUNK = 1024;
 constexpr int MAX_REDIRECTS = 5;
 
+// Written after every request, and read by the UI right after a failure.
+int g_lastStatus = 0;
+// Whether the last answer came from another origin than the request started at.
+bool g_lastRedirected = false;
+
 struct Sink {
   std::function<bool(const uint8_t*, size_t)> write;  // returns false to abort the transfer
   HttpDownloader::ProgressCallback progress;
@@ -71,6 +76,7 @@ struct Sink {
   uint32_t heap = 0;
   uint32_t largest = 0;
   uint32_t largestMin = 0;
+  bool redirected = false;
 
   bool poll(bool force = false) {
     if (cancelFlag && *cancelFlag) return true;
@@ -269,6 +275,7 @@ HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std:
         LOG_ERR("HTTP", "wolfSSL bad redirect: %d", status);
         return HttpDownloader::HTTP_ERROR;
       }
+      sink.redirected = !freeink::http_url::sameOrigin(startUrl, nextUrl);
       url = std::move(nextUrl);
       continue;
     }
@@ -392,6 +399,7 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
       esp_http_client_cleanup(client);
       return HttpDownloader::HTTP_ERROR;
     }
+    sink.redirected = !freeink::http_url::sameOrigin(url, nextUrl);
     currentUrl = std::move(nextUrl);
     esp_http_client_close(client);
     if (esp_http_client_set_url(client, currentUrl.c_str()) != ESP_OK) {
@@ -492,6 +500,8 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
                                            bool downgradeRedirectsToHttp = false, const char* rootCA = nullptr,
                                            bool allowRedirects = true, ByteRange* range = nullptr,
                                            freeink::SecureHttpClient* rangeClient = nullptr) {
+  g_lastStatus = 0;
+  g_lastRedirected = false;
   if (downgradeRedirectsToHttp) return HttpDownloader::HTTP_ERROR;
 #ifndef SIMULATOR
   // Native simulator sockets use the host network independently of fake Wi-Fi.
@@ -502,10 +512,14 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
   }
 #endif
 #if defined(FREEINK_NET_WOLFSSL)
-  return runGetWolf(url, username, password, sink, downgradeRedirectsToHttp, rootCA, allowRedirects, range, rangeClient);
+  const HttpDownloader::DownloadError result =
+      runGetWolf(url, username, password, sink, downgradeRedirectsToHttp, rootCA, allowRedirects, range, rangeClient);
 #else
-  return runGet(url, username, password, sink, rootCA, allowRedirects, range);
+  const HttpDownloader::DownloadError result = runGet(url, username, password, sink, rootCA, allowRedirects, range);
 #endif
+  g_lastStatus = sink.status;
+  g_lastRedirected = sink.redirected;
+  return result;
 }
 }  // namespace
 
@@ -518,6 +532,9 @@ bool HttpDownloader::RangeSession::hasTlsContext() const {
   return false;
 #endif
 }
+int HttpDownloader::lastStatus() { return g_lastStatus; }
+
+bool HttpDownloader::lastAnswerRedirected() { return g_lastRedirected; }
 
 bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent, const std::string& username,
                               const std::string& password) {

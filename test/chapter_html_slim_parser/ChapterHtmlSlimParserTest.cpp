@@ -557,6 +557,50 @@ TEST_F(ChapterHtmlSlimParserTest, ParagraphModesAddThreeDistinctGaps) {
             readerSpacing::paragraphGap(readerSpacing::VERY_WIDE, kLineHeight));
 }
 
+// A paragraph past the soft-flush budget is laid out in chunks. The later chunks continue the same
+// paragraph: the lines and their positions match a paragraph laid out in one pass (no second
+// first-line indent, no paragraph gap or top margin between the chunks).
+TEST_F(ChapterHtmlSlimParserTest, SoftFlushedParagraphMatchesOnePassLayout) {
+  BlockStyle style;
+  style.alignment = CssTextAlign::Left;
+  style.textAlignDefined = true;
+  style.marginTop = 7;
+  auto layout = [&](const bool softFlush) {
+    parser.viewportWidth = 100;
+    parser.viewportHeight = 30000;
+    parser.extraParagraphSpacing = readerSpacing::WIDE;
+    parser.embeddedStyle = false;
+    parser.currentPage.reset();
+    parser.currentPageNextY = 0;
+    parser.khoiTruocDaXepTrang = true;  // a paragraph came before, so this one opens with the gap
+    parser.wordsExtractedInBlock = 0;
+    parser.currentTextBlock = std::make_unique<ParsedText>(false, false, false, style, 1);
+    for (int i = 0; i < 760; ++i) parser.currentTextBlock->addWord("word", EpdFontFamily::REGULAR);
+    if (softFlush) {
+      parser.flushTextIfOverBudget();
+      EXPECT_LT(parser.currentTextBlock->size(), 760u);  // the flush did lay out a chunk
+    }
+    for (int i = 0; i < 20; ++i) parser.currentTextBlock->addWord("word", EpdFontFamily::REGULAR);
+    parser.makePages();
+    std::vector<std::pair<int, int>> lines;  // y of each line, x of its first word
+    for (const auto& element : parser.currentPage->elements) {
+      const auto* line = static_cast<const PageLine*>(element.get());
+      lines.emplace_back(line->yPos, line->getBlock()->wordXpos(0));
+    }
+    return lines;
+  };
+  const auto onePass = layout(false);
+  const auto flushed = layout(true);
+  ASSERT_GT(onePass.size(), 100u);
+  EXPECT_EQ(onePass.front().second, 12);  // the first line keeps its indent
+  ASSERT_EQ(flushed.size(), onePass.size());
+  size_t firstDiff = 0;
+  while (firstDiff < onePass.size() && flushed[firstDiff] == onePass[firstDiff]) ++firstDiff;
+  ASSERT_EQ(firstDiff, onePass.size()) << "line " << firstDiff << ": y " << flushed[firstDiff].first << " vs "
+                                       << onePass[firstDiff].first << ", x " << flushed[firstDiff].second << " vs "
+                                       << onePass[firstDiff].second;
+}
+
 TEST_F(ChapterHtmlSlimParserTest, ForcedTocAnchorStartsFreshPageWithoutGapAndKeepsAnchorOffsetAndDropCap) {
   const auto fixturePath = std::filesystem::temp_directory_path() / "crosspoint-forced-toc-anchor.xhtml";
   {

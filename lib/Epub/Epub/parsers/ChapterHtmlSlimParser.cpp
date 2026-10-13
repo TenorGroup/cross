@@ -1989,17 +1989,7 @@ void ChapterHtmlSlimParser::flushTextIfOverBudget() {
   if (blockWordCount > softFlushThreshold ||
       currentTextBlock->getRubyTextBytes() > TextBlock::MAX_RUBY_ANNOTATION_BYTES) {
     LOG_DBG("EHP", "Text block soft flush (%u words)", static_cast<unsigned>(blockWordCount));
-    const int horizontalInset = currentTextBlock->getBlockStyle().totalHorizontalInset();
-    const uint16_t effectiveWidth = (horizontalInset < viewportWidth)
-                                        ? static_cast<uint16_t>(viewportWidth - horizontalInset)
-                                        : viewportWidth;
-    if (!currentTextBlock->layoutAndExtractLines(
-        renderer, fontId, effectiveWidth,
-        [this](std::unique_ptr<TextBlock> textBlock, const uint32_t offset) {
-          addLineToPage(std::move(textBlock), offset);
-          if (buildFailed_) return;
-        },
-        false)) failBuild();
+    makePages(/*includeLastLine=*/false);
   }
 }
 
@@ -2919,7 +2909,7 @@ void ChapterHtmlSlimParser::addLineToPage(std::unique_ptr<TextBlock> line, const
   currentPageNextY += lineHeight;
 }
 
-void ChapterHtmlSlimParser::makePages() {
+void ChapterHtmlSlimParser::makePages(const bool includeLastLine) {
   if (buildFailed_) return;
   if (!currentTextBlock) {
     LOG_ERR("EHP", "!! No text block to make pages for !!");
@@ -2932,23 +2922,7 @@ void ChapterHtmlSlimParser::makePages() {
 
   const int lineHeight = renderer.getLineHeight(fontId, lineCompression);
 
-  // Khoang ngan doan thuoc ve RANH GIOI giua hai khoi: cong o day, dau khoi, chu khong cong sau khi
-  // khoi truoc da xep xong. Nho vay khoi do <br> mo (ngat dong mem trong cung doan) khong nhan khoang
-  // ngan doan, ke ca <br> DAU TIEN - truong hop ma cach "danh dau khoi bi dong" bo sot vi <br> duoc doc
-  // sau khi khoi da xep trang.
   const BlockStyle& blockStyle = currentTextBlock->getBlockStyle();
-  if (khoiTruocDaXepTrang && !blockStyle.fromBrElement) {
-    currentPageNextY += readerSpacing::paragraphGap(extraParagraphSpacing, lineHeight);
-  }
-  khoiTruocDaXepTrang = true;
-
-  // Apply top spacing before the paragraph (stored in pixels)
-  if (blockStyle.marginTop > 0) {
-    currentPageNextY += blockStyle.marginTop;
-  }
-  if (blockStyle.paddingTop > 0) {
-    currentPageNextY += blockStyle.paddingTop;
-  }
 
   // Calculate effective width accounting for horizontal margins/padding
   const int horizontalInset = blockStyle.totalHorizontalInset();
@@ -2956,13 +2930,39 @@ void ChapterHtmlSlimParser::makePages() {
       (horizontalInset < viewportWidth) ? static_cast<uint16_t>(viewportWidth - horizontalInset) : viewportWidth;
 
   if (!currentTextBlock->isEmpty() && currentTextBlock->wantsDropCap()) chapterInitialPending = false;
-  if (!currentTextBlock->layoutAndExtractLines(renderer, fontId, effectiveWidth,
-                                          [this](std::unique_ptr<TextBlock> textBlock, const uint32_t offset) {
-                                            addLineToPage(std::move(textBlock), offset);
-                                          })) {
+  // The block's top spacing goes before its first line only: a soft flush already placed the
+  // earlier lines of a long paragraph, and its later chunks continue that paragraph.
+  bool blockStart = currentTextBlock->linesExtracted() == 0;
+  if (!currentTextBlock->layoutAndExtractLines(
+          renderer, fontId, effectiveWidth,
+          [this, lineHeight, &blockStart](std::unique_ptr<TextBlock> textBlock, const uint32_t offset) {
+            if (blockStart) {
+              blockStart = false;
+              // Khoang ngan doan thuoc ve RANH GIOI giua hai khoi: cong o day, dau khoi, chu khong cong sau
+              // khi khoi truoc da xep xong. Nho vay khoi do <br> mo (ngat dong mem trong cung doan) khong
+              // nhan khoang ngan doan, ke ca <br> DAU TIEN - truong hop ma cach "danh dau khoi bi dong" bo
+              // sot vi <br> duoc doc sau khi khoi da xep trang.
+              const BlockStyle& style = currentTextBlock->getBlockStyle();
+              if (khoiTruocDaXepTrang && !style.fromBrElement) {
+                currentPageNextY += readerSpacing::paragraphGap(extraParagraphSpacing, lineHeight);
+              }
+              khoiTruocDaXepTrang = true;
+              // Apply top spacing before the paragraph (stored in pixels)
+              if (style.marginTop > 0) {
+                currentPageNextY += style.marginTop;
+              }
+              if (style.paddingTop > 0) {
+                currentPageNextY += style.paddingTop;
+              }
+            }
+            addLineToPage(std::move(textBlock), offset);
+          },
+          includeLastLine)) {
     failBuild();
     return;
   }
+  // Trailing spacing, held lines and footnotes wait for the call that finishes the block.
+  if (!includeLastLine) return;
   // A final line has no later text callback before margins/images. Keep its page before those arrive.
   if (holdingLines_ && visibleTextOffset > holdUntil_) holdingLines_ = false;
 
