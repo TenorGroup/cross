@@ -1,4 +1,4 @@
-// The cable channel rule (board_tag::dropsCable) on the X4 Pro, and the card path that asks it.
+// The cable channel rule (board_tag::dropsCable) on the X4 Pro, and the card path that does not ask it.
 #include <HalStorage.h>
 #include <esp_ota_ops.h>
 #include <gtest/gtest.h>
@@ -72,12 +72,16 @@ TEST(CablePolicy, ReleasesWithoutTheChannelAreDropped) {
   EXPECT_TRUE(board_tag::dropsCable(x4c));
 }
 
-TEST(CablePolicy, TheCardPathRefusesAnImageWithoutTheChannel) {
+// The card is the way to any other firmware (CrossPoint, CrossInk, an older tenor/cross): it takes an image
+// without the channel, as every board does. Only the cable session keeps the rule.
+TEST(CablePolicy, TheCardPathTakesAnImageWithoutTheChannel) {
   Storage.file = makeImage(k58Tag);
-  EXPECT_EQ(firmware_flash::validateImageFile("/old.bin", kApp1.size), firmware_flash::Result::NO_CABLE);
-  EXPECT_EQ(firmware_flash::flashFromSdPath("/old.bin", nullptr, nullptr), firmware_flash::Result::NO_CABLE);
-  EXPECT_EQ(writes, 0);
-  EXPECT_EQ(switches, 0);
+  EXPECT_EQ(firmware_flash::validateImageFile("/old.bin", kApp1.size), firmware_flash::Result::OK);
+  Storage.file = makeImage("no tag at all");
+  EXPECT_EQ(firmware_flash::validateImageFile("/other.bin", kApp1.size), firmware_flash::Result::OK);
+  EXPECT_EQ(firmware_flash::flashFromSdPath("/other.bin", nullptr, nullptr), firmware_flash::Result::OK);
+  EXPECT_EQ(switches, 1);
+  writes = switches = 0;
   Storage.file = makeImage(kX4cTag);
   EXPECT_EQ(firmware_flash::validateImageFile("/x4c.bin", kApp1.size), firmware_flash::Result::WRONG_BOARD);
   Storage.file = makeImage(kThisTag, 5);

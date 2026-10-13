@@ -145,8 +145,6 @@ bool SdFirmwareUpdateActivity::validateFirmware() {
       errorMessage = tr(STR_FIRMWARE_TOO_SMALL);
     } else if (vr == firmware_flash::Result::BAD_CHIP || vr == firmware_flash::Result::WRONG_BOARD) {
       errorMessage = tr(STR_FIRMWARE_WRONG_DEVICE);
-    } else if (vr == firmware_flash::Result::NO_CABLE) {
-      errorMessage = tr(STR_FIRMWARE_NO_CABLE);
     } else {
       errorMessage = tr(STR_INVALID_FIRMWARE);
     }
@@ -248,7 +246,6 @@ void SdFirmwareUpdateActivity::performUpdate() {
     // was swapped).
     errorMessage = result == firmware_flash::Result::BAD_CHIP || result == firmware_flash::Result::WRONG_BOARD
                        ? tr(STR_FIRMWARE_WRONG_DEVICE)
-                   : result == firmware_flash::Result::NO_CABLE ? tr(STR_FIRMWARE_NO_CABLE)
                                                                 : tr(STR_FIRMWARE_WRITE_FAILED);
     RenderLock lock(*this);
     state = State::FAILED;
