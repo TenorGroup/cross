@@ -7,6 +7,7 @@
 #include <string>
 
 #include "Image.h"
+#include "platform/CableFlash.h"
 #include "network/FirmwareBoardTag.h"
 #include "network/FirmwareFlasher.h"
 #include "network/OtaBootSwitch.h"
@@ -91,4 +92,30 @@ TEST(CablePolicy, TheCardPathTakesAnImageWithoutTheChannel) {
   EXPECT_EQ(firmware_flash::flashFromSdPath("/new.bin", nullptr, nullptr), firmware_flash::Result::OK);
   EXPECT_GT(writes, 0);
   EXPECT_EQ(switches, 1);
+}
+
+TEST(CablePolicy, ScreenDecisionCoversCableEntryAndExit) {
+  using cableflash::PolicyAction;
+  using cableflash::PolicyInput;
+  using cableflash::decidePolicy;
+  const auto reader = decidePolicy(PolicyInput{false, true, false, false, false, false, "/book.epub"});
+  EXPECT_EQ(reader.action, PolicyAction::Replace);
+  EXPECT_STREQ(reader.book, "/book.epub");
+
+  EXPECT_EQ(decidePolicy(PolicyInput{false, false, false, false, false, false, ""}).action,
+            PolicyAction::Push);
+  const auto failed = decidePolicy(PolicyInput{false, false, false, true, true, true, "/book.epub"});
+  EXPECT_EQ(failed.action, PolicyAction::Replace);
+  EXPECT_STREQ(failed.book, "/book.epub");
+  EXPECT_EQ(decidePolicy(PolicyInput{false, false, false, true, true, false, ""}).action,
+            PolicyAction::Reject);
+  EXPECT_EQ(decidePolicy(PolicyInput{false, false, true, false, true, false, ""}).action,
+            PolicyAction::Reject);
+  EXPECT_EQ(decidePolicy(PolicyInput{false, false, false, true, false, true, ""}).action,
+            PolicyAction::Reject);
+
+  EXPECT_EQ(decidePolicy(PolicyInput{true, false, false, false, false, false, "/book.epub"}).action,
+            PolicyAction::ReturnToBook);
+  EXPECT_EQ(decidePolicy(PolicyInput{true, false, false, false, false, false, ""}).action,
+            PolicyAction::Finish);
 }

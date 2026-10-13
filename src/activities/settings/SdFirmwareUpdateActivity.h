@@ -2,6 +2,7 @@
 #include "activities/X3ActivityLayout.h"
 
 #include <string>
+#include <utility>
 
 #include "activities/Activity.h"
 #if TENOR_CABLE_FLASH
@@ -42,8 +43,13 @@ class SdFirmwareUpdateActivity : public Activity {
   // The image comes over the cable (platform/CableFlashLink.h) instead of from the card. The user is
   // asked first, unless the recovery keys were held at power on (`consented`).
   SdFirmwareUpdateActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const cableflash::Begin& begin,
-                           bool consented)
-      : Activity("SdFirmwareUpdate", renderer, mappedInput), cable(true), cableStart(consented), cableBegin(begin) {}
+                           bool consented, std::string returnBook = {})
+      : Activity("SdFirmwareUpdate", renderer, mappedInput), cable(true), cableStart(consented), cableBegin(begin),
+        cableReturnBook(std::move(returnBook)) {}
+  static const SdFirmwareUpdateActivity* activeUpdate();
+  bool isCable() const { return cable; }
+  bool cableFailed() const { return cable && state == State::FAILED; }
+  const std::string& cableBookToReturn() const { return cableReturnBook; }
 #endif
 
   void onEnter() override;
@@ -75,7 +81,9 @@ class SdFirmwareUpdateActivity : public Activity {
   bool cable = false;
   bool cableStart = false;  // the session starts on the next loop pass
   cableflash::Begin cableBegin;
+  std::string cableReturnBook;
   void performCableUpdate();
+  void leaveCableSession();
 #else
   static constexpr bool cable = false;
 #endif

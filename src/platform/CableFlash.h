@@ -47,6 +47,34 @@ struct Begin {
   char version[32] = {};
 };
 
+enum class PolicyAction : uint8_t { Reject, Push, Replace, ReturnToBook, Finish };
+
+struct PolicyInput {
+  bool ending = false;
+  bool readerOpen = false;
+  bool confirmationOpen = false;
+  bool updateOpen = false;
+  bool updateIsCable = false;
+  bool updateFailed = false;
+  const char* book = nullptr;
+};
+
+struct PolicyDecision {
+  PolicyAction action;
+  const char* book;
+};
+
+// The only policy for opening a cable session and leaving it. Callers supply screen facts and the
+// saved book path, so this rule stays independent of Activity and remains host-testable.
+inline PolicyDecision decidePolicy(const PolicyInput& in) {
+  if (in.ending) return {in.book && in.book[0] != '\0' ? PolicyAction::ReturnToBook : PolicyAction::Finish, in.book};
+  if (in.confirmationOpen) return {PolicyAction::Reject, nullptr};
+  if (in.updateOpen) {
+    return {in.updateIsCable && in.updateFailed ? PolicyAction::Replace : PolicyAction::Reject, in.book};
+  }
+  return {in.readerOpen ? PolicyAction::Replace : PolicyAction::Push, in.book};
+}
+
 // "<size> <sha256 as 64 hex digits> <version>"; the version is what the user is asked about, and END
 // checks that the image says the same.
 inline bool parseBegin(const char* args, Begin& out) {

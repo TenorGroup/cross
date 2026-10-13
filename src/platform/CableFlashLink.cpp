@@ -10,9 +10,12 @@
 
 #include <algorithm>
 #include <cstring>
+#include <string>
+#include <utility>
 
 #include "activities/ActivityManager.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
+#include "CrossPointState.h"
 #include "network/FirmwareBoardTag.h"
 
 #ifndef SIMULATOR
@@ -115,10 +118,18 @@ void onLine(const char* line, GfxRenderer& renderer, MappedInputManager& input) 
   if (std::strncmp(rest, "BEGIN ", 6) != 0) return say("TCF1 FAIL command");
   Begin begin;
   if (!parseBegin(rest + 6, begin)) return say("TCF1 FAIL begin");
-  // One update screen at a time; the user closes a finished one first.
   const char* current = activityManager.currentName();
-  if (current && (std::strcmp(current, "SdFirmwareUpdate") == 0 || std::strcmp(current, "Confirmation") == 0))
-    return say("TCF1 FAIL busy");
+  const auto* cableActivity = SdFirmwareUpdateActivity::activeUpdate();
+  const bool currentIsCable = cableActivity && cableActivity->isCable();
+  const bool currentFailed = cableActivity && cableActivity->cableFailed();
+  std::string returnBook = currentFailed ? cableActivity->cableBookToReturn() : std::string();
+  const bool readerOpen = activityManager.isReaderActivity();
+  if (readerOpen) returnBook = APP_STATE.openEpubPath;
+  const bool updateOpen = cableActivity || (current && std::strcmp(current, "SdFirmwareUpdate") == 0);
+  const bool confirmationOpen = current && std::strcmp(current, "Confirmation") == 0;
+  const auto decision = decidePolicy(
+      PolicyInput{false, readerOpen, confirmationOpen, updateOpen, currentIsCable, currentFailed, returnBook.c_str()});
+  if (decision.action == PolicyAction::Reject) return say("TCF1 FAIL busy");
 #ifndef SIMULATOR
   // An image on trial is accepted or rolled back first; the slot behind it is the way back.
   esp_ota_img_states_t state;
@@ -128,7 +139,7 @@ void onLine(const char* line, GfxRenderer& renderer, MappedInputManager& input) 
 #endif
   const bool consented = recoveryUntil != 0 && static_cast<long>(recoveryUntil - millis()) > 0;
   recoveryUntil = 0;  // one session per hold of the keys
-  auto screen = makeUniqueNoThrow<SdFirmwareUpdateActivity>(renderer, input, begin, consented);
+  auto screen = makeUniqueNoThrow<SdFirmwareUpdateActivity>(renderer, input, begin, consented, std::move(returnBook));
   if (!screen) return say("TCF1 FAIL heap");
   LOG_INF("CABLE", "begin size=%lu version=%s consented=%d", static_cast<unsigned long>(begin.size), begin.version,
           consented);
@@ -138,7 +149,7 @@ void onLine(const char* line, GfxRenderer& renderer, MappedInputManager& input) 
     say(wait);
   }
   // A book is closed the usual way (its progress saved) before the slot is written.
-  if (activityManager.isReaderActivity())
+  if (decision.action == PolicyAction::Replace)
     activityManager.replaceActivity(std::move(screen));
   else
     activityManager.pushActivity(std::move(screen));
