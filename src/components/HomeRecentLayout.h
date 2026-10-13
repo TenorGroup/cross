@@ -12,7 +12,9 @@ struct HomeRecentLayout {
   HomeRecentRect cover{}, text{}, snapshot{};
   std::array<HomeRecentRect, 3> shelf{};
   std::array<int, 3> shelfBooks{-1, -1, -1};
-  int shelfCount = 0, shelfHeadingY = 0, shelfLabelHeight = 0;
+  int shelfCount = 0, shelfHeadingY = 0, shelfLabelHeight = 0, shelfStep = 0;
+  // Left edge of a shelf cell: the 3 cells keep 24 px from each screen edge and share the width between.
+  int shelfCellX(int slot) const { return 24 + slot * shelfStep; }
   int titleY = 0, titleLines = 2, authorY = 0, authorLines = 1;
   int progressY = 0, progressHeight = 0, excerptY = 0, ruleY = 0, rowY = 0;
 };
@@ -25,10 +27,38 @@ inline std::pair<int, int> homeCoverFit(int w, int h, int sw, int sh) {
   return {w, h};
 }
 
+// The Large cover's neighbours stand outside the main cover, bottoms level with it and cut by the screen edge. The
+// same width of each shows: the left one ends 16 px clear of the main cover, the right one starts that far from the
+// right edge (an odd leftover width makes that gap 17 px). A book with no size of its own is fitted as 298 x 450.
+inline constexpr int kHomeLargeCoverW = 261;
+inline HomeRecentRect homePeekRect(int width, const HomeRecentRect& main, bool left, int sourceW, int sourceH) {
+  constexpr int gap = 16;
+  const auto fit = homeCoverFit(kHomeLargeCoverW, std::min(408, main.h), sourceW, sourceH);
+  const int shown = main.x - gap;
+  const int x = left ? shown - fit.first : width - shown;
+  return {x, main.y + main.h - fit.second, fit.first, fit.second};
+}
+
+// The book behind shelf slot `slot`: the others in Recent order (the shown one left out), 3 cells a page.
+// `first` is where the page starts in that ring, so a page step moves it by 3 and wraps round.
+inline int homeShelfBook(int shown, int books, int first, int slot) {
+  const int others = books - 1;
+  if (others <= 0 || slot < 0 || slot >= std::min(3, others)) return -1;
+  const int at = ((first + slot) % others + others) % others;
+  return at < shown ? at : at + 1;
+}
+
+// Where the shelf page starts after a page step (+1 next, -1 back): 3 further along the ring of the others. With
+// 3 others or fewer the shelf has one page and stays where it is.
+inline int homeShelfPage(int first, int books, int direction) {
+  const int others = books - 1;
+  return others <= 3 ? first : ((first + 3 * direction) % others + others) % others;
+}
+
 // All Recent style decisions and book-to-slot mapping live here. Button readers keep their card.
 inline HomeRecentLayout homeRecentLayout(bool touch, unsigned char value, int width, int top, int bottom,
                                          int titleHeight, int bodyHeight, int captionHeight, int excerptHeight,
-                                         int shown, int books, int sourceW, int sourceH) {
+                                         int shown, int books, int sourceW, int sourceH, int shelfFirst = 0) {
   HomeRecentLayout f;
   f.style = touch && value <= 2 ? static_cast<HomeRecentStyle>(value) : HomeRecentStyle::Stats;
   if (f.style == HomeRecentStyle::Stats) return f;
@@ -38,15 +68,19 @@ inline HomeRecentLayout homeRecentLayout(bool touch, unsigned char value, int wi
   f.progressHeight = 10 + 12 + bodyHeight;
   f.text = {24, top, width - 48, 0};
   if (f.style == HomeRecentStyle::LargeCover) {
+    f.snapshot = {0, top, width, bottom - top};  // the neighbours' covers reach the screen edges
     const int textHeight = 2 * titleHeight + 8 + bodyHeight + 12 + f.progressHeight;
-    auto size = homeCoverFit(270, std::min(408, f.ruleY - 16 - top - 16 - textHeight), sourceW, sourceH);
+    auto size = homeCoverFit(kHomeLargeCoverW, std::min(408, f.ruleY - 16 - top - 16 - textHeight), sourceW, sourceH);
     f.cover = {(width - size.first) / 2, top, size.first, size.second};
     f.titleY = f.cover.y + f.cover.h + 16;
     f.authorY = f.titleY + 2 * titleHeight + 8;
     f.progressY = f.authorY + bodyHeight + 12;
   } else {
-    for (int book = 0; book < books && f.shelfCount < 3; ++book)
-      if (book != shown) f.shelfBooks[f.shelfCount++] = book;
+    for (int slot = 0; slot < 3; ++slot) {
+      const int book = homeShelfBook(shown, books, shelfFirst, slot);
+      if (book < 0) break;
+      f.shelfBooks[f.shelfCount++] = book;
+    }
     f.shelfLabelHeight = 8 + 6 + 6 + 2 * captionHeight;
     const int shelfH = std::min(193, bottom - 8 - 432 - f.shelfLabelHeight);
     const int shelfW = std::min(128, shelfH * 298 / 450);
@@ -64,8 +98,9 @@ inline HomeRecentLayout homeRecentLayout(bool touch, unsigned char value, int wi
     f.progressY = f.authorY + 2 * bodyHeight + 12;
     f.excerptY = top + std::max(size.second, f.progressY + f.progressHeight - top) + 16;
     f.ruleY = upperBottom;
+    f.shelfStep = (width - 48 - 128) / 2;
     for (int i = 0; i < f.shelfCount; ++i)
-      f.shelf[i] = {24 + i * 152 + (128 - shelfW) / 2, shelfTop, shelfW, shelfH};
+      f.shelf[i] = {f.shelfCellX(i) + (128 - shelfW) / 2, shelfTop, shelfW, shelfH};
   }
   return f;
 }
