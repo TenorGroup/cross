@@ -9,41 +9,19 @@
 #include "activities/settings/KeyboardLayoutsActivity.h"
 #if TENOR_CABLE_FLASH
 #include "activities/settings/SdFirmwareUpdateActivity.h"
-#include "platform/CableFlashLink.h"
 #endif
-#include "CrossPointState.h"
 
 inline void simulatorPathScreen(GfxRenderer& renderer, MappedInputManager& input) {
   static bool opened = false;
-  static bool cableReaderPending = false;
-  static uint32_t cableReaderBeginAt = 0;
   const char* target = std::getenv("CROSSPOINT_SIM_PATH_SCREEN");
   const char* at = std::getenv("CROSSPOINT_SIM_PATH_SCREEN_AT");
   const char* current = activityManager.currentName();
   // The cable update screens open over Home, as a computer would open them.
   const bool cableScreen = target && std::strncmp(target, "Cable", 5) == 0;
-  const bool cableFromReader = target && std::strcmp(target, "CableFromReader") == 0;
-#if TENOR_CABLE_FLASH
-  if (cableFromReader && cableReaderPending) {
-    if (activityManager.isReaderActivity() && activityManager.hasDrawnFrame() && millis() >= cableReaderBeginAt) {
-      cableReaderPending = false;
-      cableflash::onLine("TCF1 BEGIN 6330080 0000000000000000000000000000000000000000000000000000000000000000 v1.0.59",
-                         renderer, input);
-    }
-    return;
-  }
-#endif
   if (opened || !target || !current || std::strcmp(current, cableScreen ? "Home" : "Settings") != 0 ||
       !activityManager.hasDrawnFrame() || (at && millis() < std::strtoul(at, nullptr, 10))) return;
   opened = true;
 #if TENOR_CABLE_FLASH
-  if (cableFromReader) {
-    if (APP_STATE.openEpubPath.empty()) return;
-    cableReaderPending = true;
-    cableReaderBeginAt = millis() + 3000;
-    activityManager.goToReader(APP_STATE.openEpubPath);
-    return;
-  }
   if (cableScreen) {
     cableflash::Begin begin;
     begin.size = 6330080;

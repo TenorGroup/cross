@@ -46,7 +46,8 @@ class SdFirmwareUpdateActivity : public Activity {
                            bool consented, std::string returnBook = {})
       : Activity("SdFirmwareUpdate", renderer, mappedInput), cable(true), cableStart(consented), cableBegin(begin),
         cableReturnBook(std::move(returnBook)) {}
-  static const SdFirmwareUpdateActivity* currentCableActivity();
+  static const SdFirmwareUpdateActivity* activeUpdate();
+  bool isCable() const { return cable; }
   bool cableFailed() const { return cable && state == State::FAILED; }
   const std::string& cableBookToReturn() const { return cableReturnBook; }
 #endif

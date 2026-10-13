@@ -23,10 +23,10 @@
 #include "platform/CableFlashLink.h"
 
 namespace {
-const SdFirmwareUpdateActivity* activeCableActivity = nullptr;
+const SdFirmwareUpdateActivity* activeUpdateActivity = nullptr;
 }
 
-const SdFirmwareUpdateActivity* SdFirmwareUpdateActivity::currentCableActivity() { return activeCableActivity; }
+const SdFirmwareUpdateActivity* SdFirmwareUpdateActivity::activeUpdate() { return activeUpdateActivity; }
 #endif
 
 void SdFirmwareUpdateActivity::onEnter() {
@@ -38,15 +38,16 @@ void SdFirmwareUpdateActivity::onEnter() {
     if (cable) {
       cableflash::say("TCF1 FAIL busy");
       leaveCableSession();
+      return;
     }
 #endif
-    if (!cable) finish();
+    finish();
     return;
   }
   runtimeStarted = true;
   Activity::onEnter();
 #if TENOR_CABLE_FLASH
-  if (cable) activeCableActivity = this;
+  activeUpdateActivity = this;
 #endif
   // Build-identity marker - confirms which firmware build owns the SD update flow.
   LOG_INF("FW", "SdFirmwareUpdateActivity build=%s %s recovery=%d", __DATE__, __TIME__, recoveryMode ? 1 : 0);
@@ -69,7 +70,7 @@ StrId SdFirmwareUpdateActivity::title() const {
 
 void SdFirmwareUpdateActivity::onExit() {
 #if TENOR_CABLE_FLASH
-  if (activeCableActivity == this) activeCableActivity = nullptr;
+  if (activeUpdateActivity == this) activeUpdateActivity = nullptr;
 #endif
   Activity::onExit();
   // The owner covers picker, validation, confirmation, and the synchronous

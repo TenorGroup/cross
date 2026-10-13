@@ -119,13 +119,13 @@ void onLine(const char* line, GfxRenderer& renderer, MappedInputManager& input) 
   Begin begin;
   if (!parseBegin(rest + 6, begin)) return say("TCF1 FAIL begin");
   const char* current = activityManager.currentName();
-  const auto* cableActivity = SdFirmwareUpdateActivity::currentCableActivity();
-  const bool currentIsCable = cableActivity != nullptr;
+  const auto* cableActivity = SdFirmwareUpdateActivity::activeUpdate();
+  const bool currentIsCable = cableActivity && cableActivity->isCable();
   const bool currentFailed = cableActivity && cableActivity->cableFailed();
   std::string returnBook = currentFailed ? cableActivity->cableBookToReturn() : std::string();
   const bool readerOpen = activityManager.isReaderActivity();
   if (readerOpen) returnBook = APP_STATE.openEpubPath;
-  const bool updateOpen = current && std::strcmp(current, "SdFirmwareUpdate") == 0;
+  const bool updateOpen = cableActivity || (current && std::strcmp(current, "SdFirmwareUpdate") == 0);
   const bool confirmationOpen = current && std::strcmp(current, "Confirmation") == 0;
   const auto decision = decidePolicy(
       PolicyInput{false, readerOpen, confirmationOpen, updateOpen, currentIsCable, currentFailed, returnBook.c_str()});
