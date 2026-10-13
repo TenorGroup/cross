@@ -63,9 +63,9 @@ CHAPTER = """<?xml version="1.0" encoding="utf-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head><title>Chapter One</title></head><body>{body}</body></html>"""
 
-# Home opens the recent book (1500), Confirm opens the toolbar (3500), Right steps to Text (5000),
+# Home opens the recent book (1500), Confirm opens the toolbar (3500), side Up goes round from Favorites to Text (5000),
 # Confirm opens the Text panel (6500).
-OPEN_TEXT = [(1500, 'CONFIRM'), (3500, 'CONFIRM'), (5000, 'RIGHT'), (6500, 'CONFIRM')]
+OPEN_TEXT = [(1500, 'CONFIRM'), (3500, 'CONFIRM'), (5000, 'UP'), (6500, 'CONFIRM')]
 STEP = 1500  # ms between scripted presses after the panel is open
 
 

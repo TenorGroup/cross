@@ -133,6 +133,10 @@ void traceSheetHeap(const char* stage, const GfxRenderer& renderer, const int ro
 // The places on the toolbar menu's bar of the tools the reader opens by name.
 constexpr int kContentsTool = static_cast<int>(readermenu::Tool::CONTENTS);
 constexpr int kTextTool = static_cast<int>(readermenu::Tool::TEXT);
+// Where the bar opens: the X3 bar on its first tab (Favorites), the other readers on Contents.
+int openingTool() {
+  return ReaderToolbarUi::usesX3Bar() ? static_cast<int>(readermenu::Tab::FAVORITES) : kContentsTool;
+}
 // Anh chup cac cai dat lam thay doi cach dan trang. So truoc va sau khi mo man Cai dat van ban
 // de biet co phai dan lai hay khong.
 struct AnhChupChu {
@@ -596,7 +600,7 @@ void EpubReaderActivity::openReaderMenu() {
     // the toolbar on top. The in-reader fast path is openOverlay().
     if (overlay == Overlay::None) beginSheetRadio();
     overlay = Overlay::Toolbar;
-    focusedTool = kContentsTool;
+    focusedTool = openingTool();
     panelHoldJumped = false;
     panelCursorShown = !mappedInput.hasTouch();
     if (!toolbarUi) toolbarUi = std::make_unique<ReaderToolbarUi>(renderer);
@@ -4690,7 +4694,7 @@ void EpubReaderActivity::openOverlay(Overlay target) {
   panelCursorShown = !mappedInput.hasTouch();
   switch (target) {
     case Overlay::Toolbar:
-      focusedTool = kContentsTool;
+      focusedTool = openingTool();
       break;
     case Overlay::Contents:
       panelIndex = ReaderToolbarUi::usesX3Bar() ? 0 : std::max(0, epub->getTocIndexForSpineIndex(currentSpineIndex));
@@ -5116,24 +5120,28 @@ void EpubReaderActivity::handleOverlayInput() {
       closeOverlayToPage();
       return;
     }
-    if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
+    // The X3 bar steps its tabs with the side buttons and turns the chapter with the front Left and Right; the
+    // other readers keep it the other way round.
+    const bool x3Bar = ReaderToolbarUi::usesX3Bar();
+    using Button = MappedInputManager::Button;
+    if (mappedInput.wasReleased(x3Bar ? Button::Up : Button::Left)) {
       focusedTool = (focusedTool + toolCount - 1) % toolCount;
       panelCursorShown = true;
       fastRedraw();
       return;
     }
-    if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
+    if (mappedInput.wasReleased(x3Bar ? Button::Down : Button::Right)) {
       focusedTool = (focusedTool + 1) % toolCount;
       panelCursorShown = true;
       fastRedraw();
       return;
     }
-    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (mappedInput.wasReleased(Button::Confirm)) {
       openOverlay(toolOverlay(focusedTool));
       return;
     }
-    const bool prev = mappedInput.wasReleased(MappedInputManager::Button::Up);
-    const bool next = mappedInput.wasReleased(MappedInputManager::Button::Down);
+    const bool prev = mappedInput.wasReleased(x3Bar ? Button::Left : Button::Up);
+    const bool next = mappedInput.wasReleased(x3Bar ? Button::Right : Button::Down);
     if (prev || next) {
       gotoSpine(currentSpineIndex + (next ? 1 : -1));
     }

@@ -36,6 +36,10 @@ constexpr StrId TAB_NAMES[readermenu::X3_TAB_COUNT] = {StrId::STR_READER_TAB_FAV
                                                        StrId::STR_TOOL_TEXT};
 }  // namespace
 
+// With nothing pinned the cross X3 menu keeps the Favorites tab (its first tab, the one the menu opens on); the
+// other shells pass over it to Reading.
+bool EpubReaderMenuActivity::skipsEmptyFavorites() const { return favorites.empty() && !ReaderToolbarUi::usesX3Bar(); }
+
 EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                const std::string& title, const int currentPage, const int totalPages,
                                                const int bookProgressPercent, const uint8_t currentOrientation,
@@ -52,7 +56,7 @@ EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInpu
     readermenu::separateTextTab(menuItems);
   }
   napGhim();
-  if (textOnly || favorites.empty()) activeTabId = MenuTab::READING;
+  if (textOnly || skipsEmptyFavorites()) activeTabId = MenuTab::READING;
   rebuildRows();
 }
 
@@ -148,7 +152,7 @@ void EpubReaderMenuActivity::selectTab(const MenuTab tab) {
   // labels against another's values, and Confirm would look the activated row
   // up in whichever mapping won. Same race moveSelectionTo() guards for nav.
   RenderLock lock(*this);
-  activeTabId = tab == MenuTab::FAVORITES && favorites.empty() ? MenuTab::READING : tab;
+  activeTabId = tab == MenuTab::FAVORITES && skipsEmptyFavorites() ? MenuTab::READING : tab;
   rebuildRows();
   // Pull the viewport to this tab's remembered row. UiTabListActivity owns the
   // remember/forget rule for every tab screen; see rowTab there.
