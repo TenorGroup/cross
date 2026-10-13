@@ -637,11 +637,14 @@ bool HomeActivity::handleButtons() {
       return true;
     }
   }
-  // Touch: a sideways swipe on the Recent card steps between books, as the front buttons do.
+  // Touch: a sideways swipe on the Recent card steps between books, as the front buttons do. On the Shelf the
+  // shown book stays and the swipe, anywhere on the card, slides the row of other books by 3.
   if (tenorchrome::kTouchShell && activeTabId == Tab::RECENT) {
     const auto swipe = mappedInput.wasSwipe();
     if (swipe == MappedInputManager::SwipeDir::Left || swipe == MappedInputManager::SwipeDir::Right) {
-      queueNavIntent(swipe == MappedInputManager::SwipeDir::Left ? NavIntent::StepNext : NavIntent::StepPrev);
+      const int direction = swipe == MappedInputManager::SwipeDir::Left ? 1 : -1;
+      if (shelfPages()) stepShelf(direction);
+      else queueNavIntent(direction > 0 ? NavIntent::StepNext : NavIntent::StepPrev);
       return true;
     }
   }
@@ -987,7 +990,7 @@ void HomeActivity::buildScreen(UiScreen& screen) {
       if (layout.style == HomeRecentStyle::Shelf) {
         for (int slot = 0; slot < layout.shelfCount; ++slot) {
           const auto& r = layout.shelf[slot];
-          screen.frame().hit({static_cast<int16_t>(24 + slot * 152), static_cast<int16_t>(r.y), 128,
+          screen.frame().hit({static_cast<int16_t>(layout.shelfCellX(slot)), static_cast<int16_t>(r.y), 128,
                               static_cast<int16_t>(r.h + layout.shelfLabelHeight)},
                              ACTION_ROW, static_cast<int16_t>(layout.shelfBooks[slot]),
                              fui::InputTouch | fui::InputLongPress);
@@ -1101,7 +1104,7 @@ void HomeActivity::render(RenderLock&&) {
   const bool recent = activeTabId == Tab::RECENT && homeInkEnabled();
   const uint16_t surface = (static_cast<uint16_t>(renderer.getOrientation()) << 8) |
                            (normalizedUiTextSize(SETTINGS.uiTextSize) << 4) | SETTINGS.homeStyle;
-  const auto refresh = homeRefresh.choose(recent, shownRecent(), surface);
+  const auto refresh = homeRefresh.choose(recent, paintKey(), surface);
   const bool window = refresh.mode == HomeRefresh::Mode::Window;
   const auto body = refreshBody();
   const auto clip = renderer.getClipRect();
@@ -1197,7 +1200,7 @@ void HomeActivity::render(RenderLock&&) {
   // The wake's first frame is up: the main task writes the splash setup() re-armed (onTick).
   if (cleanInitialRefresh) wakeStatePending = true;
   cleanInitialRefresh = false;
-  homeRefresh.painted(recent, shownRecent(), surface, millis());
+  homeRefresh.painted(recent, paintKey(), surface, millis());
   queueIdleCovers();
 }
 
@@ -1238,7 +1241,7 @@ bool HomeActivity::storeCoverBuffer() {
 
 bool HomeActivity::restoreCoverBuffer() {
   if (coverBufferUiSize != normalizedUiTextSize(SETTINGS.uiTextSize) ||
-      (tenorchrome::kTouchShell && coverBufferStyle != SETTINGS.homeStyle)) {
+      (stylesAvailable() && coverBufferStyle != SETTINGS.homeStyle)) {
     freeCoverBuffer();
     return false;
   }
@@ -1806,6 +1809,34 @@ void HomeActivity::drawStatsEdges() {
 int HomeActivity::shownRecent() const {
   const int count = static_cast<int>(recentBooks.size());
   return count == 0 ? -1 : std::clamp(ringPos() - 1, 0, count - 1);
+}
+
+bool HomeActivity::stylesAvailable() const {
+  return tenorchrome::kTouchShell || (kInkX3 && tenorchrome::x3ScreenLayoutEnabled() && !shell::isUgly());
+}
+
+bool HomeActivity::shelfPages() const {
+  return stylesAvailable() && SETTINGS.homeStyle == 2 && activeTabId == Tab::RECENT && recentBooks.size() > 4;
+}
+
+// 3 cells a page, in the ring of the other books; fewer than 4 others fit one page and there is nothing to slide.
+void HomeActivity::stepShelf(const int direction) {
+  RenderLock lock(*this);
+  shelfFirst = homeShelfPage(shelfFirst, static_cast<int>(recentBooks.size()), direction);
+  freeCoverBuffer();
+  coverRendered = false;
+  requestUpdate();
+}
+
+// What a paint shows of the Recent tab: the shown book, and the shelf page when the shelf has pages. A change of
+// either is a new card for the refresh choice.
+int HomeActivity::paintKey() const { return shownRecent() + 16 * shelfFirst; }
+
+// The Large cover shows the book before and after the shown one in Recent, round the ring; -1 with fewer than 3
+// books (2 books would show the same one on both sides).
+int HomeActivity::largeNeighbour(const int shown, const bool left) const {
+  const int count = static_cast<int>(recentBooks.size());
+  return count < 3 || shown < 0 ? -1 : (shown + (left ? count - 1 : 1)) % count;
 }
 
 std::string HomeActivity::cardExcerpt(const int index, bool& quoted) {
@@ -2844,14 +2875,22 @@ idlework::Step HomeActivity::coverStep(const idlework::Job& job, const idlework:
 
 HomeRecentLayout HomeActivity::recentLayout() {
   const int shown = shownRecent();
-  const auto size = tenorchrome::kTouchShell && shown >= 0 ? cardCoverSize(shown) : CoverSize{};
+  const auto size = shown >= 0 ? cardCoverSize(shown) : CoverSize{};
   const int serif = SETTINGS.uiTextSize == 1 ? NOTOSERIF_14_FONT_ID
                     : SETTINGS.uiTextSize == 2 ? NOTOSERIF_16_FONT_ID : NOTOSERIF_12_FONT_ID;
-  return homeRecentLayout(tenorchrome::kTouchShell, SETTINGS.homeStyle, renderer.getScreenWidth(),
-                          coverTileTop() - 4, tenorchrome::footBackTop(renderer.getScreenHeight()) - 8,
+  // The X3 body starts at the screen layout's top and ends over the information line, as its Stats card does.
+  int top = coverTileTop() - 4;
+  int bottom = tenorchrome::footBackTop(renderer.getScreenHeight()) - 8;
+  if (!tenorchrome::kTouchShell && tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto layout = homeScreenLayout();
+    top = layout.bodyRect.y;
+    bottom = layout.bodyRect.bottom();
+    if (const char* info = homeInfoText()) bottom -= 8 + tenorchrome::tipHeight(renderer, info, 3);
+  }
+  return homeRecentLayout(stylesAvailable(), SETTINGS.homeStyle, renderer.getScreenWidth(), top, bottom,
                           renderer.getLineHeight(UI_TITLE_FONT_ID), renderer.getLineHeight(UI_10_FONT_ID),
                           renderer.getLineHeight(SMALL_FONT_ID), renderer.getLineHeight(serif),
-                          shown, static_cast<int>(recentBooks.size()), size.width, size.height);
+                          shown, static_cast<int>(recentBooks.size()), size.width, size.height, shelfFirst);
 }
 
 void HomeActivity::queueTouchThumb(const int index, const int width, const int height) {
@@ -3207,13 +3246,20 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
       const auto size = cardCoverSize(book);
       const auto fit = homeCoverFit(f.shelf[slot].w, f.shelf[slot].h, size.width, size.height);
       const auto& cell = f.shelf[slot];
-      inkSlots[inkSlotCount++] = {{24 + slot * 152 + (128 - fit.first) / 2,
+      inkSlots[inkSlotCount++] = {{f.shelfCellX(slot) + (128 - fit.first) / 2,
                                  cell.y + (cell.h - fit.second) / 2, fit.first, fit.second}, book};
     }
+    if (f.style == HomeRecentStyle::LargeCover)
+      for (const bool left : {true, false}) {
+        const int book = largeNeighbour(shown, left);
+        if (book < 0) continue;
+        const auto size = cardCoverSize(book);
+        inkSlots[inkSlotCount++] = {homePeekRect(renderer.getScreenWidth(), f.cover, left, size.width, size.height), book};
+      }
   }
   heldCover = {static_cast<int16_t>(f.cover.x), static_cast<int16_t>(f.cover.y),
                 static_cast<int16_t>(f.cover.w), static_cast<int16_t>(f.cover.h)};
-  if (coverBufferStored && coverBufferBook == shown && restoreCoverBuffer()) {
+  if (coverBufferStored && coverBufferBook == shown && coverBufferShelf == shelfFirst && restoreCoverBuffer()) {
     LOG_INF("HOME", "Home style=%u restore_us=%lu snapshot=%u", static_cast<unsigned>(f.style),
             static_cast<unsigned long>(micros() - started), static_cast<unsigned>(coverBufferSize));
     if (f.style != HomeRecentStyle::Shelf && recentBooks.size() > 1) drawOtherBookArrows(shown, f.rowY);
@@ -3225,6 +3271,14 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
   LOG_INF("HOME", "Home layout style=%u title=%d author=%d progress=%d excerpt=%d rule=%d shelf=%d", static_cast<unsigned>(f.style),
           f.titleY, f.authorY, f.progressY, f.excerptY, f.ruleY, f.shelfHeadingY);
   loadCardStats(shown);
+  // Large cover: the neighbours' own covers, drawn first so the main cover stands over their inner edges.
+  if (f.style == HomeRecentStyle::LargeCover)
+    for (const bool left : {true, false}) {
+      const int neighbour = largeNeighbour(shown, left);
+      if (neighbour < 0) continue;
+      const auto size = cardCoverSize(neighbour);
+      drawTouchCover(homePeekRect(renderer.getScreenWidth(), f.cover, left, size.width, size.height), neighbour);
+    }
   drawTouchCover(f.cover, shown);
   const auto& book = recentBooks[shown];
   const auto title = book.title.empty() ? book.path.substr(book.path.find_last_of('/') + 1) : book.title;
@@ -3293,7 +3347,7 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
       const auto size = cardCoverSize(index);
       const auto fittedCover = homeCoverFit(f.shelf[slot].w, f.shelf[slot].h, size.width, size.height);
       const auto& cell = f.shelf[slot];
-      const int x = 24 + slot * 152;
+      const int x = f.shelfCellX(slot);
       drawTouchCover({x + (128 - fittedCover.first) / 2, cell.y + (cell.h - fittedCover.second) / 2,
                       fittedCover.first, fittedCover.second}, index);
       loadCardStats(index);
@@ -3316,6 +3370,7 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
   textRectW = textRectH = 0;
   coverBufferStored = storeCoverBuffer();
   coverBufferBook = shown;
+  coverBufferShelf = shelfFirst;
   coverRendered = true;
   if (auto* cache = renderer.getFontCacheManager()) cache->releaseBuiltinPageCaches();
   LOG_INF("HOME", "Home style=%u build_us=%lu snapshot=%u thumbs=%d free=%u largest=%u", static_cast<unsigned>(f.style),

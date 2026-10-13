@@ -345,6 +345,16 @@ class HomeActivity final : public UiTabListActivity {
   void idleRelease();
   static idlework::Step coverStep(const idlework::Job& job, const idlework::Stop& stop);
   HomeRecentLayout recentLayout();
+  // The 3 Home styles are drawn on the touch shell and on the X3 (tenor/ink 1 bit); other readers keep the card.
+  bool stylesAvailable() const;
+  // Shelf: where the page of "other books" starts in the ring of the others. A sideways swipe (touch) steps it
+  // by 3 and the shown book stays; the key stands for the layout, the snapshot and the refresh.
+  int shelfFirst = 0;
+  int coverBufferShelf = 0;
+  bool shelfPages() const;
+  void stepShelf(int direction);
+  int paintKey() const;
+  int largeNeighbour(int shown, bool left) const;
   void drawTouchRecent(const HomeRecentLayout& layout);
   void drawTouchCover(const HomeRecentRect& rect, int book);
   void drawOtherBookRow(int shown, int ruleY, int rowY, const std::vector<std::string>& titleLines);

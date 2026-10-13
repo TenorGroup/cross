@@ -12,7 +12,8 @@
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_UI_SHELL:0:uiShell",
-      "STR_NIGHT_MODE:0:screenInverted"
+      "STR_NIGHT_MODE:0:screenInverted",
+      "STR_HOME_STYLE:0:homeStyle"
     ],
     [
       "STR_TEXT_SETTINGS:11:",
@@ -98,7 +99,8 @@
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_UI_SHELL:0:uiShell",
-      "STR_NIGHT_MODE:0:screenInverted"
+      "STR_NIGHT_MODE:0:screenInverted",
+      "STR_HOME_STYLE:0:homeStyle"
     ],
     [
       "STR_TEXT_SETTINGS:11:",
@@ -185,7 +187,8 @@
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_UI_SHELL:0:uiShell",
-      "STR_NIGHT_MODE:0:screenInverted"
+      "STR_NIGHT_MODE:0:screenInverted",
+      "STR_HOME_STYLE:0:homeStyle"
     ],
     [
       "STR_TEXT_SETTINGS:11:",
@@ -272,7 +275,8 @@
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_UI_SHELL:0:uiShell",
-      "STR_NIGHT_MODE:0:screenInverted"
+      "STR_NIGHT_MODE:0:screenInverted",
+      "STR_HOME_STYLE:0:homeStyle"
     ],
     [
       "STR_TEXT_SETTINGS:11:",
@@ -360,7 +364,8 @@
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_UI_SHELL:0:uiShell",
-      "STR_NIGHT_MODE:0:screenInverted"
+      "STR_NIGHT_MODE:0:screenInverted",
+      "STR_HOME_STYLE:0:homeStyle"
     ],
     [
       "STR_TEXT_SETTINGS:11:",
@@ -446,7 +451,8 @@
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_UI_SHELL:0:uiShell",
-      "STR_NIGHT_MODE:0:screenInverted"
+      "STR_NIGHT_MODE:0:screenInverted",
+      "STR_HOME_STYLE:0:homeStyle"
     ],
     [
       "STR_TEXT_SETTINGS:11:",
@@ -533,7 +539,8 @@
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_UI_SHELL:0:uiShell",
-      "STR_NIGHT_MODE:0:screenInverted"
+      "STR_NIGHT_MODE:0:screenInverted",
+      "STR_HOME_STYLE:0:homeStyle"
     ],
     [
       "STR_TEXT_SETTINGS:11:",
@@ -620,7 +627,8 @@
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_UI_SHELL:0:uiShell",
-      "STR_NIGHT_MODE:0:screenInverted"
+      "STR_NIGHT_MODE:0:screenInverted",
+      "STR_HOME_STYLE:0:homeStyle"
     ],
     [
       "STR_TEXT_SETTINGS:11:",
