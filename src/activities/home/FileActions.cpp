@@ -104,6 +104,11 @@ std::string moveFile(const std::string& oldPath, const std::string& oldEntry, co
 // To avoid traversing directories twice (once for cache clearing, once for deletion),
 // we do both in one pass here, instead of using Storage.removeDir
 bool remove(const std::string& fullPath) {
+  // Never the card itself: a path that comes down to the root would take every book with it.
+  if (FsHelpers::normalisePath(fullPath).empty()) {
+    LOG_ERR("FileBrowser", "Refused to delete the card root: '%s'", fullPath.c_str());
+    return false;
+  }
   auto file = Storage.open(fullPath.c_str());
   if (!file) {
     LOG_ERR("FileBrowser", "Failed to open for metadata clearing: %s", fullPath.c_str());
