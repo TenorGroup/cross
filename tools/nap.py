@@ -241,9 +241,9 @@ def flash_cable(image, port, args, log, serial_module, list_ports):
         raise Stop(f'The X4 Pro answers TCF1 HELLO, but {cut} of {HELLO_TRIES} answers came back cut short and none '
                    f'whole. Nothing was written; run the tool again.')
     if status is None:
-        raise Stop(f'The X4 Pro does not answer TCF1 HELLO ({HELLO_TRIES} tries): its firmware has no cable flash '
-                   f'channel (v1.0.58 and older). Put v1.0.59 on it once from the card or over the network, then use '
-                   f'this tool.')
+        raise Stop(f'The X4 Pro does not answer TCF1 HELLO ({HELLO_TRIES} tries). It may be busy (an update '
+                   f'download, sleep): wait until it shows Home, then retry. v1.0.58 and older have no cable flash '
+                   f'channel; put v1.0.59 or newer on them from the card or over the network.')
     log('hello', **status)
     say(f'Device: X4 Pro {status.get("version")} ({status.get("state")}), running {status.get("running")}, '
         f'next slot {status.get("next")}')
