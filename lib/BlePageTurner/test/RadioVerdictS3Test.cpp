@@ -13,6 +13,14 @@ constexpr Heap kHomeBefore{124752, 81908};
 constexpr Heap kHomeAfter{78244, 36852};
 // The same stack with its host in internal RAM left 31,732 largest: rolled back.
 constexpr Heap kInternalAfter{56604, 31732};
+// 13/10 11:38-12:10 (t2/do-may/261013d), the beta and the lite probe on v1.0.59-rc.1.
+constexpr Heap kBetaHome{135112, 90100};
+constexpr Heap kLiteHomeBefore{121216, 77812};
+constexpr Heap kLiteHomeAfter{74712, 32756};          // 12 B short of the old 32,768: rolled back
+constexpr Heap kLiteBookBefore{112588, 57332};
+constexpr Heap kLiteBookAfter{66288, 31732};
+constexpr Heap kPairingBefore{117360, 73716};         // Settings and the Bluetooth screen hold about 18 KB
+constexpr Heap kPairingAfter{70840, 31732};           // the beta rolled back here, "Chưa khởi động được Bluetooth"
 
 RadioInputs home(const Phase phase) {
   RadioInputs in{};
@@ -28,11 +36,18 @@ RadioInputs home(const Phase phase) {
 TEST(RadioVerdictS3Test, TheNumbersAreTheMeasuredOnesPlusMargin) {
   EXPECT_EQ(kS3StackBytes, 46508u + 4096u);
   EXPECT_EQ(kS3Profile.stackBytes, kS3StackBytes);
-  EXPECT_EQ(kS3Profile.startFreeBytes, kS3StackBytes + kMinimumLargestBlockBytes);
-  EXPECT_EQ(kS3Profile.minimumLargest, kMinimumLargestBlockBytes);
-  // The stack takes 45,056 B from the largest block; a start at Home must leave the reader its block.
-  EXPECT_EQ(kS3Profile.homeStartLargest, kMinimumLargestBlockBytes + 45056u + 2048u);
+  // On the S3 malloc and new above 4,096 B go to PSRAM (the inflate ring, the framebuffer-sized buffers), so
+  // what the reader still wants from internal RAM is a few requests of at most 4,096 B: four of them, not the
+  // 32 KiB block an X3 reader needs. The heaviest build on the host (5,000 anchors) asks 16,560 B live in
+  // requests of that size, largest 4,096 B (HugeBookSection.S3InternalCensusOfTheHeaviestBuild).
+  EXPECT_EQ(kS3InternalAllocMax, 4096u);
+  EXPECT_EQ(kS3Profile.minimumLargest, 4 * kS3InternalAllocMax);
+  EXPECT_EQ(kS3Profile.startFreeBytes, kS3StackBytes + kS3Profile.minimumLargest);
+  // The stack takes 45,056 B from the largest block; a start at Home must leave the reader its room.
+  EXPECT_EQ(kS3Profile.homeStartLargest, kS3Profile.minimumLargest + 45056u + 2048u);
   EXPECT_LE(kS3Profile.homeStartLargest, kHomeBefore.largestBlock) << "the unit's Home passes";
+  EXPECT_LE(kS3Profile.homeStartLargest, kLiteHomeBefore.largestBlock) << "so does the lite probe's";
+  EXPECT_LE(kS3Profile.homeStartLargest, kBetaHome.largestBlock) << "and the beta's";
   EXPECT_LE(kS3Profile.startFreeBytes, kHomeBefore.freeBytes);
 }
 
@@ -75,27 +90,61 @@ TEST(RadioVerdictS3Test, StartingAtHomeNeedsTheBlockTheReaderWillStillWant) {
   in = home(Phase::BeforeStart);
   in.heap.freeBytes = kS3Profile.startFreeBytes - 1;
   EXPECT_EQ(radioVerdict(in, kS3Profile), Why::HeapLow);
+  in = home(Phase::BeforeStart);
+  in.heap = kBetaHome;
+  EXPECT_EQ(radioVerdict(in, kS3Profile), Why::Ok);
+  in.heap = kLiteHomeBefore;
+  EXPECT_EQ(radioVerdict(in, kS3Profile), Why::Ok);
 }
 
 TEST(RadioVerdictS3Test, InTheBookTheSamePieceRulesApplyWithTheS3Numbers) {
   RadioInputs in = home(Phase::BeforeStart);
   in.where = Where::Reader;
-  in.heap = {kS3Profile.startFreeBytes, kMinimumLargestBlockBytes};
+  in.heap = {kS3Profile.startFreeBytes, kS3Profile.minimumLargest};
   EXPECT_EQ(radioVerdict(in, kS3Profile), Why::Ok);
-  in.heap.largestBlock = kMinimumLargestBlockBytes - 1;
+  in.heap.largestBlock = kS3Profile.minimumLargest - 1;
   EXPECT_EQ(radioVerdict(in, kS3Profile), Why::HeapInPieces) << "the silent restart into the book still applies";
-  in.heap = {kS3Profile.startFreeBytes - 1, kMinimumLargestBlockBytes};
+  in.heap = {kS3Profile.startFreeBytes - 1, kS3Profile.minimumLargest};
   EXPECT_EQ(radioVerdict(in, kS3Profile), Why::HeapInPieces);
-  in.heap = {kMinimumFreeBytes - 1, kMinimumLargestBlockBytes};
+  in.heap = {kMinimumFreeBytes - 1, kS3Profile.minimumLargest};
   EXPECT_EQ(radioVerdict(in, kS3Profile), Why::HeapLow);
+  // Measured in the book on the lite probe: it came up with 31,732 left and was rolled back for 1,036 B.
+  in.phase = Phase::BeforeStart;
+  in.heap = kLiteBookBefore;
+  EXPECT_EQ(radioVerdict(in, kS3Profile), Why::Ok);
+  in.phase = Phase::JustStarted;
+  in.heap = kLiteBookAfter;
+  EXPECT_EQ(radioVerdict(in, kS3Profile), Why::Ok);
+  EXPECT_EQ(radioVerdict(in, kX3Profile), Why::HeapInPieces) << "an X3 reader would not have kept it";
 }
 
 TEST(RadioVerdictS3Test, TheStackIsKeptOrRolledBackOnTheLargestBlockAfterIt) {
   RadioInputs in = home(Phase::JustStarted);
   in.heap = kHomeAfter;
   EXPECT_EQ(radioVerdict(in, kS3Profile), Why::Ok) << "PSRAM host: 36,852 left";
+  in.heap = kLiteHomeAfter;
+  EXPECT_EQ(radioVerdict(in, kS3Profile), Why::Ok) << "the lite probe's Home, 32,756 left, was 12 B short";
+  EXPECT_EQ(radioVerdict(in, kX3Profile), Why::HeapInPieces);
+  in.heap = {kS3Profile.startFreeBytes, kS3Profile.minimumLargest - 1};
+  EXPECT_EQ(radioVerdict(in, kS3Profile), Why::HeapInPieces) << "below what four internal requests need";
   in.heap = kInternalAfter;
-  EXPECT_EQ(radioVerdict(in, kS3Profile), Why::HeapInPieces) << "internal host: 31,732 left";
+  EXPECT_EQ(radioVerdict(in, kS3Profile), Why::Ok) << "31,732 left is plenty for the S3 reader";
+}
+
+// The first pairing: the radio has to come up from the Bluetooth screen, which sits on Settings.
+TEST(RadioVerdictS3Test, TheFirstPairingStartsFromTheSettingsScreen) {
+  RadioInputs in{};
+  in.phase = Phase::Idle;
+  in.enabled = true;
+  in.where = Where::PairingScreen;
+  in.heap = kPairingBefore;
+  EXPECT_EQ(radioVerdict(in, kS3Profile), Why::Ok);
+  in.phase = Phase::BeforeStart;
+  EXPECT_EQ(radioVerdict(in, kS3Profile), Why::Ok) << "117,360 free and 73,716 largest";
+  in.phase = Phase::JustStarted;
+  in.heap = kPairingAfter;
+  EXPECT_EQ(radioVerdict(in, kS3Profile), Why::Ok) << "the beta was rolled back here by the X3 number";
+  EXPECT_EQ(radioVerdict(in, kX3Profile), Why::HeapInPieces) << "(the old behavior, kept for the X3)";
 }
 
 }  // namespace

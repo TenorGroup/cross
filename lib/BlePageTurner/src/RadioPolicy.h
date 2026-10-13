@@ -10,9 +10,10 @@
 // and a pretend heap.
 namespace bleturner {
 
-// The stack needs both to start; after it started the reader still needs one 32 KiB block
-// (InflateReader::RING_BYTES and the streaming miniz window). Under kMinimumFreeBytes the heap is
-// short in total; above it a refusal counts as a heap in pieces (shouldRestart).
+// X3 numbers (the default profile below; the S3 has its own). The stack needs both to start; after it
+// started the reader still needs one 32 KiB block (InflateReader::RING_BYTES and the streaming miniz
+// window). Under kMinimumFreeBytes the heap is short in total; above it a refusal counts as a heap in
+// pieces (shouldRestart).
 inline constexpr size_t kMinimumFreeBytes = 65536;
 inline constexpr size_t kMinimumLargestBlockBytes = 32768;
 // The stack took 50,644 to 51,188 B in every X3 log (free before and after the start). A start with
@@ -26,22 +27,28 @@ inline constexpr size_t kStartFreeBytes = kStackBytes + kMinimumLargestBlockByte
 inline constexpr uint32_t kIdleOffMs = 30u * 1000u;
 
 // What a chip's stack costs and where the radio may start. X3 (C3, stack pools cut down): 49,152 B as
-// logged in every X3 start. S3 with NimBLE's host in PSRAM (FREEINK_BLE_STACK_IN_PSRAM, set by
+// logged in every X3 start, and the reader there needs a whole 32 KiB block (the inflate ring is a malloc
+// in the same small heap). S3 with NimBLE's host in PSRAM (FREEINK_BLE_STACK_IN_PSRAM, set by
 // scripts/s3_nimble_psram.h): the unit measured on 13/10/2026 went from free 124,752 / largest 81,908 at
 // Home to 78,244 / 36,852, so the stack took 46,508 B of internal RAM and 45,056 B of the largest block.
 struct Profile {
   size_t stackBytes;
-  size_t startFreeBytes;     // stackBytes plus the reader's block
-  size_t minimumLargest;     // the largest block needed before and after the stack
-  size_t homeStartLargest;   // 0: the radio does not start at Home; else the largest block Home must have
+  size_t startFreeBytes;    // stackBytes plus the reader's room
+  size_t minimumLargest;    // the largest block needed before and after the stack
+  size_t homeStartLargest;  // 0: the radio does not start at Home; else the largest block Home must have
 };
 inline constexpr size_t kS3StackBytes = 46508 + 4096;  // measured, plus a margin of one allocator page
 inline constexpr size_t kS3StackLargestDrop = 45056;
+// On the S3 malloc and new above 4,096 B go to PSRAM (prebuilt sdkconfig.h: CONFIG_SPIRAM_USE_MALLOC=1,
+// CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096): the inflate ring, the layout buffers and the picture buffers never
+// ask internal RAM for a block bigger than this. The heaviest page build on the host asks 16,560 B live in
+// such requests and 4,096 B at most in one (HugeBookSection.S3InternalCensusOfTheHeaviestBuild); four of them
+// contiguous is the room the reader keeps asking for after the stack.
+inline constexpr size_t kS3InternalAllocMax = 4096;
+inline constexpr size_t kS3MinimumLargest = 4 * kS3InternalAllocMax;
 inline constexpr Profile kX3Profile{kStackBytes, kStartFreeBytes, kMinimumLargestBlockBytes, 0};
-// A start at Home must leave the reader its 32 KiB block after the stack took its share of the largest one.
-inline constexpr Profile kS3Profile{kS3StackBytes, kS3StackBytes + kMinimumLargestBlockBytes,
-                                    kMinimumLargestBlockBytes,
-                                    kMinimumLargestBlockBytes + kS3StackLargestDrop + 2048};
+inline constexpr Profile kS3Profile{kS3StackBytes, kS3StackBytes + kS3MinimumLargest, kS3MinimumLargest,
+                                    kS3MinimumLargest + kS3StackLargestDrop + 2048};
 #ifdef FREEINK_BLE_STACK_IN_PSRAM
 inline constexpr const Profile& activeProfile() { return kS3Profile; }
 #else

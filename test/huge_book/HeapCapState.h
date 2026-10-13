@@ -16,9 +16,21 @@ inline size_t firstAbortSize = 0, firstAbortLive = 0;
 inline unsigned refusals = 0;   // nothrow allocations refused by the cap
 inline int untracked = 0;       // > 0 while test storage allocates (not device heap)
 
+// What the S3 would keep in internal RAM. There malloc and new above kS3InternalMax go to PSRAM
+// (sdkconfig.h: CONFIG_SPIRAM_USE_MALLOC=1, CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096), so only the
+// requests at or below it stay in the 320 KB that the radio shares with the reader.
+constexpr size_t kS3InternalMax = 4096;
+inline size_t internalLive = 0;     // counted bytes of requests <= kS3InternalMax now allocated
+inline size_t internalPeak = 0;     // high-water mark of internalLive since reset()
+inline size_t internalMax = 0;      // largest single request that would stay internal
+inline unsigned psramCount = 0;     // requests above kS3InternalMax (PSRAM on S3)
+inline size_t psramMax = 0;         // largest of them
+
 inline void reset(size_t newCap) {
   cap = newCap;
   live = peak = 0;
+  internalLive = internalPeak = internalMax = psramMax = 0;
+  psramCount = 0;
   aborts = refusals = 0;
   firstAbortSize = firstAbortLive = 0;
   counting = true;
@@ -60,6 +72,14 @@ inline void* allocate(size_t size, bool nothrow) {
   if (count) {
     live += size;
     if (live > peak) peak = live;
+    if (size <= kS3InternalMax) {
+      internalLive += size;
+      if (internalLive > internalPeak) internalPeak = internalLive;
+      if (size > internalMax) internalMax = size;
+    } else {
+      ++psramCount;
+      if (size > psramMax) psramMax = size;
+    }
   }
   return header + 1;
 }
@@ -67,7 +87,10 @@ inline void* allocate(size_t size, bool nothrow) {
 inline void release(void* p) {
   if (!p) return;
   auto* header = static_cast<Header*>(p) - 1;
-  if (header->counted) live -= header->size;
+  if (header->counted) {
+    live -= header->size;
+    if (header->size <= kS3InternalMax) internalLive -= header->size;
+  }
   std::free(header);
 }
 }  // namespace heapcap

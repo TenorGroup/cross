@@ -64,7 +64,7 @@ TEST_F(HomeStartTest, NeedsTheRemoteOnAndChosen) {
 }
 
 TEST_F(HomeStartTest, ARefusalAtHomeNeverAsksForARestartIntoTheBook) {
-  host().heap = {124752, 70000};
+  host().heap = {124752, 60000};
   for (uint32_t visit = 1; visit <= 6; ++visit) pass(home(visit));
   EXPECT_EQ(radio().beginCalls, 0u) << "the stack is never brought up for a heap Home cannot spare";
   EXPECT_FALSE(radio().running);

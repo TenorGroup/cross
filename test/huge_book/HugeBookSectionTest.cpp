@@ -2,6 +2,7 @@
 // anchors, under the heap the reader has while the page-turner radio runs.
 #include "HeapCap.h"
 
+#include <RadioPolicy.h>
 #include <Epub/Section.h>
 #include <GfxRenderer.h>
 #include <gtest/gtest.h>
@@ -156,6 +157,36 @@ TEST_F(HugeBookSection, FiveThousandAnchorsStartAndTurnUnderRadioHeap) {
     if (previous) EXPECT_GT(*page, *previous) << Epub::anchorFor(i);
     previous = page;
   }
+}
+
+// What a heavy page build asks of internal RAM on the S3, where PSRAM takes every request above 4,096 B. The
+// radio's post-start block rule for the S3 comes from this (lib/BlePageTurner/src/RadioPolicy.h): the reader
+// needs room for a few requests of the largest internal size and the live bytes of the smaller ones, not an
+// X3-style 32 KiB block (that block is the inflate ring, a malloc that the S3 puts in PSRAM).
+TEST_F(HugeBookSection, S3InternalCensusOfTheHeaviestBuild) {
+  makeBook(5000);
+  Section section(epub, 0, renderer);
+  heapcap::reset(SIZE_MAX);
+  ASSERT_TRUE(section.startBuild(spec));
+  bool released = false;
+  for (int tick = 0; tick < 40 && section.isBuilding(); ++tick) {
+    ASSERT_TRUE(buildTick(section, 2, released));
+    section.parkBuild();
+  }
+  const size_t internalPeak = heapcap::internalPeak, internalMax = heapcap::internalMax, psramMax = heapcap::psramMax;
+  const unsigned psramCount = heapcap::psramCount;
+  const size_t total = heapcap::peak;
+  heapcap::stop();
+  printf("HUGE_S3_CENSUS total_peak=%zu internal_peak=%zu internal_max=%zu psram_requests=%u psram_max=%zu\n", total,
+         internalPeak, internalMax, psramCount, psramMax);
+  // The rule the S3 numbers rest on: no request stays internal above the sdkconfig threshold.
+  EXPECT_EQ(heapcap::kS3InternalMax, bleturner::kS3InternalAllocMax);
+  EXPECT_LE(internalMax, bleturner::kS3InternalAllocMax);
+  // Policy: after the stack the S3 keeps at least four requests of the largest internal size contiguous,
+  // and well under the 32 KiB an X3 reader needs for its inflate ring.
+  EXPECT_GE(bleturner::kS3Profile.minimumLargest, 4 * heapcap::kS3InternalMax);
+  EXPECT_LT(bleturner::kS3Profile.minimumLargest, bleturner::kMinimumLargestBlockBytes);
+  EXPECT_EQ(bleturner::kX3Profile.minimumLargest, 32768u) << "the X3 number stays";
 }
 
 // The TOC anchors a build honours must not depend on when the reader parked
