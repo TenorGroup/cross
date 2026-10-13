@@ -14,6 +14,7 @@
 #include <HalPowerManager.h>
 #include <HalStorage.h>
 #include <HalTiltSensor.h>
+#include <HeapMark.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -768,23 +769,35 @@ bool EpubReaderActivity::indexStepDue() const {
 void EpubReaderActivity::runIndexStep() {
   RenderLock lock(RenderLock::TryTake{});
   if (!lock.acquired()) return;
-  BackgroundBuildFrameGuard frameGuard(*this);
-  // A chapter's layout keeps its parser resident once the pages ahead are laid out, holding the
-  // heap a step needs, for as long as the chapter lasts (X3 r19: no step ran in 30 s). Park it the
-  // way the radio does; its pages stay, and it resumes when the reader nears the last of them.
-  if (section->isBuilding() && !section->isBuildParked()) {
-    backgroundBuildSuspended = true;
-    suspendBackgroundBuild();
+  {
+    BackgroundBuildFrameGuard frameGuard(*this);
+    // A chapter's layout keeps its parser resident once the pages ahead are laid out, holding the
+    // heap a step needs, for as long as the chapter lasts (X3 r19: no step ran in 30 s). Park it the
+    // way the radio does; its pages stay, and it resumes when the reader nears the last of them.
+    if (section->isBuilding() && !section->isBuildParked()) {
+      backgroundBuildSuspended = true;
+      suspendBackgroundBuild();
+    }
   }
   // The loop drops the CPU to its low-power clock after 3 s without a key, which is when steps
   // run: at that clock the TOC step took 57 s on the X3 (r21) against 5 s in the foreground.
   HalPowerManager::Lock fullSpeed;
+  // The TOC step streams the nav through a 43 KB inflater: on the heap it left 6.720 B on the X3
+  // (heap59, 5.000 chapters), so it takes the framebuffer. The page stays on the panel and nothing
+  // is refreshed; the framebuffer no longer holds it, so what reuses it as the page (the status bar
+  // alone, a sheet's snapshot) waits for, or asks for, the next paint.
+  const uint32_t loans = renderer.frameBufferLoanCount();
+  std::optional<GfxRenderer::FrameBufferLoan> loan;
+  if (epub->indexStepInflates()) loan.emplace(renderer);
   // Straight from the key hardware: this pass is held until the step returns.
   const Epub::IndexStep step = epub->indexSome([] { return gpio.rawInputActive(); });
+  loan.reset();
+  if (renderer.frameBufferLoanCount() != loans) pageFrameShown = false;
   if (step == Epub::IndexStep::Done) {
     tocSpineCached = -1;  // the chapter's TOC range can be read now
     LOG_PROBE("ERS", "Book index complete");
     dropSectionsLaidOutWithoutToc();
+    HEAP_MARK("index_drop_sections");
   } else if (step == Epub::IndexStep::Failed) {
     indexRetryAtMs = millis() + INDEX_RETRY_MS;
     if (++indexFailures == INDEX_MAX_FAILURES) LOG_ERR("ERS", "Book index given up");
@@ -961,6 +974,7 @@ void EpubReaderActivity::suspendBackgroundBuild() {
   LOG_INF("ERS", "Build parser released for render headroom: parked=%u page=%d pages=%u free=%u largest=%u",
           parked ? 1u : 0u, section->currentPage, static_cast<unsigned>(section->pageCount),
           static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  HEAP_MARK("build_park");
 #ifdef TENOR_PRESS_PROBE
   if (sheetOpen) traceSheetHeap("PARSER_RELEASE_END", renderer);
 #endif
@@ -1129,6 +1143,18 @@ void EpubReaderActivity::openFootnoteSelect(const bool reopenMenuOnCancel) {
 }
 
 void EpubReaderActivity::loop() {
+#ifdef TENOR_PRESS_PROBE
+  // The pass after the heap's low mark fell by 512 B or more since the last such line: with the
+  // stage marks around it, it names where the low came from.
+  {
+    static uint32_t lowSeen = UINT32_MAX;
+    const uint32_t low = ESP.getMinFreeHeap();
+    if (low + 512 <= lowSeen) {
+      if (lowSeen != UINT32_MAX) HEAP_MARK("reader_low_drop");
+      lowSeen = low;
+    }
+  }
+#endif
   // Taken once: a pass that returns before it reaches its branch below drops it, so it
   // never fires later over a menu or overlay that owned this pass.
   const ReaderShortcut shortcut = std::exchange(pendingShortcut, ReaderShortcut::None);
@@ -1150,6 +1176,7 @@ void EpubReaderActivity::loop() {
       const bool ok = coverref::save(epub->getCachePath(), epub->getCoverHref());
       LOG_DBG("ERS", "Cover ref saved ok=%u", ok ? 1u : 0u);
     }
+    HEAP_MARK("cover_ref");
   }
 
   // The first frame is up: the stack lives in RAM now, so the file read at the open goes. An
@@ -1377,6 +1404,7 @@ void EpubReaderActivity::loop() {
 #ifdef TENOR_UI_ACCEPTANCE
       traceBuildTickBegin("background");
 #endif
+      HEAP_MARK("bg_tick_begin");
       if (!section->isBuilding() &&
           !section->startBuild(SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight))) {
         partialRebuildStartFailed = true;
@@ -1414,6 +1442,7 @@ void EpubReaderActivity::loop() {
         traceBuildTickEnd("background");
       }
 #endif
+      HEAP_MARK("bg_tick_end");
       // Keep a healthy parser between quiet steps. Parking can parse to a checkpoint
       // or rewind to the last one, so doing it at every yield repeats layout work.
       if (!lookAhead || lookAheadWorkPage < 0 || !buildTickHeapGate()) suspendBackgroundBuild();
@@ -4709,8 +4738,9 @@ void EpubReaderActivity::openOverlay(Overlay target) {
     if (previous == Overlay::None) {
       const uint32_t loanCount = renderer.frameBufferLoanCount();
       suspendBackgroundBuild();
-      // Reaching a checkpoint can probe an image using the framebuffer. Repaint it before storing.
-      if (renderer.frameBufferLoanCount() != loanCount) {
+      // Reaching a checkpoint can probe an image using the framebuffer, and an index step lends it
+      // (runIndexStep). Repaint it before storing.
+      if (renderer.frameBufferLoanCount() != loanCount || !pageFrameShown) {
         requestUpdate();
         return;
       }

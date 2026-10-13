@@ -25,6 +25,8 @@ void logAllocationFailure(const char* allocation, size_t bytes) {
 
 InflateStream::~InflateStream() { deinit(); }
 
+size_t InflateStream::streamingBytes() { return STATE_ALIGNED + WINDOW_SIZE; }
+
 bool InflateStream::init(const bool streaming) {
   // Every consumer constructs a fresh stream per operation, so acquire storage
   // from scratch each init (releasing any prior backing first).

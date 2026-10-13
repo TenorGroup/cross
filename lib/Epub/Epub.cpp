@@ -5,9 +5,13 @@
 #include <FsHelpers.h>
 #include <GrayThumb.h>
 #include <HalStorage.h>
+#include <HeapFloor.h>
+#include <InflateStream.h>
 #include <JpegToBmpConverter.h>
 #include <ProgressiveJpeg.h>
 #include <Logging.h>
+#include <HeapMark.h>
+#include <BuildScratch.h>
 #include <Memory.h>
 #include <PngToBmpConverter.h>
 #include <RecoverableFile.h>
@@ -47,13 +51,23 @@ bool askStepStop() {
 namespace {
 // Forwards the inflated bytes to a parser and counts the time spent inside it, so a stream's
 // time splits into zip read plus inflate, and parse.
+// The heap is marked at its first slice (zip buffers, inflate and the parser all taken) and when
+// the stream ends (`<name>_stream_first`, `<name>_stream_end`).
 class TimedSink final : public Print {
   Print& to;
+  const char* first;
+  const char* end;
+  bool marked = false;
 
  public:
-  explicit TimedSink(Print& to) : to(to) {}
+  TimedSink(Print& to, const char* first, const char* end) : to(to), first(first), end(end) {}
+  ~TimedSink() { HEAP_MARK(end); }
   size_t write(uint8_t b) override { return write(&b, 1); }
   size_t write(const uint8_t* buffer, size_t size) override {
+    if (!marked) {
+      marked = true;
+      HEAP_MARK(first);
+    }
     const uint32_t started = micros();
     const size_t n = to.write(buffer, size);
     indexProbe.parseUs += micros() - started;
@@ -157,7 +171,7 @@ bool Epub::parseContentOpf(BookMetadataCache::BookMetadata& bookMetadata, const 
   }
 
 #ifdef TENOR_PRESS_PROBE
-  TimedSink opfSink(opfParser);
+  TimedSink opfSink(opfParser, "opf_stream_first", "opf_stream_end");
 #else
   Print& opfSink = opfParser;
 #endif
@@ -278,7 +292,7 @@ bool Epub::parseTocNcxFile(BookMetadataCache* target, const BookMetadataCache::S
 #ifdef TENOR_PRESS_PROBE
   passProbe.findMs = millis() - stepStarted;
   stepStarted = millis();
-  TimedSink ncxSink(ncxParser);
+  TimedSink ncxSink(ncxParser, "ncx_stream_first", "ncx_stream_end");
 #else
   Print& ncxSink = ncxParser;
 #endif
@@ -328,7 +342,7 @@ bool Epub::parseTocNavFile(BookMetadataCache* target, const BookMetadataCache::S
 #ifdef TENOR_PRESS_PROBE
   passProbe.findMs = millis() - stepStarted;
   stepStarted = millis();
-  TimedSink navSink(navParser);
+  TimedSink navSink(navParser, "nav_stream_first", "nav_stream_end");
 #else
   Print& navSink = navParser;
 #endif
@@ -811,6 +825,11 @@ void Epub::restoreTocSource() {
   contentBasePath = source.basePath;
 }
 
+bool Epub::indexStepInflates() const {
+  return bookMetadataCache && bookMetadataCache->isLoaded() && bookMetadataCache->isPartial() &&
+         !BookMetadataCache::deferredTocReady(cachePath);
+}
+
 bool Epub::indexComplete() const {
   return bookMetadataCache && bookMetadataCache->isLoaded() && !bookMetadataCache->isPartial();
 }
@@ -824,24 +843,40 @@ Epub::IndexStep Epub::indexSome(const BookMetadataCache::StopFn stop) {
   const unsigned long started = millis();
   const char* step;
   bool ok;
+  HEAP_MARK("index_step_begin");
   if (!BookMetadataCache::deferredTocReady(cachePath)) {
     step = "toc";
+    // The inflater rides the framebuffer when the reader lent it (runIndexStep), else the heap.
+    const size_t inflateBytes =
+        buildscratch::available(InflateStream::streamingBytes()) ? 0 : InflateStream::streamingBytes();
+    if (!BookMetadataCache::tocStepFits(inflateBytes, ESP.getFreeHeap(), ESP.getMaxAllocHeap())) {
+      LOG_PROBE("EBP", "INDEX_BG step=toc heap_refused inflate=%u free=%u largest=%u",
+                static_cast<unsigned>(inflateBytes), static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(ESP.getMaxAllocHeap()));
+      return IndexStep::More;
+    }
+    const uint32_t refusedBefore = heapfloor::refusals.load();
+    // A block the door refused during the pass: the heap's failure, not the book's.
+    const auto starved = [refusedBefore] { return heapfloor::refusals.load() != refusedBefore; };
     BookMetadataCache pass(cachePath);
     const bool resumeNcx = !tocNcxItem.empty() && pass.hasDeferredTocProgress(tocNcxItem);
     ok = pass.beginDeferredTocPass(resumeNcx || tocNavItem.empty() ? tocNcxItem : tocNavItem);
+    HEAP_MARK("toc_pass_begin");
     // EPUB 3 nav first, NCX when that fails, as the one-pass build; a book with neither has no TOC.
     bool parsed = false;
     if (ok && !resumeNcx && !tocNavItem.empty()) parsed = parseTocNavFile(&pass, ask);
-    if (ok && !parsed && !stepStopped && !tocNcxItem.empty()) {
+    if (ok && !parsed && !stepStopped && !starved() && !tocNcxItem.empty()) {
       if (!resumeNcx && !tocNavItem.empty()) ok = pass.beginDeferredTocPass(tocNcxItem, true);
       if (ok) parsed = parseTocNcxFile(&pass, ask);
     }
-    if (ok && stepStopped) {
+    // A starved pass keeps what it wrote, as a stopped one does, and the reader comes back (More).
+    if (ok && (stepStopped || (!parsed && starved()))) {
       ok = pass.pauseDeferredTocPass();
     } else if (ok) {
       ok = parsed || (tocNavItem.empty() && tocNcxItem.empty());
       if (ok) ok = pass.endDeferredTocPass();
     }
+    HEAP_MARK("toc_pass_end");
 #ifdef TENOR_PRESS_PROBE
     printPassProbe("toc_bg", 0);
 #endif
@@ -862,6 +897,7 @@ Epub::IndexStep Epub::indexSome(const BookMetadataCache::StopFn stop) {
       bookMetadataCache->discardBookBin();
     }
   }
+  HEAP_MARK("index_step_end");
   LOG_PROBE("EBP", "INDEX_BG step=%s ms=%lu ok=%u stopped=%u free=%u largest=%u", step, millis() - started, ok ? 1u : 0u,
           stepStopped ? 1u : 0u, static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
   if (stepStopped) return IndexStep::Stopped;

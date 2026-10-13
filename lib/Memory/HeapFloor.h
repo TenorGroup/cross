@@ -14,6 +14,7 @@
 // caller already handles (no smoothing, no snapshot, a read error, a page drawn without its image).
 // Nothing aborts. The check runs after the allocation, so two tasks that allocate at once can only
 // see a lower heap than either alone: the door may refuse more, never less.
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -64,6 +65,10 @@ constexpr bool leaves(const size_t need, const size_t biggest, const size_t free
 constexpr bool stands(const size_t bytes, const size_t freeAfter, const size_t largestAfterReported) {
   return bytes < kBigBytes || !crosses(freeAfter, largestAfterReported);
 }
+
+// Blocks the door has refused since boot. A step that sees the count move while it ran knows its
+// failure was the heap's, and comes back later instead of counting a failure.
+inline std::atomic<uint32_t> refusals{0};
 
 #if defined(ESP_PLATFORM) && !defined(SIMULATOR)
 // malloc(bytes) through the door; release with free().

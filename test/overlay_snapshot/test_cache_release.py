@@ -52,6 +52,7 @@ struct EpubReaderActivity {
   Renderer renderer;
   bool textSettingsDirty;
   bool overlayPageStored = false;
+  bool pageFrameShown = true;
   bool sheetKeptRadio = false;
   bool parkBorrowsFrame = false;
   int requests = 0;
@@ -97,6 +98,14 @@ int main() {
   reader.snapshot2();
   if (reader.overlayPageStored || reader.requests != 1) {
     std::fprintf(stderr, "opening sheet stored a framebuffer borrowed by the parser\n");
+    ++failed;
+  }
+  // An index step lent the framebuffer since the page was painted (runIndexStep).
+  EpubReaderActivity afterIndex{{&cache}, false};
+  afterIndex.pageFrameShown = false;
+  afterIndex.snapshot2();
+  if (afterIndex.overlayPageStored || afterIndex.requests != 1) {
+    std::fprintf(stderr, "opening sheet stored a framebuffer an index step borrowed\n");
     ++failed;
   }
   return failed;
