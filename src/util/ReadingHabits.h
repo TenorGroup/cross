@@ -13,11 +13,20 @@ struct Stamp {
   uint16_t minute = 0;
   int16_t offset = 0;
 };
+// The local ordinal fits 16 bits for 2000-2099 (at most 36525). Narrowing it keeps the ledger 116 B smaller,
+// which pays for the 24 hour counters of the reading calendar; the constructor keeps the old field order.
 struct Day {
-  uint32_t day = 0, activeMs = 0, nightMs = 0, earlyMs = 0;
+  uint32_t activeMs = 0, nightMs = 0, earlyMs = 0;
   uint16_t sessions = 0, shortSessions = 0, longSessions = 0, uncertain = 0;
+  uint16_t day = 0;
   bool night = false;
+  Day() = default;
+  Day(uint32_t date, uint32_t active, uint32_t nightTime, uint32_t earlyTime,
+      uint16_t visits, uint16_t shortVisits, uint16_t longVisits, uint16_t unsure, bool atNight)
+      : activeMs(active), nightMs(nightTime), earlyMs(earlyTime), sessions(visits), shortSessions(shortVisits),
+        longSessions(longVisits), uncertain(unsure), day(date <= 36525 ? date : 0), night(atNight) {}
 };
+static_assert(sizeof(Day) == 24, "the ledger keeps 4 B a day less");
 struct Session {
   uint32_t visibleMs = 0, activeMs = 0, idleMs = 0, turns = 0;
   Stamp last{};
@@ -41,6 +50,11 @@ class Ledger {
   std::array<uint8_t, NAMES> enter{}, leave{};
   bool restored = false, clockLost = false;
   uint32_t qualityGapDay = 0;
+  // The session finish() last counted: the local day it ended on and the local minute it began at (day 0: none).
+  // The statistics store takes it after each observe() or settle() for its calendar and hour counters.
+  struct Counted {
+    uint16_t day = 0, startMinute = 0;
+  } counted{};
   void observe(uint32_t elapsedMs, uint16_t turns, Stamp stamp, uint32_t now);
   void settle(Stamp now);
   void finish();

@@ -3,6 +3,7 @@
 #include <PersistableStore.h>
 
 #include "util/ReadingHabits.h"
+#include "util/ReadingHistory.h"
 #include "util/SoLieuDoc.h"
 
 struct BookReadingRecord {
@@ -20,6 +21,9 @@ class ReadingStatsStore : public PersistableStore<ReadingStatsStore> {
   bool writableSchema = true;
   uint32_t bookEpoch = 0;
   uint32_t bookListGeneration = 0;
+  // Reading by hour of the local day since the last save; the card keeps the running totals.
+  mutable std::array<uint32_t, readinghistory::HOURS> pendingHourMs{};
+  mutable std::array<uint16_t, readinghistory::HOURS> pendingHourSessions{};
   ReadingStatsStore() = default;
   ~ReadingStatsStore() = default;
 
@@ -33,6 +37,8 @@ class ReadingStatsStore : public PersistableStore<ReadingStatsStore> {
   static habits::Stamp habitStamp();
   void observeHabits(uint32_t elapsed, uint16_t turns, uint32_t now);
   void prepareHabits();
+  // A session the habits ledger just counted goes into the calendar and the hour counters.
+  void takeCountedSession();
   void markHabitsSleep();
   struct BookEntry {
     std::string path, title;
@@ -46,12 +52,16 @@ class ReadingStatsStore : public PersistableStore<ReadingStatsStore> {
   ResetResult resetStatistics(bool all);
   bool saveToFile() const;
   bool loadFromFile();
+  // The long calendar from the card with RAM's newer days laid over it. False when the card has a file
+  // that does not read whole: a save then refuses too, rather than drop the days it cannot read.
+  bool loadHistory(readinghistory::Snapshot& history) const;
   // progress: 0-100, or negative while the book's progress is not known (its index is still
   // being built); the record then keeps the last known one.
   bool activateBook(const std::string& path, int progress, const std::string& title = "");
   bool readBook(const std::string& path, BookReadingRecord& record) const;
 
  private:
+  bool readHistory(readinghistory::Snapshot& history) const;
   bool readBookFile(const std::string& path, BookReadingRecord& record, int memo) const;
 
  public:

@@ -122,3 +122,19 @@ target_include_directories(ReadingStatsSnapshotMemoTest BEFORE PRIVATE
 )
 target_compile_definitions(ReadingStatsSnapshotMemoTest PRIVATE ARDUINOJSON_ENABLE_ARDUINO_STRING=0)
 add_test(NAME ReadingStatsSnapshotMemo COMMAND ReadingStatsSnapshotMemoTest)
+
+# The 90-day calendar on the card: long_history.cpp includes the copied ReadingStatsStore.cpp.
+add_executable(ReadingStatsLongHistoryTest
+  long_history.cpp
+  ${REPO_ROOT}/src/util/ReadingHabits.cpp
+  ${REPO_ROOT}/src/util/SoLieuDoc.cpp
+  ${REPO_ROOT}/src/util/NgayGio.cpp
+)
+target_include_directories(ReadingStatsLongHistoryTest BEFORE PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_BINARY_DIR}
+  ${REPO_ROOT}/src
+  ${REPO_ROOT}/.pio/libdeps/gh_release/ArduinoJson/src
+)
+target_compile_definitions(ReadingStatsLongHistoryTest PRIVATE ARDUINOJSON_ENABLE_ARDUINO_STRING=0)
+add_test(NAME ReadingStatsLongHistory COMMAND ReadingStatsLongHistoryTest)
