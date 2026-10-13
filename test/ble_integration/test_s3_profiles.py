@@ -43,6 +43,10 @@ class S3Profiles(unittest.TestCase):
                 self.assertIn("-DFREEINK_CAP_USB_MSC=1", flags)
                 # The beta image has no room for the German patterns.
                 self.assertIn("-DTENOR_HYPH_NO_DE", flags)
+                # v1.0.59: an X4 Pro image without the cable channel (the TENOR-CABLE-V1 board-tag field) is
+                # refused by the unit's own SD_FLASH. The X4 Classic takes images over the chip's USB download
+                # mode (tools/nap.py route "rom") and its envs carry no such flag.
+                self.assertEqual("-DTENOR_CABLE_FLASH=1" in flags, board == "x4pro")
                 # NimBLE's host allocated from PSRAM: the stack costs 46,508 B of internal RAM, not 68,152 B.
                 self.assertIn("-include", flags)
                 self.assertIn("scripts/s3_nimble_psram.h", flags)
@@ -74,6 +78,11 @@ class S3Profiles(unittest.TestCase):
                      "-DENABLE_SERIAL_LOG"):
             self.assertIn(flag, flags)
         self.assertIn("-DARDUINO_USB_MODE=1", option("env:x4pro-ble-probe", "build_unflags"))
+
+    def test_x4pro_probes_keep_the_cable_channel(self):
+        for name in ("x4pro-ble", "x4pro-ble-probe", "x4pro-ble-probe-lite"):
+            with self.subTest(env=name):
+                self.assertIn("-DTENOR_CABLE_FLASH=1", option("env:" + name, "build_flags").split())
 
     def test_lite_probe(self):
         # Same cable channel and BLE commands as the probe, with the measurement buffers cut so the
