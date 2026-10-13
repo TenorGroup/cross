@@ -133,7 +133,7 @@ const char* tr(StrId id) {
             margins = margins.replace('ready', 'grid')
             extra_methods = 'void drawPage() const {\nconst int line = renderer.getLineHeight(SMALL_FONT_ID), ' \
                 'step = (renderer.getScreenWidth() - 48) / 7, top = gridTop() + line + 4;\n' \
-                'const char* range = "31/08 - 21/09  1/4";\n' + history_info + '\n}\n'
+                'const char* range = "31/08 - 21/09  1/4";\nconst auto rimGap = [] { return 0; };\n' + history_info + '\n}\n'
         if name in ('OtaUpdate', 'BlePageTurner'):
             extra_methods += function(sources[name], f'freeink::ui::Rect {name}Activity::x3PopupFrame(').replace(
                 f'{name}Activity::', '')

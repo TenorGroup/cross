@@ -158,10 +158,12 @@ int ReadingHistoryActivity::gridTop() const {
 }
 static int pitch(const GfxRenderer& renderer) { return (renderer.getScreenWidth() - 48) / 7; }
 // The weekday line, 4 rows of cells and the line under them (dates of the page); none on the page by hour.
+// tenor/ugly circles today by hand, 4 px out plus the pen's swing: the dates under the grid stand this much lower there.
+static int rimGap() { return shell::uglyParts() ? 12 : 0; }
 int ReadingHistoryActivity::gridHeight() const {
   if (hourPage()) return 0;
   const int line = renderer.getLineHeight(SMALL_FONT_ID);
-  return line + 4 + lichdai::SO_TUAN * pitch(renderer) + line + 12;
+  return line + 4 + lichdai::SO_TUAN * pitch(renderer) + rimGap() + line + 12;
 }
 
 // A short label centred on `cx`, its top at `top`: the pen's hand in tenor/ugly, the caption face otherwise.
@@ -366,7 +368,7 @@ void ReadingHistoryActivity::drawGrid() const {
            static_cast<unsigned long>(firstKey / 100 % 100), static_cast<unsigned long>(lastKey % 100),
            static_cast<unsigned long>(lastKey / 100 % 100), page + 1, lichdai::SO_TRANG);
   tenorchrome::drawInfoInRect(renderer, range,
-                              {0, top + lichdai::SO_TUAN * step + 2, renderer.getScreenWidth(), line}, 1);
+                              {0, top + lichdai::SO_TUAN * step + 2 + rimGap(), renderer.getScreenWidth(), line}, 1);
 }
 
 void ReadingHistoryActivity::buildScreen(UiScreen& screen) {
