@@ -60,6 +60,17 @@ class TickTest : public ::testing::Test {
   Config config;
 };
 
+TEST_F(TickTest, HomeNeverStartsTheRadioInTheX3Profile) {
+  std::strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  Scene s{};
+  s.where = bleturner::Where::Home;
+  s.visit = 1;
+  s.pageShown = true;
+  for (int i = 0; i < 3; ++i) pass(s);
+  EXPECT_EQ(radio().creates, 0u);
+  EXPECT_FALSE(bleturner::beforeScreenChange(0, /*nextIsReader=*/true) && radio().running);
+}
+
 TEST_F(TickTest, StartsOnceTheBookShowsItsPageAndOncePerVisit) {
   Scene s = fake::reading();
   s.pageShown = false;

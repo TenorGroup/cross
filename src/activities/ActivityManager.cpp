@@ -57,6 +57,8 @@ namespace {
 void (*deferredWrites[4])() = {};
 std::atomic<bool> frameAfterDeferredWrite{false};
 std::atomic<bool> frameDrawn{false};
+// The activity generation whose frame was painted last.
+std::atomic<uint32_t> frameDrawnGeneration{0};
 }  // namespace
 
 // Where a book opened from tenor/ugly goes on Home: the diary (NONE).
@@ -314,6 +316,7 @@ void ActivityManager::renderTaskLoop() {
         scrollbar.endPaint();
       }
       frameAfterDeferredWrite.store(true, std::memory_order_release);
+      frameDrawnGeneration.store(activityGeneration_, std::memory_order_release);
       frameDrawn.store(true, std::memory_order_release);
     }
     // Notify any task blocked in requestUpdateAndWait() that the render is done.
@@ -461,11 +464,11 @@ void ActivityManager::loop() {
 #ifdef TENOR_PRESS_PROBE
     static uint32_t radioWaitFrom = 0;
     if (!radioWaitFrom) radioWaitFrom = millis() | 1;
-    if (!bleturner::beforeScreenChange()) return;
+    if (!bleturner::beforeScreenChange(0, pendingActivity && pendingActivity->isReaderActivity())) return;
     LOG_INF("ACT", "Transition radio=%lu ms", static_cast<unsigned long>(millis() - radioWaitFrom));
     radioWaitFrom = 0;
 #else
-    if (!bleturner::beforeScreenChange()) return;
+    if (!bleturner::beforeScreenChange(0, pendingActivity && pendingActivity->isReaderActivity())) return;
 #endif
     ++activityGeneration_;
 
@@ -925,6 +928,11 @@ bool ActivityManager::isForegroundActivityManagingTiltSensor() const {
 
 bool ActivityManager::isForegroundReaderReady() const {
   return isForegroundReaderActivity() && static_cast<ReaderActivity*>(currentActivity.get())->isPageReady();
+}
+
+bool ActivityManager::isForegroundHomePainted() const {
+  return pendingAction == PendingAction::None && currentActivity && currentActivity->name == "Home" &&
+         frameDrawnGeneration.load(std::memory_order_acquire) == activityGeneration_;
 }
 
 bool ActivityManager::foregroundReaderHoldsRadio() const {

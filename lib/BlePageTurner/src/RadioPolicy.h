@@ -25,6 +25,29 @@ inline constexpr size_t kStartFreeBytes = kStackBytes + kMinimumLargestBlockByte
 // and a device lying still eats its battery.
 inline constexpr uint32_t kIdleOffMs = 30u * 1000u;
 
+// What a chip's stack costs and where the radio may start. X3 (C3, stack pools cut down): 49,152 B as
+// logged in every X3 start. S3 with NimBLE's host in PSRAM (FREEINK_BLE_STACK_IN_PSRAM, set by
+// scripts/s3_nimble_psram.h): the unit measured on 13/10/2026 went from free 124,752 / largest 81,908 at
+// Home to 78,244 / 36,852, so the stack took 46,508 B of internal RAM and 45,056 B of the largest block.
+struct Profile {
+  size_t stackBytes;
+  size_t startFreeBytes;     // stackBytes plus the reader's block
+  size_t minimumLargest;     // the largest block needed before and after the stack
+  size_t homeStartLargest;   // 0: the radio does not start at Home; else the largest block Home must have
+};
+inline constexpr size_t kS3StackBytes = 46508 + 4096;  // measured, plus a margin of one allocator page
+inline constexpr size_t kS3StackLargestDrop = 45056;
+inline constexpr Profile kX3Profile{kStackBytes, kStartFreeBytes, kMinimumLargestBlockBytes, 0};
+// A start at Home must leave the reader its 32 KiB block after the stack took its share of the largest one.
+inline constexpr Profile kS3Profile{kS3StackBytes, kS3StackBytes + kMinimumLargestBlockBytes,
+                                    kMinimumLargestBlockBytes,
+                                    kMinimumLargestBlockBytes + kS3StackLargestDrop + 2048};
+#ifdef FREEINK_BLE_STACK_IN_PSRAM
+inline constexpr const Profile& activeProfile() { return kS3Profile; }
+#else
+inline constexpr const Profile& activeProfile() { return kX3Profile; }
+#endif
+
 constexpr bool radioRearmWanted(bool idleStopped, bool entered, bool requested, bool buildPainted) {
   return entered || requested || (buildPainted && !idleStopped);
 }
@@ -50,18 +73,25 @@ struct RadioInputs {
   uint32_t idleMs;    // since a remote was last connected (or the radio came up)
   Heap heap;
   bool connectionBusy = false;
+  bool hasBond = false;  // a remote has been chosen (Config::peerAddr): the only reason to start at Home
 };
 
 // The ONE answer to "may the radio be on now". Everything that starts, keeps or stops the
 // radio asks here.
-constexpr Why radioVerdict(const RadioInputs& in) {
-  const bool stackFits = in.heap.freeBytes >= kStartFreeBytes && in.heap.largestBlock >= kMinimumLargestBlockBytes;
+constexpr Why radioVerdict(const RadioInputs& in, const Profile& profile = activeProfile()) {
+  const bool stackFits = in.heap.freeBytes >= profile.startFreeBytes && in.heap.largestBlock >= profile.minimumLargest;
   switch (in.phase) {
     case Phase::Idle:
       if (!in.enabled) return Why::Off;
       if (in.storageBusy) return Why::StorageBusy;
       // Pairing is the user asking for the radio now: the book's conditions do not apply.
       if (in.where == Where::PairingScreen) return Why::Ok;
+      // S3: the stack goes in at Home, whose heap is whole, and the book inherits it.
+      if (in.where == Where::Home) {
+        if (profile.homeStartLargest == 0 || !in.hasBond) return Why::NotReading;
+        if (!in.pageShown) return Why::PageNotShown;
+        return in.idleStopped ? Why::IdleNoLink : Why::Ok;
+      }
       if (in.where != Where::Reader) return Why::NotReading;
       if (!in.pageShown) return Why::PageNotShown;
       // A radio stopped for a starved build waits for the page, not for a key: restarting it
@@ -74,6 +104,11 @@ constexpr Why radioVerdict(const RadioInputs& in) {
       return Why::Ok;
     case Phase::BeforeStart:
       if (in.storageBusy) return Why::StorageBusy;
+      // A start at Home needs the block the reader will want after the stack; a refusal there is HeapLow, which
+      // never asks for a restart into the book (there is none to restart into).
+      if (in.where == Where::Home) {
+        return stackFits && in.heap.largestBlock >= profile.homeStartLargest ? Why::Ok : Why::HeapLow;
+      }
       if (stackFits) return Why::Ok;
       // Enough bytes in total, but no block the stack can take, or too few to leave the reader's
       // block beside the stack: the same verdict the rollback right after the start gave before
@@ -84,7 +119,7 @@ constexpr Why radioVerdict(const RadioInputs& in) {
       if (in.storageBusy) return Why::StorageBusy;
       // The stack may come up and take the reader's last large block. The check before the start
       // found the bytes, so a stack that leaves no whole block behind split the heap: in pieces.
-      return in.heap.largestBlock >= kMinimumLargestBlockBytes ? Why::Ok : Why::HeapInPieces;
+      return in.heap.largestBlock >= profile.minimumLargest ? Why::Ok : Why::HeapInPieces;
     case Phase::Running:
       if (!in.enabled) return Why::Off;
       if (in.storageBusy) return Why::StorageBusy;
