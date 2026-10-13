@@ -9,8 +9,6 @@
 #include <algorithm>
 #include <cstring>
 
-#include "../../src/ReaderInkWeight.h"
-
 namespace {
 
 char* appendUtf8Codepoint(char* output, const uint32_t codepoint) {
@@ -41,8 +39,7 @@ FontCacheManager::FontCacheManager(const std::map<int, EpdFontFamily>& fontMap,
 
 void FontCacheManager::setFontDecompressor(FontDecompressor* d) { fontDecompressor_ = d; }
 
-void FontCacheManager::setReaderInk(int fontId, uint8_t level, bool antiAliased) {
-  if (level > 5) level = 0;
+void FontCacheManager::setReaderInk(int fontId, int32_t inkStrength, bool antiAliased) {
   static_cast<void>(fontId);
   static_cast<void>(antiAliased);
 #if CROSSPOINT_VECTOR_FONTS
@@ -51,7 +48,7 @@ void FontCacheManager::setReaderInk(int fontId, uint8_t level, bool antiAliased)
 #if CROSSPOINT_VECTOR_FONTS
   for (const auto& entry : ttfFonts_) {
     const bool selected = vectorSelected != ttfFonts_.end() && entry.second == vectorSelected->second;
-    if (entry.second) entry.second->setInkStrength(selected ? readerInk::outlineStrength(level) : 0, antiAliased);
+    if (entry.second) entry.second->setInkStrength(selected ? inkStrength : 0, antiAliased);
   }
 #endif
 }
