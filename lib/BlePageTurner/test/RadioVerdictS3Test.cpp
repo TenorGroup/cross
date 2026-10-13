@@ -37,11 +37,15 @@ TEST(RadioVerdictS3Test, TheNumbersAreTheMeasuredOnesPlusMargin) {
   EXPECT_EQ(kS3StackBytes, 46508u + 4096u);
   EXPECT_EQ(kS3Profile.stackBytes, kS3StackBytes);
   // On the S3 malloc and new above 4,096 B go to PSRAM (the inflate ring, the framebuffer-sized buffers), so
-  // what the reader still wants from internal RAM is a few requests of at most 4,096 B: four of them, not the
+  // what the reader still wants from internal RAM is a few requests of at most 4,096 B: six of them, not the
   // 32 KiB block an X3 reader needs. The heaviest build on the host (5,000 anchors) asks 16,560 B live in
   // requests of that size, largest 4,096 B (HugeBookSection.S3InternalCensusOfTheHeaviestBuild).
   EXPECT_EQ(kS3InternalAllocMax, 4096u);
-  EXPECT_EQ(kS3Profile.minimumLargest, 4 * kS3InternalAllocMax);
+  // Six requests: the census counts neither malloc nor task stacks, so the room is wider than its figure.
+  EXPECT_EQ(kS3Profile.minimumLargest, 6 * kS3InternalAllocMax);
+  EXPECT_EQ(kS3Profile.minimumLargest, 24576u);
+  EXPECT_EQ(kS3Profile.startFreeBytes, 75180u);
+  EXPECT_EQ(kS3Profile.homeStartLargest, 71680u);
   EXPECT_EQ(kS3Profile.startFreeBytes, kS3StackBytes + kS3Profile.minimumLargest);
   // The stack takes 45,056 B from the largest block; a start at Home must leave the reader its room.
   EXPECT_EQ(kS3Profile.homeStartLargest, kS3Profile.minimumLargest + 45056u + 2048u);
@@ -126,9 +130,42 @@ TEST(RadioVerdictS3Test, TheStackIsKeptOrRolledBackOnTheLargestBlockAfterIt) {
   EXPECT_EQ(radioVerdict(in, kS3Profile), Why::Ok) << "the lite probe's Home, 32,756 left, was 12 B short";
   EXPECT_EQ(radioVerdict(in, kX3Profile), Why::HeapInPieces);
   in.heap = {kS3Profile.startFreeBytes, kS3Profile.minimumLargest - 1};
-  EXPECT_EQ(radioVerdict(in, kS3Profile), Why::HeapInPieces) << "below what four internal requests need";
+  EXPECT_EQ(radioVerdict(in, kS3Profile), Why::HeapInPieces) << "below what six internal requests need";
   in.heap = kInternalAfter;
   EXPECT_EQ(radioVerdict(in, kS3Profile), Why::Ok) << "31,732 left is plenty for the S3 reader";
+}
+
+// The four situations measured on 13/10 (do-may/261013d) against the final numbers, and the pairing screen's
+// start too: Idle/BeforeStart/JustStarted verdicts, nothing rolled back.
+TEST(RadioVerdictS3Test, TheFourMeasuredSituationsAndThePairingScreenAllPass) {
+  struct Row {
+    const char* name;
+    Where where;
+    Heap before, after;
+  };
+  const Row rows[] = {
+      {"Home, beta", Where::Home, kBetaHome, {kBetaHome.freeBytes - 46508, kBetaHome.largestBlock - 45056}},
+      {"Home, lite", Where::Home, kLiteHomeBefore, kLiteHomeAfter},
+      {"in the book, lite", Where::Reader, kLiteBookBefore, kLiteBookAfter},
+      {"pairing screen", Where::PairingScreen, kPairingBefore, kPairingAfter},
+  };
+  for (const Row& row : rows) {
+    RadioInputs in{};
+    in.enabled = true;
+    in.where = row.where;
+    in.pageShown = true;
+    in.hasBond = true;
+    in.phase = Phase::BeforeStart;
+    in.heap = row.before;
+    EXPECT_EQ(radioVerdict(in, kS3Profile), Why::Ok) << row.name << " before";
+    in.phase = Phase::JustStarted;
+    in.heap = row.after;
+    EXPECT_EQ(radioVerdict(in, kS3Profile), Why::Ok) << row.name << " after";
+  }
+  // The pairing screen starts by the same rule as the book (free and largest for the stack), not by the Home
+  // rule; its 73,716 would pass the Home largest (71,680) too.
+  EXPECT_GE(kPairingBefore.largestBlock, kS3Profile.homeStartLargest);
+  EXPECT_GE(kPairingBefore.largestBlock, kS3Profile.minimumLargest + 45056u) << "the stack's cut still leaves the floor";
 }
 
 // The first pairing: the radio has to come up from the Bluetooth screen, which sits on Settings.

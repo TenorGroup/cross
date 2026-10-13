@@ -42,10 +42,11 @@ inline constexpr size_t kS3StackLargestDrop = 45056;
 // On the S3 malloc and new above 4,096 B go to PSRAM (prebuilt sdkconfig.h: CONFIG_SPIRAM_USE_MALLOC=1,
 // CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096): the inflate ring, the layout buffers and the picture buffers never
 // ask internal RAM for a block bigger than this. The heaviest page build on the host asks 16,560 B live in
-// such requests and 4,096 B at most in one (HugeBookSection.S3InternalCensusOfTheHeaviestBuild); four of them
-// contiguous is the room the reader keeps asking for after the stack.
+// such requests and 4,096 B at most in one (HugeBookSection.S3InternalCensusOfTheHeaviestBuild), counting
+// operator new only. Malloc and task stacks are not in that census, so the room kept contiguous after the stack
+// is six of the largest request (24,576 B), wider than the four the census alone would justify.
 inline constexpr size_t kS3InternalAllocMax = 4096;
-inline constexpr size_t kS3MinimumLargest = 4 * kS3InternalAllocMax;
+inline constexpr size_t kS3MinimumLargest = 6 * kS3InternalAllocMax;
 inline constexpr Profile kX3Profile{kStackBytes, kStartFreeBytes, kMinimumLargestBlockBytes, 0};
 inline constexpr Profile kS3Profile{kS3StackBytes, kS3StackBytes + kS3MinimumLargest, kS3MinimumLargest,
                                     kS3MinimumLargest + kS3StackLargestDrop + 2048};

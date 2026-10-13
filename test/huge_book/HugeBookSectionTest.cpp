@@ -182,9 +182,9 @@ TEST_F(HugeBookSection, S3InternalCensusOfTheHeaviestBuild) {
   // The rule the S3 numbers rest on: no request stays internal above the sdkconfig threshold.
   EXPECT_EQ(heapcap::kS3InternalMax, bleturner::kS3InternalAllocMax);
   EXPECT_LE(internalMax, bleturner::kS3InternalAllocMax);
-  // Policy: after the stack the S3 keeps at least four requests of the largest internal size contiguous,
+  // Policy: after the stack the S3 keeps at least six requests of the largest internal size contiguous,
   // and well under the 32 KiB an X3 reader needs for its inflate ring.
-  EXPECT_GE(bleturner::kS3Profile.minimumLargest, 4 * heapcap::kS3InternalMax);
+  EXPECT_GE(bleturner::kS3Profile.minimumLargest, 6 * heapcap::kS3InternalMax);
   EXPECT_LT(bleturner::kS3Profile.minimumLargest, bleturner::kMinimumLargestBlockBytes);
   EXPECT_EQ(bleturner::kX3Profile.minimumLargest, 32768u) << "the X3 number stays";
 }
