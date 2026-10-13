@@ -452,3 +452,57 @@ TEST(CableSession, HostTimeOfAReleaseSizedImage) {
               frames(image).size(), run.slot.writes, allocations, static_cast<long long>(us));
   EXPECT_EQ(allocations, 0u);
 }
+
+namespace {
+// The X4 Pro's USB CDC as USBCDC::write (framework-arduinoespressif32 cores/esp32/USBCDC.cpp) treats a
+// write: a 64 B TinyUSB FIFO, room waited for until the port's timeout, then the rest of the write is
+// dropped. The computer drains one 64 B packet per ms while it reads.
+struct FakeCdc {
+  uint32_t timeoutMs = 250, ms = 0;
+  size_t fifo = 0;
+  bool hostReads = true;
+  int writes = 0;
+  std::string wire;
+  void setTxTimeoutMs(uint32_t t) { timeoutMs = t; }
+  size_t write(const uint8_t* data, size_t n) {
+    ++writes;
+    const uint32_t until = ms + timeoutMs;
+    size_t sent = 0;
+    while (sent < n) {
+      if (fifo == 64) {
+        if (static_cast<int32_t>(ms - until) >= 0) break;
+        ++ms;
+        if (hostReads) fifo = 0;
+        continue;
+      }
+      wire += static_cast<char>(data[sent++]);
+      ++fifo;
+    }
+    return sent;
+  }
+};
+constexpr const char* kHello =
+    "TCF1 HELLO board=x4pro chip=9 version=v1.0.59-rc.1 cable=1 state=valid elf=d1c24df6ec6a9ff3 "
+    "running=app0@0x10000+0x7e0000 boot=app0 next=app1@0x7f0000+0x7e0000 frame=1024";
+}  // namespace
+
+// Measured 13/10: about 1 HELLO in 2 reached the computer cut at its 64th byte ("...state=vali"), the
+// next log line glued on. The whole line goes out in one write and the port's 1 ms comes back after.
+TEST(CableLine, AHelloLongerThanTheUsbFifoGoesOutWholeInOneWrite) {
+  FakeCdc cdc;
+  cdc.timeoutMs = 1;  // main.cpp
+  ASSERT_GT(std::string(kHello).size(), 64u);
+  EXPECT_TRUE(cableflash::sendLine(cdc, kHello, 1));
+  EXPECT_EQ(cdc.wire, std::string(kHello) + "\n");
+  EXPECT_EQ(cdc.writes, 1);
+  EXPECT_EQ(cdc.timeoutMs, 1u);
+}
+
+TEST(CableLine, AHostThatDoesNotReadCostsAtMostTheLineTimeout) {
+  FakeCdc cdc;
+  cdc.timeoutMs = 1;
+  cdc.hostReads = false;
+  EXPECT_FALSE(cableflash::sendLine(cdc, kHello, 1));
+  EXPECT_LE(cdc.ms, cableflash::kLineMs + 2);
+  EXPECT_EQ(cdc.timeoutMs, 1u);
+}

@@ -101,6 +101,26 @@ inline const char* reason(const Result r) {
   return "";
 }
 
+// One line to the host, "\n" included, in one write of the port. The X4 Pro's TinyUSB CDC holds 64 B
+// and the port's usual timeout is 1 ms (main.cpp), so a longer line written the usual way lost every
+// byte after its 64th: a HELLO cut at "state=vali", the next log line glued on. For this one write the
+// port waits up to kLineMs for room and holds its lock, so no other task's bytes land inside the line.
+// A host that opened the port and does not read costs at most kLineMs; a port with no host costs nothing.
+// Port: size_t write(const uint8_t*, size_t), void setTxTimeoutMs(uint32_t). `usualMs` is put back after.
+constexpr uint32_t kLineMs = 250;
+template <typename Port>
+bool sendLine(Port& port, const char* text, const uint32_t usualMs) {
+  char line[256];
+  const int n = std::snprintf(line, sizeof(line), "%s\n", text);
+  if (n <= 0 || static_cast<size_t>(n) >= sizeof(line)) return false;
+  port.setTxTimeoutMs(kLineMs);
+  const size_t sent = port.write(reinterpret_cast<const uint8_t*>(line), static_cast<size_t>(n));
+  port.setTxTimeoutMs(usualMs);
+  // Cut short anyway: end it, so the next line still stands alone.
+  if (sent > 0 && sent < static_cast<size_t>(n)) port.write(reinterpret_cast<const uint8_t*>("\n"), 1);
+  return sent == static_cast<size_t>(n);
+}
+
 inline uint32_t le32(const uint8_t* p) {
   return p[0] | static_cast<uint32_t>(p[1]) << 8 | static_cast<uint32_t>(p[2]) << 16 | static_cast<uint32_t>(p[3]) << 24;
 }

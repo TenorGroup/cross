@@ -51,15 +51,17 @@ void hello() {
   if (running && esp_ota_get_partition_description(running, &desc) == ESP_OK) {
     for (int i = 0; i < 8; ++i) snprintf(elf + i * 2, 3, "%02x", desc.app_elf_sha256[i]);
   }
-  logSerial.printf("TCF1 HELLO board=%.*s chip=%u version=%s cable=1 state=%s elf=%s running=%s@0x%lx+0x%lx boot=%s "
-                   "next=%s@0x%lx+0x%lx frame=%u\n",
-                   static_cast<int>(board_tag::boardNameLen()), board_tag::boardName(),
-                   static_cast<unsigned>(firmware_flash::runningPartitionChipId()), CROSSPOINT_VERSION,
-                   stateName(running), elf, running ? running->label : "-",
-                   running ? static_cast<unsigned long>(running->address) : 0UL,
-                   running ? static_cast<unsigned long>(running->size) : 0UL, boot ? boot->label : "-",
-                   next ? next->label : "-", next ? static_cast<unsigned long>(next->address) : 0UL,
-                   next ? static_cast<unsigned long>(next->size) : 0UL, static_cast<unsigned>(kPayload));
+  char line[224];
+  snprintf(line, sizeof(line),
+           "TCF1 HELLO board=%.*s chip=%u version=%s cable=1 state=%s elf=%s running=%s@0x%lx+0x%lx boot=%s "
+           "next=%s@0x%lx+0x%lx frame=%u",
+           static_cast<int>(board_tag::boardNameLen()), board_tag::boardName(),
+           static_cast<unsigned>(firmware_flash::runningPartitionChipId()), CROSSPOINT_VERSION, stateName(running), elf,
+           running ? running->label : "-", running ? static_cast<unsigned long>(running->address) : 0UL,
+           running ? static_cast<unsigned long>(running->size) : 0UL, boot ? boot->label : "-",
+           next ? next->label : "-", next ? static_cast<unsigned long>(next->address) : 0UL,
+           next ? static_cast<unsigned long>(next->size) : 0UL, static_cast<unsigned>(kPayload));
+  say(line);
 }
 
 struct CablePort {
@@ -94,7 +96,13 @@ struct MillisClock {
 
 void grantRecoveryConsent() { recoveryUntil = millis() + kConsentMs; }
 
-void say(const char* line) { logSerial.printf("%s\n", line); }
+void say(const char* line) {
+#if LOG_SERIAL_HAS_TX_TIMEOUT
+  sendLine(logSerial, line, 1);  // back to main.cpp's load-bearing 1 ms
+#else
+  logSerial.printf("%s\n", line);
+#endif
+}
 
 void onLine(const char* line, GfxRenderer& renderer, MappedInputManager& input) {
   const char* rest = line + 5;  // after "TCF1 "
@@ -124,7 +132,11 @@ void onLine(const char* line, GfxRenderer& renderer, MappedInputManager& input) 
   if (!screen) return say("TCF1 FAIL heap");
   LOG_INF("CABLE", "begin size=%lu version=%s consented=%d", static_cast<unsigned long>(begin.size), begin.version,
           consented);
-  if (!consented) logSerial.printf("TCF1 WAIT %u\n", static_cast<unsigned>(kConsentMs / 1000));
+  if (!consented) {
+    char wait[24];
+    snprintf(wait, sizeof(wait), "TCF1 WAIT %u", static_cast<unsigned>(kConsentMs / 1000));
+    say(wait);
+  }
   // A book is closed the usual way (its progress saved) before the slot is written.
   if (activityManager.isReaderActivity())
     activityManager.replaceActivity(std::move(screen));
@@ -150,14 +162,9 @@ Result run(const Begin& begin, void (*progress)(size_t, size_t, void*), void* ct
   LOG_INF("CABLE", "slot=%s@0x%lx+0x%lx size=%lu heap=%u largest=%u", slot.part ? slot.part->label : "-",
           slot.part ? static_cast<unsigned long>(slot.part->address) : 0UL, static_cast<unsigned long>(slot.size()),
           static_cast<unsigned long>(begin.size), static_cast<unsigned>(heapBefore), static_cast<unsigned>(largestBefore));
-#if LOG_SERIAL_HAS_TX_TIMEOUT
-  logSerial.setTxTimeoutMs(500);  // the answers must reach a host that is reading
-#endif
+  // Every answer goes out whole through say() (sendLine); the log keeps the usual 1 ms.
   const Result result = receive(begin, session, firmware_flash::runningPartitionChipId(), port, slot, clock,
                                 frame.get(), [&](size_t written, size_t total) { progress(written, total, ctx); });
-#if LOG_SERIAL_HAS_TX_TIMEOUT
-  logSerial.setTxTimeoutMs(1);
-#endif
   LOG_INF("CABLE", "end result=%s ms=%lu heap=%u min=%u", reason(result), millis() - started,
           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
           static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL)));

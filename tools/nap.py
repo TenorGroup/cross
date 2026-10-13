@@ -18,7 +18,8 @@ identity:
 --dry-run checks the image, finds the device, asks the X4 Pro HELLO (read only) and prints the plan;
 nothing is written and nothing is reset. Needs pyserial and esptool (the PlatformIO python has both).
 Exit status: 0 the new build runs (or the plan, with --dry-run), 1 refused or failed, 2 the device
-rolled back to its previous build, 3 written but not seen running.
+rolled back to its previous build, 3 written but not seen running (or not confirmed: every HELLO came
+back cut).
 """
 import argparse
 import hashlib
@@ -45,6 +46,15 @@ ROUTE = {'x4': 'rom', 'x4c': 'rom', 'x4pro': 'cable'}
 NAMES = {'x4': 'X3/X4', 'x4c': 'X4 Classic', 'x4pro': 'X4 Pro'}
 DATA, END, ABORT = 1, 2, 3
 ACK_SECONDS = 5  # a frame not answered in this time is sent again
+HELLO_TRIES = 5  # a HELLO that does not come back whole is asked again, this many times in all
+HELLO_SECONDS = 3  # each one waits this long for its answer
+# Every field of the device's HELLO (src/platform/CableFlashLink.cpp); a line cut short or with a log line
+# glued on does not match, and nothing is concluded from it.
+HELLO_LINE = re.compile(
+    r'TCF1 HELLO board=(?P<board>[a-z0-9]{1,23}) chip=(?P<chip>\d+) version=(?P<version>[!-~]{1,31}) '
+    r'cable=(?P<cable>1) state=(?P<state>valid|trial|new|undefined|invalid|none) elf=(?P<elf>[0-9a-f]{16}|-) '
+    r'running=(?P<running>[\w-]+@0x[0-9a-f]+\+0x[0-9a-f]+) boot=(?P<boot>[\w-]+) '
+    r'next=(?P<next>[\w-]+@0x[0-9a-f]+\+0x[0-9a-f]+) frame=(?P<frame>\d+)')
 
 
 class Stop(Exception):
@@ -158,7 +168,8 @@ def frame(kind, session, seq, offset, payload=b''):
 
 
 class Link:
-    """Lines from the device; anything that does not start with TCF1 is its log and is kept apart."""
+    """Lines from the device; anything before "TCF1 " is its log and is kept apart (a log line cut short
+    by the device loses its newline, and the TCF1 line that follows lands on the same line)."""
 
     def __init__(self, serial_port, log):
         self.s, self.log, self.buf = serial_port, log, b''
@@ -172,7 +183,11 @@ class Link:
             while b'\n' in self.buf:
                 raw, self.buf = self.buf.split(b'\n', 1)
                 line = raw.decode('utf-8', 'replace').strip()
-                if line.startswith('TCF1 '):
+                at = line.rfind('TCF1 ')
+                if at > 0:
+                    self.log('device', text=line[:at])
+                    line = line[at:]
+                if at >= 0:
                     self.log('line', text=line)
                     if line.startswith(prefixes) and not skip(line):
                         return line
@@ -180,10 +195,6 @@ class Link:
                     self.log('device', text=line)
             self.buf += self.s.read(self.s.in_waiting or 1)
         return None
-
-
-def fields_of(line):
-    return dict(part.split('=', 1) for part in line.split()[2:] if '=' in part)
 
 
 def open_port(device, serial_module):
@@ -194,10 +205,22 @@ def open_port(device, serial_module):
     return s
 
 
-def hello(link):
-    link.send('TCF1 HELLO')
-    line = link.expect(('TCF1 HELLO',), 3)
-    return fields_of(line) if line else None
+def hello(link, tries=HELLO_TRIES):
+    """(fields of a whole HELLO or None, how many came back cut)."""
+    cut = 0
+    for attempt in range(tries):
+        if attempt:
+            time.sleep(0.5)
+        link.send('TCF1 HELLO')
+        line = link.expect(('TCF1 HELLO',), HELLO_SECONDS)
+        if line is None:
+            continue
+        match = HELLO_LINE.fullmatch(line)
+        if match:
+            return match.groupdict(), cut
+        cut += 1
+        link.log('cut-hello', text=line)
+    return None, cut
 
 
 MESSAGES = {
@@ -213,17 +236,21 @@ MESSAGES = {
 
 def flash_cable(image, port, args, log, serial_module, list_ports):
     link = Link(open_port(port.device, serial_module), log)
-    status = hello(link)
+    status, cut = hello(link)
+    if status is None and cut:
+        raise Stop(f'The X4 Pro answers TCF1 HELLO, but {cut} of {HELLO_TRIES} answers came back cut short and none '
+                   f'whole. Nothing was written; run the tool again.')
     if status is None:
-        raise Stop('The X4 Pro does not answer TCF1 HELLO: its firmware has no cable flash channel (v1.0.58 and '
-                   'older). Put v1.0.59 on it once from the card or over the network, then use this tool.')
+        raise Stop(f'The X4 Pro does not answer TCF1 HELLO ({HELLO_TRIES} tries): its firmware has no cable flash '
+                   f'channel (v1.0.58 and older). Put v1.0.59 on it once from the card or over the network, then use '
+                   f'this tool.')
     log('hello', **status)
     say(f'Device: X4 Pro {status.get("version")} ({status.get("state")}), running {status.get("running")}, '
         f'next slot {status.get("next")}')
     if status.get('board') != image.board or status.get('chip') != str(image.chip):
         raise Stop(f'The device is board {status.get("board")} chip {status.get("chip")}; refused before writing.')
-    slot = status.get('next', '')
-    slot_size = int(slot.split('+')[1], 16) if '+' in slot else 0
+    slot = status['next']
+    slot_size = int(slot.split('+')[1], 16)
     if len(image.data) > slot_size:
         raise Stop(f'The image ({len(image.data)} B) is larger than the slot the device has ({slot_size} B).')
     if status.get('state') == 'trial':
@@ -278,14 +305,16 @@ def flash_cable(image, port, args, log, serial_module, list_ports):
     log('done', seconds=round(elapsed, 2), bytes=len(image.data))
     say(f'WRITTEN: {len(image.data)} B in {elapsed:.1f} s. The device restarts on trial.')
     link.s.close()
-    return follow(image, port, log, serial_module, list_ports)
+    return follow(image, port, slot.split('@')[0], log, serial_module, list_ports)
 
 
-def follow(image, port, log, serial_module, list_ports, wait=90):
+def follow(image, port, target, log, serial_module, list_ports, wait=90, cut_cap=3 * HELLO_TRIES):
     """After DONE the device restarts: wait for its serial to go and come back, then ask until its trial
-    boot has passed (state valid) or it booted the previous build again."""
+    boot has passed (state valid) or it booted the previous build again. Only a whole HELLO counts: the
+    new build runs when it runs from `target` (the slot just written) with the image's ELF hash."""
     start = time.monotonic()
     gone = trial_said = False
+    cuts = 0
     while time.monotonic() - start < wait:
         time.sleep(1)
         present = [p for p in espressif_ports(list_ports) if p.serial == port.serial and p.route == 'cable']
@@ -296,15 +325,20 @@ def follow(image, port, log, serial_module, list_ports, wait=90):
             continue  # still the old build, before its restart
         try:
             link = Link(open_port(present[0].device, serial_module), log)
-            status = hello(link)
+            status, cut = hello(link)
             link.s.close()
         except (OSError, serial_module.SerialException):
             continue
+        cuts += cut
         if not status:
+            if cuts >= cut_cap:
+                break
             continue
         log('after', **status)
-        if image.elf and status.get('elf') != image.elf[:16]:
-            say(f'ROLLED BACK: the device runs {status.get("version")} again (elf {status.get("elf")}).')
+        running = status['running'].split('@')[0]
+        if running != target or (image.elf and status['elf'] != image.elf[:16]):
+            say(f'ROLLED BACK: the device runs {status["version"]} from {running} (elf {status["elf"]}), not the '
+                f'image written into {target}.')
             return 2
         if status.get('state') == 'trial':
             if not trial_said:
@@ -313,6 +347,10 @@ def follow(image, port, log, serial_module, list_ports, wait=90):
             continue
         say(f'VALID: the device runs {status.get("version")} ({status.get("state")}).')
         return 0
+    if cuts:
+        say(f'NOT CONFIRMED: the image was written; after its restart the device answered HELLO {cuts} times, every '
+            f'answer cut short, so which build runs is not known. Ask again with --dry-run.')
+        return 3
     say('NOT SEEN: the image was written but the device did not answer after its restart.')
     return 3
 
