@@ -109,4 +109,15 @@ TEST_F(HomeStartTest, PressesMadeAtHomeAreDroppedNotCarriedIntoTheBook) {
   EXPECT_TRUE(host().delivered.empty());
 }
 
+// 13/10 11:38-12:10 on the unit: the first pairing can only start from Settings > Bluetooth page turner, where the
+// screens hold about 18 KB. The beta came up with 70,840 / 31,732 left and was rolled back by the X3 block rule.
+TEST_F(HomeStartTest, TheFirstPairingStartsFromTheSettingsScreen) {
+  host().heap = {117360, 73716};
+  radio().heapAfterBegin = {70840, 31732};
+  EXPECT_TRUE(bleturner::switchOn());
+  EXPECT_TRUE(radio().running);
+  EXPECT_EQ(radio().endCalls, 0u) << "not rolled back";
+  for (const auto& line : host().logs) EXPECT_EQ(line.find("rolled back"), std::string::npos) << line;
+}
+
 }  // namespace
