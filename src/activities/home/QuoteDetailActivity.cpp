@@ -656,8 +656,10 @@ int QuoteDetailActivity::metaStep() const {
   return penPage() ? UGLY_META_STEP : renderer.getLineHeight(SMALL_FONT_ID);
 }
 
+// The quote's place in the list, and its page only when it runs over more than one.
 void QuoteDetailActivity::positionLabel(char* out, const size_t size) const {
-  snprintf(out, size, "%d/%d, %d/%d", index + 1, static_cast<int>(ids.size()), quotePage + 1, pages);
+  if (pages > 1) snprintf(out, size, "%d/%d, %d/%d", index + 1, static_cast<int>(ids.size()), quotePage + 1, pages);
+  else snprintf(out, size, "%d/%d", index + 1, static_cast<int>(ids.size()));
 }
 
 int QuoteDetailActivity::visitX3Meta(const bool paint, const int firstLine, const int top) const {
@@ -721,8 +723,9 @@ void QuoteDetailActivity::drawX3Content() const {
   if (!penPage()) {
     char position[48];
     positionLabel(position, sizeof(position));
-    tenorchrome::drawInfoInRect(renderer, position,
-                                {body.x, body.y, body.width, renderer.getLineHeight(SMALL_FONT_ID) + 7});
+    // Centred on its ink: a short count such as "1/3" sat a pixel off the centre by its advance width.
+    const auto ink = renderer.getTextInkBounds(SMALL_FONT_ID, position, EpdFontFamily::REGULAR);
+    renderer.drawText(SMALL_FONT_ID, body.x + (body.width - (ink[2] - ink[0])) / 2 - ink[0], body.y, position);
   }
   const auto area = metrics();
   const int top = quotedetail::bodyTop(area);
