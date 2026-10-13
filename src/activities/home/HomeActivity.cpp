@@ -56,6 +56,7 @@
 #include "activities/util/ListOrderActivity.h"
 #include "components/ReadingStatsFormat.h"
 #include "components/ReadingStatsView.h"
+#include "util/BookTitleDisplay.h"
 #include "util/CoverRef.h"
 #include "util/NgayDocXong.h"
 #include "components/HomeStatsNavigation.h"
@@ -167,6 +168,12 @@ constexpr uint32_t holderId(const int width, const int height, const bool four) 
   return (static_cast<uint32_t>(width) << 17) | (static_cast<uint32_t>(height) << 1) | (four ? 1u : 0u);
 }
 uint8_t holderTriedNext = 0;
+// The name Home draws for a recent book: its title without the subtitle, or the file name when it has no title.
+// The stored title stays whole.
+std::string recentName(const RecentBook& book) {
+  if (book.title.empty()) return book.path.substr(book.path.find_last_of('/') + 1);
+  return std::string(booktitle::display(book.title));
+}
 }  // namespace
 
 HomeActivity::HomeActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
@@ -403,7 +410,7 @@ void HomeActivity::rebuildRows(const bool readFolder) {
 
   switch (activeTabId) {
     case Tab::RECENT:
-      for (const auto& book : recentBooks) rowLabels.push_back(book.title);
+      for (const auto& book : recentBooks) rowLabels.emplace_back(booktitle::display(book.title));
       break;
     case Tab::FOLDER: {
       if (readFolder && !folderRecursiveSearch) docGocTheNho();
@@ -1520,7 +1527,7 @@ void HomeActivity::showRecentActions(const int index, const fui::Rect anchor) {
   if (!shell::isUgly()) {
     contextCover = anchor;
     const auto& book = recentBooks[index];
-    const std::string title = book.title.empty() ? book.path.substr(book.path.find_last_of('/') + 1) : book.title;
+    const std::string title = recentName(book);
     const fui::Rect ring{static_cast<int16_t>(anchor.x - 7), static_cast<int16_t>(anchor.y - 7),
                          static_cast<int16_t>(anchor.width + 14), static_cast<int16_t>(anchor.height + 14)};
     rowMenu.showContext(title.c_str(), ring, labels, rowIsPinned(index), selected,
@@ -2166,7 +2173,7 @@ void HomeActivity::drawRecentCard() {
   std::vector<std::string> otherTitleLines;
   if (recentBooks.size() > 1) {
     const auto& next = recentBooks[(shown + 1) % recentBooks.size()];
-    const auto title = next.title.empty() ? next.path.substr(next.path.find_last_of('/') + 1) : next.title;
+    const auto title = recentName(next);
     const int room = renderer.getScreenWidth() - 80 -
                      renderer.getTextWidth(UI_10_FONT_ID, tr(STR_RECENT_OTHER_BOOK)) - 16;
     otherTitleLines = renderer.wrappedText(UI_10_FONT_ID, title.c_str(), room, 2, EpdFontFamily::BOLD);
@@ -2250,7 +2257,7 @@ void HomeActivity::drawRecentCard() {
     LOG_INF("HOME", "tenor/ink frame cover=%d,%d,%d,%d", frame.coverX, frame.coverY, frame.coverW, frame.coverH);
   }
   const auto& book = recentBooks[shown];
-  const auto title = book.title.empty() ? book.path.substr(book.path.find_last_of('/') + 1) : book.title;
+  const auto title = recentName(book);
   const char* author = book.author.empty() ? tr(STR_RECENT_NO_AUTHOR) : book.author.c_str();
   // A saved quote of the book goes in curly quotes; the page excerpt the reader left on is shown
   // as it is, as in the approved drawings.
@@ -3079,7 +3086,7 @@ void HomeActivity::drawNameHolder(const int book, const int x, const int y, cons
   renderer.fillRoundedRect(x, y, width, height, radius, Color::LightGray);
   renderer.fillRoundedRect(x + 2, y + 2, width - 4, height - 4, tenorradius::nest(radius, 2), Color::White);
   const auto& entry = recentBooks[book];
-  const auto title = entry.title.empty() ? entry.path.substr(entry.path.find_last_of('/') + 1) : entry.title;
+  const auto title = recentName(entry);
   const bool narrow = width < 200;
   const int titleFont = narrow ? UI_10_FONT_ID : UI_12_FONT_ID;
   const int authorFont = narrow ? SMALL_FONT_ID : UI_10_FONT_ID;
@@ -3227,7 +3234,7 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
   loadCardStats(shown);
   drawTouchCover(f.cover, shown);
   const auto& book = recentBooks[shown];
-  const auto title = book.title.empty() ? book.path.substr(book.path.find_last_of('/') + 1) : book.title;
+  const auto title = recentName(book);
   const int titleFont = homeExcerptUsesUiFont(title.c_str()) ? UI_12_FONT_ID : UI_TITLE_FONT_ID;
   const bool centered = f.style == HomeRecentStyle::LargeCover;
   auto line = [&](int font, int x, int y, int width, const std::string& text, EpdFontFamily::Style style) {
@@ -3299,7 +3306,7 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
       loadCardStats(index);
       const int bottom = cell.y + cell.h;
       bar(x, bottom + 8, 128, 6, cardStats.percent);
-      const auto name = other.title.empty() ? other.path.substr(other.path.find_last_of('/') + 1) : other.title;
+      const auto name = recentName(other);
       renderer.drawText(SMALL_FONT_ID, x, bottom + 20, renderer.truncatedText(SMALL_FONT_ID, name.c_str(), 128).c_str());
       snprintf(progress, sizeof(progress), tr(STR_HOME_PROGRESS), static_cast<unsigned>(cardStats.percent));
       if (renderer.getTextWidth(SMALL_FONT_ID, progress) > 128) snprintf(progress, sizeof(progress), "%u%%", static_cast<unsigned>(cardStats.percent));
@@ -3307,7 +3314,7 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
     }
   } else if (recentBooks.size() > 1) {
     const auto& other = recentBooks[(shown + 1) % recentBooks.size()];
-    const auto name = other.title.empty() ? other.path.substr(other.path.find_last_of('/') + 1) : other.title;
+    const auto name = recentName(other);
     const int room = renderer.getScreenWidth() - 80 - renderer.getTextWidth(UI_10_FONT_ID, tr(STR_RECENT_OTHER_BOOK)) - 16;
     drawOtherBookRow(shown, f.ruleY, f.rowY, renderer.wrappedText(UI_10_FONT_ID, name.c_str(), room, 1, EpdFontFamily::BOLD));
   }
