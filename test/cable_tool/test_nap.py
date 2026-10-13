@@ -16,10 +16,17 @@ nap = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(nap)
 nap.time.sleep = lambda s: None
 nap.ACK_SECONDS = 0.2
+nap.HELLO_SECONDS = 0.2
 
 PRO_TAG = b'CROSSPOINT-BOARD-V1:x4pro;TENOR-CROSS-VERSION-V1:v1.0.59;TENOR-CABLE-V1:1;'
 OLD_PRO_TAG = b'CROSSPOINT-BOARD-V1:x4pro;TENOR-CROSS-VERSION-V1:v1.0.58;'
 C3_TAG = b'CROSSPOINT-BOARD-V1:x4;TENOR-CROSS-VERSION-V1:v1.0.59;'
+# Raw lines the X4 Pro sent on 13/10 (cap59/may/b2-tu3-1, b2-ve-do59-s1/nap.jsonl): a HELLO cut at its
+# 64th byte with the next log line glued on, and a log line cut at its 64th byte with the HELLO glued on.
+CUT_HELLO = 'TCF1 HELLO board=x4pro chip=9 version=v1.0.58 cable=1 state=vali[12477] [INF] [BAT] soc=100 prev=100 task=loopTask\n'
+GLUED_HELLO = ('[341535] [INF] [MEM] PSRAM: Free: 8274224 bytes, Total: 8388608 TCF1 HELLO board=x4pro chip=9 '
+               'version=v1.0.59-rc.1 cable=1 state=valid elf=d1c24df6ec6a9ff3 running=app0@0x10000+0x7e0000 '
+               'boot=app0 next=app1@0x7f0000+0x7e0000 frame=1024\n')
 
 
 def image(tag=PRO_TAG, chip=9, body=5000, elf=b'\x11' * 32, desc=True):
@@ -50,8 +57,9 @@ class FakeX4Pro:
     """Answers TCF1 as src/platform/CableFlash.h does, with knobs for the cases under test."""
 
     def __init__(self, cable=True, state='valid', elf='aaaaaaaaaaaaaaaa', answer='yes', drop_ack=(), nak=(),
-                 end='DONE', after=None):
+                 end='DONE', after=None, running='app0', hellos=()):
         self.cable, self.state, self.elf, self.answer = cable, state, elf, answer
+        self.running, self.hellos = running, list(hellos)  # hellos: raw answers sent before whole ones
         self.drop_ack, self.nak, self.end, self.after = set(drop_ack), set(nak), end, after or []
         self.out = b''
         self.inbox = b''
@@ -61,8 +69,12 @@ class FakeX4Pro:
         self.lines = []
 
     def hello(self):
+        if self.hellos:
+            return self.hellos.pop(0)
+        slots = {'app0': 'app0@0x10000+0x7e0000', 'app1': 'app1@0x7f0000+0x7e0000'}
+        other = 'app1' if self.running == 'app0' else 'app0'
         return (f'TCF1 HELLO board=x4pro chip=9 version=v1.0.59 cable=1 state={self.state} elf={self.elf} '
-                f'running=app0@0x10000+0x7e0000 boot=app0 next=app1@0x7f0000+0x7e0000 frame=1024\n')
+                f'running={slots[self.running]} boot={self.running} next={slots[other]} frame=1024\n')
 
     def receive(self, data):
         self.inbox += data
@@ -248,7 +260,7 @@ class NapTest(unittest.TestCase):
 
     def test_a_whole_image_with_a_lost_ack_and_a_nak_reaches_valid(self):
         data = image(body=5000, elf=b'\x22' * 32)
-        after = FakeX4Pro(elf='22' * 8)
+        after = FakeX4Pro(elf='22' * 8, running='app1')
         first = FakeX4Pro(drop_ack={1}, nak={3})
         devices = {PRO.device: first}
         ports = Ports([PRO], [], [PRO])
@@ -302,6 +314,71 @@ class NapTest(unittest.TestCase):
             code = nap.main([self.file(data)], list_ports=Ports([PRO], [], [PRO]), serial_module=serial_module)
         self.assertEqual(code, 2, out.getvalue())
         self.assertIn('ROLLED BACK', out.getvalue())
+
+    # -- HELLO lines that reach the computer cut short or glued to the device log (measured 13/10)
+
+    def test_a_cut_hello_is_asked_again_and_never_read_as_its_fields(self):
+        devices = {PRO.device: lambda: FakeX4Pro(hellos=[CUT_HELLO])}
+        code, out, serial_module, _ = self.nap([self.file(image()), '--dry-run'], Ports([PRO]), devices)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(serial_module.devices[PRO.device].lines, ['TCF1 HELLO', 'TCF1 HELLO'])
+        self.assertIn('next slot app1@0x7f0000+0x7e0000', out)
+
+    def test_a_hello_after_a_cut_log_line_is_read(self):
+        devices = {PRO.device: lambda: FakeX4Pro(hellos=[GLUED_HELLO])}
+        code, out, serial_module, _ = self.nap([self.file(image()), '--dry-run'], Ports([PRO]), devices)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(serial_module.devices[PRO.device].lines, ['TCF1 HELLO'])
+
+    def test_only_cut_hellos_stop_without_saying_the_channel_is_missing(self):
+        devices = {PRO.device: lambda: FakeX4Pro(hellos=[CUT_HELLO] * 50)}
+        code, out, serial_module, _ = self.nap([self.file(image())], Ports([PRO]), devices)
+        self.assertEqual(code, 1)
+        self.assertIn('cut short', out)
+        self.assertNotIn('no cable flash channel', out)
+        self.assertNotIn('larger than the slot', out)
+        self.assertFalse([line for line in serial_module.devices[PRO.device].lines if 'BEGIN' in line])
+        self.assertEqual(len(serial_module.devices[PRO.device].lines), nap.HELLO_TRIES)
+
+    def flash_then_restart(self, data, after):
+        first = FakeX4Pro()
+        devices = {PRO.device: first}
+        serial_module = FakeSerialModule(devices)
+        orig_open = serial_module.Serial.open
+
+        def open_after_restart(self):
+            if first.frames and devices[PRO.device] is first:
+                devices[PRO.device] = after
+            orig_open(self)
+        serial_module.Serial.open = open_after_restart
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = nap.main([self.file(data)], list_ports=Ports([PRO], [], [PRO]), serial_module=serial_module)
+        return code, out.getvalue()
+
+    def test_a_cut_hello_after_the_restart_is_not_a_rollback(self):
+        # b2-tu3-1: written, the new build valid on the device, the tool said ROLLED BACK (elf None).
+        data = image(elf=b'\x44' * 32)
+        code, out = self.flash_then_restart(data, FakeX4Pro(elf='44' * 8, running='app1', hellos=[CUT_HELLO]))
+        self.assertEqual(code, 0, out)
+        self.assertIn('VALID', out)
+        self.assertNotIn('ROLLED BACK', out)
+
+    def test_only_cut_hellos_after_the_restart_are_not_confirmed(self):
+        data = image(elf=b'\x44' * 32)
+        code, out = self.flash_then_restart(data, FakeX4Pro(elf='44' * 8, running='app1', hellos=[CUT_HELLO] * 500))
+        self.assertEqual(code, 3, out)
+        self.assertIn('NOT CONFIRMED', out)
+        self.assertNotIn('ROLLED BACK', out)
+
+    def test_the_same_build_flashed_again_is_judged_by_the_slot_it_runs_from(self):
+        same = 'aaaaaaaaaaaaaaaa'  # the build the device runs already, its ELF hash unchanged
+        data = image(elf=bytes.fromhex(same) + b'\x00' * 24)
+        code, out = self.flash_then_restart(data, FakeX4Pro(elf=same, running='app1'))
+        self.assertEqual(code, 0, out)
+        code, out = self.flash_then_restart(data, FakeX4Pro(elf=same, running='app0'))
+        self.assertEqual(code, 2, out)
+        self.assertIn('ROLLED BACK', out)
 
     def test_frames_are_the_bytes_the_device_reads(self):
         # The same bytes test/cable_flash/SessionTest.cpp feeds the device's own receive().
