@@ -130,10 +130,10 @@ struct CardFileHead {
   uint8_t thumb;
   int16_t cover;
 };
-// "CRD5": a book without a cover keeps the placeholder of components/CoverHolder.h on its card. A card
-// an older firmware wrote under the same version string holds the former placeholder, the lockup one,
-// and is drawn again; its file is replaced at the same name.
-constexpr uint32_t CARD_FILE_MAGIC = 0x35445243;
+// "CRD6": a book without a cover keeps the placeholder (white, the book's name and author) on its card. A
+// card an older firmware wrote under the same version string holds a former placeholder, the dithered
+// picture of components/CoverHolder.h, and is drawn again; its file is replaced at the same name.
+constexpr uint32_t CARD_FILE_MAGIC = 0x36445243;
 
 uint32_t fnv(uint32_t hash, const void* data, size_t size) {
   for (const auto* p = static_cast<const uint8_t*>(data); size--; ++p) hash = (hash ^ *p) * 16777619u;
@@ -2363,7 +2363,7 @@ void HomeActivity::drawRecentCard() {
   }
   // A plain frame waits for the idle pass to write the placeholder or the book's cover: the card is not
   // kept, or its file would bring the plain frame back after the picture is on the card.
-  const bool plainFrame = !image && !drawHolder(coverless(shown), card.coverX, card.coverY, card.coverW, card.coverH);
+  const bool plainFrame = !image && !drawHolder(shown, coverless(shown), card.coverX, card.coverY, card.coverW, card.coverH);
   // Round the cover's corners by painting the page back over them, the pixels a rounded card
   // would not cover: a few hundred pixels, no second buffer, and the cached card keeps them.
   if (!coverKept)
@@ -2996,12 +2996,17 @@ bool HomeActivity::coverless(const int index) const {
 // A cover frame with nothing of the book's to draw. The placeholder (components/CoverHolder.h) for a book
 // with no cover: the cached picture when the card has it, else a plain frame while an idle pass writes the
 // picture. Any other book: the plain frame. True when the picture was drawn.
-bool HomeActivity::drawHolder(const bool holder, const int x, const int y, const int width, const int height) {
+bool HomeActivity::drawHolder(const int book, const bool holder, const int x, const int y, const int width,
+                              const int height) {
   if (!holder) {
     renderer.fillRoundedRect(x, y, width, height, tenorradius::cover(width), Color::LightGray);
     return false;
   }
   LOG_INF("HOME", "Cover holder frame=%d,%d,%d,%d", x, y, width, height);
+  if (!homeGraySelected) {
+    drawNameHolder(book, x, y, width, height);
+    return true;
+  }
   HalFile file;
   if (Storage.openFileForRead("HOME", holderPath(width, height), file)) {
     Bitmap bitmap(file);
@@ -3013,6 +3018,39 @@ bool HomeActivity::drawHolder(const bool holder, const int x, const int y, const
   wantHolder(width, height);
   renderer.fillRoundedRect(x, y, width, height, tenorradius::cover(width), Color::LightGray);
   return false;
+}
+
+// The placeholder of a 1 bit frame, made on the spot from the book's own name: a white cover inside a 2 px dotted
+// ring of gray (the plain frame's gray, as the page has no black rule round a cover; 2 px because a 1 px line of
+// the 4 x 4 dither vanishes on odd columns and rows), the title in bold up to 3 lines with
+// an ellipsis, the author under it. Faces: UI 12 over UI 10 on a frame 200 px wide or more (a card's cover), UI 10
+// over the shelf's small face on a narrower one (the shelf). Both have the SD fallback a CJK title needs.
+// Each line is centred on its ink and the block is centred in the frame. Margins: 1.5 corner radii.
+void HomeActivity::drawNameHolder(const int book, const int x, const int y, const int width, const int height) {
+  const int radius = tenorradius::cover(width);
+  renderer.fillRoundedRect(x, y, width, height, radius, Color::LightGray);
+  renderer.fillRoundedRect(x + 2, y + 2, width - 4, height - 4, tenorradius::nest(radius, 2), Color::White);
+  const auto& entry = recentBooks[book];
+  const auto title = entry.title.empty() ? entry.path.substr(entry.path.find_last_of('/') + 1) : entry.title;
+  const bool narrow = width < 200;
+  const int titleFont = narrow ? UI_10_FONT_ID : UI_12_FONT_ID;
+  const int authorFont = narrow ? SMALL_FONT_ID : UI_10_FONT_ID;
+  const int room = width - 2 * (radius * 3 / 2);
+  const auto lines = renderer.wrappedText(titleFont, title.c_str(), room, 3, EpdFontFamily::BOLD);
+  const auto author = entry.author.empty() ? std::string() : renderer.truncatedText(authorFont, entry.author.c_str(), room);
+  const int titleHeight = renderer.getLineHeight(titleFont);
+  const int gap = author.empty() ? 0 : radius / 2;
+  const int block = static_cast<int>(lines.size()) * titleHeight + (author.empty() ? 0 : gap + renderer.getLineHeight(authorFont));
+  int lineY = y + (height - block) / 2;
+  const auto centred = [&](const int font, const int top, const std::string& text, const EpdFontFamily::Style style) {
+    const auto ink = renderer.getTextInkBounds(font, text.c_str(), style);
+    renderer.drawText(font, x + (width - (ink[2] - ink[0])) / 2 - ink[0], top, text.c_str(), true, style);
+  };
+  for (const auto& line : lines) {
+    centred(titleFont, lineY, line, EpdFontFamily::BOLD);
+    lineY += titleHeight;
+  }
+  if (!author.empty()) centred(authorFont, lineY + gap, author, EpdFontFamily::REGULAR);
 }
 
 void HomeActivity::wantHolder(const int width, const int height) {
@@ -3095,7 +3133,7 @@ void HomeActivity::drawTouchCover(const HomeRecentRect& rect, const int index) {
   if (!image) {
     const bool holder = coverless(index);
     if (!holder) queueTouchThumb(index, rect.w, rect.h);
-    drawHolder(holder, rect.x, rect.y, rect.w, rect.h);
+    drawHolder(index, holder, rect.x, rect.y, rect.w, rect.h);
   } else if (tenorchrome::kTouchShell && homeInkEnabled() && !homeGraySelected &&
              !Storage.exists(tenorink::cachePath(book.coverBmpPath, rect.w, rect.h, false).c_str())) {
     // The four-level stand-in loses its grays in one bit: make the dithered one-bit cover.

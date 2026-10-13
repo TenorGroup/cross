@@ -304,12 +304,15 @@ class HomeActivity final : public UiTabListActivity {
   bool homeInkEnabled() const;
   bool homeGrayWanted() const;
   std::string touchCoverPath(const std::string& cover, int width, int height) const;
-  // The cover frame of a book with no cover (components/CoverHolder.h). A frame whose picture is not
-  // cached yet is drawn plain and asks for it; an idle pass on the main task writes it.
+  // The cover frame of a book with no cover. 1 bit (every Home frame on the Recent tab): a white cover
+  // with the book's name and author, drawn straight into the frame, nothing cached. 4 levels: the picture
+  // of components/CoverHolder.h; a frame whose picture is not cached yet is drawn plain and asks for it,
+  // an idle pass on the main task writes it.
   std::string holderPath(int width, int height) const;
   // True for a book with no cover of its own, the only book whose frame takes the placeholder.
   bool coverless(int index) const;
-  bool drawHolder(bool holder, int x, int y, int width, int height);
+  bool drawHolder(int book, bool holder, int x, int y, int width, int height);
+  void drawNameHolder(int book, int x, int y, int width, int height);
   void wantHolder(int width, int height);
   bool tickHolders();
   bool writeHolder(int width, int height);
