@@ -970,9 +970,23 @@ bool UiListActivity::renderUglyList() {
     else if (uglyItems_ && row >= uglyItemsFirst_) item = uglyItems_[row - uglyItemsFirst_];
     return item;
   };
+  // The trailing preview has words but no hit rect. Use its laid-out label for icon painting only.
+  const int preview = first + activeNav().pageRowsFor(count);
+  auto iconRowBox = [&](int row) {
+    const auto box = app.publishedRect(ACTION_ROW, static_cast<int16_t>(row));
+    if (!box.empty() || row != preview) return box;
+    const auto item = itemAt(row);
+    if (item.icon && item.label) {
+      const auto above = app.publishedRect(ACTION_ROW, static_cast<int16_t>(row - 1));
+      for (auto run = runs.rbegin(); run != runs.rend(); ++run)
+        if (run->align == fui::TextAlign::Left && run->text == item.label && run->rect.y >= above.bottom())
+          return run->rect;
+    }
+    return box;
+  };
   // The circle needs 34 pixels to the label's left, beyond the icon's 24 pixels of ink.
   for (int row = first; row < count && row < first + 64; ++row) {
-    const auto box = app.publishedRect(ACTION_ROW, static_cast<int16_t>(row));
+    const auto box = iconRowBox(row);
     if (box.empty() || !itemAt(row).icon) continue;
     for (auto& run : runs) {
       const int mid = run.rect.y + run.rect.height / 2;
@@ -989,7 +1003,7 @@ bool UiListActivity::renderUglyList() {
   // The marks go on the rows that took a place on screen. A locked row has no place to choose and gets none, but
   // the cursor can stand on it: there it keeps the circle, round the label.
   for (int row = first; row < count && row < first + 64; ++row) {
-    const auto box = app.publishedRect(ACTION_ROW, static_cast<int16_t>(row));
+    const auto box = iconRowBox(row);
     if (box.empty() && row != activeNav().selected) continue;
     const auto item = itemAt(row);
     if (item.icon && !box.empty()) {
