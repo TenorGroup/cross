@@ -254,6 +254,12 @@ class EpubReaderActivity final : public ReaderActivity {
   std::vector<uint8_t> favoriteRows;
   void loadPins();
   void togglePin(uint8_t pin);
+  // Writes `pins` to the settings (not to the card) and lists them again; under the render lock.
+  void storePinsLocked();
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  void showFavoriteActions(int row);
+  void openFavoriteOrder(int row);
+#endif
   uint8_t pinOfRow(int row) const;
   std::string favoriteRowName(int row) const;
   std::string favoriteRowValue(int row) const;

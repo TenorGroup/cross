@@ -3,6 +3,8 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <string>
+#include <vector>
 
 #include "activities/settings/SettingsTabs.h"
 
@@ -122,6 +124,42 @@ inline bool movePin(const char* key, int direction) {
   std::swap(state().pins[from], state().pins[to]);
   if (save()) return true;
   std::swap(state().pins[from], state().pins[to]);
+  return false;
+}
+// Touch (the order screen): the `count` shown tabs of `group` in the order of `ids`, saved; a tab this board does
+// not show keeps its slot. Unchanged when `ids` is no order of the shown tabs or the save fails.
+inline bool arrangeTabs(int group, const int* ids, int count) {
+  if (group < 0 || group >= GROUPS || count <= 0 || count > MAX_TABS) return false;
+  std::array<bool, MAX_TABS> seen{};
+  for (int p = 0; p < count; ++p) {
+    if (ids[p] < 0 || ids[p] >= count || seen[ids[p]]) return false;
+    seen[ids[p]] = true;
+  }
+  auto& order = state().order[group];
+  const auto before = order;
+  std::array<int, MAX_TABS> slots{};
+  for (int p = 0; p < count; ++p) slots[p] = slotAt(group, p, count);
+  for (int p = 0; p < count; ++p) order[slots[p]] = static_cast<uint8_t>(ids[p]);
+  if (save()) return true;
+  order = before;
+  return false;
+}
+// Touch: the pins `keys` (each pinned, each once) in that order, in the places they hold now, saved; the other
+// pins keep theirs. Unchanged when a key is not pinned or the save fails.
+inline bool arrangePins(const std::vector<std::string>& keys) {
+  std::vector<int> slots;
+  std::vector<std::array<char, KEY_SIZE>> wanted, before;
+  for (const auto& key : keys) {
+    const int at = state().find(key.c_str());
+    if (at < 0 || std::find(slots.begin(), slots.end(), at) != slots.end()) return false;
+    slots.push_back(at);
+    wanted.push_back(state().pins[at]);
+  }
+  std::sort(slots.begin(), slots.end());
+  for (const int at : slots) before.push_back(state().pins[at]);
+  for (size_t i = 0; i < slots.size(); ++i) state().pins[slots[i]] = wanted[i];
+  if (save()) return true;
+  for (size_t i = 0; i < slots.size(); ++i) state().pins[slots[i]] = before[i];
   return false;
 }
 }  // namespace menucustom

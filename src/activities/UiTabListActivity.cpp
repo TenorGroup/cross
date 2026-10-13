@@ -10,6 +10,7 @@
 #include "MappedInputManager.h"
 #include "MenuCustomization.h"
 #include "MenuTiltInput.h"
+#include "activities/util/ListOrderActivity.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -89,7 +90,7 @@ void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh
       const int right = i == count - 1 ? thanh.right() : (cx + centre(i + 1)) / 2;
       screen.frame().hit(fui::Rect{static_cast<int16_t>(left), static_cast<int16_t>(y0),
                                    static_cast<int16_t>(right - left), static_cast<int16_t>(h)},
-                         ACTION_TAB, tab.value, fui::InputTouch);
+                         ACTION_TAB, tab.value, fui::InputTouch | fui::InputLongPress);
     }
     if (!uiTarget.paintingEnabled()) {
       // tenor/ugly on the button readers lays the list out with its ink off: the tab names are written by hand
@@ -189,8 +190,38 @@ int UiTabListActivity::ringPos() const {
 void UiTabListActivity::tabActionTrampoline(const fui::ActionEvent& event, void* user) {
   auto* self = static_cast<UiTabListActivity*>(user);
   if (event.value < 0 || event.value >= self->tabCount()) return;
+  if (tenorchrome::kTouchShell && event.longPress) {
+    if (!shell::isUgly()) self->showTabOrderMenu(event.value);
+    return;
+  }
   self->onTabAction(event.value);
   if (self->clampAfterNav()) self->requestUpdate();
+}
+
+// Touch: a held card offers Reorder, which opens the order screen with that card moving (the X3 moves a card a
+// step at a time by holding an edge key).
+void UiTabListActivity::showTabOrderMenu(const int id) {
+  const int group = menucustom::groupFor(name.c_str());
+  const int count = tabCount();
+  if (group < 0 || count < 2) return;
+  const StrId label = StrId::STR_REORDER;
+  showRowMenu(&label, 1, [this, group, count, id](int) {
+    std::vector<std::string> labels;
+    std::vector<int> ids;
+    for (int i = 0; i < count; ++i) {
+      ids.push_back(menucustom::idAt(group, i, count));
+      labels.emplace_back(tabLabel(ids.back()));
+    }
+    startActivityForResult(
+        std::make_unique<ListOrderActivity>(renderer, mappedInput, std::move(labels),
+                                            menucustom::position(group, id, count),
+                                            [group, ids](const std::vector<int>& order) {
+                                              std::vector<int> next;
+                                              for (const int i : order) next.push_back(ids[i]);
+                                              menucustom::arrangeTabs(group, next.data(), static_cast<int>(next.size()));
+                                            }),
+        nullptr);
+  }, ACTION_TAB, id);
 }
 
 void UiTabListActivity::onRowAction(const fui::ActionEvent& event) {

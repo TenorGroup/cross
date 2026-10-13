@@ -291,7 +291,7 @@ constexpr const char* BACK_ONLY_BAR[] = {"KeyboardEntry", "EpubReaderMenu", "Txt
                                          "BmpViewer", "ChapterNumberEntry", "Confirmation", "Crash",
                                          "DictionaryWordSelect", "EpubReaderPercentSelection", "FrontlightPanel",
                                          "OtaUpdate", "QuoteSelect", "SdFirmwareUpdate", "SleepTimeoutInterval",
-                                         "UglySwitch", "UsbDrive"};
+                                         "UglySwitch", "UsbDrive", "ListOrder"};
 // Zone roots that draw their own cards at the foot.
 constexpr const char* TABS_BAR[] = {"Home"};
 

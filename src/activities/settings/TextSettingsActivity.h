@@ -69,6 +69,7 @@ class TextSettingsActivity final : public UiTabListActivity {
   const char* tabLabel(int index) const override;
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
+  void onRowLongPress(int index) override { activateIndex(index); }
   void onTabAction(int index) override;
   void stepTab(int direction) override { switchTab(direction); }
   // Tenor's render() (settled-list preview pane, TENOR_PRESS_PROBE timing) fully

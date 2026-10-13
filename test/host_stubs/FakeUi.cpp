@@ -234,6 +234,8 @@ FrameSpan frameSpan(const GfxRenderer&) { return {FOOT_BACK_X, 448}; }
 void drawRowRule(const GfxRenderer&, int, int, int) {}
 void drawBarTab(const GfxRenderer&, int, int, int, const uint8_t*, int, int, bool) {}
 FootBar footBarFor(const char*) { return FootBar::None; }
+void noteFootActions(const char*, const char*) {}
+int footActionAt(int, int) { return -1; }
 }  // namespace tenorchrome
 
 // Persist only in memory in the input harness; simulator tests cover SD failures.

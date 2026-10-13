@@ -76,7 +76,9 @@ constexpr int MARGIN_STEP = CrossPointSettings::SCREEN_MARGIN_STEP;
 
 TextSettingsActivity::TextSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                            const SdCardFontRegistry* registry, Tab initialTab)
-    : UiTabListActivity("TextSettings", renderer, mappedInput), registry_(registry), tab_(initialTab) {}
+    // Touch: a held card offers Reorder.
+    : UiTabListActivity("TextSettings", renderer, mappedInput, tenorchrome::kTouchShell), registry_(registry),
+      tab_(initialTab) {}
 
 int TextSettingsActivity::displayIndex(const Tab tab) const {
   return static_cast<int>(tab);
@@ -667,6 +669,8 @@ void TextSettingsActivity::buildScreen(UiScreen& screen) {
   props.count = static_cast<uint16_t>(rowItems_.size());
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
+  // Touch: a held row opens like a tap, as before cards took a hold.
+  if (tenorchrome::kTouchShell) props.inputMask |= fui::InputLongPress;
   props.valueInset = 8;               // air between the value and the row edge
   // Titles match the value's font size (smallText) so both sides of a row
   // read as one unit; labels that still don't fit wrap onto a second line.
@@ -705,6 +709,7 @@ void TextSettingsActivity::render(RenderLock&&) {
     return;
   }
   if (optionPopup_.processRender(renderer, mappedInput)) return;  // picker draws over everything
+  if (rowMenu.processRender(renderer, mappedInput)) return;  // a held card's menu (touch)
 
   refreshFavoriteRows();
   updatePreviewGeometry();

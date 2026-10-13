@@ -53,6 +53,7 @@
 #include "MappedInputManager.h"
 #include "ProgressMapper.h"
 #include "QrDisplayActivity.h"
+#include "activities/util/ListOrderActivity.h"
 #include "QuoteHighlight.h"
 #include "ReaderActivity.h"
 #include "ReaderFontChon.h"
@@ -5300,6 +5301,10 @@ void EpubReaderActivity::handleOverlayInput() {
       }
 #endif
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+      if (routed.hold && overlay == Overlay::Favorites && !shell::isUgly()) {  // Unpin, or Reorder
+        showFavoriteActions(routed.value);
+        return;
+      }
       if (routed.hold) {  // a hold pins the row to Favorites, or takes it off
         togglePin(pinOfRow(routed.value));
         fastRedraw();
@@ -6015,14 +6020,71 @@ void EpubReaderActivity::togglePin(const uint8_t pin) {
   {
     RenderLock lock;
     if (!readermenu::doiGhim(pins, pin)) return;  // full: 8 pins
-    std::copy(pins.begin(), pins.end(), SETTINGS.readerFavorites);
-    SETTINGS.readerFavoriteCount = static_cast<uint8_t>(pins.size());
-    SETTINGS.readerFavoritesDaDat = 1;
-    loadPins();
+    storePinsLocked();
     if (overlay == Overlay::Favorites) panelIndex = std::min(panelIndex, std::max(0, static_cast<int>(favoriteRows.size()) - 1));
   }
   SETTINGS.saveToFile();
 }
+
+void EpubReaderActivity::storePinsLocked() {
+  std::copy(pins.begin(), pins.end(), SETTINGS.readerFavorites);
+  SETTINGS.readerFavoriteCount = static_cast<uint8_t>(pins.size());
+  SETTINGS.readerFavoritesDaDat = 1;
+  loadPins();
+}
+
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+// A held favourite: Unpin and, with two or more, Reorder, in a menu at the row (the X3 list menu moves a favourite a
+// step by holding Left or Right).
+void EpubReaderActivity::showFavoriteActions(const int row) {
+  if (row < 0 || row >= static_cast<int>(favoriteRows.size())) return;
+  const StrId labels[] = {StrId::STR_UNPIN_FAVORITE, StrId::STR_REORDER};
+  overlayPopup.showAnchored(UiAppHost::dispatchingRect(), labels, favoriteRows.size() > 1 ? 2 : 1,
+                            [this, pin = favoriteRows[row], row](const int action) {
+                              if (action == 0) {
+                                togglePin(pin);  // the popup's close paints the sheet again
+                                return;
+                              }
+                              openFavoriteOrder(row);
+                            });
+  paintOverlayPopup();
+}
+
+// The order screen over the closed menu, as a leaf action opens its screen; back on the menu's Favorites.
+void EpubReaderActivity::openFavoriteOrder(const int row) {
+  std::vector<std::string> labels;
+  for (int i = 0; i < static_cast<int>(favoriteRows.size()); ++i) labels.push_back(favoriteRowName(i));
+  {
+    RenderLock lock;
+    overlay = Overlay::None;
+    panelClosedLocked(true, false);
+  }
+  discardOverlayPage();
+  startActivityForResult(
+      std::make_unique<ListOrderActivity>(renderer, mappedInput, std::move(labels), row,
+                                          [this, shown = favoriteRows](const std::vector<int>& order) {
+                                            std::vector<uint8_t> wanted;
+                                            for (const int i : order) wanted.push_back(shown[i]);
+                                            {
+                                              RenderLock lock;
+                                              if (!readermenu::xepLai(pins, wanted)) return;
+                                              storePinsLocked();
+                                            }
+                                            SETTINGS.saveToFile();
+                                          }),
+      [this](const ActivityResult&) {
+        openReaderMenu();
+        if (overlay != Overlay::Toolbar) return;
+        // Back on the Favourites the order was opened from, drawn with the page openReaderMenu asked for.
+        RenderLock lock;
+        overlay = Overlay::Favorites;
+        focusedTool = static_cast<int>(readermenu::Tool::FAVORITES);
+        panelIndex = 0;
+        toolbarUi->nav().reset();
+        loadPins();
+      });
+}
+#endif
 
 uint8_t EpubReaderActivity::pinOfRow(const int row) const {
   if (textDepth != TextDepth::Rows) return 0xFF;
