@@ -17,6 +17,7 @@
 #include "components/UiAppHelpers.h"
 #include "components/TenorMenuChrome.h"
 #include "activities/home/DocThuMuc.h"
+#include "activities/home/FileBrowserState.h"
 #include "FileFavorites.h"
 #include "MenuCustomization.h"
 #include "MenuFavorites.h"
@@ -98,7 +99,8 @@ Notebook::Rows Notebook::read(const homerows::Page p) const {
       if (!buffer || r.cap == 0)
         r.tooMany = true;
       else
-        docthumuc::doc("/", SETTINGS.showHiddenFiles, docthumuc::Loc::Sach, buffer.get(), BUFFER, r.folder, r.cap, &r.tooMany);
+        docthumuc::doc("/", SETTINGS.showHiddenFiles, docthumuc::Loc::Sach, buffer.get(), BUFFER, r.folder, r.cap, &r.tooMany,
+                       filebrowser::settingsSort());
       break;
     }
     case homerows::Page::Stats:

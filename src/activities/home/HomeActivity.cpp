@@ -1284,7 +1284,8 @@ void HomeActivity::docGocTheNho() {
     mucTheNho.clear();
     return;
   }
-  docthumuc::doc("/", SETTINGS.showHiddenFiles, docthumuc::Loc::Sach, dem.get(), DEM_CO, mucTheNho, cap, &mucQuaNhieu);
+  docthumuc::doc("/", SETTINGS.showHiddenFiles, docthumuc::Loc::Sach, dem.get(), DEM_CO, mucTheNho, cap, &mucQuaNhieu,
+                 filebrowser::settingsSort());
   // First row: the last folder of File, a folder entry like the others (relative, trailing '/'). Not a pin.
   const std::string last = mucQuaNhieu ? "/" : lastFolder();
   lastFolderRow = last != "/";

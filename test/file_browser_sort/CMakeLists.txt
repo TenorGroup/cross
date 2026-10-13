@@ -26,3 +26,8 @@ gtest_discover_tests(FileBrowserSortTest)
 add_test(NAME FileBrowserSizeReadProduction
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/browser_search.py"
           --output "${CMAKE_CURRENT_BINARY_DIR}/browser-search")
+
+add_test(NAME HomeFolderSortProduction
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/home_folder_sort.py"
+          --home "${REPO_ROOT}/src/activities/home/HomeActivity.cpp"
+          --ugly "${REPO_ROOT}/src/shells/ugly/UglyNotebook.cpp")
