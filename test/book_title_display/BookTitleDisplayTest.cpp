@@ -44,18 +44,20 @@ const std::vector<std::pair<std::string, std::string>> kCases = {
     {"ABC (One Two Three Four Five)", "ABC (One Two Three Four Five)"},
     {"   : One Two Three Four Five", "   : One Two Three Four Five"},
     {"", ""},
+    // A closing note in brackets stays with the short name, so two editions of one book still differ.
+    {"Kinh doanh bằng chuyên môn: Cách các chuyên gia khởi nghiệp biến hiểu biết (tenor version)",
+     "Kinh doanh bằng chuyên môn (tenor version)"},
+    {"Evergreen Love: Từ Điển Tranh Về Thực Vật (bản đẹp)", "Evergreen Love (bản đẹp)"},
 };
 
 TEST(BookTitleDisplay, CutsOrKeepsEachTitle) {
   for (const auto& [input, expected] : kCases) EXPECT_EQ(booktitle::display(input), expected) << input;
 }
 
-TEST(BookTitleDisplay, TheAnswerIsAViewOfTheTitleSoTheStoredNameIsNotTouched) {
+TEST(BookTitleDisplay, TheStoredNameIsNotTouched) {
   const std::string title = "Evergreen Love: Từ Điển Tranh Về Thực Vật";
   const std::string copy = title;
-  const auto shown = booktitle::display(title);
-  EXPECT_EQ(shown, "Evergreen Love");
-  EXPECT_EQ(shown.data(), title.data());
+  EXPECT_EQ(booktitle::display(title), "Evergreen Love");
   EXPECT_EQ(title, copy);
 }
 

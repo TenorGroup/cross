@@ -1,13 +1,14 @@
 #pragma once
 
 #include <initializer_list>
+#include <string>
 #include <string_view>
 
 // The name of a book as the screens write it: the part before ": " when what follows is a subtitle.
 // Only for drawing. The stored title (the OPF, Recent, Stats, Quotes, the file name) stays whole.
 namespace booktitle {
 
-inline std::string_view display(std::string_view title) {
+inline std::string_view shortName(std::string_view title) {
   const auto colon = title.find(':');
   if (colon == std::string_view::npos || colon + 1 == title.size() ||
       (title[colon + 1] != ' ' && title[colon + 1] != '\t') ||
@@ -42,6 +43,17 @@ inline std::string_view display(std::string_view title) {
     }
   }
   return words >= 5 ? prefix : title;
+}
+
+// shortName plus a closing note in brackets the title ends on, so "X: ... (tenor version)" and "X: ..." differ.
+inline std::string display(std::string_view title) {
+  const auto shown = shortName(title);
+  if (shown.size() == title.size()) return std::string(title);
+  const auto end = title.find_last_not_of(" \t\r\n");
+  const auto open = end == std::string_view::npos || title[end] != ')' ? std::string_view::npos : title.rfind('(', end);
+  const auto cutAt = static_cast<size_t>(shown.data() - title.data()) + shown.size();
+  if (open == std::string_view::npos || open < cutAt) return std::string(shown);
+  return std::string(shown) + " " + std::string(title.substr(open, end - open + 1));
 }
 
 }  // namespace booktitle
