@@ -7,7 +7,8 @@ Hom nay co dinh 21/09/2026 (thu Hai, CROSSPOINT_SIM_NOW). The co 90 ngay toi hom
 Phim canh DOWN sang trang sau, UP ve trang truoc.
 
 BIEU DO (cot tuan o trang 1-3, 24 cot gio o trang 4): truc y trai (thoi gian) va truc y phai (luot lat trang) la 2 vach
-doc den dai bang ca vung ve; duong luot lat co 1 cham den vien trang o moi diem.
+doc den dai bang ca vung ve. Duong thu 2 co 1 cham den vien trang o moi diem: tuan = phut/lan doc, chi tuan co lan doc
+moi co diem (trang 1: tuan 07/09 chua dem lan doc, tuan 21/09 chua co ngay doc, nen 2 diem); gio = so lan doc, 24 diem.
 Cham do bang phep mo 5 x 5: net 2 px va chu bien mat, cot co vien trang tach khoi cham.
 """
 
@@ -47,12 +48,15 @@ def fixture(sd):
     rows = []
     for back in range(89, -1, -1):
         m = minutes[back % len(minutes)]
+        day = end - datetime.timedelta(days=back)
+        # Tuan 07/09 - 13/09 doc ma chua dem lan doc (nhu truoc ban nang cap): tuan do khong co diem.
+        sessions = 0 if datetime.date(2026, 9, 7) <= day <= datetime.date(2026, 9, 13) else 1 + m // 60
         if m:
-            rows.append([int((end - datetime.timedelta(days=back)).strftime("%Y%m%d")), m, m // 2 + 3])
+            rows.append([int(day.strftime("%Y%m%d")), m, m // 2 + 3, 0, sessions])
     hours = [0, 0, 0, 0, 0, 0, 95, 140, 30, 0, 0, 20, 45, 30, 0, 0, 10, 25, 60, 150, 260, 410, 330, 120]
-    turns = [h // 3 for h in hours]
+    sessions = [(h + 29) // 30 for h in hours]
     (store / "reading-stats.json").write_text(json.dumps(
-        {"schema": 3, "ngay": rows, "hourMinutes": hours, "hourRemainderMs": [0] * 24, "hourTurns": turns}))
+        {"schema": 3, "ngay": rows, "hourMinutes": hours, "hourRemainderMs": [0] * 24, "hourSessions": sessions}))
 
 
 def run():
@@ -149,8 +153,8 @@ class ThongKeDaiHan(unittest.TestCase):
             xs = [x for x, _, _ in runs(self.images[name], plot)]
             self.assertTrue(xs and xs[0] < 120 and xs[-1] > 400, f"{name}: truc trai va phai {xs}")
 
-    def test_duong_luot_lat_co_cham_o_moi_diem(self):
-        self.assertEqual(dots(self.images["trang1"], 72), 4)
+    def test_duong_thu_hai_co_cham_o_moi_diem_co_so(self):
+        self.assertEqual(dots(self.images["trang1"], 72), 2)
         self.assertEqual(dots(self.images["trang4"], 132), 24)
 
     def test_phim_len_ve_trang_truoc(self):

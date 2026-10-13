@@ -28,10 +28,10 @@ inline const solieu::NgayDoc* ngay(const readinghistory::Snapshot& lich, const u
   return nullptr;
 }
 
-// Reading time and page turns of each week of the page that starts on `dauTrang`.
+// Reading time and reading sessions of each week of the page that starts on `dauTrang`.
 struct Tuan {
   uint64_t ms = 0;
-  uint32_t luot = 0;
+  uint32_t lan = 0;
 };
 inline void tuan(const readinghistory::Snapshot& lich, const uint32_t dauTrang, Tuan (&ra)[SO_TUAN]) {
   for (int k = 0; k < SO_TUAN; ++k) {
@@ -39,9 +39,16 @@ inline void tuan(const readinghistory::Snapshot& lich, const uint32_t dauTrang, 
     for (int d = 0; d < 7; ++d)
       if (const auto* n = ngay(lich, dauTrang + 7 * k + d)) {
         ra[k].ms += static_cast<uint64_t>(n->phut) * 60000 + n->leMs;
-        ra[k].luot += n->trang;
+        ra[k].lan += n->lan;
       }
   }
+}
+
+// Minutes a reading session of the week, rounded; false (no point on the line) for a week without a counted session.
+inline bool trungBinh(const Tuan& tuan, uint32_t& phut) {
+  if (!tuan.lan) return false;
+  phut = static_cast<uint32_t>((tuan.ms / tuan.lan + 30000) / 60000);
+  return true;
 }
 
 // Top of a y axis: the smallest of 2, 4, 6, 10, 20, 40, 60, 100, 200... not below `lonNhat`, so the axis has round

@@ -48,7 +48,8 @@ void ReadingHistoryActivity::showPage(const int next) {
   page = std::clamp(next, 0, lichdai::SO_TRANG - 1);
   char text[96];
   count = 0;
-  const auto row = [&](const std::string& label, const uint64_t ms, const uint32_t turns) {
+  // `counted` names what the subtitle counts: page turns for a day, sessions begun for an hour.
+  const auto row = [&](const std::string& label, const uint64_t ms, const uint32_t number, const char* counted) {
     labels[count] = label;
     if (ms) {
       readingstatsview::duration(ms, text, sizeof(text));
@@ -57,8 +58,8 @@ void ReadingHistoryActivity::showPage(const int next) {
       values[count] = tr(STR_STATS_NOT_RECORDED);
     }
     subtitles[count].clear();
-    if (turns) {
-      snprintf(text, sizeof(text), "%s: %lu", tr(STR_STATS_TURNS), static_cast<unsigned long>(turns));
+    if (number) {
+      snprintf(text, sizeof(text), "%s: %lu", counted, static_cast<unsigned long>(number));
       subtitles[count] = text;
     }
     ++count;
@@ -66,7 +67,7 @@ void ReadingHistoryActivity::showPage(const int next) {
   if (hourPage()) {
     for (int h = 0; h < 24; ++h) {
       snprintf(text, sizeof(text), "%02d:00", h);
-      row(text, history->hourMs[h], history->hourSessions[h]);
+      row(text, history->hourMs[h], history->hourSessions[h], tr(STR_STATS_SESSION_COUNT));
     }
   } else {
     const uint32_t first = lichdai::dau(today, page), last = std::min(first + lichdai::SO_O - 1, today);
@@ -86,7 +87,7 @@ void ReadingHistoryActivity::showPage(const int next) {
       snprintf(text, sizeof(text), "%02lu/%02lu/%04lu", static_cast<unsigned long>(key % 100),
                static_cast<unsigned long>(key / 100 % 100), static_cast<unsigned long>(key / 10000));
       const auto* n = lichdai::ngay(*history, d);
-      row(text, n ? static_cast<uint64_t>(n->phut) * 60000 + n->leMs : 0, n ? n->trang : 0);
+      row(text, n ? static_cast<uint64_t>(n->phut) * 60000 + n->leMs : 0, n ? n->trang : 0, tr(STR_STATS_TURNS));
     }
   }
   for (int i = 0; i < count; ++i) {
@@ -173,7 +174,8 @@ static void label(const GfxRenderer& renderer, const int cx, const int top, cons
   renderer.drawText(SMALL_FONT_ID, cx - renderer.getTextWidth(SMALL_FONT_ID, text) / 2, top, text);
 }
 
-// Each chart: reading time as bars on a y axis at the left, page turns as a line on its own y axis at the right. Both
+// Each chart: reading time as bars on a y axis at the left, a second measure as a line on its own y axis at the right
+// (the weeks: minutes a reading session; the hours: sessions begun in the hour). Both
 // axes are numbered at 0, the middle and a round top (lichdai::dinh), each unit written once over its axis; a two-line
 // legend above names the bar and the line. The line runs on a white margin and each point is a black dot ringed in
 // white, so neither hides in a black bar; the figures stand outside the plot, where the line never goes.
@@ -183,7 +185,10 @@ constexpr int HOUR_PLOT = 132;
 struct Series {
   int n;
   const uint64_t* ms;
-  const uint32_t* turns;
+  const uint32_t* line;        // the second measure, one a slot
+  const bool* point;           // false: no point in that slot, and the line breaks there
+  const char* lineLegend;      // the words after the line in the legend
+  const char* lineUnit;        // written once over the right axis
   int barPercent;              // bar width, in % of its slot
   const char* const* xLabels;  // one a slot, nullptr for none
 };
@@ -210,13 +215,13 @@ int chartBlockHeight(const GfxRenderer& renderer, const int plot) { return 5 * t
 void drawChartBlock(const GfxRenderer& renderer, const int top, const int plot, const Series& s) {
   const int w = renderer.getScreenWidth(), line = textLine(renderer), margin = 24;
   uint64_t mostMs = 0;
-  uint32_t mostTurns = 0;
+  uint32_t mostLine = 0;
   for (int i = 0; i < s.n; ++i) {
     mostMs = std::max(mostMs, s.ms[i]);
-    mostTurns = std::max(mostTurns, s.turns[i]);
+    if (s.point[i]) mostLine = std::max(mostLine, s.line[i]);
   }
   const auto time = lichdai::trucThoiGian(mostMs);
-  const uint32_t turnTop = lichdai::dinh(mostTurns);
+  const uint32_t lineTop = lichdai::dinh(mostLine);
   char text[24];
   // Legend: a small bar, then a short line through a dot, each before its words.
   const int legendX = margin + 26;
@@ -224,21 +229,20 @@ void drawChartBlock(const GfxRenderer& renderer, const int top, const int plot, 
   write(renderer, legendX, top, time.gio ? tr(STR_STATS_LEGEND_HOURS) : tr(STR_STATS_LEGEND_MINUTES));
   stroke(renderer, margin, top + line + line / 2, margin + 18, top + line + line / 2, 7);
   dot(renderer, margin + 9, top + line + line / 2);
-  write(renderer, legendX, top + line, tr(STR_STATS_LEGEND_TURNS));
+  write(renderer, legendX, top + line, s.lineLegend);
   // Axes: figures right-aligned left of the left axis, left-aligned right of the right axis.
   snprintf(text, sizeof(text), "%lu", static_cast<unsigned long>(time.dinh));
   const int leftWidth = textWidth(renderer, text);
-  snprintf(text, sizeof(text), "%lu", static_cast<unsigned long>(turnTop));
+  snprintf(text, sizeof(text), "%lu", static_cast<unsigned long>(lineTop));
   const int rightWidth = textWidth(renderer, text);
   const int x0 = margin + leftWidth + 8, x1 = w - margin - rightWidth - 8;
   const int plotTop = top + 3 * line + line / 2, base = plotTop + plot;
   write(renderer, margin, top + 2 * line, time.gio ? tr(STR_STATS_HOURS) : tr(STR_STATS_MINUTES));
-  const char* unit = tr(STR_STATS_TURNS_UNIT);
-  write(renderer, w - margin - textWidth(renderer, unit), top + 2 * line, unit);
+  write(renderer, w - margin - textWidth(renderer, s.lineUnit), top + 2 * line, s.lineUnit);
   stroke(renderer, x0, plotTop, x0, base, 11);
   stroke(renderer, x1, plotTop, x1, base, 12);
   stroke(renderer, x0, base, x1, base, 13);
-  const uint32_t leftTicks[3] = {0, time.dinh / 2, time.dinh}, rightTicks[3] = {0, turnTop / 2, turnTop};
+  const uint32_t leftTicks[3] = {0, time.dinh / 2, time.dinh}, rightTicks[3] = {0, lineTop / 2, lineTop};
   for (int t = 0; t < 3; ++t) {
     const int y = base - t * plot / 2;
     stroke(renderer, x0 - 5, y, x0, y, 20 + t);
@@ -262,11 +266,16 @@ void drawChartBlock(const GfxRenderer& renderer, const int top, const int plot, 
     }
     if (s.xLabels[i]) write(renderer, cx - textWidth(renderer, s.xLabels[i]) / 2, base + 4, s.xLabels[i]);
   }
-  // The line over the bars: a white margin first, then the black stroke, then the dots.
-  const auto y = [&](const int i) { return base - static_cast<int>(static_cast<uint64_t>(s.turns[i]) * plot / turnTop); };
-  for (int i = 1; i < s.n; ++i) renderer.drawLine(first + (i - 1) * slot, y(i - 1), first + i * slot, y(i), 6, false);
-  for (int i = 1; i < s.n; ++i) stroke(renderer, first + (i - 1) * slot, y(i - 1), first + i * slot, y(i), 40 + i);
-  for (int i = 0; i < s.n; ++i) dot(renderer, first + i * slot, y(i));
+  // The line over the bars: a white margin first, then the black stroke, then the dots. A slot without a point breaks
+  // the line on both sides.
+  const auto y = [&](const int i) { return base - static_cast<int>(static_cast<uint64_t>(s.line[i]) * plot / lineTop); };
+  for (int i = 1; i < s.n; ++i)
+    if (s.point[i - 1] && s.point[i])
+      renderer.drawLine(first + (i - 1) * slot, y(i - 1), first + i * slot, y(i), 6, false);
+  for (int i = 1; i < s.n; ++i)
+    if (s.point[i - 1] && s.point[i]) stroke(renderer, first + (i - 1) * slot, y(i - 1), first + i * slot, y(i), 40 + i);
+  for (int i = 0; i < s.n; ++i)
+    if (s.point[i]) dot(renderer, first + i * slot, y(i));
 }
 }  // namespace
 
@@ -277,18 +286,22 @@ int ReadingHistoryActivity::chartHeight() const {
 // The 4 weeks of the page, each named by its Monday.
 void ReadingHistoryActivity::drawWeekChart() const {
   uint64_t ms[lichdai::SO_TUAN];
-  uint32_t turns[lichdai::SO_TUAN];
+  uint32_t minutes[lichdai::SO_TUAN];
+  bool point[lichdai::SO_TUAN];
   char names[lichdai::SO_TUAN][8];
   const char* labels[lichdai::SO_TUAN];
   for (int k = 0; k < lichdai::SO_TUAN; ++k) {
     ms[k] = weeks[k].ms;
-    turns[k] = weeks[k].luot;
+    minutes[k] = 0;
+    point[k] = lichdai::trungBinh(weeks[k], minutes[k]);
     const uint32_t key = habits::dateKey(lichdai::dau(today, page) + 7 * k);
     snprintf(names[k], sizeof(names[k]), "%02lu/%02lu", static_cast<unsigned long>(key % 100),
              static_cast<unsigned long>(key / 100 % 100));
     labels[k] = names[k];
   }
-  drawChartBlock(renderer, gridTop() + gridHeight(), WEEK_PLOT, {lichdai::SO_TUAN, ms, turns, 30, labels});
+  drawChartBlock(renderer, gridTop() + gridHeight(), WEEK_PLOT,
+                 {lichdai::SO_TUAN, ms, minutes, point, tr(STR_STATS_LEGEND_MEAN_SESSION),
+                  tr(STR_STATS_MINUTES_PER_SESSION), 30, labels});
 }
 
 // The 24 hours of the local day; 0, 6, 12 and 18 named.
@@ -296,7 +309,11 @@ void ReadingHistoryActivity::drawHourChart() const {
   static const char* const labels[24] = {"0", nullptr, nullptr, nullptr, nullptr, nullptr, "6",  nullptr,
                                          nullptr, nullptr, nullptr, nullptr, "12", nullptr, nullptr, nullptr,
                                          nullptr, nullptr, "18", nullptr, nullptr, nullptr, nullptr, nullptr};
-  drawChartBlock(renderer, gridTop(), HOUR_PLOT, {24, history->hourMs.data(), history->hourSessions.data(), 50, labels});
+  static const bool every[24] = {true, true, true, true, true, true, true, true, true, true, true, true,
+                                 true, true, true, true, true, true, true, true, true, true, true, true};
+  drawChartBlock(renderer, gridTop(), HOUR_PLOT,
+                 {24, history->hourMs.data(), history->hourSessions.data(), every, tr(STR_STATS_LEGEND_SESSIONS),
+                  tr(STR_STATS_SESSIONS_UNIT), 50, labels});
 }
 
 // 7 columns centred, Monday first under the weekday line, 4 rows; the oldest week on top, today framed.
