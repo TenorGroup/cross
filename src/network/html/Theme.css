@@ -19,8 +19,9 @@ body.tenor-transfer .card{padding:24px 0;margin:24px 0;border:0;border-top:1px s
 body.tenor-transfer .info-row{padding:16px 0;gap:24px}.info-row .value{overflow-wrap:anywhere;text-align:right}
 body.tenor-transfer .label{font-weight:400}
 body.tenor-transfer .status{background:transparent;color:var(--font-color);padding:0;border-radius:0;font-weight:400}
-body.tenor-transfer button,body.tenor-transfer input,body.tenor-transfer select,body.tenor-transfer textarea{font:inherit}
-body.tenor-transfer button,body.tenor-transfer .btn,body.tenor-transfer input::file-selector-button{border-radius:2px;min-height:44px;padding:10px 16px;box-shadow:none}
+body.tenor-transfer button,body.tenor-transfer a.action-btn,body.tenor-transfer input,body.tenor-transfer select,body.tenor-transfer textarea{font:inherit}
+body.tenor-transfer a.action-btn{text-decoration:none}
+body.tenor-transfer button,body.tenor-transfer a.action-btn,body.tenor-transfer .btn,body.tenor-transfer input::file-selector-button{border-radius:2px;min-height:44px;padding:10px 16px;box-shadow:none}
 body.tenor-transfer button{border:1px solid var(--border-color);color:var(--font-color);background:transparent;cursor:pointer}
 body.tenor-transfer .btn-primary,body.tenor-transfer .upload-action-btn,body.tenor-transfer .upload-btn,body.tenor-transfer button[type=submit],body.tenor-transfer .save-btn,body.tenor-transfer .folder-btn{background:var(--giay);color:var(--muc);border:1px solid var(--giay)}
 body.tenor-transfer input:not([type=checkbox]):not([type=radio]),body.tenor-transfer select,body.tenor-transfer textarea{max-width:100%;border:1px solid var(--border-color);border-radius:2px;padding:10px 12px;background:var(--than-chi);color:var(--font-color)}
@@ -68,7 +69,7 @@ body.tenor-transfer .message.error,body.tenor-transfer .status-err{color:var(--p
 body.tenor-transfer{padding:0 20px 32px}.tenor-masthead{min-height:68px}.tenor-identity{font-size:20px}.tenor-local{font-size:11px}
 body.tenor-transfer h2{font-size:30px}body.tenor-transfer .nav-links{gap:0;justify-content:space-between;margin-bottom:28px}body.tenor-transfer .nav-links a{font-size:13px;padding:16px 6px;min-width:44px}.tenor-lang-slot label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.tenor-lang-slot select{min-height:44px}
 body.tenor-transfer .card{padding:16px 0;margin:20px 0;line-break:auto}body.tenor-transfer .page-header{align-items:flex-start;flex-direction:column;gap:20px}
-body.tenor-transfer .action-buttons{width:100%;display:grid;grid-template-columns:1fr 1fr auto;gap:8px}body.tenor-transfer .action-buttons button{font-size:13px;padding:10px 12px}
+body.tenor-transfer .action-buttons{width:100%;display:grid;grid-template-columns:1fr 1fr auto;gap:8px}body.tenor-transfer .action-buttons button{font-size:13px;padding:10px 12px}body.tenor-transfer .action-buttons a.action-btn{grid-column:1/-1;order:1;font-size:13px;padding:10px 12px}
 body.tenor-transfer .modal{width:calc(100% - 24px);max-width:calc(100% - 24px);padding:24px 20px}
 body.tenor-transfer .info-row{gap:12px}
 body.tenor-transfer .file-table tr{display:grid;grid-template-columns:24px minmax(0,1fr);gap:8px 12px;padding:20px 0;border-bottom:1px solid var(--border-color)}

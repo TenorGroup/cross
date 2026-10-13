@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 // Where a saved quote sits in the book, in the same units the reader already uses to
@@ -80,6 +81,11 @@ bool replace(const std::string& name, const QuoteRecord& updated);
 bool latestSaved(QuoteId& id);
 // Clears it once a screen has shown that quote, so the next visit is free to pick another.
 void forgetLatestSaved();
+
+// Streams a UTF-8 Kindle-compatible My Clippings export. The sink receives small pieces in
+// order, so the exporter never builds the whole download in RAM and never writes the card.
+// Returns the record count, or SIZE_MAX on read, memory or sink failure.
+size_t streamKindle(const std::function<bool(const char*, size_t)>& sink);
 
 // Called on every visit to the Quotes screens. First repairs what a power cut left in the
 // middle of a write (see replace()); that is one walk of the directory acting only on

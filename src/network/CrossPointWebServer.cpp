@@ -26,6 +26,7 @@
 #include "FontInstaller.h"
 #include "FontPackInstaller.h"
 #include "OpdsServerStore.h"
+#include "QuoteStore.h"
 #include "SdCardFontSystem.h"
 #include "SettingsList.h"
 #include "WebDAVHandler.h"
@@ -277,6 +278,9 @@ void CrossPointWebServer::begin() {
   });
   server->on("/download", HTTP_GET, [this] {
     if (auth.authorize(*server, true, requestLanguage())) handleDownload();
+  });
+  server->on("/api/quotes/export", HTTP_GET, [this] {
+    if (auth.authorize(*server, true, requestLanguage())) handleQuotesExport();
   });
 
   // Upload endpoint with special handling for multipart form data
@@ -876,6 +880,46 @@ void CrossPointWebServer::handleDownload() {
   LOG_INF("WEB", "Download end ok=%d sent=%u elapsed=%lu heap=%u stack=%u", downloadOk, static_cast<unsigned>(sent),
           static_cast<unsigned long>(millis() - started), ESP.getFreeHeap(),
           static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
+}
+
+void CrossPointWebServer::handleQuotesExport() {
+  bool started = false;
+#ifdef TENOR_PRESS_PROBE
+  const uint32_t freeBefore = ESP.getFreeHeap();
+  uint32_t freeMin = freeBefore, largestMin = ESP.getMaxAllocHeap();
+#endif
+  const size_t count = quotes::streamKindle([this, &started
+#ifdef TENOR_PRESS_PROBE
+                                            , &freeMin, &largestMin
+#endif
+                                          ](const char* data, const size_t size) -> bool {
+    if (!server->client().connected()) return false;
+    if (!started) {
+      server->setContentLength(CONTENT_LENGTH_UNKNOWN);
+      server->sendHeader("Content-Disposition", "attachment; filename=\"My Clippings.txt\"");
+      server->send(200, "text/plain; charset=utf-8", "");
+      started = true;
+    }
+    resetTaskWatchdogIfSubscribed();
+    server->sendContent(data, size);
+    noteTransferActivity(size);
+#ifdef TENOR_PRESS_PROBE
+    freeMin = std::min(freeMin, static_cast<uint32_t>(ESP.getFreeHeap()));
+    largestMin = std::min(largestMin, static_cast<uint32_t>(ESP.getMaxAllocHeap()));
+#endif
+    return server->client().connected();
+  });
+  if (count != SIZE_MAX) {
+    server->sendContent("");
+  } else if (!started) {
+    server->send(503, "text/plain; charset=utf-8", trWeb(requestLanguage(), StrId::STR_WEB_FAILED_OPEN_FILE));
+  } else {
+    server->client().stop();
+  }
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("WEB", "QUOTE_EXPORT count=%u before=%u min=%u largest=%u after=%u", static_cast<unsigned>(count),
+          freeBefore, freeMin, largestMin, ESP.getFreeHeap());
+#endif
 }
 
 // Diagnostic counters for upload performance analysis
