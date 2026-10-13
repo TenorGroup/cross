@@ -41,7 +41,7 @@ add_library(bleturner_arduinojson INTERFACE)
 target_include_directories(bleturner_arduinojson SYSTEM INTERFACE ${arduinojson_SOURCE_DIR}/src)
 
 # The rules, pure.
-add_executable(BlePageTurnerPolicyTest RadioVerdictTest.cpp HeapRestartTest.cpp KeyBindingTest.cpp)
+add_executable(BlePageTurnerPolicyTest RadioVerdictTest.cpp RadioVerdictS3Test.cpp HeapRestartTest.cpp KeyBindingTest.cpp)
 target_link_libraries(BlePageTurnerPolicyTest PRIVATE bleturner_test_flags GTest::gtest_main)
 gtest_discover_tests(BlePageTurnerPolicyTest)
 
@@ -50,6 +50,12 @@ add_executable(BlePageTurnerRuntimeTest RuntimeTest.cpp TickTest.cpp LinkNoteTes
 target_compile_definitions(BlePageTurnerRuntimeTest PRIVATE BLETURNER_TESTING)
 target_link_libraries(BlePageTurnerRuntimeTest PRIVATE bleturner_test_flags GTest::gtest_main)
 gtest_discover_tests(BlePageTurnerRuntimeTest)
+
+# The S3 profile of the runtime: NimBLE's host in PSRAM, the radio starting at Home.
+add_executable(BlePageTurnerHomeStartTest HomeStartTest.cpp Fakes.cpp ${BLETURNER_ROOT}/src/Runtime.cpp)
+target_compile_definitions(BlePageTurnerHomeStartTest PRIVATE BLETURNER_TESTING FREEINK_BLE_STACK_IN_PSRAM=1)
+target_link_libraries(BlePageTurnerHomeStartTest PRIVATE bleturner_test_flags GTest::gtest_main)
+gtest_discover_tests(BlePageTurnerHomeStartTest)
 
 # A build without BLE.
 add_executable(BlePageTurnerNoRadioTest NoRadioTest.cpp ${BLETURNER_ROOT}/src/Runtime.cpp ${BLETURNER_ROOT}/src/NoRadio.cpp)

@@ -47,6 +47,8 @@ std::atomic<bool> rearmRequested{false};
 std::atomic<bool> heldForBuild{false};
 bool connectRequested = false;
 std::atomic<Why> startRefusal{Why::Ok};
+// The start in flight was asked for at Home (S3 profile): its heap rules differ. Set by the starter.
+std::atomic<bool> startFromHome{false};
 // Written by the start (one at a time), read by the main loop once no start is in flight.
 Tracker heapTracker{port::restartMemo()};
 
@@ -98,6 +100,7 @@ RadioInputs inputsFor(const Phase phase, const Scene& s) {
   in.storageBusy = s.storageBusy;
   in.heldForBuild = heldForBuild.load(std::memory_order_relaxed);
   in.idleStopped = radioIdleStopped.load(std::memory_order_relaxed);
+  in.hasBond = config->peerAddr[0] != '\0';
   in.linked = true;
   return in;
 }
@@ -105,6 +108,7 @@ RadioInputs inputsFor(const Phase phase, const Scene& s) {
 RadioInputs heapInputs(const Phase phase, const Heap heap, const bool storageBusy) {
   RadioInputs in{};
   in.phase = phase;
+  in.where = startFromHome.load(std::memory_order_relaxed) ? Where::Home : Where::Elsewhere;
   in.storageBusy = storageBusy;
   in.heap = heap;
   return in;
@@ -112,7 +116,7 @@ RadioInputs heapInputs(const Phase phase, const Heap heap, const bool storageBus
 
 void logSkipped(const char* reason, const Heap& heap) {
   say(true, "HID begin skipped (%s): free=%zu largest=%zu required_free=%zu required_largest=%zu\n", reason,
-      heap.freeBytes, heap.largestBlock, kStartFreeBytes, kMinimumLargestBlockBytes);
+      heap.freeBytes, heap.largestBlock, activeProfile().startFreeBytes, activeProfile().minimumLargest);
   static uint8_t mapsLeft = 2;
   if (mapsLeft > 0 && host->heapMap != nullptr) {
     mapsLeft--;
@@ -167,7 +171,7 @@ bool beginOwned() {
   startRefusal.store(started, std::memory_order_relaxed);
   if (started == Why::HeapInPieces) {
     say(true, "HID begin rolled back (post-init-headroom): free=%zu largest=%zu required_largest=%zu\n",
-        after.freeBytes, after.largestBlock, kMinimumLargestBlockBytes);
+        after.freeBytes, after.largestBlock, activeProfile().minimumLargest);
     heapTracker.refused(started);
   } else if (started != Why::Ok) {
     heapTracker.inconclusive();
@@ -193,6 +197,7 @@ void finishAttempt(const bool started, const bool reportReaderFailure) {
 }
 
 bool startSync() {
+  startFromHome.store(false, std::memory_order_relaxed);
   radioIdleStopped.store(false, std::memory_order_relaxed);
   readerStartDeferred.store(false, std::memory_order_relaxed);
   bool expected = false;
@@ -215,6 +220,15 @@ bool act(const Action a) {
 }
 
 // The book in front with the radio up: arm bonded reconnect, drain both queues.
+void drainRemote() {
+  port::RawEdge edge;
+  port::KeyPress key;
+  while (port::popRaw(edge)) {
+  }
+  while (port::popKey(key)) {
+  }
+}
+
 bool serveReader() {
   bool acted = false;
   readerStartDeferred.store(false, std::memory_order_relaxed);
@@ -354,6 +368,7 @@ void resetForTests() {
   heldForBuild.store(false);
   connectRequested = false;
   startRefusal.store(Why::Ok);
+  startFromHome.store(false);
   heapTracker.fragmentedInRow = 0;
   heapTracker.wanted.store(false);
   visit = Visit{};
@@ -397,7 +412,9 @@ bool tick(const Scene& s) {
   }
 
   const bool reader = s.where == Where::Reader;
-  if (!reader || !config->enabled || s.visit != visit.id) {
+  // S3 profile: Home may start the radio too, once its first frame is up and a remote is chosen.
+  const bool home = s.where == Where::Home && activeProfile().homeStartLargest != 0;
+  if (!(reader || home) || !config->enabled || s.visit != visit.id) {
     // A build hold belongs to one book visit; the next visit may start the radio again.
     if (s.visit != visit.id) heldForBuild.store(false, std::memory_order_relaxed);
     visit.attempted = false;
@@ -462,6 +479,7 @@ bool tick(const Scene& s) {
         (port::running() || host->yieldForRadio())) {
       visit.attempted = true;
       if (!port::running()) {
+        startFromHome.store(home, std::memory_order_relaxed);
         const bool started = detail::startAsync();
         if (!started) readerStartDeferred.store(true, std::memory_order_relaxed);
         if (started) {
@@ -496,6 +514,8 @@ bool tick(const Scene& s) {
       idleClockRunning = false;
     }
     if (reader && !attemptInFlight.load(std::memory_order_acquire) && port::running()) acted = serveReader();
+    // At Home nothing takes a remote's presses; drop them rather than carry them into the next book.
+    if (home && !attemptInFlight.load(std::memory_order_acquire) && port::running()) drainRemote();
   }
 
   const bool up = reader && port::running() && !attemptInFlight.load(std::memory_order_acquire);
@@ -520,7 +540,15 @@ bool tick(const Scene& s) {
   return acted;
 }
 
-bool beforeScreenChange(const uint32_t endTimeoutMs) { return detail::suspend(endTimeoutMs); }
+bool beforeScreenChange(const uint32_t endTimeoutMs, const bool nextIsReader) {
+  // Up since Home (S3 profile) and the next screen is a book: the stack stays, so the book does not have to
+  // find 46 KB of internal RAM in the heap its own pages left.
+  if (nextIsReader && activeProfile().homeStartLargest != 0 && config->enabled && port::running() &&
+      !port::stopping() && !attemptInFlight.load(std::memory_order_acquire)) {
+    return true;
+  }
+  return detail::suspend(endTimeoutMs);
+}
 
 bool stopNow(const uint32_t timeoutMs) {
   const uint32_t started = port::nowMs();

@@ -541,7 +541,11 @@ void HalTiltSensor::pollDoubleTap(const unsigned long now) {
 
 #ifdef TENOR_PRESS_PROBE
 namespace {
+#ifdef TENOR_PROBE_LITE
+constexpr uint16_t PROBE_FRAMES = 8;  // the lite probe has no IMU capture to take
+#else
 constexpr uint16_t PROBE_FRAMES = 200;  // More than a full FIFO (128)
+#endif
 Imu::RawFrame probeFrames[PROBE_FRAMES];
 bool probeFrameGap[PROBE_FRAMES];
 uint16_t probeFrameCount = 0;

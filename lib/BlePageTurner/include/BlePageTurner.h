@@ -128,7 +128,9 @@ struct Host {
   void (*heapMap)(const char* tag);
 };
 
-enum class Where : uint8_t { Elsewhere, Reader, PairingScreen };
+// Home is the first screen after boot with its first frame up; only a build with the S3 profile
+// (RadioPolicy.h) lets the radio start there.
+enum class Where : uint8_t { Elsewhere, Reader, PairingScreen, Home };
 
 // Host -> module, once per main-loop pass.
 struct Scene {
@@ -149,7 +151,9 @@ void requestConnect();
 bool tick(const Scene& scene);
 // False: the radio is still stopping (or a start is in flight); call again next pass before
 // changing screens. endTimeoutMs: how long the SDK may wait for the stack to stop this call.
-bool beforeScreenChange(uint32_t endTimeoutMs = 0);
+// nextIsReader: the screen about to come is a book. A radio that came up at Home (S3 profile) is kept for
+// it, so the book finds the stack already in and the heap Home had.
+bool beforeScreenChange(uint32_t endTimeoutMs = 0, bool nextIsReader = false);
 // Stops the radio now, waiting up to timeoutMs: a start in flight is cancelled or let finish, then
 // the stack stops. False: it did not stop in time. Main loop. The reader calls it before a sheet
 // covers the page, and reports the book as Elsewhere while the sheet is up.

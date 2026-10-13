@@ -1365,7 +1365,11 @@ struct CurLogRow {
   uint16_t mv;
   uint8_t imuAwake, shakeAction;
 };
+#ifdef TENOR_PROBE_LITE
+static CurLogRow curLogRows[8];
+#else
 static CurLogRow curLogRows[96];
+#endif
 static uint8_t curLogCount = 0;
 static unsigned long curLogUntilMs = 0, curLogNextMs = 0;
 
@@ -1480,11 +1484,12 @@ void loop() {
     bleturner::Scene scene{};
     // A sheet over the page (the reader menu) puts the book out of front: the radio stopped before
     // the sheet was drawn (EpubReaderActivity::stopRadioForSheet) and starts again on the page.
-    scene.where = activityManager.isForegroundReaderActivity() && !activityManager.foregroundReaderCoversPage()
-                      ? bleturner::Where::Reader
-                      : bleturner::Where::Elsewhere;
+    const bool bookInFront = activityManager.isForegroundReaderActivity() && !activityManager.foregroundReaderCoversPage();
+    const bool homeInFront = !bookInFront && activityManager.isForegroundHomePainted();
+    scene.where = bookInFront ? bleturner::Where::Reader
+                              : (homeInFront ? bleturner::Where::Home : bleturner::Where::Elsewhere);
     scene.visit = activityManager.activityGeneration();
-    scene.pageShown = activityManager.isForegroundReaderReady();
+    scene.pageShown = homeInFront || activityManager.isForegroundReaderReady();
     // A book still building its index in the background keeps the radio off until the index
     // is whole (EpubReaderActivity::holdsRadio); the device keys work meanwhile.
     scene.bookIndexing = activityManager.foregroundReaderHoldsRadio();

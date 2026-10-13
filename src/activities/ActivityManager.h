@@ -180,6 +180,8 @@ class ActivityManager {
   bool isForegroundReaderActivity() const;
   bool isForegroundActivityManagingTiltSensor() const;
   bool isForegroundReaderReady() const;
+  // Home is in front and has painted a frame of its own (not one left from the screen before).
+  bool isForegroundHomePainted() const;
   bool foregroundReaderHoldsRadio() const;
   bool foregroundReaderCoversPage() const;
   // The foreground reader frees what it can before the radio starts (ReaderActivity::yieldForRadio).
