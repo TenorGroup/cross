@@ -808,7 +808,8 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
     writeTocEntryTo(bookOut, tocEntry);
   }
 
-  const bool written = bookOut.flush() && spineIn.ok() && tocIn.ok();
+  const bool flushed = bookOut.flush();
+  const bool written = flushed && spineIn.ok() && tocIn.ok();
   HEAP_MARK("book_end");
 #ifdef TENOR_PRESS_PROBE
   LOG_INF("BMC", "INDEX_SPLIT book luts=%lu chunks=%d toc_scans=%lu zip_sizes=%lu spine_out=%lu toc_copy=%lu", lutsMs,
@@ -823,6 +824,11 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
     // A short write (card full/removed) would leave a truncated book.bin that
     // still passes the version check on load; remove it so the next open rebuilds.
     LOG_ERR("BMC", "Failed writing %s, removing truncated file", source.outFile);
+#ifdef TENOR_PRESS_PROBE
+    // Which part failed (rc1-3 saw one, not reproduced): the card write, a source read, or the close.
+    LOG_INF("BMC", "BOOKBIN_FAIL flush=%u short_at=%ld spine_in=%u toc_in=%u closed=%u", flushed ? 1u : 0u,
+            bookOut.firstShortAt, spineIn.ok() ? 1u : 0u, tocIn.ok() ? 1u : 0u, closed ? 1u : 0u);
+#endif
     Storage.remove(outPath.c_str());
     return false;
   }
@@ -1008,6 +1014,10 @@ bool BookMetadataCache::deferredTocReady(const std::string& cachePath, uint16_t*
   if (!ok || !Storage.exists((cachePath + tocDoneFile).c_str())) return false;
   if (entries) *entries = count;
   return true;
+}
+
+bool BookMetadataCache::tocStepFits(const size_t inflateBytes, const size_t freeNow, const size_t largestNow) {
+  return heapfloor::leaves(TOC_STEP_HEAP + inflateBytes, TOC_STEP_BLOCKS + inflateBytes, freeNow, largestNow);
 }
 
 bool BookMetadataCache::buildBookBinFromPart(const std::string& epubPath, const StopFn stop) {

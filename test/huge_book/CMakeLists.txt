@@ -19,6 +19,8 @@ target_link_libraries(HugeBookIndexTest PRIVATE GTest::gtest_main expat)
 gtest_discover_tests(HugeBookIndexTest PROPERTIES RUN_SERIAL TRUE TIMEOUT 300)
 add_test(NAME BackgroundIndex.ReaderRetryPolicy
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/index_retry.py)
+add_test(NAME BackgroundIndex.TocStepKeepsTheFloor
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/toc_step_floor.py)
 
 add_executable(HugeBookSectionTest
   HugeBookSectionTest.cpp ../section_cache/ParserLinkStubs.cpp

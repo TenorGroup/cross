@@ -20,14 +20,24 @@ def function(path, signature):
 
 
 prefix = r'''
+#include <atomic>
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 template <class... T> void logLine(T&&...) {}
 #define LOG_PROBE(...) logLine(__VA_ARGS__)
 #define LOG_ERR(...) logLine(__VA_ARGS__)
+#define HEAP_MARK(...) logLine(__VA_ARGS__)
+namespace heapfloor { inline std::atomic<uint32_t> refusals{0}; }
+namespace buildscratch { bool available(size_t) { return false; } }
+struct InflateStream { static size_t streamingBytes() { return 0; } };
+struct GfxRenderer {
+  unsigned frameBufferLoanCount() const { return 0; }
+  struct FrameBufferLoan { explicit FrameBufferLoan(GfxRenderer&) {} };
+};
 unsigned long millis() { return 100; }
 struct { unsigned getFreeHeap() { return 46080; } unsigned getMaxAllocHeap() { return 46080; } } ESP;
 bool heapReady = false, cardFailed = false;
@@ -50,6 +60,7 @@ struct BookMetadataCache {
     return ready = heapReady && !cardFailed;
   }
   bool wasHeapRefused() const { return refused; }
+  static bool tocStepFits(size_t, size_t, size_t) { return true; }
   bool load(bool, StopFn) { partial = false; return true; }
   void removePartFiles() {}
   void discardBookBin() { ready = false; }
@@ -68,6 +79,7 @@ class Epub {
   bool parseTocNavFile(BookMetadataCache*, BookMetadataCache::StopFn) { return true; }
   bool parseTocNcxFile(BookMetadataCache*, BookMetadataCache::StopFn) { return true; }
   IndexStep indexSome(BookMetadataCache::StopFn);
+  bool indexStepInflates() const { return false; }
 };
 struct RenderLock { struct TryTake {}; explicit RenderLock(TryTake) {} bool acquired() { return true; } };
 struct BackgroundBuildFrameGuard { template <class T> explicit BackgroundBuildFrameGuard(T&) {} };
@@ -80,6 +92,8 @@ class EpubReaderActivity {
   std::shared_ptr<Section> section = std::make_shared<Section>();
   unsigned indexFailures = 0, indexStops = 0, indexRetryAtMs = 0;
   bool backgroundBuildSuspended = false;
+  bool pageFrameShown = true;
+  GfxRenderer renderer;
   int tocSpineCached = 0, completed = 0;
   static constexpr unsigned INDEX_RETRY_MS = 10000, INDEX_MAX_FAILURES = 3, INDEX_MAX_STOPS = 40;
   void suspendBackgroundBuild() {}

@@ -208,6 +208,15 @@ class BookMetadataCache {
   bool endDeferredTocPass();
   // Whether a finished background TOC pass is on the card, and its entry count.
   static bool deferredTocReady(const std::string& cachePath, uint16_t* entries = nullptr);
+  // THE heap decision before a background TOC step: true when the heap now (reported numbers)
+  // stands on the floor after the step. `inflateBytes` is what the zip stream's inflater takes from
+  // the heap, 0 when it rides the lent framebuffer. Besides it the step took 23,7 to 28 KB on the
+  // X3 (heap59, 5.000 chapters: zip readers, two 1 KB slices, the pass and its 4 KB buffer, the
+  // parser), 18 KB of it counted on the host (BackgroundIndex.TocStepStaysInItsBudget), in two
+  // blocks of 4 KB. Every block from 4 KB up is booked against the largest free block.
+  static constexpr size_t TOC_STEP_HEAP = 32 * 1024;
+  static constexpr size_t TOC_STEP_BLOCKS = 16 * 1024;
+  static bool tocStepFits(size_t inflateBytes, size_t freeNow, size_t largestNow);
   // Builds book.bin from book.part and the finished TOC pass. `stop` is asked between steps; when
   // it answers true, or on any failure, nothing of the build is left behind and false is returned.
   // Needs a cache loaded from book.part.

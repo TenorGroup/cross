@@ -5,10 +5,13 @@
 #include <FsHelpers.h>
 #include <GrayThumb.h>
 #include <HalStorage.h>
+#include <HeapFloor.h>
+#include <InflateStream.h>
 #include <JpegToBmpConverter.h>
 #include <ProgressiveJpeg.h>
 #include <Logging.h>
 #include <HeapMark.h>
+#include <BuildScratch.h>
 #include <Memory.h>
 #include <PngToBmpConverter.h>
 #include <RecoverableFile.h>
@@ -822,6 +825,11 @@ void Epub::restoreTocSource() {
   contentBasePath = source.basePath;
 }
 
+bool Epub::indexStepInflates() const {
+  return bookMetadataCache && bookMetadataCache->isLoaded() && bookMetadataCache->isPartial() &&
+         !BookMetadataCache::deferredTocReady(cachePath);
+}
+
 bool Epub::indexComplete() const {
   return bookMetadataCache && bookMetadataCache->isLoaded() && !bookMetadataCache->isPartial();
 }
@@ -838,6 +846,18 @@ Epub::IndexStep Epub::indexSome(const BookMetadataCache::StopFn stop) {
   HEAP_MARK("index_step_begin");
   if (!BookMetadataCache::deferredTocReady(cachePath)) {
     step = "toc";
+    // The inflater rides the framebuffer when the reader lent it (runIndexStep), else the heap.
+    const size_t inflateBytes =
+        buildscratch::available(InflateStream::streamingBytes()) ? 0 : InflateStream::streamingBytes();
+    if (!BookMetadataCache::tocStepFits(inflateBytes, ESP.getFreeHeap(), ESP.getMaxAllocHeap())) {
+      LOG_PROBE("EBP", "INDEX_BG step=toc heap_refused inflate=%u free=%u largest=%u",
+                static_cast<unsigned>(inflateBytes), static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(ESP.getMaxAllocHeap()));
+      return IndexStep::More;
+    }
+    const uint32_t refusedBefore = heapfloor::refusals.load();
+    // A block the door refused during the pass: the heap's failure, not the book's.
+    const auto starved = [refusedBefore] { return heapfloor::refusals.load() != refusedBefore; };
     BookMetadataCache pass(cachePath);
     const bool resumeNcx = !tocNcxItem.empty() && pass.hasDeferredTocProgress(tocNcxItem);
     ok = pass.beginDeferredTocPass(resumeNcx || tocNavItem.empty() ? tocNcxItem : tocNavItem);
@@ -845,11 +865,12 @@ Epub::IndexStep Epub::indexSome(const BookMetadataCache::StopFn stop) {
     // EPUB 3 nav first, NCX when that fails, as the one-pass build; a book with neither has no TOC.
     bool parsed = false;
     if (ok && !resumeNcx && !tocNavItem.empty()) parsed = parseTocNavFile(&pass, ask);
-    if (ok && !parsed && !stepStopped && !tocNcxItem.empty()) {
+    if (ok && !parsed && !stepStopped && !starved() && !tocNcxItem.empty()) {
       if (!resumeNcx && !tocNavItem.empty()) ok = pass.beginDeferredTocPass(tocNcxItem, true);
       if (ok) parsed = parseTocNcxFile(&pass, ask);
     }
-    if (ok && stepStopped) {
+    // A starved pass keeps what it wrote, as a stopped one does, and the reader comes back (More).
+    if (ok && (stepStopped || (!parsed && starved()))) {
       ok = pass.pauseDeferredTocPass();
     } else if (ok) {
       ok = parsed || (tocNavItem.empty() && tocNcxItem.empty());

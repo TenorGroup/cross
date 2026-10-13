@@ -11,6 +11,7 @@ inline bool counting = false;   // count allocations made while true
 inline size_t cap = SIZE_MAX;   // bytes available to counted allocations
 inline size_t live = 0;         // counted bytes currently allocated
 inline size_t peak = 0;         // high-water mark of live since reset()
+inline size_t biggest = 0;      // largest single counted allocation since reset()
 inline unsigned aborts = 0;     // throwing allocations past the cap (device abort)
 inline size_t firstAbortSize = 0, firstAbortLive = 0;
 inline unsigned refusals = 0;   // nothrow allocations refused by the cap
@@ -18,7 +19,7 @@ inline int untracked = 0;       // > 0 while test storage allocates (not device 
 
 inline void reset(size_t newCap) {
   cap = newCap;
-  live = peak = 0;
+  live = peak = biggest = 0;
   aborts = refusals = 0;
   firstAbortSize = firstAbortLive = 0;
   counting = true;
@@ -60,6 +61,7 @@ inline void* allocate(size_t size, bool nothrow) {
   if (count) {
     live += size;
     if (live > peak) peak = live;
+    if (size > biggest) biggest = size;
   }
   return header + 1;
 }

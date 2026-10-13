@@ -51,6 +51,9 @@ class InflateStream {
   // Allocate decompressor state (and the 32KB window when streaming) and reset
   // stream state. Releases prior storage first; leaves no allocation on OOM.
   bool init(bool streaming);
+  // What init(true) takes, state and window: from a lent framebuffer when one is free
+  // (buildscratch), from the heap otherwise.
+  static size_t streamingBytes();
 
   // Free the decompressor state and window.
   void deinit();

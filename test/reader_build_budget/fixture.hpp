@@ -18,6 +18,7 @@ inline void logSink(A&&...) {}
 #define LOG_DBG(...) logSink(__VA_ARGS__)
 #define LOG_ERR(...) logSink(__VA_ARGS__)
 #define LOG_INF(...) logSink(__VA_ARGS__)
+#define HEAP_MARK(...) logSink(__VA_ARGS__)
 constexpr int STR_INDEXING = 1;
 #define STR_PAGE_LOAD_ERROR 2
 #define STR_MEMORY_ERROR 3

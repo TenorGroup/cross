@@ -67,6 +67,9 @@ class Epub {
   // step leaves either its whole result on the card or nothing, so a stop, a power cut or a
   // reopen at any point resumes at a step boundary. `stop` is asked every few milliseconds.
   IndexStep indexSome(BookMetadataCache::StopFn stop);
+  // Whether the next indexSome step streams the book's TOC through the 43 KB inflater, which takes
+  // the framebuffer when the caller lends it (GfxRenderer::FrameBufferLoan) and the heap otherwise.
+  bool indexStepInflates() const;
   // Title and author from the book's cache, or from content.opf alone when it has none.
   bool loadMetadata(std::string& title, std::string& author);
   bool clearCache() const;

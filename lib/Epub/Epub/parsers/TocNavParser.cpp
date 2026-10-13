@@ -2,12 +2,13 @@
 
 #include <FsHelpers.h>
 #include <Logging.h>
+#include <XmlFloorAlloc.h>
 #include <XmlParserUtils.h>
 
 #include "Epub/BookMetadataCache.h"
 
 bool TocNavParser::setup() {
-  parser = XML_ParserCreate(nullptr);
+  parser = xmlfloor::create();
   if (!parser) {
     LOG_DBG("NAV", "Couldn't allocate memory for parser");
     return false;

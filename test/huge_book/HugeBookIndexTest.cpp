@@ -733,6 +733,26 @@ TEST(BackgroundIndex, StepsFitBesideTheReader) {
   EXPECT_LT(tocPeak, 5000u * 8);
 }
 
+// The TOC step's own heap beside the inflater, parser included (its blocks go through the door
+// and are counted here): what the step's heap decision (BookMetadataCache::tocStepFits) books.
+TEST(BackgroundIndex, TocStepStaysInItsBudget) {
+  const Book book = makeBook(Kind::Split, 5000);
+  resetCard(book);
+  ASSERT_TRUE(writeChapterList(book));
+  heapcap::reset(SIZE_MAX);
+  ASSERT_TRUE(tocStep(book));
+  const size_t peak = heapcap::peak, biggest = heapcap::biggest;
+  heapcap::stop();
+  printf("TOC_STEP n=5000 nav=%zu peak=%zu biggest=%zu\n", book.nav.size(), peak, biggest);
+  // The parser's blocks go through the door, so they are counted: about 14 KB beside the 4 KB
+  // buffer. A parser on plain malloc shows the buffer alone.
+  EXPECT_GT(peak, 4096u + 8 * 1024);
+  // The X3 took 10 KB more than the host counts (zip readers and slices, block overhead).
+  EXPECT_LE(peak + 10 * 1024, BookMetadataCache::TOC_STEP_HEAP);
+  // The pass's 4 KB buffer and the parser's biggest block, with room for that block to double.
+  EXPECT_LE(4096 + 2 * biggest, BookMetadataCache::TOC_STEP_BLOCKS);
+}
+
 namespace {
 template <typename T>
 auto pauseToc(T& cache, int) -> decltype(cache.pauseDeferredTocPass()) { return cache.pauseDeferredTocPass(); }

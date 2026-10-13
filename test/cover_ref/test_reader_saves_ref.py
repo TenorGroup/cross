@@ -32,6 +32,7 @@ stubs = r'''
 #include <string>
 #include "util/CoverRef.h"
 #define LOG_DBG(...) ((void)0)
+#define HEAP_MARK(...) ((void)0)
 std::set<std::string> files;
 int saves = 0;
 bool coverref::load(const std::string& cache, std::string& href) {

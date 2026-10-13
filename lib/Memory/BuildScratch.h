@@ -22,6 +22,8 @@ void reclaim();
 // Consumer side: exclusive claim of the whole block if it is at least minLen
 // bytes; nullptr means "use the heap". Release with the same pointer.
 uint8_t* claim(size_t minLen, size_t* lenOut = nullptr);
+// Whether claim(minLen) would hand the block out now.
+bool available(size_t minLen);
 void release(const uint8_t* p);
 
 }  // namespace buildscratch

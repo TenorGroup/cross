@@ -769,19 +769,30 @@ bool EpubReaderActivity::indexStepDue() const {
 void EpubReaderActivity::runIndexStep() {
   RenderLock lock(RenderLock::TryTake{});
   if (!lock.acquired()) return;
-  BackgroundBuildFrameGuard frameGuard(*this);
-  // A chapter's layout keeps its parser resident once the pages ahead are laid out, holding the
-  // heap a step needs, for as long as the chapter lasts (X3 r19: no step ran in 30 s). Park it the
-  // way the radio does; its pages stay, and it resumes when the reader nears the last of them.
-  if (section->isBuilding() && !section->isBuildParked()) {
-    backgroundBuildSuspended = true;
-    suspendBackgroundBuild();
+  {
+    BackgroundBuildFrameGuard frameGuard(*this);
+    // A chapter's layout keeps its parser resident once the pages ahead are laid out, holding the
+    // heap a step needs, for as long as the chapter lasts (X3 r19: no step ran in 30 s). Park it the
+    // way the radio does; its pages stay, and it resumes when the reader nears the last of them.
+    if (section->isBuilding() && !section->isBuildParked()) {
+      backgroundBuildSuspended = true;
+      suspendBackgroundBuild();
+    }
   }
   // The loop drops the CPU to its low-power clock after 3 s without a key, which is when steps
   // run: at that clock the TOC step took 57 s on the X3 (r21) against 5 s in the foreground.
   HalPowerManager::Lock fullSpeed;
+  // The TOC step streams the nav through a 43 KB inflater: on the heap it left 6.720 B on the X3
+  // (heap59, 5.000 chapters), so it takes the framebuffer. The page stays on the panel and nothing
+  // is refreshed; the framebuffer no longer holds it, so what reuses it as the page (the status bar
+  // alone, a sheet's snapshot) waits for, or asks for, the next paint.
+  const uint32_t loans = renderer.frameBufferLoanCount();
+  std::optional<GfxRenderer::FrameBufferLoan> loan;
+  if (epub->indexStepInflates()) loan.emplace(renderer);
   // Straight from the key hardware: this pass is held until the step returns.
   const Epub::IndexStep step = epub->indexSome([] { return gpio.rawInputActive(); });
+  loan.reset();
+  if (renderer.frameBufferLoanCount() != loans) pageFrameShown = false;
   if (step == Epub::IndexStep::Done) {
     tocSpineCached = -1;  // the chapter's TOC range can be read now
     LOG_PROBE("ERS", "Book index complete");
@@ -4727,8 +4738,9 @@ void EpubReaderActivity::openOverlay(Overlay target) {
     if (previous == Overlay::None) {
       const uint32_t loanCount = renderer.frameBufferLoanCount();
       suspendBackgroundBuild();
-      // Reaching a checkpoint can probe an image using the framebuffer. Repaint it before storing.
-      if (renderer.frameBufferLoanCount() != loanCount) {
+      // Reaching a checkpoint can probe an image using the framebuffer, and an index step lends it
+      // (runIndexStep). Repaint it before storing.
+      if (renderer.frameBufferLoanCount() != loanCount || !pageFrameShown) {
         requestUpdate();
         return;
       }
