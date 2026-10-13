@@ -15,7 +15,8 @@ class FontCacheManager {
                    const std::map<int, TtfEpdFont*>& ttfFonts);
 
   void setFontDecompressor(FontDecompressor* d);
-  void setReaderInk(int fontId, uint8_t level, bool antiAliased);
+  // inkStrength: outline strength of the reader font's ink level (readerInk::outlineStrength).
+  void setReaderInk(int fontId, int32_t inkStrength, bool antiAliased);
 
   void clearCache();
   // Drops only the built-in (compressed) fonts' page slots, e.g. after a
