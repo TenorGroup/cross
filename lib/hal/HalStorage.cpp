@@ -267,7 +267,20 @@ bool HalStorage::rename(const char* oldPath, const char* newPath) {
   HAL_STORAGE_WRAPPED_CALL(rename, oldPath, newPath);
 }
 
-bool HalStorage::rmdir(const char* path) { HAL_STORAGE_WRAPPED_CALL(rmdir, path); }
+namespace {
+// "", "/", "//": the card root. No caller may remove it or empty it.
+bool isCardRoot(const char* path) {
+  if (!path) return true;
+  for (; *path; ++path)
+    if (*path != '/') return false;
+  return true;
+}
+}  // namespace
+
+bool HalStorage::rmdir(const char* path) {
+  if (isCardRoot(path)) return false;
+  HAL_STORAGE_WRAPPED_CALL(rmdir, path);
+}
 
 bool HalStorage::openFileForRead(const char* moduleName, const char* path, HalFile& file) {
   StorageLock lock;  // ensure thread safety for the duration of this function
@@ -309,7 +322,10 @@ bool HalStorage::openFileForWrite(const char* moduleName, const String& path, Ha
   return openFileForWrite(moduleName, path.c_str(), file);
 }
 
-bool HalStorage::removeDir(const char* path) { HAL_STORAGE_WRAPPED_CALL(removeDir, path); }
+bool HalStorage::removeDir(const char* path) {
+  if (isCardRoot(path)) return false;
+  HAL_STORAGE_WRAPPED_CALL(removeDir, path);
+}
 
 // HalFile implementation
 // Allow doing file operations while ensuring thread safety via HalStorage's mutex.
