@@ -125,6 +125,7 @@ add_subdirectory(rollback_probe)
 add_subdirectory(cold_script)
 
 add_subdirectory(book_metadata_cache)
+add_subdirectory(book_title_display)
 
 add_subdirectory(web_path)
 

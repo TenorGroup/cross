@@ -1,0 +1,3 @@
+add_executable(BookTitleDisplayTest BookTitleDisplayTest.cpp)
+target_link_libraries(BookTitleDisplayTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(BookTitleDisplayTest)
