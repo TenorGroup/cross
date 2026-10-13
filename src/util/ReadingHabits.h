@@ -50,6 +50,11 @@ class Ledger {
   std::array<uint8_t, NAMES> enter{}, leave{};
   bool restored = false, clockLost = false;
   uint32_t qualityGapDay = 0;
+  // The session finish() last counted: the local day it ended on and the local minute it began at (day 0: none).
+  // The statistics store takes it after each observe() or settle() for its calendar and hour counters.
+  struct Counted {
+    uint16_t day = 0, startMinute = 0;
+  } counted{};
   void observe(uint32_t elapsedMs, uint16_t turns, Stamp stamp, uint32_t now);
   void settle(Stamp now);
   void finish();

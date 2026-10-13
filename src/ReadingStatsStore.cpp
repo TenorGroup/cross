@@ -276,7 +276,7 @@ bool supportedSchema(const JsonVariantConst doc) {
   const auto schema = doc["schema"];
   return schema.isUnbound() || (schema.is<uint32_t>() && schema.as<uint32_t>() <= 4);
 }
-// One "ngay" row: [date, minutes, turns(, ms under a minute)]. False for a row the store skips.
+// One "ngay" row: [date, minutes, turns(, ms under a minute(, sessions))]. False for a row the store skips.
 bool decodeDay(const JsonVariantConst value, solieu::NgayDoc& day) {
   if (!value.is<JsonArrayConst>()) return false;
   const auto o = value.as<JsonArrayConst>();
@@ -285,6 +285,7 @@ bool decodeDay(const JsonVariantConst value, solieu::NgayDoc& day) {
     return false;
   day = {o[0].as<uint32_t>(), o[1].as<uint16_t>(), o[2].as<uint16_t>(), 0};
   if (o.size() >= 4 && o[3].is<uint16_t>() && o[3].as<uint16_t>() < 60000) day.leMs = o[3].as<uint16_t>();
+  if (o.size() >= 5 && o[4].is<uint16_t>()) day.lan = o[4].as<uint16_t>();
   return true;
 }
 void encodeDay(JsonArray rows, const solieu::NgayDoc& n) {
@@ -292,7 +293,8 @@ void encodeDay(JsonArray rows, const solieu::NgayDoc& n) {
   row.add(n.ma);
   row.add(n.phut);
   row.add(n.trang);
-  if (n.leMs) row.add(n.leMs);
+  if (n.leMs || n.lan) row.add(n.leMs);
+  if (n.lan) row.add(n.lan);
 }
 void encodeHistory(JsonDocument& doc, const readinghistory::Snapshot& history) {
   const auto rows = doc["ngay"].to<JsonArray>();
@@ -303,8 +305,8 @@ void encodeHistory(JsonDocument& doc, const readinghistory::Snapshot& history) {
     minutes.add(static_cast<uint32_t>(std::min<uint64_t>(ms / 60000, UINT32_MAX)));
     rest.add(static_cast<uint32_t>(ms % 60000));
   }
-  const auto turns = doc["hourTurns"].to<JsonArray>();
-  for (const uint32_t count : history.hourTurns) turns.add(count);
+  const auto sessions = doc["hourSessions"].to<JsonArray>();
+  for (const uint32_t count : history.hourSessions) sessions.add(count);
 }
 }  // namespace
 
@@ -323,7 +325,7 @@ bool ReadingStatsStore::saveToFile() const {
   // whole .tmp while main is missing. Otherwise they wait for the next save, counted once either way.
   if (saved || (staged && !Storage.exists(getFilePath()))) {
     pendingHourMs.fill(0);
-    pendingHourTurns.fill(0);
+    pendingHourSessions.fill(0);
   }
   return saved;
 }
@@ -344,17 +346,17 @@ bool ReadingStatsStore::readHistory(readinghistory::Snapshot& history) const {
     for (const auto row : doc["ngay"].as<JsonArrayConst>())
       if (decodeDay(row, day)) history.merge(day);
     // A file from before the hour counters has none: they start at 0.
-    const auto minutes = doc["hourMinutes"], rest = doc["hourRemainderMs"], turns = doc["hourTurns"];
+    const auto minutes = doc["hourMinutes"], rest = doc["hourRemainderMs"], sessions = doc["hourSessions"];
     for (size_t i = 0; i < readinghistory::HOURS; ++i) {
       const uint32_t ms = rest[i] | 0u;
       history.hourMs[i] = static_cast<uint64_t>(minutes[i] | 0u) * 60000 + (ms < 60000 ? ms : 0);
-      history.hourTurns[i] = turns[i] | 0u;
+      history.hourSessions[i] = sessions[i] | 0u;
     }
   }
   for (const auto& day : kho.cacNgay()) history.merge(day);
   for (size_t i = 0; i < readinghistory::HOURS; ++i) {
     history.hourMs[i] += pendingHourMs[i];
-    history.hourTurns[i] += std::min<uint32_t>(pendingHourTurns[i], UINT32_MAX - history.hourTurns[i]);
+    history.hourSessions[i] += std::min<uint32_t>(pendingHourSessions[i], UINT32_MAX - history.hourSessions[i]);
   }
   return true;
 }
@@ -495,11 +497,8 @@ void ReadingStatsStore::record(const uint32_t day, const uint32_t ms, const uint
   kho.gopMilliseconds(day, ms, turns);
   // The interval ends now on the local clock. Reading without a date has no hour either.
   struct tm local {};
-  if (day && (ms || turns) && halClock.localTime(local)) {
-    const uint32_t endMs = (local.tm_hour * 3600u + local.tm_min * 60u + local.tm_sec) * 1000u;
-    readinghistory::addHours(pendingHourMs, endMs, ms);
-    readinghistory::addTurns(pendingHourTurns, endMs, turns);
-  }
+  if (day && ms && halClock.localTime(local))
+    readinghistory::addHours(pendingHourMs, (local.tm_hour * 3600u + local.tm_min * 60u + local.tm_sec) * 1000u, ms);
   const uint64_t total =
       std::min<uint64_t>(static_cast<uint64_t>(activeBook.minutes) * 60000 + activeBook.remainderMs + ms,
                          static_cast<uint64_t>(UINT32_MAX) * 60000 + 59999);
@@ -580,7 +579,7 @@ bool ReadingStatsStore::fromJson(const JsonVariantConst doc) {
   }
   bookEpoch = doc["bookEpoch"] | 0u;
   pendingHourMs.fill(0);  // a loaded or reset file has its own totals
-  pendingHourTurns.fill(0);
+  pendingHourSessions.fill(0);
   habitLedger.clear();
   const auto h = doc["habits"];
   habitLedger.clockLost = h["clockLost"] | false;
@@ -646,6 +645,7 @@ bool ReadingStatsStore::fromJson(const JsonVariantConst doc) {
     // Use the same merge and retention rule as live updates, in any input order.
     kho.gopThem(n.ma, n.phut, n.trang);
     kho.gopMilliseconds(n.ma, n.leMs);
+    kho.gopLanDoc(n.ma, n.lan);
   }
   kho.datPhanLac(doc["lacPhut"] | 0u, doc["lacTrang"] | 0u);
   const uint32_t remainder = doc["lacMs"] | 0u;
@@ -670,12 +670,21 @@ void ReadingStatsStore::observeHabits(uint32_t elapsed, uint16_t turns, uint32_t
   if (!writableSchema || !statisticsReadable) return;
   const auto stamp = habitStamp();
   habitLedger.observe(elapsed, turns, stamp, now);
+  takeCountedSession();
   habitLedger.evaluate(stamp.day);
+}
+void ReadingStatsStore::takeCountedSession() {
+  const auto counted = habitLedger.counted;
+  habitLedger.counted = {};
+  if (!counted.day) return;
+  kho.gopLanDoc(habits::dateKey(counted.day));
+  readinghistory::addSession(pendingHourSessions, counted.startMinute);
 }
 void ReadingStatsStore::prepareHabits() {
   if (!writableSchema || !statisticsReadable) return;
   const auto stamp = habitStamp();
   habitLedger.settle(stamp);
+  takeCountedSession();
   habitLedger.evaluate(stamp.day, true);
 }
 void ReadingStatsStore::markHabitsSleep() {

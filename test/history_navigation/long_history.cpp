@@ -60,6 +60,7 @@ void operator delete(void* p, size_t) noexcept { jsonheap::give(p); }
 #define STATS_SCHEMA_HELPERS_ONLY
 #include "schema_preservation.cpp"
 #include "ReadingStatsStore.cpp"
+#include "util/LichDai.h"
 #include "util/ReadingHistory.h"
 
 // HISTORY_BASE builds this test on a store without the long calendar, to watch it fail there.
@@ -148,7 +149,6 @@ void at(const int hour, const int minute, const int second) {
   halClock.local.tm_sec = second;
   halClock.localSet = true;
 }
-unsigned hourTurns(const JsonDocument& doc, const int hour) { return doc["hourTurns"][hour].as<unsigned>(); }
 uint64_t hourMs(const JsonDocument& doc, const int hour) {
   return doc["hourMinutes"][hour].as<uint64_t>() * 60000 + doc["hourRemainderMs"][hour].as<uint64_t>();
 }
@@ -167,8 +167,6 @@ void hours() {
   auto doc = savedFile();
   check(doc["hourMinutes"].size() == 24 && doc["hourRemainderMs"].size() == 24, "24 counters on the card");
   check(hourMs(doc, 0) == 30000 && hourMs(doc, 1) == 90000, "an hour mark splits the minute, short updates add up");
-  check(doc["hourTurns"].size() == 24 && hourTurns(doc, 0) == 0 && hourTurns(doc, 1) == 1,
-        "a page turn counts in the hour it was turned");
   check(READING_STATS.saveToFile() && hourMs(savedFile(), 1) == 90000, "a second save counts nothing twice");
   check(READING_STATS.loadFromFile(), "reload");
   at(0, 0, 30);
@@ -177,40 +175,97 @@ void hours() {
   doc = savedFile();
   check(hourMs(doc, 23) == 30000 && hourMs(doc, 0) == 60000 && hourMs(doc, 1) == 90000,
         "midnight splits into hour 23 and hour 0, the totals carry over a reload");
-  check(hourTurns(doc, 23) == 0 && hourTurns(doc, 0) == 1 && hourTurns(doc, 1) == 1,
-        "the turn after midnight counts in hour 0, the earlier ones carry over a reload");
   at(0, 2, 0);
   READING_STATS.record(20260915, 60000, 1, 50);
   storageFault = {StorageFaultOperation::Rename, MAIN + ".tmp", MAIN};
   check(!READING_STATS.saveToFile() && storageFault.hits == 1, "the new file stops at .tmp");
   storageFault = {};
-  check(READING_STATS.saveToFile() && hourMs(savedFile(), 0) == 120000 && hourTurns(savedFile(), 0) == 2,
+  check(READING_STATS.saveToFile() && hourMs(savedFile(), 0) == 120000,
         "hours staged in .tmp count once");
   at(0, 3, 0);
   READING_STATS.record(20260915, 60000, 1, 50);
   storageFault = {StorageFaultOperation::Rename, MAIN, MAIN + ".bak"};
   check(!READING_STATS.saveToFile() && storageFault.hits == 1, "the old file stays in place");
   storageFault = {};
-  check(READING_STATS.saveToFile() && hourMs(savedFile(), 0) == 180000 && hourTurns(savedFile(), 0) == 3,
+  check(READING_STATS.saveToFile() && hourMs(savedFile(), 0) == 180000,
         "hours kept in RAM count once");
   at(5, 0, 0);
   READING_STATS.record(0, 60000, 1, 50);
-  check(READING_STATS.saveToFile() && hourMs(savedFile(), 5) == 0 && hourTurns(savedFile(), 5) == 0,
+  check(READING_STATS.saveToFile() && hourMs(savedFile(), 5) == 0,
         "reading without a date has no hour");
-  at(4, 10, 0);
-  READING_STATS.record(20260915, 0, 2, 50);
-  check(READING_STATS.saveToFile() && hourTurns(savedFile(), 4) == 2 && hourMs(savedFile(), 4) == 0,
-        "turns without reading time still count in their hour");
   at(6, 30, 0);
   READING_STATS.record(20260915, 60000, 1, 50);
   readinghistory::Snapshot history;
-  check(LOAD_HISTORY(history) && history.hourMs[6] == 60000 && history.hourTurns[6] == 1 && history.hourTurns[4] == 2,
+  check(LOAD_HISTORY(history) && history.hourMs[6] == 60000,
         "the screen sees hours not saved yet");
   check(READING_STATS.resetStatistics(true) == ReadingStatsStore::ResetResult::Complete && READING_STATS.saveToFile(),
         "full reset");
   doc = savedFile();
-  check(hourMs(doc, 0) == 0 && hourMs(doc, 6) == 0 && hourTurns(doc, 0) == 0, "a full reset clears the hours");
+  check(hourMs(doc, 0) == 0 && hourMs(doc, 6) == 0, "a full reset clears the hours");
   halClock.localSet = false;
+  std::filesystem::remove_all(fixtureRoot);
+}
+
+// A reading session as Statistics counts it (habits::Ledger::finish: visible 30 s or more, over when the reader is idle
+// more than 5 minutes) adds 1 to the day it ended on in the calendar and 1 to the local hour it began in.
+void clockAt(const int day, const int hour, const int minute) {
+  halClock.date = {2026, 9, static_cast<uint8_t>(day), static_cast<uint8_t>(hour), static_cast<uint8_t>(minute)};
+  halClock.dateSet = true;
+}
+uint32_t monotonic(const int day, const int hour, const int minute) {
+  return static_cast<uint32_t>(((day * 24 + hour) * 60 + minute) * 60000);
+}
+unsigned hourSessions(const JsonDocument& doc, const int hour) { return doc["hourSessions"][hour].as<unsigned>(); }
+unsigned daySessions(const JsonDocument& doc, const uint32_t key) {
+  for (const auto row : doc["ngay"].as<JsonArrayConst>())
+    if (row[0] == key) return row[4] | 0u;
+  return 0;
+}
+void readFor(const int day, const int hour, const int fromMinute, const int minutes) {
+  for (int m = fromMinute; m < fromMinute + minutes; ++m) {
+    clockAt(day, hour + m / 60, m % 60);
+    READING_STATS.observeHabits(60000, 1, monotonic(day, hour + m / 60, m % 60));
+  }
+}
+void sessions() {
+  seed();
+  READING_STATS.habitLedger.clear();
+  // 07:10, 20 minutes: one session that began in hour 7.
+  readFor(15, 7, 10, 20);
+  clockAt(15, 7, 45);
+  READING_STATS.prepareHabits();
+  check(READING_STATS.saveToFile(), "save a session");
+  auto doc = savedFile();
+  check(doc["hourSessions"].size() == 24 && hourSessions(doc, 7) == 1, "a session counts in the hour it began");
+  check(daySessions(doc, 20260915) == 1, "a session counts on its day in the calendar");
+  // 08:50 to 09:10: begun in hour 8, read into hour 9.
+  readFor(15, 8, 50, 20);
+  clockAt(15, 9, 30);
+  READING_STATS.prepareHabits();
+  // 10:00, 20 seconds: under the 30 s Statistics counts.
+  clockAt(15, 10, 0);
+  READING_STATS.observeHabits(20000, 1, monotonic(15, 10, 0));
+  clockAt(15, 10, 20);
+  READING_STATS.prepareHabits();
+  check(READING_STATS.saveToFile(), "save more sessions");
+  doc = savedFile();
+  check(hourSessions(doc, 8) == 1 && hourSessions(doc, 9) == 0, "a session crossing the hour counts once, where it began");
+  check(hourSessions(doc, 10) == 0, "a session under 30 s is not counted");
+  check(daySessions(doc, 20260915) == 2, "the calendar counts the day's sessions");
+  check(READING_STATS.loadFromFile(), "reload sessions");
+  check(READING_STATS.saveToFile() && daySessions(savedFile(), 20260915) == 2 && hourSessions(savedFile(), 7) == 1,
+        "sessions carry over a reload, counted once");
+  readinghistory::Snapshot history;
+  readFor(16, 21, 5, 10);
+  clockAt(16, 21, 30);
+  READING_STATS.prepareHabits();
+  check(LOAD_HISTORY(history) && history.hourSessions[21] == 1 && lichdai::ngay(history, habits::ordinal(2026, 9, 16)) &&
+            lichdai::ngay(history, habits::ordinal(2026, 9, 16))->lan == 1,
+        "the screen sees sessions not saved yet");
+  check(READING_STATS.resetStatistics(true) == ReadingStatsStore::ResetResult::Complete && READING_STATS.saveToFile() &&
+            hourSessions(savedFile(), 7) == 0,
+        "a full reset clears the session counters");
+  halClock.dateSet = false;
   std::filesystem::remove_all(fixtureRoot);
 }
 
@@ -235,6 +290,7 @@ int main() {
   oldFiles();
   brokenFiles();
   hours();
+  sessions();
   const size_t peak30 = savePeak(30), peak90 = savePeak(90);
   std::cout << "heap peak per save (host, 64-bit): 30 days " << peak30 << " B, 90 days " << peak90
             << " B\n";

@@ -46,6 +46,10 @@ void Ledger::finish() {
   if (session.visibleMs >= 30000) {
     if (auto* d = dayFor(session.last.day)) {
       inc(d->sessions);
+      // It began its visible time before the last minute it was read in.
+      const uint32_t back = std::min<uint32_t>(session.visibleMs / 60000, 1439);
+      counted = {static_cast<uint16_t>(session.last.day),
+                 static_cast<uint16_t>((session.last.minute + 1440 - back) % 1440)};
       const bool useful =
           !session.uncertain && session.turns >= 2 &&
           static_cast<uint64_t>(session.activeMs) * 100 >= static_cast<uint64_t>(session.visibleMs) * 80;

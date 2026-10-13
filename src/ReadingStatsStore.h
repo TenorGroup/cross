@@ -23,7 +23,7 @@ class ReadingStatsStore : public PersistableStore<ReadingStatsStore> {
   uint32_t bookListGeneration = 0;
   // Reading by hour of the local day since the last save; the card keeps the running totals.
   mutable std::array<uint32_t, readinghistory::HOURS> pendingHourMs{};
-  mutable std::array<uint16_t, readinghistory::HOURS> pendingHourTurns{};
+  mutable std::array<uint16_t, readinghistory::HOURS> pendingHourSessions{};
   ReadingStatsStore() = default;
   ~ReadingStatsStore() = default;
 
@@ -37,6 +37,8 @@ class ReadingStatsStore : public PersistableStore<ReadingStatsStore> {
   static habits::Stamp habitStamp();
   void observeHabits(uint32_t elapsed, uint16_t turns, uint32_t now);
   void prepareHabits();
+  // A session the habits ledger just counted goes into the calendar and the hour counters.
+  void takeCountedSession();
   void markHabitsSleep();
   struct BookEntry {
     std::string path, title;

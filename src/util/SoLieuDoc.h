@@ -9,6 +9,7 @@ struct NgayDoc {
   uint16_t phut = 0;   // so phut doc trong ngay do
   uint16_t trang = 0;  // so trang da lat trong ngay do
   uint16_t leMs = 0;   // milliseconds below one minute, persisted across sessions
+  uint16_t lan = 0;    // reading sessions that ended on this day (habits::Ledger::finish counts them)
 };
 
 // So ngay gan nhat giu lai. 30 ngay an 240 byte, du de tra loi "thang nay" ma khong dung
@@ -22,6 +23,8 @@ class Kho {
   // bua thi lan dong bo dau tien de ra mot chuoi ngay ma.
   void gopThem(uint32_t ma, uint16_t phut, uint16_t trang);
   void gopMilliseconds(uint32_t ma, uint32_t ms, uint16_t trang = 0);
+  // Them `lan` lan doc vao mot ngay da biet.
+  void gopLanDoc(uint32_t ma, uint16_t lan = 1);
   uint16_t msChuaBietNgay() const { return msLac_; }
   void datMsChuaBietNgay(uint16_t ms) { msLac_ = ms < 60000 ? ms : 0; }
 

@@ -66,7 +66,7 @@ void ReadingHistoryActivity::showPage(const int next) {
   if (hourPage()) {
     for (int h = 0; h < 24; ++h) {
       snprintf(text, sizeof(text), "%02d:00", h);
-      row(text, history->hourMs[h], history->hourTurns[h]);
+      row(text, history->hourMs[h], history->hourSessions[h]);
     }
   } else {
     const uint32_t first = lichdai::dau(today, page), last = std::min(first + lichdai::SO_O - 1, today);
@@ -296,7 +296,7 @@ void ReadingHistoryActivity::drawHourChart() const {
   static const char* const labels[24] = {"0", nullptr, nullptr, nullptr, nullptr, nullptr, "6",  nullptr,
                                          nullptr, nullptr, nullptr, nullptr, "12", nullptr, nullptr, nullptr,
                                          nullptr, nullptr, "18", nullptr, nullptr, nullptr, nullptr, nullptr};
-  drawChartBlock(renderer, gridTop(), HOUR_PLOT, {24, history->hourMs.data(), history->hourTurns.data(), 50, labels});
+  drawChartBlock(renderer, gridTop(), HOUR_PLOT, {24, history->hourMs.data(), history->hourSessions.data(), 50, labels});
 }
 
 // 7 columns centred, Monday first under the weekday line, 4 rows; the oldest week on top, today framed.

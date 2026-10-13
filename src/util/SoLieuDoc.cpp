@@ -36,7 +36,7 @@ NgayDoc* Kho::ngayCho(const uint32_t ma) {
   if (ngay_.capacity() < TRAN_NGAY + 1) ngay_.reserve(TRAN_NGAY + 1);
   const auto vt =
       std::lower_bound(ngay_.begin(), ngay_.end(), ma, [](const NgayDoc& a, const uint32_t m) { return a.ma < m; });
-  ngay_.insert(vt, NgayDoc{ma, 0, 0, 0});
+  ngay_.insert(vt, NgayDoc{ma, 0, 0, 0, 0});
   if (ngay_.size() > TRAN_NGAY) ngay_.erase(ngay_.begin());
   for (auto& n : ngay_)
     if (n.ma == ma) return &n;
@@ -58,6 +58,11 @@ void Kho::gopMilliseconds(const uint32_t ma, const uint32_t ms, const uint16_t t
     n->leMs = total % 60000;
     n->trang = congKhongTran(n->trang, trang);
   }
+}
+
+void Kho::gopLanDoc(const uint32_t ma, const uint16_t lan) {
+  if (ma == 0 || lan == 0) return;
+  if (auto* n = ngayCho(ma)) n->lan = congKhongTran(n->lan, lan);
 }
 
 uint32_t Kho::tongPhut(const int soNgay) const {
