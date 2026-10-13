@@ -68,6 +68,7 @@ struct {
 } SETTINGS;
 std::atomic<bool> frameAfterDeferredWrite{false};
 std::atomic<bool> frameDrawn{false};
+std::atomic<uint32_t> frameDrawnGeneration{0};
 struct PageScrollbar {
   static PageScrollbar& instance() { static PageScrollbar scrollbar; return scrollbar; }
   void activate(const void*) {}
@@ -95,6 +96,7 @@ class ActivityManager {
   SemaphoreHandle_t renderingMutex = nullptr;
   std::atomic<bool> requestedUpdate{false};
   bool sleepTransition = false;
+  uint32_t activityGeneration_ = 0;
   int mappedInput = 0;
   std::unique_ptr<Activity> currentActivity;
   [[noreturn]] void renderTaskLoop();
