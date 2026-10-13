@@ -1,0 +1,166 @@
+#include <FatLib/FatLib.h>
+#include <algorithm>
+#include <cassert>
+#include <cstdio>
+#include <cstring>
+#include <iomanip>
+#include <iostream>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <vector>
+#include "policy.h"
+#define LOG_ERR(...) do {} while (0)
+#define LOG_DBG(...) do {} while (0)
+
+// The disk image is the only storage boundary. FAT parsing and mutations use SdFat.
+struct Disk : FsBlockDeviceInterface {
+  FILE* file;
+  Sector_t sectors;
+  Disk(const char* path, uint64_t count) : sectors(static_cast<Sector_t>(count)) {
+    file = fopen(path, "w+b");
+    assert(file);
+  }
+  ~Disk() { fclose(file); }
+  bool isBusy() override { return false; }
+  bool syncDevice() override { return fflush(file) == 0; }
+  Sector_t sectorCount() override { return sectors; }
+  bool readSector(Sector_t s, uint8_t* b) override { return readSectors(s,b,1); }
+  bool writeSector(Sector_t s, const uint8_t* b) override { return writeSectors(s,b,1); }
+  bool readSectors(Sector_t s, uint8_t* b, size_t n) override {
+    if (uint64_t(s)+n > sectors || fseeko(file,uint64_t(s)*512,SEEK_SET)) return false;
+    memset(b,0,n*512);
+    fread(b,1,n*512,file);
+    return !ferror(file);
+  }
+  bool writeSectors(Sector_t s, const uint8_t* b, size_t n) override {
+    return uint64_t(s)+n <= sectors && !fseeko(file,uint64_t(s)*512,SEEK_SET) &&
+           fwrite(b,1,n*512,file)==n*512 && fflush(file)==0;
+  }
+};
+struct String {
+  std::string s;
+  String(const char* p = "") : s(p) {}
+  String(std::string p) : s(std::move(p)) {}
+  const char* c_str() const { return s.c_str(); }
+  bool endsWith(const char* p) const { std::string v(p); return s.size() >= v.size() && s.substr(s.size()-v.size()) == v; }
+  bool startsWith(const char* p) const { return s.rfind(p, 0) == 0; }
+  bool isEmpty() const { return s.empty(); }
+  size_t length() const { return s.size(); }
+  String substring(size_t a, size_t b) const { return s.substr(a, b-a); }
+  String& operator+=(const char* p) { s += p; return *this; }
+  bool operator==(const char* p) const { return s == p; }
+};
+String operator+(const char* a, const String& b) { return std::string(a) + b.s; }
+struct HalFile {
+  std::shared_ptr<FatFile> f;
+  HalFile(std::shared_ptr<FatFile> v = {}) : f(std::move(v)) {}
+  explicit operator bool() const { return f && f->isOpen(); }
+  bool isDirectory() const { return f && f->isDir(); }
+  void rewindDirectory() { if (f) f->rewind(); }
+  HalFile openNextFile() {
+    auto next = std::make_shared<FatFile>();
+    if (f) next->openNext(f.get(), O_RDONLY);
+    return HalFile(std::move(next));
+  }
+  size_t getName(char* b, size_t n) { return f ? f->getName(b, n) : 0; }
+  void close() { if (f) f->close(); }
+};
+struct Cut {};
+struct SDCardManager {
+  FatVolume* v = nullptr;
+  int stopAfter = -1;
+  int mutations = 0;
+  void tick() { if (stopAfter >= 0 && ++mutations == stopAfter) throw Cut{}; }
+  SDCardManager& vol() { return *this; }
+  HalFile open(const char* p) {
+    auto file = std::make_shared<FatFile>();
+    if (!file->open(v, p)) return {};
+    return HalFile(std::move(file));
+  }
+  bool exists(const char* p) { return v->exists(p); }
+  bool remove(const char* p) { bool ok = v->remove(p); if (ok) tick(); return ok; }
+  bool rmdir(const char* p) { bool ok = v->rmdir(p); if (ok) tick(); return ok; }
+  bool removeDir(const char* path);
+} Storage;
+template<class T> auto makeUniqueNoThrow(size_t n) { return std::make_unique<T>(n); }
+// Cache work is reviewed separately. It cannot expand the target of this traversal test.
+bool clearBookCache(const std::string&) { return true; }
+constexpr size_t NAME_BUFFER_SIZE = 500;
+namespace FsHelpers {
+@NORMALIZE@
+}
+struct WebServer {
+  String path;
+  int status = 0;
+  String uri() { return path; }
+  static String urlDecode(const String& in) {
+    std::string out;
+    for (size_t i=0; i<in.s.size(); ++i) {
+      if (in.s[i]=='%' && i+2<in.s.size() && isxdigit(in.s[i+1]) && isxdigit(in.s[i+2])) {
+        char* end;
+        const auto v = strtol(in.s.substr(i+1,2).c_str(), &end, 16);
+        out += char(v); i+=2;
+      } else out += in.s[i];
+    }
+    return out;
+  }
+  void send(int code, const char* = "", const char* = "") { status = code; }
+};
+struct WebDAVHandler {
+  String getRequestPath(WebServer&) const;
+  bool isProtectedPath(const String&) const;
+  void handleDelete(WebServer&);
+};
+@METHODS@
+
+void seed(FatVolume& v) {
+  assert(v.mkdir("/target"));
+  assert(v.mkdir("/outside"));
+  for (const char* p : {"/target/a.epub", "/target/b.epub", "/outside/keep.epub", "/keep.epub", "/target/name & %.epub"}) {
+    FatFile f;
+    assert(f.open(&v,p,O_CREAT|O_RDWR));
+    assert(f.write("BOOK",4)==4);
+    assert(f.close());
+  }
+}
+bool intact(FatVolume& v, const char* p) {
+  char b[4]{};
+  FatFile f;
+  bool ok=f.open(&v,p) && f.read(b,4)==4 && memcmp(b,"BOOK",4)==0;
+  f.close();
+  return ok;
+}
+int main(int argc, char** argv) {
+  assert(argc == 3);
+  const bool strict = std::string(argv[2]) == "strict";
+  int broken = 0, cases = 0;
+  const std::vector<std::string> paths = {"", "/", "//", "/target", "/target/", "/target/name & %.epub", "/target/../", "/%2f"};
+  for (uint64_t sectors : {64ull << 20, 4ull << 30}) {
+    for (const auto& api : {"file", "sdk", "dav"}) {
+      for (const auto& path : paths) {
+        for (int cut : {-1, 1, 2, 3, 4, 5, 6}) {
+          Disk disk(argv[1], sectors / 512);
+          FatVolume v; uint8_t buf[512]; FatFormatter fmt;
+          assert(fmt.format(&disk, buf)); assert(v.begin(&disk)); seed(v);
+          Storage.v = &v; Storage.stopAfter=cut; Storage.mutations=0;
+          int status=0;
+          try {
+            if (std::string(api)=="file") status=remove(path);
+            else if (std::string(api)=="sdk") status=Storage.removeDir(path.c_str());
+            else { WebServer s; s.path=path; WebDAVHandler dav; dav.handleDelete(s); status=s.status; }
+          } catch (const Cut&) { status=-1; }
+          // Drop the firmware volume and open the on-disk bytes as a second reader would.
+          FatVolume reader; assert(reader.begin(&disk));
+          const bool kept=intact(reader,"/outside/keep.epub") && intact(reader,"/keep.epub");
+          if (path == "/target" && cut == -1 && std::string(api) != "dav") assert(!reader.exists("/target"));
+          broken += !kept; ++cases;
+          std::cout << "CASE " << v.fatType()+0 << ' ' << api << ' ' << std::quoted(path) << ' ' << cut << ' ' << status << ' ' << kept << '\n';
+        }
+      }
+    }
+  }
+  std::cout << "TOTAL " << cases << " LOST " << broken << '\n';
+  return strict && broken ? 1 : 0;
+}
