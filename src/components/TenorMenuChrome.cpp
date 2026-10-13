@@ -541,6 +541,43 @@ void tenorchrome::noteReaderFootBar(const bool open, const bool keypad, const in
   readerFootBar = {open, keypad, activeTool, activityManager.activityGeneration()};
   if (!open) HeaderBackTapTarget::clearFoot();
 }
+
+namespace {
+// tenor/ugly writes each reader tool's name at its own width, on its cell's middle where it can be and 10 px from its
+// neighbours; names that do not fit the tools' room shrink together (the pen cuts them with a scrawl).
+void readerToolNames(const GfxRenderer& r, int (&x)[tenorchrome::READER_TOOLS], int (&w)[tenorchrome::READER_TOOLS]) {
+  constexpr int N = tenorchrome::READER_TOOLS, GAP = 10;
+  const auto first = tenorchrome::readerToolRect(r.getScreenWidth(), r.getScreenHeight(), 0);
+  const auto last = tenorchrome::readerToolRect(r.getScreenWidth(), r.getScreenHeight(), N - 1);
+  const int right = last.x + last.width;
+  int sum = 0;
+  for (int i = 0; i < N; ++i)
+    sum += w[i] = ugly::width(r, ugly::Size::S22, I18N.get(readermenu::toolName(static_cast<readermenu::Tool>(i))));
+  const int room = right - first.x - (N - 1) * GAP;
+  int end = first.x - GAP;
+  for (int i = 0; i < N; ++i) {
+    if (sum > room) w[i] = w[i] * room / sum;
+    const auto cell = tenorchrome::readerToolRect(r.getScreenWidth(), r.getScreenHeight(), i);
+    x[i] = std::max(cell.x + (cell.width - w[i]) / 2, end + GAP);
+    end = x[i] + w[i];
+  }
+  for (int i = N - 1, limit = right; i >= 0; --i) {
+    x[i] = std::min(x[i], limit - w[i]);
+    limit = x[i] - GAP;
+  }
+}
+}  // namespace
+
+tenorchrome::ReaderToolRect tenorchrome::readerToolHit(const GfxRenderer& r, const int tool) {
+  const auto cell = readerToolRect(r.getScreenWidth(), r.getScreenHeight(), tool);
+  if (!shell::isUgly()) return cell;
+  int x[READER_TOOLS], w[READER_TOOLS];
+  readerToolNames(r, x, w);
+  // The cells follow the names: the line between two cells runs through the middle of the gap between their names.
+  const int left = tool ? (x[tool - 1] + w[tool - 1] + x[tool]) / 2 : cell.x;
+  const int right = tool + 1 < READER_TOOLS ? (x[tool] + w[tool] + x[tool + 1]) / 2 : cell.x + cell.width;
+  return {left, cell.y, right - left, cell.height};
+}
 #endif
 
 void tenorchrome::clearFootBand(const GfxRenderer& r, const int air) {
@@ -595,17 +632,23 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
     };
     if (!shell::isUgly())
       drawBarFrame(r, READER_BAR_LEFT, y, r.getScreenWidth() - FOOT_BACK_X - READER_BAR_LEFT, SIZE);
+    int nameX[READER_TOOLS] = {}, nameW[READER_TOOLS] = {};
+    if (shell::isUgly()) readerToolNames(r, nameX, nameW);
     for (int i = 0; i < READER_TOOLS; ++i) {
-      const auto cell = readerToolRect(r.getScreenWidth(), r.getScreenHeight(), i);
       const bool active = i == readerFootBar.activeTool;
       const auto tool = static_cast<Tool>(i);
       if (shell::isUgly()) {
-        const auto name = ugly::fit(r, ugly::Size::S22, I18N.get(readermenu::toolName(tool)), cell.width - 16);
+        const auto name = ugly::fit(r, ugly::Size::S22, I18N.get(readermenu::toolName(tool)), nameW[i]);
         const int textWidth = ugly::width(r, ugly::Size::S22, name.c_str());
-        ugly::text(r, ugly::Size::S22, cell.x + (cell.width - textWidth) / 2,
-                   y + (SIZE + ugly::ascent(ugly::Size::S22)) / 2, name.c_str());
+        const int textX = nameX[i] + (nameW[i] - textWidth) / 2;
+#ifdef UGLY_FRAME_LOG
+        LOG_INF("UGLY", "part=readertool tool=%d name=%s shown=%s x=%d w=%d", i, I18N.get(readermenu::toolName(tool)), name.c_str(),
+                textX, textWidth);
+#endif
+        ugly::text(r, ugly::Size::S22, textX, y + (SIZE + ugly::ascent(ugly::Size::S22)) / 2, name.c_str());
+        // The pen's circle runs 3 px right of its box (measured), so the box leans 3 px left to centre it on the name.
         if (active) ugly::circle(r, ugly::Circle::Row,
-            {cell.x + 8, y + 8, cell.x + cell.width - 8, y + SIZE - 8}, 0, 0,
+            {nameX[i] - 6, y + 8, nameX[i] + nameW[i], y + SIZE - 8}, 0, 0,
             readerToolMark.get((static_cast<uint64_t>(activityManager.activityGeneration()) << 32) |
                                static_cast<uint32_t>(readerFootBar.activeTool)), 2);
         continue;

@@ -27,6 +27,7 @@ def method(text, signature):
 note = re.search(r'struct ReaderFootBarNote \{.*?\} readerFootBar;', source, re.S)
 assert note, 'RED: reader metadata missing'
 cpp = r'''
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
@@ -112,6 +113,7 @@ cpp += '\n'.join(re.findall(r'^ugly::MarkState (?:backMark|readerToolMark);', so
 cpp += note[0] + '\n' + method(source, 'bool readerFootBarActive()') + '\n'
 cpp += method(source, 'void tenorchrome::noteReaderFootBar') + '\n'
 cpp += method(source, 'void tenorchrome::clearFootBand') + '\n'
+cpp += method(source, 'void readerToolNames(') + '\n'
 cpp += method(source, 'void tenorchrome::drawFootBar') + r'''
 int main() {
   using namespace tenorchrome;
@@ -137,16 +139,18 @@ int main() {
       // Ugly: "<" in pen, the tools as handwritten words, no tenor/cross ring.
       assert(rings==0 && ugly::penBacks==1 && icons==0 && HeaderBackTapTarget::foot==1 && HeaderBackTapTarget::zone==0);
       assert(ugly::labels.size()==4 && ugly::budgets.size()==4 && ugly::circles.size()==(active<0?0u:1u));
+      // Each name whole, at its own width (the stub's 8 px a byte), in the tools' room, 10 px from the next.
+      const auto first=readerToolRect(w,r.height,0), last=readerToolRect(w,r.height,READER_TOOLS-1);
       for (int i=0;i<READER_TOOLS;++i) {
         auto cell=readerToolRect(w,r.height,i); const auto& label=ugly::labels[i];
-        assert(ugly::budgets[i]==cell.width-16);
-        assert(label.value==std::string(I18N.get(readermenu::toolName(static_cast<readermenu::Tool>(i)))).substr(0,(cell.width-16)/8));
-        assert(label.x==cell.x+(cell.width-label.width)/2 && label.baseline==cell.y+39);
-        assert(label.x>=cell.x+8 && label.x+label.width<=cell.x+cell.width-8);
+        assert(label.value==I18N.get(readermenu::toolName(static_cast<readermenu::Tool>(i))));
+        assert(ugly::budgets[i]==label.width && label.baseline==cell.y+39);
+        assert(label.x>=first.x && label.x+label.width<=last.x+last.width);
+        if (i) assert(label.x-(ugly::labels[i-1].x+ugly::labels[i-1].width)>=10);
       }
       if (active>=0) {
-        auto cell=readerToolRect(w,r.height,active); const auto& box=ugly::circles[0];
-        assert(box.x0==cell.x+8 && box.x1==cell.x+cell.width-8);
+        auto cell=readerToolRect(w,r.height,active); const auto& label=ugly::labels[active]; const auto& box=ugly::circles[0];
+        assert(box.x0==label.x-6 && box.x1==label.x+label.width);
         assert(box.y0==cell.y+8 && box.y1==cell.y+52);
       }
     }
@@ -160,6 +164,15 @@ int main() {
     noteReaderFootBar(true,false,1); activityManager.name="Settings"; draw();
     assert(rings==0 && ugly::labels.empty() && HeaderBackTapTarget::foot==0);
     activityManager.name="EpubReader";
+  }
+  // Names that do not fit the tools' room shrink together: each the same share of its width, cut by the pen's scrawl.
+  r.width=300; r.height=800; noteReaderFootBar(true,false,1); draw();
+  assert(ugly::labels.size()==4);
+  for (int i=0;i<READER_TOOLS;++i) {
+    const auto& label=ugly::labels[i]; const std::string full=I18N.get(readermenu::toolName(static_cast<readermenu::Tool>(i)));
+    assert(label.value!=full && full.rfind(label.value,0)==0);
+    assert(label.x>=readerToolRect(300,800,0).x && label.x+label.width<=readerToolRect(300,800,READER_TOOLS-1).x+readerToolRect(300,800,READER_TOOLS-1).width);
+    if (i) assert(label.x-(ugly::labels[i-1].x+ugly::labels[i-1].width)>=10);
   }
   for (int w : {480,800}) for (int i=0;i<READER_TOOLS;++i) {
     auto cell=readerToolRect(w,w==480?800:480,i);
