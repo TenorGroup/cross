@@ -5,12 +5,12 @@ test_home_holder_upgrade.py <x3|x4> <old-program> <new-program> [--out DIR] [--t
 Each case opens one book with the first program, goes back to Home and waits for the card files, then
 boots the second program straight into Home on the same card (the book is not opened again):
   upgrade   old -> new, a book without a cover: after the idle pass the frame shows the placeholder of
-            components/CoverHolder.h (reference.py), not a card file the old firmware drew.
+            (white, the name and author; test_home_holder.check_holder), not a card file the old firmware drew.
   fresh     new -> new, the same book: the card file of the first visit must not keep the plain frame
             that stood before the idle pass wrote the placeholder.
   cover     old -> new, a book with a JPEG cover: the new Home is the old Home to the pixel (the cover
             and its card are kept; only the card file is drawn again).
-The old program is the simulator of v1.0.57 (pio run -e simulator_x4pro / simulator_x3_uc8279 at that tag).
+The old program is the simulator of v1.0.59 (pio run -e simulator_x4pro / simulator_x3_uc8279 at that tag).
 Not part of ctest: it needs 2 simulator binaries.
 """
 import argparse
@@ -27,8 +27,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-import reference as ref
-from test_home_holder import REPO, interior, levels
+from test_home_holder import REPO, check_holder
 
 
 def make_book(path, title, cover):
@@ -96,7 +95,6 @@ def main():
     ap.add_argument('--tier', type=int, nargs='*', default=[0, 1, 2])
     a = ap.parse_args()
     old, new = a.old.resolve(), a.new.resolve()
-    four = a.dev == 'x4'  # X3 Home draws tenor/ink 1 bit (test_home_holder.py)
     out = a.out or Path(tempfile.mkdtemp())
     out.mkdir(parents=True, exist_ok=True)
     bad = []
@@ -143,13 +141,12 @@ def main():
                     bad.append(f'{tag}: the new firmware drew no placeholder frame on a blank card')
                     continue
                 x, y, w, h = frame
-                shot = levels(after[1]) if four else after[1]
-                diff = int(((shot[y:y + h, x:x + w] != ref.expected(w, h, four)) & interior(w, h)).sum())
+                wrong = check_holder(after[1], x, y, w, h)
                 drawn = 'drawn' if re.search(r'Cover holder frame=', log) else 'not drawn, a card file came back'
-                print(f'{tag} frame {w}x{h}: {diff} pixels differ from the placeholder after the idle pass '
+                print(f'{tag} frame {w}x{h}: {"; ".join(wrong) or "the name placeholder"} after the idle pass '
                       f'(placeholder {drawn}; {", ".join(cards)})', flush=True)
-                if diff:
-                    bad.append(f'{tag}: {diff}')
+                if wrong:
+                    bad.append(f'{tag}: {"; ".join(wrong)}')
     print('RED: ' + '; '.join(bad) if bad else 'GREEN')
     return 1 if bad else 0
 

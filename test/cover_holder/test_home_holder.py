@@ -2,11 +2,9 @@
 """Home with books that have no cover, on the simulator: test_home_holder.py <x3|x4> <program> [--out DIR]
 
 Every frame Home draws the placeholder in (3 styles x 3 text sizes on the X4 Pro, 3 text sizes on the X3;
-the frames are read from the simulator's log line "Cover holder frame=x,y,w,h") is compared with the picture
-reference.py makes of the master at that size: 4 levels on the X4 Pro, 1 bit on the X3, whose Home draws
-tenor/ink 1 bit (kInkX3Gray in HomeActivity.cpp). Two shots per run: the first, before the idle pass
-has written the placeholder, shows a plain frame; the second shows the picture. The corners (the card's
-rounded mask) are left out of the comparison.
+the frames are read from the simulator's log line "Cover holder frame=x,y,w,h") must be a white frame with
+the book's name and author in it, as check_holder() says. Home on the Recent tab is 1 bit on both machines
+(HomeRefresh: oneBit), so the placeholder is drawn straight into the frame and nothing is cached.
 Not part of ctest: it needs a simulator binary (pio run -e simulator_x4pro / simulator_x3_uc8279).
 """
 import argparse
@@ -89,13 +87,40 @@ def interior(w, h):
     return m
 
 
+def check_holder(shot, x, y, w, h):
+    """A name-and-author placeholder: white, little ink, ink only where text is, text block centred.
+    shot is the 1 bit screen (0 black, 255 white). Returns the list of what is wrong."""
+    bad = []
+    frame = shot[y:y + h, x:x + w] < 128
+    mask = interior(w, h)
+    black = float((frame & mask).sum()) / float(mask.sum())
+    if black > 0.2:
+        bad.append(f'{black:.0%} black (at most 20%)')
+    # The dotted ring and the rounded corners (radius: a sixteenth of the width, 6 px at least) stay out of
+    # the text region; the text margin is 1.5 radii, so no text is cut off.
+    inset = max(6, (w + 8) // 16) + 2
+    text = frame[inset:h - inset, inset:w - inset]
+    rows = np.nonzero(text.any(axis=1))[0]
+    cols = np.nonzero(text.any(axis=0))[0]
+    if rows.size == 0:
+        return bad + ['no ink: the name is not drawn']
+    white_rows = 1.0 - rows.size / text.shape[0]
+    if white_rows < 0.3:
+        bad.append(f'only {white_rows:.0%} of the rows are white: not lines of text')
+    centre = (cols.min() + cols.max() + 1) / 2
+    off = centre - text.shape[1] / 2
+    if abs(off) > 0.5:
+        bad.append(f'text block {off:+.1f} px off the centre (at most 0.5)')
+    return bad
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('dev', choices=['x3', 'x4'])
     ap.add_argument('program', type=Path)
     ap.add_argument('--out', type=Path)
     ap.add_argument('--floor-refuses', action='store_true',
-                    help='X3: the heap floor also refuses the gray strip (CROSSPOINT_SIM_INK_GRAY_FAIL); the frame stays 1 bit tenor/ink')
+                    help='X3: the heap floor also refuses the gray strip (CROSSPOINT_SIM_INK_GRAY_FAIL); the frame stays 1 bit')
     a = ap.parse_args()
     a.program = a.program.resolve()
     runs = RUNS_X4 if a.dev == 'x4' else RUNS_X3
@@ -111,25 +136,18 @@ def main():
             shots, sd, log = shoot(a.program, folder, style, tier, 29600 + style * 10 + tier,
                                    extra={'CROSSPOINT_SIM_INK_GRAY_FAIL': '1'} if a.floor_refuses else None)
             Image.fromarray(shots[1]).save(out / f'{a.dev}-s{style}-t{tier}.png')
-            four = a.dev == 'x4'  # X3 Home draws tenor/ink 1 bit until its gray pass is turned on
-            if four:
-                shots = [levels(s) for s in shots]
             rects = sorted({tuple(map(int, m)) for m in re.findall(r'Cover holder frame=(\d+),(\d+),(\d+),(\d+)', log)})
             if not rects:
                 bad.append(f'style={style} text={tier}: no frame in the log')
             for k, (x, y, w, h) in enumerate(rects):
                 if (w, h) not in KNOWN_SIZES:
                     bad.append(f'style={style} text={tier}: frame {w}x{h} is not a known size')
-                want = ref.expected(w, h, four)
-                mask = interior(w, h)
-                got = shots[1][y:y + h, x:x + w]
-                diff = int(((got != want) & mask).sum())
-                plain = shots[0][y:y + h, x:x + w]
-                waiting = int(((plain != want) & mask).sum())
-                print(f'{a.dev} style={style} text={tier} frame {k} {w}x{h}: {diff} pixels differ after the idle pass, '
-                      f'{waiting} differ before it', flush=True)
-                if diff:
-                    bad.append(f'style={style} text={tier} frame {k}: {diff}')
+                wrong = check_holder(shots[1], x, y, w, h)
+                print(f'{a.dev} style={style} text={tier} frame {k} {w}x{h}: {"; ".join(wrong) or "ok"}', flush=True)
+                if wrong:
+                    bad.append(f'style={style} text={tier} frame {k}: {"; ".join(wrong)}')
+            if any(folder.rglob('ink2_1_*.bmp')) and not a.floor_refuses:
+                bad.append(f'style={style} text={tier}: a 1 bit placeholder file was written')
     print('RED: ' + '; '.join(bad) if bad else 'GREEN')
     return 1 if bad else 0
 
