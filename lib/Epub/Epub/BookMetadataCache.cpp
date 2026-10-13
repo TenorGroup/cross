@@ -4,6 +4,7 @@
 #include <BufferedFile.h>
 #include <Logging.h>
 #include <HeapFloor.h>
+#include <HeapMark.h>
 #include <Serialization.h>
 #include <Utf8.h>
 #include <ZipFile.h>
@@ -530,6 +531,7 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
     }
     std::fill(tocSpine.get(), tocSpine.get() + tocs, static_cast<int16_t>(-1));
   }
+  HEAP_MARK("book_toc_match");
   // A background build (resolveToc) keeps a checkpoint at each chunk boundary, so a key press costs
   // the chunk under way instead of the whole build: 8 to 10 s steps on the X3 never finished for a
   // reader turning a page every 7 s.
@@ -574,6 +576,7 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
   MetadataReader spineIn(spineBuffer, spineSrc.size());
   serialization::BufferedFileReader tocBuffer(tocSrc, BUILD_IO_BUFFER_SIZE);
   MetadataReader tocIn(tocBuffer, tocSrc.size());
+  HEAP_MARK("book_buffers");
 
   // A failed build leaves nothing: the output is removed and its name never read.
   auto abandon = [&]() {
@@ -703,6 +706,7 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
       return giveUp();
     }
     std::fill_n(spineToTocIndex.get(), count, static_cast<int16_t>(-1));
+    HEAP_MARK("book_chunk_arrays");
     const size_t chunkStart = spineIn.position();
     if (useBatchSizes) {
       for (int i = 0; i < count; i++) {
@@ -787,6 +791,7 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
     spineOutMs += millis() - stepStarted;
 #endif
     if (resumable && !checkpoint(first + count, cumSize, lastSpineTocIndex)) return abandon();
+    HEAP_MARK("book_chunk_end");
   }
   // Close opened zip file
   zip.close();
@@ -804,6 +809,7 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
   }
 
   const bool written = bookOut.flush() && spineIn.ok() && tocIn.ok();
+  HEAP_MARK("book_end");
 #ifdef TENOR_PRESS_PROBE
   LOG_INF("BMC", "INDEX_SPLIT book luts=%lu chunks=%d toc_scans=%lu zip_sizes=%lu spine_out=%lu toc_copy=%lu", lutsMs,
           chunks, tocScanMs, zipSizeMs, spineOutMs, millis() - tocCopyStarted);

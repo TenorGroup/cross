@@ -4,6 +4,7 @@
 #include <FsHelpers.h>
 #include <HalClock.h>
 #include <HalStorage.h>
+#include <HeapMark.h>
 #include <I18n.h>
 #include <Memory.h>
 
@@ -137,6 +138,7 @@ void ReaderActivity::commitOpen() {
 #ifdef TENOR_TURN_TRACE
   LOG_INF("READER", "OPEN_COMMIT ms=%lu", millis() - started);
 #endif
+  HEAP_MARK("open_commit");
 }
 
 void ReaderActivity::onExit() {

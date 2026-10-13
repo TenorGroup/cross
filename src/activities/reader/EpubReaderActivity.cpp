@@ -14,6 +14,7 @@
 #include <HalPowerManager.h>
 #include <HalStorage.h>
 #include <HalTiltSensor.h>
+#include <HeapMark.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -785,6 +786,7 @@ void EpubReaderActivity::runIndexStep() {
     tocSpineCached = -1;  // the chapter's TOC range can be read now
     LOG_PROBE("ERS", "Book index complete");
     dropSectionsLaidOutWithoutToc();
+    HEAP_MARK("index_drop_sections");
   } else if (step == Epub::IndexStep::Failed) {
     indexRetryAtMs = millis() + INDEX_RETRY_MS;
     if (++indexFailures == INDEX_MAX_FAILURES) LOG_ERR("ERS", "Book index given up");
@@ -961,6 +963,7 @@ void EpubReaderActivity::suspendBackgroundBuild() {
   LOG_INF("ERS", "Build parser released for render headroom: parked=%u page=%d pages=%u free=%u largest=%u",
           parked ? 1u : 0u, section->currentPage, static_cast<unsigned>(section->pageCount),
           static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  HEAP_MARK("build_park");
 #ifdef TENOR_PRESS_PROBE
   if (sheetOpen) traceSheetHeap("PARSER_RELEASE_END", renderer);
 #endif
@@ -1129,6 +1132,18 @@ void EpubReaderActivity::openFootnoteSelect(const bool reopenMenuOnCancel) {
 }
 
 void EpubReaderActivity::loop() {
+#ifdef TENOR_PRESS_PROBE
+  // The pass after the heap's low mark fell by 512 B or more since the last such line: with the
+  // stage marks around it, it names where the low came from.
+  {
+    static uint32_t lowSeen = UINT32_MAX;
+    const uint32_t low = ESP.getMinFreeHeap();
+    if (low + 512 <= lowSeen) {
+      if (lowSeen != UINT32_MAX) HEAP_MARK("reader_low_drop");
+      lowSeen = low;
+    }
+  }
+#endif
   // Taken once: a pass that returns before it reaches its branch below drops it, so it
   // never fires later over a menu or overlay that owned this pass.
   const ReaderShortcut shortcut = std::exchange(pendingShortcut, ReaderShortcut::None);
@@ -1150,6 +1165,7 @@ void EpubReaderActivity::loop() {
       const bool ok = coverref::save(epub->getCachePath(), epub->getCoverHref());
       LOG_DBG("ERS", "Cover ref saved ok=%u", ok ? 1u : 0u);
     }
+    HEAP_MARK("cover_ref");
   }
 
   // The first frame is up: the stack lives in RAM now, so the file read at the open goes. An
@@ -1377,6 +1393,7 @@ void EpubReaderActivity::loop() {
 #ifdef TENOR_UI_ACCEPTANCE
       traceBuildTickBegin("background");
 #endif
+      HEAP_MARK("bg_tick_begin");
       if (!section->isBuilding() &&
           !section->startBuild(SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight))) {
         partialRebuildStartFailed = true;
@@ -1414,6 +1431,7 @@ void EpubReaderActivity::loop() {
         traceBuildTickEnd("background");
       }
 #endif
+      HEAP_MARK("bg_tick_end");
       // Keep a healthy parser between quiet steps. Parking can parse to a checkpoint
       // or rewind to the last one, so doing it at every yield repeats layout work.
       if (!lookAhead || lookAheadWorkPage < 0 || !buildTickHeapGate()) suspendBackgroundBuild();
