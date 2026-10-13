@@ -407,9 +407,12 @@ void HomeActivity::rebuildRows(const bool readFolder) {
         if (tenorchrome::kTouchShell && (last ? !folderSearchQuery.empty() : !fileSearchMatches(muc, folderSearchQuery)))
           continue;
         if (tenorchrome::kTouchShell) folderRowIndices.push_back(static_cast<uint16_t>(fileIndex));
-        // The last folder reads as its path, as the path pill of File shows it.
+        // The last folder reads "Reopen: <its name>" beside the Recent clock (founder 13/10/2026).
         if (last) {
-          rowLabels.push_back("/" + muc.substr(0, muc.size() - 1));
+          const std::string path = muc.substr(0, muc.size() - 1);
+          char line[160];
+          snprintf(line, sizeof(line), tr(STR_FILE_REOPEN), path.substr(path.find_last_of('/') + 1).c_str());
+          rowLabels.emplace_back(line);
         } else if (tenorchrome::kTouchShell) {
           // Touch: the File card is the root of File, its rows as a folder's rows (name, icon).
           char name[128];
@@ -460,6 +463,7 @@ void HomeActivity::rebuildRows(const bool readFolder) {
     if (activeTabId == Tab::FAVORITES) item.value = favoriteValues[i].c_str();
     if (tenorchrome::kTouchShell && activeTabId == Tab::FOLDER)
       item.icon = listIconFor(UITheme::getFileIcon(folderEntry(static_cast<int>(i))), 32);
+    if (lastFolderAt(static_cast<int>(i))) item.icon = freeink::ui::bitmapFromIcon(icon_recent_32);
     item.actionValue = static_cast<int16_t>(i);
     rowItems.push_back(item);
   }
