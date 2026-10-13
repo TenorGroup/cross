@@ -200,6 +200,7 @@ std::vector<tenorchrome::X3PathNode> ActivityManager::x3NavigationPath(const cha
     nodes.front().icon = X3PathIcon::File;
   } else {
     bool reading = false;
+    std::string previousName;
     for (const auto& activity : stackActivities) {
       if (!activity || activity->isHomeActivity()) continue;
       if (activity->name == "Settings" && !reading) nodes.front().icon = X3PathIcon::Settings;
@@ -209,7 +210,9 @@ std::vector<tenorchrome::X3PathNode> ActivityManager::x3NavigationPath(const cha
         continue;
       }
       const auto label = activity->x3NavigationLabel();
-      if (!label.empty()) nodes.push_back({activity->navigationIcon(), label});
+      // Tiers of the same screen in a row (the quotation books, then one book) are one pill.
+      if (!label.empty() && previousName != activity->name) nodes.push_back({activity->navigationIcon(), label});
+      previousName = activity->name;
     }
   }
   nodes.push_back({currentActivity ? currentActivity->navigationIcon() : X3PathIcon::More, title ? title : ""});
