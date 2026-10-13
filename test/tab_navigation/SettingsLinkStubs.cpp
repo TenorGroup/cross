@@ -138,3 +138,8 @@ std::string deobfuscateFromBase64(const char* encoded, const size_t, bool* ok, b
   return encoded ? std::string(encoded) : std::string();
 }
 }  // namespace obfuscation
+
+// The File order row in Settings, System keeps its value in file-browser.json, not settings.json.
+#include "activities/home/FileBrowserState.h"
+filebrowser::SortMode filebrowser::settingsSort() { return SortMode::Name; }
+void filebrowser::chooseSettingsSort(SortMode) {}

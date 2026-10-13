@@ -319,7 +319,8 @@ class OptionPopup {
       } else {
         tenorPillSelection(props.buttonStyles);
       }
-      fui::setStyleRadius(props.buttonStyles, theme.listRowRadius);
+      // Its options keep the half-circle ends on button boards, where list rows cap the radius at half a one-line row.
+      fui::setStyleRadius(props.buttonStyles, BoardConfig::hasTouch() ? theme.listRowRadius : TENOR_PILL_RADIUS);
     }
     // defaultPopupStyles() has no border, so opt in using the per-theme frame metrics.
     props.styles = fui::defaultPopupStyles();

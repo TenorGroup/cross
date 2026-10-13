@@ -66,6 +66,8 @@ void KOReaderCredentialStore::setServerUrl(const std::string&) {}
 void KOReaderCredentialStore::setMatchMethod(DocumentMatchMethod) {}
 void KOReaderCredentialStore::setSendMetadata(bool) {}
 void KOReaderCredentialStore::setSyncBehavior(KOReaderSyncBehavior) {}
+filebrowser::SortMode filebrowser::settingsSort() { return SortMode::Name; }
+void filebrowser::chooseSettingsSort(SortMode) {}
 
 struct RenderLock { template<class T> explicit RenderLock(T&) {} };
 namespace shell { bool isUgly() { return false; } }

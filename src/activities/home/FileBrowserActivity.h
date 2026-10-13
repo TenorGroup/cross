@@ -8,6 +8,7 @@
 #include "components/FileSearch.h"
 #include "components/FileSearchScan.h"
 #include "components/FileSearchHalAdapter.h"
+#include "FileBrowserSort.h"
 
 // The name a folder entry shows: no trailing slash, no extension (the File card of Home uses it too).
 void formatFileName(const std::string& filename, char* buffer, size_t bufferSize);
@@ -29,6 +30,7 @@ class FileBrowserActivity final : public UiListActivity {
 
   Mode mode = Mode::Books;
   bool openedFromUglyFile = false;
+  bool restoreLastPath = false;  // declared before basepath: the constructor reads initialPath before moving it
   static constexpr int kSearchRows = 0;
 
   // Files state
@@ -47,6 +49,7 @@ class FileBrowserActivity final : public UiListActivity {
   std::unique_ptr<filesearch::Scanner> searchScanner;
   std::unique_ptr<filesearch::HalStorageAdapter> searchStorage;
   std::unique_ptr<filesearch::HalScanHooks> searchHooks;
+  filebrowser::SortMode sortMode = filebrowser::SortMode::Name;
   std::unique_ptr<char[]> fileNameBuffer;
 
   // Pull-based rows: the SDK list resolves each drawn row on demand through

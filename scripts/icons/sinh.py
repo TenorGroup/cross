@@ -66,7 +66,7 @@ SETS = [
     ('tenorRowIcons.h', 32, 2, [
         ('folder', 'thu_muc_hop'), ('file_text', 'tep_chu'), ('image', 'tep_anh'), ('book', 'tep_sach'),
         ('file', 'tep'), ('wifi', 'wifi'), ('library', 'thu_vien'), ('radio_tower', 'diem_phat'),
-        ('bookmark', 'vi_tri')]),
+        ('bookmark', 'vi_tri'), ('recent', 'gan_day')]),
     ('tenorTransferIcons.h', 24, 2, [('download', 'tai_xuong'), ('upload', 'tai_len')]),
     # The status strip at the top of the touch shell: shown only while the radio is on.
     ('tenorStatusIcons.h', 18, 2, [('status_wifi', 'wifi'), ('status_bluetooth', 'bluetooth'),

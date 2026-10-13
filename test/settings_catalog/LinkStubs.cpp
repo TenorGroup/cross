@@ -88,3 +88,8 @@ namespace tenorchrome {
 int tipLineCount(const GfxRenderer&, const char*, int) { return 0; }
 int tipHeight(const GfxRenderer&, const char*, int) { return 0; }
 }  // namespace tenorchrome
+
+// The File order row in Settings, System keeps its value in file-browser.json, not settings.json.
+#include "activities/home/FileBrowserState.h"
+filebrowser::SortMode filebrowser::settingsSort() { return SortMode::Name; }
+void filebrowser::chooseSettingsSort(SortMode) {}

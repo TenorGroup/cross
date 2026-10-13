@@ -14,6 +14,7 @@
 #include "CrossPointSettings.h"
 #include "DocThuMuc.h"
 #include "FileActions.h"
+#include "FileBrowserState.h"
 #include "FileFavorites.h"
 #include "MappedInputManager.h"
 #include "activities/reader/ReaderActivity.h"
@@ -76,6 +77,8 @@ FileBrowserActivity::FileBrowserActivity(GfxRenderer& renderer, MappedInputManag
     : UiListActivity("FileBrowser", renderer, mappedInput, /*wantsTouchLongPress=*/true),
       mode(mode),
       openedFromUglyFile(openedFromUglyFile),
+      // Opening File at its root lands in the last folder visited, kept across sleep (filebrowser::state).
+      restoreLastPath(initialPath.empty() || initialPath == "/"),
       basepath(initialPath.empty() ? "/" : std::move(initialPath)),
       entryPath(basepath) {}
 
@@ -105,7 +108,7 @@ void FileBrowserActivity::loadFiles() {
   files.clear();
   docthumuc::doc(basepath.c_str(), SETTINGS.showHiddenFiles,
                  mode == Mode::PickFirmware ? docthumuc::Loc::Firmware : docthumuc::Loc::Sach, fileNameBuffer.get(),
-                 NAME_BUFFER_SIZE, files, cap, &tooMany);
+                 NAME_BUFFER_SIZE, files, cap, &tooMany, sortMode);
   searchIndices.clear();
   if (!searchQuery.empty()) startRecursiveSearch(searchQuery);
 #ifdef TENOR_PRESS_PROBE
@@ -309,6 +312,16 @@ void FileBrowserActivity::onEnter() {
   recursiveSearch = false;
   searchIncomplete = false;
 
+  if (mode == Mode::Books) {
+    const auto& saved = filebrowser::state();
+    sortMode = shell::isUgly() ? saved.uglySort : saved.crossSort;
+    if (restoreLastPath) {
+      const std::string& savedPath = shell::isUgly() ? saved.uglyPath : saved.crossPath;
+      auto savedDir = Storage.open(savedPath.c_str());
+      if (savedDir && savedDir.isDirectory()) basepath = savedPath;
+    }
+  }
+
   fileNameBuffer = makeUniqueNoThrow<char[]>(NAME_BUFFER_SIZE);
   if (!fileNameBuffer) {
     LOG_ERR("FileBrowser", "malloc failed for name buffer");
@@ -333,9 +346,22 @@ void FileBrowserActivity::onEnter() {
   }
 }
 
+// Settings changes the order; the write waits for the next frame, as the File screen's own does.
+filebrowser::SortMode filebrowser::settingsSort() { return sortNow(shell::isUgly()); }
+void filebrowser::chooseSettingsSort(const SortMode mode) {
+  chooseSort(shell::isUgly(), mode);
+  activityManager.deferWrite(&flush);
+}
+
 void FileBrowserActivity::onExit() {
   stopRecursiveSearch();
   rememberDirectory();
+  if (mode == Mode::Books) {
+    filebrowser::note(shell::isUgly(), basepath, sortMode);
+    // Sleep has already painted its entering notice and will turn storage off in this call.
+    if (activityManager.isSleepTransition()) filebrowser::flush();
+    else activityManager.deferWrite(&filebrowser::flush);
+  }
   Activity::onExit();
   files.clear();
   searchIndices.clear();

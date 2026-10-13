@@ -84,6 +84,7 @@ add_subdirectory(confirmation)
 
 add_subdirectory(inflate_stream)
 add_subdirectory(fs_helpers)
+add_subdirectory(file_browser_sort)
 
 add_subdirectory(absolute_grayscale)
 add_subdirectory(mapped_input)
@@ -324,3 +325,4 @@ add_subdirectory(cover_holder)
 add_subdirectory(home_thumb_work)
 add_subdirectory(bitmap_writer)
 add_subdirectory(telex_composer)
+add_subdirectory(file_browser_state)

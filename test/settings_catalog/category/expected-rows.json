@@ -35,6 +35,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -121,6 +122,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -207,6 +209,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -294,6 +297,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -379,6 +383,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -465,6 +470,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -551,6 +557,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -638,6 +645,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -723,6 +731,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -794,6 +803,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -865,6 +875,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -937,6 +948,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -1007,6 +1019,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -1078,6 +1091,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -1149,6 +1163,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -1221,6 +1236,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -1290,6 +1306,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -1361,6 +1378,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -1432,6 +1450,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -1504,6 +1523,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -1574,6 +1594,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -1645,6 +1666,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -1716,6 +1738,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"
@@ -1788,6 +1811,7 @@
     [
       "STR_CLOCK:14:",
       "STR_SHOW_HIDDEN_FILES:0:showHiddenFiles",
+      "STR_FILE_SORT:0:",
       "STR_LIBRARY_USE_METADATA:0:libraryUseMetadata",
       "STR_REMOVE_READ_FROM_RECENTS:0:removeReadBooksFromRecents",
       "STR_MOVE_FINISHED_TO_READ:0:moveFinishedToReadFolder"

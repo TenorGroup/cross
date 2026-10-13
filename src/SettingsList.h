@@ -23,6 +23,7 @@
 #include "HomeButtonSettings.h"
 #include "KOReaderCredentialStore.h"
 #include "QuickAction.h"
+#include "activities/home/FileBrowserState.h"
 #include "ReaderFontSizes.h"
 #include "shells/ugly/UglyLevel.h"
 #include "activities/settings/SettingsActivity.h"
@@ -549,6 +550,12 @@ inline void forEachBaseSetting(const std::function<void(SettingInfo&&)>& emit) {
             "sleepTimeoutMinutes", StrId::STR_CAT_SYSTEM));
     emit(SettingInfo::Toggle(StrId::STR_SHOW_HIDDEN_FILES, &CrossPointSettings::showHiddenFiles, "showHiddenFiles",
                             StrId::STR_CAT_SYSTEM));
+    // The File order of the running shell, kept in file-browser.json beside its last folder.
+    emit(SettingInfo::DynamicEnum(
+        StrId::STR_FILE_SORT, {StrId::STR_FILE_SORT_NAME, StrId::STR_FILE_SORT_MODIFIED, StrId::STR_FILE_SORT_SIZE},
+        [] { return static_cast<uint8_t>(filebrowser::sortModeValue(filebrowser::settingsSort())); },
+        [](const uint8_t v) { filebrowser::chooseSettingsSort(filebrowser::sortModeFromValue(v)); },
+        nullptr, StrId::STR_CAT_SYSTEM));
     emit(SettingInfo::Toggle(StrId::STR_LIBRARY_USE_METADATA, &CrossPointSettings::libraryUseMetadata,
                             "libraryUseMetadata", StrId::STR_CAT_SYSTEM));
     emit(SettingInfo::Toggle(StrId::STR_REMOVE_READ_FROM_RECENTS, &CrossPointSettings::removeReadBooksFromRecents,

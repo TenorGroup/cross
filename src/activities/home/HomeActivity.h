@@ -175,6 +175,11 @@ class HomeActivity final : public UiTabListActivity {
   int preferredTabBarHeight() const override;
   int coverTileTop() const;
   void selectTab(Tab tab);
+  bool openLastFolder();
+  std::string lastFolder() const;
+  bool lastFolderAt(int row) const;
+  bool lastFolderRow = false;  // mucTheNho[0] is the last folder of File
+  bool restoringNavigation = false;
   void rebuildRows(bool readFolder = true);
   bool buildSettingsGroups(UiScreen& screen);
   static void settingsRow(void* context, uint16_t index, freeink::ui::ListItem& item);
