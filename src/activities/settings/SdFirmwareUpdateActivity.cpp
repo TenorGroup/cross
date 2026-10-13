@@ -21,6 +21,12 @@
 #include "network/FirmwareFlasher.h"
 #if TENOR_CABLE_FLASH
 #include "platform/CableFlashLink.h"
+
+namespace {
+const SdFirmwareUpdateActivity* activeCableActivity = nullptr;
+}
+
+const SdFirmwareUpdateActivity* SdFirmwareUpdateActivity::currentCableActivity() { return activeCableActivity; }
 #endif
 
 void SdFirmwareUpdateActivity::onEnter() {
@@ -29,13 +35,19 @@ void SdFirmwareUpdateActivity::onEnter() {
   if (!filetransfer::acquire()) {
     LOG_ERR("FW", "BLE teardown incomplete; leaving SD firmware update");
 #if TENOR_CABLE_FLASH
-    if (cable) cableflash::say("TCF1 FAIL busy");
+    if (cable) {
+      cableflash::say("TCF1 FAIL busy");
+      leaveCableSession();
+    }
 #endif
-    finish();
+    if (!cable) finish();
     return;
   }
   runtimeStarted = true;
   Activity::onEnter();
+#if TENOR_CABLE_FLASH
+  if (cable) activeCableActivity = this;
+#endif
   // Build-identity marker - confirms which firmware build owns the SD update flow.
   LOG_INF("FW", "SdFirmwareUpdateActivity build=%s %s recovery=%d", __DATE__, __TIME__, recoveryMode ? 1 : 0);
   state = State::PICKING;
@@ -56,11 +68,27 @@ StrId SdFirmwareUpdateActivity::title() const {
 }
 
 void SdFirmwareUpdateActivity::onExit() {
+#if TENOR_CABLE_FLASH
+  if (activeCableActivity == this) activeCableActivity = nullptr;
+#endif
   Activity::onExit();
   // The owner covers picker, validation, confirmation, and the synchronous
   // flash. Release it only once this activity is actually leaving.
   filetransfer::release();
 }
+
+#if TENOR_CABLE_FLASH
+void SdFirmwareUpdateActivity::leaveCableSession() {
+  const auto decision = cableflash::decidePolicy(
+      cableflash::PolicyInput{true, false, false, false, true, cableFailed(), cableReturnBook.c_str()});
+  if (decision.action == cableflash::PolicyAction::ReturnToBook) {
+    std::string book = cableReturnBook;
+    activityManager.goToReader(std::move(book));
+    return;
+  }
+  finish();
+}
+#endif
 
 void SdFirmwareUpdateActivity::launchPicker() {
   // Reuse the standard file browser, restricted to .bin files only.
@@ -188,7 +216,7 @@ void SdFirmwareUpdateActivity::onConfirmationResult(const ActivityResult& result
 #if TENOR_CABLE_FLASH
   if (cable && result.isCancelled) {
     cableflash::say("TCF1 FAIL denied");  // No, or nobody answered within the minute
-    finish();
+    leaveCableSession();
     return;
   }
   if (cable) {
@@ -356,6 +384,12 @@ void SdFirmwareUpdateActivity::loop() {
         launchPicker();
         return;
       }
+#if TENOR_CABLE_FLASH
+      if (cable) {
+        leaveCableSession();
+        return;
+      }
+#endif
       finish();
     }
   }
