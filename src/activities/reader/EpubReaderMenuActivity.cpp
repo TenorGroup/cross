@@ -516,7 +516,7 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
     // buildTabBar uses the full logical screen band, with its measured height.
     skinTab_.x = screen.frame().screen().x;
     skinTab_.width = screen.frame().screen().width;
-    skinTab_.height = static_cast<int16_t>(screen.body().y - skinTab_.y - metrics.verticalSpacing);
+    if (!x3) skinTab_.height = static_cast<int16_t>(screen.body().y - skinTab_.y - metrics.verticalSpacing);
     if (tabWindowCount() < tabCount()) {
       skinTab_.x = static_cast<int16_t>(skinTab_.x + MUI_TEN_LE);
       skinTab_.width = static_cast<int16_t>(skinTab_.width - 2 * MUI_TEN_LE);
@@ -672,27 +672,40 @@ void EpubReaderMenuActivity::paintUglyMenu() {
   const int width = renderer.getScreenWidth(), height = renderer.getScreenHeight();
   renderer.clearScreen();
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const int bottom = height - (tenorchrome::kTouchShell ? tenorchrome::footBackReserve() : metrics.buttonHintsHeight);
+  const bool inBar = tenorchrome::x3ScreenLayoutEnabled();  // button boards: the names stand in the bar under the paper
+  const int bottom = inBar ? skinTab_.y - 4
+      : height - (tenorchrome::kTouchShell ? tenorchrome::footBackReserve() : metrics.buttonHintsHeight);
   const fui::Rect frame{16, static_cast<int16_t>(tenorchrome::kTouchShell ? tenorchrome::contentTop() : 8),
                         static_cast<int16_t>(width - 32), static_cast<int16_t>(bottom - (tenorchrome::kTouchShell ? tenorchrome::contentTop() : 8))};
   readerugly::paper(renderer, frame);
-  if (!tenorchrome::kTouchShell) tenorchrome::drawHeader(renderer, tr(STR_READER_MENU));
+  if (!tenorchrome::kTouchShell && !inBar) tenorchrome::drawHeader(renderer, tr(STR_READER_MENU));
   const int shownTabs = tabWindowCount();
+  const auto nameWidth = [&](const int slot) {
+    return ugly::width(renderer, ugly::Size::S22,
+                       tabLabel(menucustom::idAt(menucustom::groupFor(name.c_str()), tabWindowStart() + slot, tabCount())));
+  };
+  // Each name its own width and the gaps equal, 32 px in from the bar's ends.
+  int sum = 0;
+  for (int slot = 0; slot < shownTabs; ++slot) sum += nameWidth(slot);
+  const int span = skinTab_.width - 64, fit = std::max(sum, span);  // names that do not fit shrink together
+  const int gap = shownTabs > 1 ? (span - sum * span / fit) / (shownTabs - 1) : 0;
+  int pen = skinTab_.x + 32;
   for (int slot = 0; slot < shownTabs; ++slot) {
     const int tab = menucustom::idAt(menucustom::groupFor(name.c_str()), tabWindowStart() + slot, tabCount());
     auto box = app.publishedRect(ACTION_TAB, tab);
-    if (box.empty()) {
-      // Same icon-pill centres as veThanhTheTenor on button boards, which publish no tab hits.
-      const int first = skinTab_.x + 56, last = skinTab_.right() - 57;
-      const int cx = shownTabs > 1 ? first + (2 * (last - first) * slot + (shownTabs - 1)) / (2 * (shownTabs - 1))
-                                  : skinTab_.x + skinTab_.width / 2;
-      // The hand writes wider than the icons stood: each name takes its whole share of the band.
-      const int share = shownTabs > 1 ? std::max(84, (frame.width - 12) / shownTabs) : 84;
-      const int left = std::clamp(cx - share / 2, frame.x + 6, frame.right() - 6 - share);  // inside the paper
-      box = {static_cast<int16_t>(left), skinTab_.y, static_cast<int16_t>(share), skinTab_.height};
+    const bool hit = !box.empty();
+    if (!hit) {
+      const int wide = nameWidth(slot) * span / fit;
+      // The words ride 8 px over the bar's middle: the circle (20 px each way) clears the foot below.
+      box = {static_cast<int16_t>(shownTabs > 1 ? pen - 8 : skinTab_.x + (skinTab_.width - wide) / 2 - 8), skinTab_.y,
+             static_cast<int16_t>(wide + 16), static_cast<int16_t>(skinTab_.height - 16)};
+      pen += wide + gap;
     }
     const auto ink = readerugly::text(renderer, box.inset(fui::Insets{0, 8, 0, 8}), tabLabel(tab), fui::TextAlign::Center);
-    if (tab == activeTab()) uglychrome::ring(renderer, ink, tabMark_.get(activeTab()));
+    // The circle grows 28 px each way of the box it goes round: round the middle of the words (16 px in from each
+    // end, 8 px high) it keeps 12 px clear of the name, between its neighbours and inside the bar.
+    if (tab == activeTab()) uglychrome::ring(renderer, hit ? ink : fui::Rect{static_cast<int16_t>(ink.x + 16),
+        static_cast<int16_t>(ink.y + 9), static_cast<int16_t>(std::max(4, ink.width - 32)), 8}, tabMark_.get(activeTab()));
   }
   std::string summary;
   if (totalPages > 0) summary = std::string(tr(STR_CHAPTER_PREFIX)) + std::to_string(currentPage) + "/" +
