@@ -253,10 +253,13 @@ class NapTest(unittest.TestCase):
         self.assertEqual(device.lines, ['TCF1 HELLO'])
         self.assertIn('Nothing written', out)
 
-    def test_an_x4pro_without_the_channel_says_how_to_get_it(self):
+    def test_an_x4pro_that_does_not_answer_is_not_called_old(self):
+        # Silence also comes from a busy device (an update download, sleep): say that first.
         code, out, _, _ = self.nap([self.file(image())], Ports([PRO]), {PRO.device: lambda: FakeX4Pro(cable=False)})
         self.assertEqual(code, 1)
-        self.assertIn('no cable flash channel', out)
+        self.assertIn('does not answer', out)
+        self.assertIn('busy', out)
+        self.assertNotIn('its firmware has no cable flash channel', out)
 
     def test_a_whole_image_with_a_lost_ack_and_a_nak_reaches_valid(self):
         data = image(body=5000, elf=b'\x22' * 32)
