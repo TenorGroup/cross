@@ -57,7 +57,10 @@ inline freeink::ui::ThemeTokens uiThemeTokens(const freeink::ui::GfxRendererTarg
   if (!BoardConfig::hasTouch()) {
     tokens.listRow = fui::defaultListRowStyles();
     tenorPillSelection(tokens.listRow);
-    tokens.listRowRadius = TENOR_PILL_RADIUS;
+    // Half a one-line row: a one-line row still ends in half circles, and a row of two lines keeps the same
+    // corners, so its second line stays clear of the ring (it touched the curve while the radius was half
+    // the row's own height).
+    tokens.listRowRadius = static_cast<uint8_t>(tokens.listMinRowHeight / 2);
     tokens.listSidePadding = TENOR_PILL_SIDE_PADDING;
     tokens.listRowPaddingY = TENOR_PILL_ROW_PADDING_Y;
     // Every value ends on one column, a row that opens nothing keeping the room of the grey ">" too (founder
