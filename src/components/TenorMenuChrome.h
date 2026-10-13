@@ -125,6 +125,9 @@ inline ReaderToolRect readerToolRect(const int width, const int height, const in
   const int x = left + room * tool / READER_TOOLS;
   return {x, bar.y, left + room * (tool + 1) / READER_TOOLS - x, bar.height};
 }
+// The tool's tap cell: the equal cell above, but on tenor/ugly, which writes each name at its own width, a cell that holds
+// its name (the 4 cells share the same room).
+ReaderToolRect readerToolHit(const GfxRenderer& renderer, int tool);
 #endif
 // An icon in an icon bar (Mask1, bit 0 = ink), with grey already baked into the regular bitmap.
 // Every icon bar draws its icons with this, preserving every ink pixel on every screen.

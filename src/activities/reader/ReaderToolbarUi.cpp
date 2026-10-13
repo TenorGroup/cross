@@ -648,9 +648,8 @@ int ReaderToolbarUi::scrollRows(const MappedInputManager& input, const int count
 
 void ReaderToolbarUi::buildX4Tools(UiScreen& screen) {
   if (model_.textView == TextView::PointSize) return;
-  const auto bounds = screen.frame().screen();
   for (int i = 0; i < tenorchrome::READER_TOOLS; ++i) {
-    const auto r = tenorchrome::readerToolRect(bounds.width, bounds.height, i);
+    const auto r = tenorchrome::readerToolHit(*renderer_, i);
     screen.frame().hit({static_cast<int16_t>(r.x), static_cast<int16_t>(r.y),
                         static_cast<int16_t>(r.width), static_cast<int16_t>(r.height)},
                        ACTION_TOOL, static_cast<int16_t>(i), fui::InputTouch);

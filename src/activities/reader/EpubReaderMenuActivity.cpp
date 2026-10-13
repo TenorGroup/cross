@@ -673,7 +673,7 @@ void EpubReaderMenuActivity::paintUglyMenu() {
   renderer.clearScreen();
   const auto& metrics = UITheme::getInstance().getMetrics();
   const bool inBar = tenorchrome::x3ScreenLayoutEnabled();  // button boards: the names stand in the bar under the paper
-  const int bottom = inBar ? skinTab_.y - 4
+  const int bottom = inBar ? screenLayout().tipRect.y - 4  // the tip, when the tab has one, stands between the paper and the bar
       : height - (tenorchrome::kTouchShell ? tenorchrome::footBackReserve() : metrics.buttonHintsHeight);
   const fui::Rect frame{16, static_cast<int16_t>(tenorchrome::kTouchShell ? tenorchrome::contentTop() : 8),
                         static_cast<int16_t>(width - 32), static_cast<int16_t>(bottom - (tenorchrome::kTouchShell ? tenorchrome::contentTop() : 8))};
@@ -732,5 +732,6 @@ void EpubReaderMenuActivity::paintUglyMenu() {
     if (pinned) ugly::tick(renderer, box.right() - 26 - (item.opensNext ? 28 : 0), box.y + box.height / 2);
     if (item.opensNext) ugly::mark(renderer, ugly::Mark::Right, box.right() - 14, box.y + box.height / 2);
   }
-  if (!skinHint_.empty()) tenorchrome::drawTip(renderer, tr(STR_FAVORITES_HINT), 0, 4);
+  if (!skinHint_.empty() || (inBar && activeTabId == MenuTab::FAVORITES))
+    tenorchrome::drawTip(renderer, tr(STR_FAVORITES_HINT), 0, 4);
 }

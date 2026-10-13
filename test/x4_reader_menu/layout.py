@@ -96,6 +96,7 @@ const char* I18n::get(StrId)const{return "Done";}
 class GfxRenderer {
  public:
   int getScreenWidth() const { return 480; }
+  int getScreenHeight() const { return 800; }
   void fillRect(int, int, int, int, bool) const {}
   void displayWindow(int, int, int, int) const {}
   void waitRefreshComplete() const {}
@@ -191,7 +192,7 @@ void drawPillRing(const GfxRenderer&, int x, int y, int w, int h, int thick, boo
   stepperRings.push_back(std::to_string(x) + "," + std::to_string(y) + "," + std::to_string(w) + "," +
                          std::to_string(h) + "," + std::to_string(thick) + "," + std::to_string(grey));
 }
-''' + '\n'.join(re.findall(r'^constexpr int (?:READER_BAR_LEFT|READER_TOOL_END_AIR|FRAME_BAR_WIDTH) = .*?;', chrome, re.M)) + '\n' + method(chrome, 'struct TouchBarRect') + ';\n' + method(chrome, 'inline TouchBarRect touchTabBarRect') + '\n' + method(chrome, 'struct ReaderToolRect') + ';\n' + method(chrome, 'inline ReaderToolRect readerToolRect') + '\n}\n'
+''' + '\n'.join(re.findall(r'^constexpr int (?:READER_BAR_LEFT|READER_TOOL_END_AIR|FRAME_BAR_WIDTH) = .*?;', chrome, re.M)) + '\n' + method(chrome, 'struct TouchBarRect') + ';\n' + method(chrome, 'inline TouchBarRect touchTabBarRect') + '\n' + method(chrome, 'struct ReaderToolRect') + ';\n' + method(chrome, 'inline ReaderToolRect readerToolRect') + '\ninline ReaderToolRect readerToolHit(const GfxRenderer& r, int tool) { return readerToolRect(r.getScreenWidth(), r.getScreenHeight(), tool); }\n}\n'
 cpp = cpp.replace('EXPECT_PREVIEW_HIT', str(a.expect_preview_hit).lower()).replace('DUMP_SIGNATURE', str(a.signature).lower()).replace('EXPECT_FADE', str(a.expect_fade).lower()).replace('EXPECT_STEPPER_RING', str(a.expect_stepper_ring).lower()).replace('EXPECT_STEPPER_CENTER', str(a.expect_stepper_center).lower()).replace('EXPECT_MIDDLE_FONT', str(a.expect_middle_font).lower())
 for component in ('PageScrollbarIdle.h', 'PageScrollbar.h'):
     component_source = (a.repo / 'src/components' / component).read_text()
