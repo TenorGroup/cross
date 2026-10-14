@@ -15,6 +15,7 @@
 #include "BookmarkEntry.h"
 #include "ChapterPosition.h"
 #include "EpubReaderMenuActivity.h"
+#include "JumpBarClock.h"
 #include "ProgressMapper.h"
 #include "QuoteStore.h"
 #include "ReaderActivity.h"
@@ -296,11 +297,10 @@ class EpubReaderActivity final : public ReaderActivity {
   bool returnPushedForLoad = false;
   void dropFailedJumpReturn();
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
-  // The way back after a jump stands as the dynamic bar for JUMP_BAR_MS (tenorchrome::noteJumpBar). A jump sets Pending; the
-  // paint that carries the bar clears it and sets the seconds on the ring; StartMs is when that page reached the panel.
+  // The way back after a jump stands as the dynamic bar, 3 numbers of a second each (tenorchrome::noteJumpBar, JumpBarClock.h).
+  // A jump sets Pending; the paint that carries the bar clears it and arms the clock on that page.
   bool jumpBarPending = false;
-  int jumpBarSeconds = 0;
-  unsigned long jumpBarStartMs = 0;
+  jumpbar::Clock jumpBar;
   bool handleJumpBar();
   void dropJumpBar();
 #endif

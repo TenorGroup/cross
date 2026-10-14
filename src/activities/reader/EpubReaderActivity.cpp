@@ -523,17 +523,17 @@ void saveTapTipHidden() { SETTINGS.saveToFile(); }
 
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
 void EpubReaderActivity::dropJumpBar() {
-  jumpBarSeconds = 0;
-  jumpBarStartMs = 0;
+  jumpBar.drop();
   tenorchrome::noteJumpBar(0, 0);
 }
 
 // The way back's bar is up (renderContents put it there after a jump). Its "<" goes back; a tap on the rest of the bar does
 // nothing and the count goes on; any other input does what it always does, and the paint that follows takes the bar down.
-// The seconds count down in the ring, each one a fast refresh of the ring alone; at 0 the page is painted again without the
-// bar, which gives the gray text under the band back as the page always draws it.
+// The numbers count down in the ring, each one a fast refresh of the ring alone and each standing a second from the moment
+// that refresh has finished (jumpbar::Clock); after the 1 the page is painted again without the bar, which gives the gray
+// text under the band back as the page always draws it.
 bool EpubReaderActivity::handleJumpBar() {
-  if (jumpBarSeconds <= 0) return false;
+  if (!jumpBar.up()) return false;
   if (overlay != Overlay::None || preview) {
     dropJumpBar();
     return false;
@@ -550,24 +550,23 @@ bool EpubReaderActivity::handleJumpBar() {
         break;
     }
   }
-  if (jumpBarStartMs == 0 || mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() ||
-      mappedInput.wasScreenTapped(x, y) || mappedInput.wasSwipe() != MappedInputManager::SwipeDir::None)
+  if (mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() || mappedInput.wasScreenTapped(x, y) ||
+      mappedInput.wasSwipe() != MappedInputManager::SwipeDir::None)
     return false;
-  const unsigned long elapsed = millis() - jumpBarStartMs;
-  const int left =
-      elapsed >= tenorchrome::JUMP_BAR_MS ? 0 : static_cast<int>((tenorchrome::JUMP_BAR_MS - elapsed + 999) / 1000);
-  if (left == jumpBarSeconds) return false;
+  const jumpbar::Due due = jumpBar.due(millis());
+  if (due == jumpbar::Due::Wait) return false;
   RenderLock lock(RenderLock::TryTake{});
   if (!lock.acquired() || !pageFrameShown || renderer.refreshBusy()) return false;
-  if (left == 0) {
+  if (due == jumpbar::Due::Hide) {
     dropJumpBar();
     requestUpdate();
     return false;
   }
-  jumpBarSeconds = left;
-  tenorchrome::noteJumpBar(returnPageNumber(), left);
+  jumpBar.next();
+  tenorchrome::noteJumpBar(returnPageNumber(), jumpBar.digit);
   const auto box = tenorchrome::drawJumpBarCount(renderer);
-  renderer.displayWindow(box.x, box.y, box.width, box.height);
+  renderer.displayWindow(box.x, box.y, box.width, box.height);  // returns when the panel has finished
+  jumpBar.onPanel(millis());
   return false;
 }
 #endif
@@ -3443,7 +3442,7 @@ void EpubReaderActivity::renderBook() {
     lastRenderCompleteMs = millis();
     returnPushedForLoad = false;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
-    if (jumpBarSeconds > 0 && jumpBarStartMs == 0) jumpBarStartMs = lastRenderCompleteMs;
+    if (jumpBar.up() && jumpBar.shownAt == 0) jumpBar.onPanel(lastRenderCompleteMs);
 #endif
     if (!pendingQuoteEdit.empty()) quoteEditPageShown = true;
     // The page is on the panel: write the cover thumbnails its decode built, before the page
@@ -3589,7 +3588,7 @@ TextGrayContext EpubReaderActivity::textGrayContext() const {
   context.covered = overlay != Overlay::None || overlayPopup.isActive();
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   // The way back's bar stands on a black and white page (its ring refreshes alone); the paint that takes it down is gray.
-  context.covered = context.covered || jumpBarSeconds > 0;
+  context.covered = context.covered || jumpBar.up();
 #endif
   context.preparingPopup = showBookmarkMessage || showDictionaryMessage || showIndexingMessage ||
                            buildPopupPending || buildPopupRefreshing || pendingSyncSaveError;
@@ -3776,16 +3775,24 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const bool pageHasImages = page->hasImages();
   const bool pageHasImagesNeedingDecode = pageHasImages && page->hasImagesNeedingDecode();
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
-  // A paint takes the way back's bar down; the one after a jump puts it up, on a text page of the open book: the pre-display
-  // hook draws it into this frame, and textGrayContext keeps the page black and white while it stands. A page with images
-  // keeps its grays and gets no bar.
-  dropJumpBar();
-  if (jumpBarPending && !preview && overlay == Overlay::None) {
+  // The paint after a jump puts the way back's bar up, on a text page of the open book: the pre-display hook draws it into this
+  // frame, and textGrayContext keeps the page black and white while it stands. A repaint of the page the bar stands on (a
+  // background step that lent the framebuffer asks for one) carries it on with the number it had, counting that number again
+  // from the end of this paint; a paint of any other page takes it down. A page with images keeps its grays and gets no bar.
+  const int shownPage = section ? section->currentPage : nextPageNumber;
+  const bool onTheBook = !preview && overlay == Overlay::None;
+  if (jumpBarPending && onTheBook) {
     jumpBarPending = false;
+    dropJumpBar();
     if (!pageHasImages && returnPageNumber() > 0) {
-      jumpBarSeconds = static_cast<int>(tenorchrome::JUMP_BAR_MS / 1000);
-      tenorchrome::noteJumpBar(returnPageNumber(), jumpBarSeconds);
+      jumpBar.arm(currentSpineIndex, shownPage);
+      tenorchrome::noteJumpBar(returnPageNumber(), jumpBar.digit);
     }
+  } else if (onTheBook && !pageHasImages && jumpBar.stands(currentSpineIndex, shownPage)) {
+    jumpBar.repainting();
+    tenorchrome::noteJumpBar(returnPageNumber(), jumpBar.digit);
+  } else {
+    dropJumpBar();
   }
 #endif
   const bool manualRefreshPending = forcedRefreshPending;

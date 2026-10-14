@@ -107,12 +107,11 @@ void clearFootBand(const GfxRenderer& renderer, int air = 12);
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
 // Reader view data for the existing pre-display hook. The reader owns its depth and drafts.
 void noteReaderFootBar(bool open, bool keypad, int activeTool);
-// The way back after a jump (founder 14/10, Q37 C): the reader's own dynamic bar for JUMP_BAR_MS, in the bar's place at the
+// The way back after a jump (founder 14/10, Q37 C): the reader's own dynamic bar for 3 numbers (jumpbar::Clock), in the bar's place at the
 // foot: the round "<", the page it leads to in a pill, and the seconds left in a ring. page 0 = no bar. The reader names
 // it as it names the reader menu's bar; the next frame sent to the panel gets it (drawFootBar). The page under it is painted
 // black and white only while it stands, so a ring refresh can never touch gray text; the paint that takes it down gives the
 // page its grays as every page gets them.
-constexpr unsigned long JUMP_BAR_MS = 3000;
 void noteJumpBar(int page, int seconds);
 enum class JumpBarHit : uint8_t { None, Back, Face };
 // Where a tap at (x, y) lands on the bar: the "<" (Back), the rest of the bar (Face), or off it. None while no bar stands.

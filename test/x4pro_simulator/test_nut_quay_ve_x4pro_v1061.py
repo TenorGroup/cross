@@ -163,6 +163,22 @@ class WayBackBar(WayBackPill, unittest.TestCase):
 
     TURN = '19000:TAP:300,300;21000:TAP:60,300;'
 
+    def test_each_number_stands_a_second_on_the_panel_whatever_the_refresh_takes(self):
+        # A slow panel: every paint takes 1 s and every ring refresh 0.7 s (the simulator sleeps that long, as the panel does).
+        # Each number counts from the moment the refresh that showed it has finished, so no refresh eats into it.
+        self.SIM_ENV = {'CROSSPOINT_SIM_REFRESH_MS': '1000', 'CROSSPOINT_SIM_WINDOW_MS': '700'}
+        self.WHEN = {**self.WHEN, 'quit': 26000}
+        log, _ = self.run_card(('JUMP',))
+        lines = self.lines(log)
+        # The jump's page is on the panel when its paint has returned.
+        shown = next(ms for ms, line in lines if ms > 14000 and 'Rendered page' in line)
+        spans = [(int(m.group(1)), int(m.group(2))) for m in re.finditer(r'WINDOW begin ms=(\d+) .*\nWINDOW end ms=(\d+)', log)]
+        self.assertEqual(len(spans), 2, spans)
+        hide = next(ms for ms, line in lines if ms > spans[1][1] and 'Prewarm' in line)
+        stood = [spans[0][0] - shown, spans[1][0] - spans[0][1], hide - spans[1][1]]
+        self.assertTrue(all(ms >= 1000 for ms in stood), f'3, 2 and 1 stood {stood} ms on the panel')
+        self.assertGreaterEqual(hide - shown, 3000)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

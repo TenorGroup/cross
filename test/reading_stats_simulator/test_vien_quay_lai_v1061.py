@@ -69,6 +69,7 @@ class WayBackPill:
         env.update(SDL_VIDEODRIVER='dummy', CROSSPOINT_SIM_SD=str(sd), CROSSPOINT_SIM_INPUT_SCRIPT=script,
                    CROSSPOINT_SIM_NOW='1791700000',
                    CROSSPOINT_SIM_SCREENSHOTS=';'.join(f'{ms}:{sd}/{name}.bmp' for ms, name in shots))
+        env.update(getattr(self, 'SIM_ENV', {}))
         result = subprocess.run([str(self.PROGRAM)], cwd=REPO, env=env, capture_output=True, text=True, timeout=240)
         log = result.stdout + result.stderr
         self.assertEqual(result.returncode, 0, log[-5000:])
