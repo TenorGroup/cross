@@ -280,6 +280,21 @@ TEST_F(QuoteClippingsTest, ReadErrorEndsPartialDownloadWithoutTerminator) {
   EXPECT_EQ(web.response.body, "\xEF\xBB\xBF");
 }
 
+// A folder that exists but cannot be opened is a read error, not "no quotes yet".
+TEST_F(QuoteClippingsTest, AFolderThatWillNotOpenIsAnErrorNotAnEmptyFile) {
+  ASSERT_TRUE(quotes::save(quoteOf(0)));
+  readFault.path = "/.crosspoint/quotes";
+  readFault.fullPath = true;
+  readFault.openFails = true;
+  EXPECT_EQ(quotes::streamKindle([](const char*, size_t) { return true; }), SIZE_MAX);
+  CrossPointWebServer web;
+  web.handleQuotesExport();
+  EXPECT_FALSE(web.response.ended);  // the download breaks off, like any other read error
+  EXPECT_FALSE(web.response.live);
+  readFault = {};
+  EXPECT_EQ(quotes::streamKindle([](const char*, size_t) { return true; }), 1u);
+}
+
 TEST_F(QuoteClippingsTest, MaximumRecordFitsAndHeapDoesNotGrowWithCount) {
   auto quote = quoteOf(0);
   quote.title = std::string(512, 't');
