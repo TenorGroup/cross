@@ -5,6 +5,7 @@
 
 #include "KOReaderAutoSyncPolicy.h"
 #include "KOReaderSyncDebt.h"
+#include "KOReaderSyncMark.h"
 #include "KOReaderWifiHint.h"
 
 using namespace kosyncauto;
@@ -70,27 +71,27 @@ TEST(AutoSyncGate, RoundCeilingStopsNewRequests) {
 // ---- push and pull decisions ----------------------------------------------------------------------------------
 
 TEST(AutoSyncPush, OnlyALocalAheadBookOrAMissingServerCopyIsUploaded) {
-  EXPECT_EQ(pushAction(Fetch::Found, ProgressComparison::LocalAhead), PushAction::Push);
-  EXPECT_EQ(pushAction(Fetch::NotFound, ProgressComparison::Unknown), PushAction::Push);
-  EXPECT_EQ(pushAction(Fetch::Found, ProgressComparison::RemoteAhead), PushAction::DropDebt);
-  EXPECT_EQ(pushAction(Fetch::Found, ProgressComparison::Synchronized), PushAction::DropDebt);
-  EXPECT_EQ(pushAction(Fetch::Found, ProgressComparison::Unknown), PushAction::DropDebt);
-  EXPECT_EQ(pushAction(Fetch::Failed, ProgressComparison::LocalAhead), PushAction::KeepDebt);
+  EXPECT_EQ(pushAction(Fetch::Found, ProgressComparison::LocalAhead, false, false), PushAction::Push);
+  EXPECT_EQ(pushAction(Fetch::NotFound, ProgressComparison::Unknown, false, false), PushAction::Push);
+  EXPECT_EQ(pushAction(Fetch::Found, ProgressComparison::RemoteAhead, false, false), PushAction::DropDebt);
+  EXPECT_EQ(pushAction(Fetch::Found, ProgressComparison::Synchronized, false, false), PushAction::DropDebt);
+  EXPECT_EQ(pushAction(Fetch::Found, ProgressComparison::Unknown, false, false), PushAction::DropDebt);
+  EXPECT_EQ(pushAction(Fetch::Failed, ProgressComparison::LocalAhead, false, false), PushAction::KeepDebt);
 }
 
 TEST(AutoSyncPull, OnlyAServerPositionAheadMovesTheBook) {
-  EXPECT_EQ(pullAction(Fetch::Found, ProgressComparison::RemoteAhead), PullAction::Apply);
-  EXPECT_EQ(pullAction(Fetch::Found, ProgressComparison::LocalAhead), PullAction::Keep);
-  EXPECT_EQ(pullAction(Fetch::Found, ProgressComparison::Synchronized), PullAction::Keep);
-  EXPECT_EQ(pullAction(Fetch::Found, ProgressComparison::Unknown), PullAction::Keep);
-  EXPECT_EQ(pullAction(Fetch::NotFound, ProgressComparison::RemoteAhead), PullAction::Keep);
-  EXPECT_EQ(pullAction(Fetch::Failed, ProgressComparison::RemoteAhead), PullAction::Keep);
+  EXPECT_EQ(pullAction(Fetch::Found, ProgressComparison::RemoteAhead, false), PullAction::Apply);
+  EXPECT_EQ(pullAction(Fetch::Found, ProgressComparison::LocalAhead, false), PullAction::Keep);
+  EXPECT_EQ(pullAction(Fetch::Found, ProgressComparison::Synchronized, false), PullAction::Keep);
+  EXPECT_EQ(pullAction(Fetch::Found, ProgressComparison::Unknown, false), PullAction::Keep);
+  EXPECT_EQ(pullAction(Fetch::NotFound, ProgressComparison::RemoteAhead, false), PullAction::Keep);
+  EXPECT_EQ(pullAction(Fetch::Failed, ProgressComparison::RemoteAhead, false), PullAction::Keep);
 }
 
 TEST(AutoSyncPull, ComparisonFeedsTheDecisionTheWayTheManualSmartSyncDoes) {
   const auto decide = [](const CrossPointPosition& local, const float lp, const CrossPointPosition& remote,
                          const float rp) {
-    return pullAction(Fetch::Found, compareProgress(local, lp, remote, rp));
+    return pullAction(Fetch::Found, compareProgress(local, lp, remote, rp), false);
   };
   // The phone read on: the other machine is ahead, the page moves.
   EXPECT_EQ(decide(resolved(2, 3), 0.20f, resolved(2, 9), 0.30f), PullAction::Apply);
@@ -108,6 +109,131 @@ TEST(AutoSyncPush, PercentageAloneDecidesWhenNoPositionIsMapped) {
   EXPECT_EQ(compareProgress(none, 0.40f, none, 0.30f), ProgressComparison::LocalAhead);
   EXPECT_EQ(compareProgress(none, 0.30f, none, 0.40f), ProgressComparison::RemoteAhead);
   EXPECT_EQ(compareProgress(none, 0.3000f, none, 0.3005f), ProgressComparison::Synchronized);
+}
+
+// ---- reading back, then sleeping: the machine's own older record never pulls it away ---------------------------
+
+namespace {
+const std::string kProgress20 = "/body/DocFragment[21]/body/p[3]/text().0";
+const std::string kProgress3 = "/body/DocFragment[4]/body/p[1]/text().0";
+}  // namespace
+
+TEST(AutoSyncReread, ReadingBackThenSleepingPushesTheNewPlaceAndTheNextWakeKeepsIt) {
+  // The server holds chapter 20, the record this machine pushed the evening before.
+  SyncMarkList marks;
+  marks.put({"doc", recordToken(kProgress20, 0.60f), placeKey(20, 5)});
+  // The reader went back to chapter 3 and closed the book there; sleep asks the server.
+  const CrossPointPosition remote = resolved(20, 5);
+  const CrossPointPosition local = resolved(3, 2);
+  const auto cmp = compareProgress(local, 0.15f, remote, 0.60f);
+  ASSERT_EQ(cmp, ProgressComparison::RemoteAhead);  // why the percentage rule alone dropped the debt
+  const bool ours = marks.serverIsOurs("doc", kProgress20, 0.60f);
+  const bool changed = marks.placeChanged("doc", placeKey(3, 2));
+  EXPECT_TRUE(ours);
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(pushAction(Fetch::Found, cmp, ours, changed), PushAction::Push);
+
+  // The push went through: the mark follows the record now on the server.
+  marks.put({"doc", recordToken(kProgress3, 0.15f), placeKey(3, 2)});
+  // Next wake: the server still says chapter 3, which is where the book is. Nothing to pull.
+  EXPECT_EQ(pullAction(Fetch::Found, compareProgress(local, 0.15f, resolved(3, 2), 0.15f),
+                       marks.serverIsOurs("doc", kProgress3, 0.15f)),
+            PullAction::Keep);
+}
+
+TEST(AutoSyncReread, AFailedPushLeavesTheOlderRecordAndTheWakeStillDoesNotPullIt) {
+  // The sleep push could not reach the server: the mark still names chapter 20 and the book is at chapter 3.
+  SyncMarkList marks;
+  marks.put({"doc", recordToken(kProgress20, 0.60f), placeKey(20, 5)});
+  const auto cmp = compareProgress(resolved(3, 2), 0.15f, resolved(20, 5), 0.60f);
+  EXPECT_EQ(pullAction(Fetch::Found, cmp, marks.serverIsOurs("doc", kProgress20, 0.60f)), PullAction::Keep);
+}
+
+TEST(AutoSyncReread, AnotherMachineThatWroteFartherStillPullsAtWake) {
+  SyncMarkList marks;
+  marks.put({"doc", recordToken(kProgress3, 0.15f), placeKey(3, 2)});
+  // The phone read on to chapter 20 and wrote that: not the record this machine left.
+  const bool ours = marks.serverIsOurs("doc", kProgress20, 0.60f);
+  EXPECT_FALSE(ours);
+  EXPECT_EQ(pullAction(Fetch::Found, compareProgress(resolved(3, 2), 0.15f, resolved(20, 5), 0.60f), ours),
+            PullAction::Apply);
+}
+
+TEST(AutoSyncReread, ABookWithoutAMarkKeepsTheOldRules) {
+  const SyncMarkList marks;
+  EXPECT_FALSE(marks.serverIsOurs("doc", kProgress20, 0.60f));
+  EXPECT_TRUE(marks.placeChanged("doc", placeKey(3, 2)));
+  const bool ours = false;
+  EXPECT_EQ(pullAction(Fetch::Found, ProgressComparison::RemoteAhead, ours), PullAction::Apply);
+  EXPECT_EQ(pushAction(Fetch::Found, ProgressComparison::RemoteAhead, ours, true), PushAction::DropDebt);
+  EXPECT_EQ(pushAction(Fetch::Found, ProgressComparison::LocalAhead, ours, true), PushAction::Push);
+}
+
+TEST(AutoSyncReread, ANewerRecordFromAnotherMachineIsNotOverwrittenByAnOlderReading) {
+  // Another machine wrote chapter 20 after this one's chapter 3; this machine read back to chapter 2.
+  SyncMarkList marks;
+  marks.put({"doc", recordToken(kProgress3, 0.15f), placeKey(3, 2)});
+  EXPECT_EQ(pushAction(Fetch::Found, ProgressComparison::RemoteAhead,
+                       marks.serverIsOurs("doc", kProgress20, 0.60f), marks.placeChanged("doc", placeKey(2, 0))),
+            PushAction::DropDebt);
+}
+
+TEST(AutoSyncReread, OurRecordWithTheSamePlaceOrAnEqualPercentageNeedsNoPush) {
+  EXPECT_EQ(pushAction(Fetch::Found, ProgressComparison::RemoteAhead, true, false), PushAction::DropDebt);
+  EXPECT_EQ(pushAction(Fetch::Found, ProgressComparison::Synchronized, true, true), PushAction::DropDebt);
+  EXPECT_EQ(pushAction(Fetch::Failed, ProgressComparison::RemoteAhead, true, true), PushAction::KeepDebt);
+  EXPECT_EQ(pushAction(Fetch::NotFound, ProgressComparison::Unknown, true, true), PushAction::Push);
+}
+
+TEST(AutoSyncReread, RecordTokenIgnoresRoundingBelowFourDigitsAndSeesARealMove) {
+  EXPECT_EQ(recordToken(kProgress20, 0.60000f), recordToken(kProgress20, 0.600004f));
+  EXPECT_NE(recordToken(kProgress20, 0.6000f), recordToken(kProgress20, 0.6002f));
+  EXPECT_NE(recordToken(kProgress20, 0.6f), recordToken(kProgress3, 0.6f));
+  EXPECT_EQ(recordToken("", std::numeric_limits<float>::quiet_NaN()), recordToken("", 0.0f));
+  EXPECT_NE(placeKey(3, 2), placeKey(2, 3));
+}
+
+TEST(SyncMarkList, KeepsTheNewestEightAndRoundTripsThroughTheFile) {
+  SyncMarkList list;
+  for (int i = 0; i < 10; ++i) list.put({"d" + std::to_string(i), static_cast<uint32_t>(i * 7 + 1), placeKey(i, i)});
+  list.put({"d5", 99u, placeKey(1, 1)});  // replaces, newest
+  ASSERT_EQ(list.size(), MAX_MARKS);
+  EXPECT_EQ(list.find("d0"), nullptr);
+  EXPECT_EQ(list.find("d1"), nullptr);
+  ASSERT_NE(list.find("d5"), nullptr);
+  EXPECT_EQ(list.find("d5")->token, 99u);
+  std::string text;
+  {
+    JsonDocument doc;
+    list.toJson(doc);
+    serializeJson(doc, text);
+  }
+  EXPECT_LT(text.size(), 512u);  // far under the 2 KB the firmware reads at most
+  JsonDocument back;
+  ASSERT_FALSE(deserializeJson(back, text));
+  SyncMarkList loaded;
+  ASSERT_TRUE(loaded.fromJson(back));
+  ASSERT_EQ(loaded.size(), MAX_MARKS);
+  ASSERT_NE(loaded.find("d9"), nullptr);
+  EXPECT_EQ(loaded.find("d9")->token, 9u * 7 + 1);
+  EXPECT_EQ(loaded.find("d9")->place, placeKey(9, 9));
+}
+
+TEST(SyncMarkList, WrongShapeAndBadEntriesAreRefused) {
+  for (const char* text : {"[]", "{}", R"({"marks":3})", "42"}) {
+    JsonDocument doc;
+    ASSERT_FALSE(deserializeJson(doc, text)) << text;
+    SyncMarkList list;
+    list.put({"stale", 1u, 1u});
+    EXPECT_FALSE(list.fromJson(doc)) << text;
+    EXPECT_TRUE(list.empty()) << text;
+  }
+  JsonDocument doc;
+  ASSERT_FALSE(deserializeJson(doc, R"({"v":1,"marks":[{"d":"","t":1,"p":1},{"t":1,"p":1},{"d":"x","p":1},{"d":"y","t":1},{"d":"ok","t":4,"p":5}]})"));
+  SyncMarkList list;
+  ASSERT_TRUE(list.fromJson(doc));
+  ASSERT_EQ(list.size(), 1u);
+  EXPECT_NE(list.find("ok"), nullptr);
 }
 
 // ---- the list of books owed a push ----------------------------------------------------------------------------
