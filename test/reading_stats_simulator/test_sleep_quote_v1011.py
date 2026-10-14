@@ -296,8 +296,8 @@ class SleepQuoteTest(unittest.TestCase):
         size, lines, cut, cover, title = self.fit(log)
         self.assertEqual(cut, 0, log)
         self.assertEqual(cover, 1, log)
-        # The fixture's very long title keeps to three lines.
-        self.assertEqual(title, 3, log)
+        # The sleep screen draws the short name of the fixture's very long title: two lines.
+        self.assertEqual(title, 2, log)
         self.assertIn(size, (0, 1, 2))
         self.assert_quote_frame(image)
         self.assertGreater(self.dithered(image, COVER_BOX), 30)
@@ -320,7 +320,7 @@ class SleepQuoteTest(unittest.TestCase):
         sd = self.make_sd([(name, raw)])
         log, image = self.sleep_once(sd, 'S2-that-217-khong-bia')
         _, _, cut, cover, title = self.fit(log)
-        self.assertEqual((cut, cover, title), (0, 0, 3), log)
+        self.assertEqual((cut, cover, title), (0, 0, 2), log)  # the short name takes two lines
         self.assert_quote_frame(image)
         self.assertEqual(self.grays(image, COVER_BOX), 0)
         self.assertLess(self.dithered(image, COVER_BOX), 20)
