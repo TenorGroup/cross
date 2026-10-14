@@ -92,9 +92,9 @@ def font():
  assert saved(sd,'settings.json')['fontSize']==18
 
 def text():
- sd=route('text','text/readerInkWeight','Entering activity: TextSettings',{'readerInkWeight':0},
+ sd=route('text','text/readerInkWeight','Entering activity: TextSettings',{'readerInkWeight':3},  # level 0, stored shifted by 3
           press='3000:RIGHT;3600:CONFIRM;')
- assert saved(sd,'settings.json')['readerInkWeight']==1  # requested level persists even when its pack is unavailable
+ assert saved(sd,'settings.json')['readerInkWeight']==4  # requested level persists even when its pack is unavailable
 
 def opds():
  route('opds','opds/opdsDownloadFolder','Entering activity:')

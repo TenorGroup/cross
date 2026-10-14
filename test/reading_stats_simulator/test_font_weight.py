@@ -33,22 +33,22 @@ class FontWeightTest(unittest.TestCase):
     def test_installed_26_and_persistence(self):
         saved,log=self.run_sim('1000:CONFIRM;1700:CONFIRM;8500:QUIT')
         self.assertEqual(saved['fontSize'],26)
-        self.assertEqual(saved['readerInkWeight'],1)
+        self.assertEqual(saved['readerInkWeight'],4)  # level 1 is stored shifted by 3 since the thin levels
         self.assertIn('/weight-2/Trial_26.cpfont',log)
         self.assertIn('Entering activity: EpubReader',log)
         self.settings=saved
         saved,log=self.run_sim('1000:CONFIRM;1700:CONFIRM;8500:QUIT')
-        self.assertEqual(saved['readerInkWeight'],1)
+        self.assertEqual(saved['readerInkWeight'],4)
 
     def test_missing_variant_preserves_family(self):
         (self.sd/'.fonts/Trial/weight-2/Trial_26.cpfont').unlink()
         saved,log=self.run_sim('1000:CONFIRM;1700:CONFIRM;8500:QUIT')
-        self.assertEqual((saved['sdFontFamilyName'],saved['fontSize'],saved['readerInkWeight']),('Trial',26,1))
+        self.assertEqual((saved['sdFontFamilyName'],saved['fontSize'],saved['readerInkWeight']),('Trial',26,4))
 
     def test_corrupt_variant_preserves_family(self):
         (self.sd/'.fonts/Trial/weight-2/Trial_26.cpfont').write_bytes(b'broken')
         saved,log=self.run_sim('1000:CONFIRM;1700:CONFIRM;8500:QUIT')
-        self.assertEqual((saved['sdFontFamilyName'],saved['readerInkWeight']),('Trial',1))
+        self.assertEqual((saved['sdFontFamilyName'],saved['readerInkWeight']),('Trial',4))
 
     def test_weight_change_returns_to_book(self):
         self.settings.update(fontSize=16,readerInkWeight=0)
