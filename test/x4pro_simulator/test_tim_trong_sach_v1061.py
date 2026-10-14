@@ -142,6 +142,22 @@ class BookSearchJourney(unittest.TestCase):
         self.assertLessEqual(offset, int(pick.group(3)))
         self.assertLess(int(pick.group(3)) - offset, 2500)
 
+    def test_back_after_a_hit_returns_to_the_page_before_the_search(self):
+        steps, t = open_search(3000)
+        typed, t = type_word(t, 'nghich')
+        steps += typed + [f'{t}:TAP:{OK_KEY[0]},{OK_KEY[1]}']
+        t += 6000
+        steps += [f'{t + 500}:TAP:240,250', f'{t + 6000}:BACK']
+        log, _ = run(steps, [t + 11000])
+        saved = [(int(m.group(1)), int(m.group(3)))
+                 for m in re.finditer(r'Progress saved: spine=(\d+) offset=(\d+) page=(\d+)', log)]
+        self.assertIn('[BKS] pick', log, log[-3000:])
+        before = [(int(m.group(1)), int(m.group(3))) for m in re.finditer(
+            r'Progress saved: spine=(\d+) offset=(\d+) page=(\d+)', log[:log.index('[BKS] begin')])]
+        self.assertTrue(before and saved, log[-3000:])
+        self.assertNotIn('Exiting activity: EpubReader', log[log.index('[BKS] pick'):], 'Back left the book')
+        self.assertEqual(saved[-1], before[-1], saved)
+
     def test_a_word_the_book_lacks(self):
         steps, t = open_search(3000)
         typed, t = type_word(t, 'zzz')
