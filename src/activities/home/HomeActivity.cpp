@@ -1930,22 +1930,22 @@ HomeActivity::CoverSize HomeActivity::cardCoverSize(const int index) {
   cardCoverSizes[index] = {};
   const auto& book = recentBooks[index];
   if (book.coverBmpPath.empty()) return {};
-  ImageDimensions dims{};
-  if (FsHelpers::hasEpubExtension(book.path)) {
-    Epub epub(book.path, "/.crosspoint");
-    std::string href;
-    if (coverref::load(epub.getCachePath(), href) && href.empty()) return {};
-    if (epub.readCoverDimensions(href, dims)) {
-      cardCoverSizes[index] = {dims.width, dims.height};
-      return cardCoverSizes[index];
-    }
-  }
+  // The card thumbnail the reader made keeps the cover's proportions, and its header is 54 B: a book that has one is not
+  // opened (an Epub, its zip directory and an inflate window of 32 KB, which the heap after Bluetooth cannot give).
   HalFile file;
   if (Storage.openFileForRead("HOME", UITheme::getCoverThumbPath(book.coverBmpPath, HOME_CARD_COVER_H), file)) {
     Bitmap bitmap(file);
     if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0)
       cardCoverSizes[index] = {bitmap.getWidth(), bitmap.getHeight()};
     file.close();
+    if (cardCoverSizes[index].width > 0) return cardCoverSizes[index];
+  }
+  ImageDimensions dims{};
+  if (FsHelpers::hasEpubExtension(book.path)) {
+    Epub epub(book.path, "/.crosspoint");
+    std::string href;
+    if (coverref::load(epub.getCachePath(), href) && href.empty()) return {};
+    if (epub.readCoverDimensions(href, dims)) cardCoverSizes[index] = {dims.width, dims.height};
   }
   return cardCoverSizes[index];
 }
