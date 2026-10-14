@@ -6249,6 +6249,14 @@ bool EpubReaderActivity::chapterTargetDiffers(const int spineIndex, const std::s
   return targetPage.has_value() && *targetPage != page;
 }
 
+bool EpubReaderActivity::hasReturnPosition() const {
+  return footnoteDepth > 0;
+}
+
+int EpubReaderActivity::returnPageNumber() const {
+  return hasReturnPosition() ? savedPositions[footnoteDepth - 1].pageNumber + 1 : -1;
+}
+
 void EpubReaderActivity::pushReturnPosition() {
   // Full: drop the oldest entry so Back always returns from the newest jump.
   if (footnoteDepth == MAX_FOOTNOTE_DEPTH) {
