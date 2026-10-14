@@ -349,6 +349,24 @@ bool readerFootBarActive() {
   return readerFootBar.open && readerFootBar.generation == activityManager.activityGeneration() &&
          name && strcmp(name, "EpubReader") == 0;
 }
+// The way back after a jump (noteJumpBar): the page it leads to and the seconds left, for the reader that named it.
+struct JumpBarNote {
+  int page = 0, seconds = 0;
+  uint32_t generation = UINT32_MAX;
+} jumpBar;
+bool jumpBarActive() {
+  const char* name = activityManager.currentName();
+  return jumpBar.page > 0 && jumpBar.generation == activityManager.activityGeneration() && name &&
+         strcmp(name, "EpubReader") == 0;
+}
+// The seconds ring: at the bar's right end, JUMP_COUNT px so that the window refreshing it (y rounded out to 8 px)
+// stays inside the bar: 730..777 is 728..783 on the panel, clear of the page's last line above the bar.
+constexpr int JUMP_COUNT = 48;
+tenorchrome::TouchBarRect jumpCountRect(const int width, const int height) {
+  const auto bar = tenorchrome::touchTabBarRect(width, height);
+  return {bar.x + bar.width - JUMP_COUNT, bar.y + (bar.height - JUMP_COUNT) / 2, JUMP_COUNT, JUMP_COUNT};
+}
+ugly::MarkState jumpBarMark;
 #endif
 
 }  // namespace
@@ -545,6 +563,34 @@ void tenorchrome::noteReaderFootBar(const bool open, const bool keypad, const in
   if (!open) HeaderBackTapTarget::clearFoot();
 }
 
+void tenorchrome::noteJumpBar(const int page, const int seconds) {
+  jumpBar = {page, seconds, activityManager.activityGeneration()};
+}
+
+tenorchrome::JumpBarHit tenorchrome::jumpBarHit(const int width, const int height, const int x, const int y) {
+  if (!jumpBarActive()) return JumpBarHit::None;
+  const auto bar = touchTabBarRect(width, height);
+  if (x < bar.x || x >= bar.x + bar.width || y < bar.y || y >= bar.y + bar.height) return JumpBarHit::None;
+  return x < bar.x + bar.height ? JumpBarHit::Back : JumpBarHit::Face;
+}
+
+tenorchrome::TouchBarRect tenorchrome::drawJumpBarCount(const GfxRenderer& r) {
+  const auto box = jumpCountRect(r.getScreenWidth(), r.getScreenHeight());
+  char number[8];
+  snprintf(number, sizeof(number), "%d", jumpBar.seconds);
+  r.fillRect(box.x, box.y, box.width, box.height, false);
+  if (shell::isUgly()) {
+    ugly::circle(r, ugly::Circle::Object, {box.x + 4, box.y + 4, box.x + box.width - 4, box.y + box.height - 4}, 0, 0,
+                 jumpBarMark.get(static_cast<uint64_t>(jumpBar.page)), 2);
+    ugly::text(r, ugly::Size::S22, box.x + (box.width - ugly::width(r, ugly::Size::S22, number)) / 2,
+               box.y + (box.height + ugly::ascent(ugly::Size::S22)) / 2, number);
+  } else {
+    drawPillRing(r, box.x, box.y, box.width, box.height, 2, true);
+    drawPillLabel(r, UI_12_FONT_ID, number, box.x, box.y, box.width, box.height);
+  }
+  return box;
+}
+
 namespace {
 // tenor/ugly writes each reader tool's name at its own width, on its cell's middle where it can be and 10 px from its
 // neighbours; names that do not fit the tools' room shrink together (the pen cuts them with a scrawl).
@@ -588,14 +634,40 @@ void tenorchrome::clearFootBand(const GfxRenderer& r, const int air) {
   r.fillRect(0, top, r.getScreenWidth(), r.getScreenHeight() - top, false);
 }
 
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+namespace {
+// The way back's bar after the "<": the page pill (the screen-name pill of every bar, read only) and the seconds ring.
+void drawJumpBarFace(const GfxRenderer& r, const tenorchrome::TouchBarRect& bar, const bool pen) {
+  char label[24];
+  snprintf(label, sizeof(label), "%s %d", tr(STR_JUMP_BACK_PAGE), jumpBar.page);
+  constexpr int PAD_LEFT = 18, PAD_RIGHT = 22, font = UI_12_FONT_ID;
+  const int x = bar.x + bar.height + tenorchrome::FOOT_PILL_GAP;
+  const int room = jumpCountRect(r.getScreenWidth(), r.getScreenHeight()).x - tenorchrome::FOOT_PILL_GAP - x;
+  if (pen) {
+    const int width = ugly::width(r, ugly::Size::S22, label);
+    ugly::text(r, ugly::Size::S22, x + (std::min(room, width + PAD_LEFT + PAD_RIGHT) - width) / 2,
+               bar.y + (bar.height + ugly::ascent(ugly::Size::S22)) / 2, label);
+  } else {
+    tenorchrome::drawPathPill(r, font, label, x, bar.y, room, bar.height, PAD_LEFT, PAD_RIGHT, true);
+  }
+  tenorchrome::drawJumpBarCount(r);
+}
+}  // namespace
+#endif
+
 void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone) {
   HeaderBackTapTarget::clearFoot();
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   const bool reader = readerFootBarActive();
+  const bool jump = !reader && jumpBarActive();
   if (reader) {
     bar = FootBar::BackOnly;
     // The reader owns this band while its menu is open, including the page's status footer.
     clearFootBand(r, shell::isUgly() ? 12 : FRAME_TO_BAR_GAP);
+  } else if (jump) {
+    // The way back after a jump owns it for a few seconds, the page's status footer included.
+    bar = FootBar::BackOnly;
+    clearFootBand(r, 0);
   }
 #endif
   if (bar != FootBar::Full && bar != FootBar::BackOnly) return;
@@ -606,7 +678,7 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
   // On tenor/ugly paper (and in its reader menu) the "<" is drawn in pen: a hand circle round a hand chevron.
   bool pen = handDrawnGeneration == activityManager.activityGeneration();
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
-  pen = pen || (reader && shell::isUgly());
+  pen = pen || ((reader || jump) && shell::isUgly());
 #endif
   if (pen) {
     ugly::circle(r, ugly::Circle::Object, {x + 8, y + 8, x + SIZE - 8, y + SIZE - 8}, 0, 0,
@@ -659,6 +731,14 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
       const freeink::Icon& icon = iconOf(tool, active);
       drawBarTab(r, readerToolCentre(r.getScreenWidth(), i), y, SIZE, icon.bits, icon.w, icon.h, active);
     }
+  }
+#endif
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  if (jump) {
+    drawJumpBarFace(r, rect, pen);
+    // The reader tests the "<" itself (jumpBarHit, before its tap zones); no Back tap of the shell's.
+    HeaderBackTapTarget::clearFoot();
+    return;
   }
 #endif
   // The screen's own actions, from the bar's right end leftwards; the name pill keeps what is left of them.
@@ -1052,6 +1132,8 @@ ReaderBattery drawReaderBattery(const GfxRenderer& r, const int textY, const int
 }
 }  // namespace
 
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+// The X4 Pro shows the way back as the dynamic bar for a few seconds (noteJumpBar); the strip's pill is the X3's.
 namespace {
 // The way back after a jump: the page the reader returns to (1-based), 0 when there is none.
 int jumpBackPage = 0;
@@ -1106,6 +1188,7 @@ bool drawJumpBackPill(const GfxRenderer& r, const int x, const int textY, const 
 }  // namespace
 
 void tenorchrome::noteJumpBack(const int page) { jumpBackPage = page; }
+#endif
 
 void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const int currentPage,
                                  const int pageCount, const float bookProgress, const bool estimated,
@@ -1238,7 +1321,9 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
   const int room = std::max(0, (centerX >= 0 ? centerX : rightStart() - gapRight) - gapMiddle - start - mark);
   std::string name = fit(title ? title : "", std::max(0, room - colonWidth));
   if (bookmarked) inlineSymbols::drawShape(r, inlineSymbols::Shape::Star, start + 6, markTop + 5, 10, true);
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
   if (drawJumpBackPill(r, start + mark, y, room, rough)) return;
+#endif
   if (name.empty() || width(name.c_str()) + colonWidth > room) return;
   if (colon) name += ":";
   text(start + mark, y, name.c_str());
@@ -1297,7 +1382,9 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
       ugly::icon(r, ugly::icons::Id::Star, {left, base - 20, 24, 24}, ugly::iconFrameSeed());
       left += 24;
     }
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
     if (hienTieuDe && drawJumpBackPill(r, left, base - 18, right - left, true)) return;
+#endif
     if (hienTieuDe && right - left > 40) {
       const std::string name = ugly::fit(r, ugly::Size::S22, title, right - left);
       ugly::text(r, ugly::Size::S22, left, base, name.c_str());
@@ -1373,7 +1460,9 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   if (bookmarked) inlineSymbols::drawShape(r, inlineSymbols::Shape::Star, trai + 6, y + 12, 10, true);
   if (!hienTieuDe) return;
   const int room = std::max(0, countX - trai - markWidth - 8);
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
   if (trongTrinhDoc && drawJumpBackPill(r, trai + markWidth, y, room, false)) return;
+#endif
   // The colon only separates a name from counts; alone, or after a note, it would dangle.
   const int colon = counts.empty() || !titleIsName ? 0 : r.getTextWidth(SMALL_FONT_ID, ":");
   std::string name = r.truncatedText(SMALL_FONT_ID, title, std::max(0, room - colon));

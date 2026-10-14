@@ -171,6 +171,7 @@ struct EpubReaderActivity {
   static constexpr int MAX_FOOTNOTE_DEPTH = 3;
   SavedPosition savedPositions[MAX_FOOTNOTE_DEPTH] = {};
   int footnoteDepth = 0;
+  bool returnPushedForLoad = false;
   bool linkStackOnCard = false;
   void clearDeferredReposition() { cachedVisibleTextOffset.reset(); }
   void requestUpdate() {}
@@ -386,6 +387,15 @@ class ReturnStackRuntimeTest(unittest.TestCase):
   assert(reader.hasReturnPosition() && reader.returnPageNumber() == 13);
   reader.restoreSavedPosition();
   assert(!reader.hasReturnPosition() && reader.returnPageNumber() == -1);
+''')
+
+    def test_a_jump_marks_its_paint_so_a_starved_one_can_take_its_place_back(self):
+        # dropFailedJumpReturn (the reader's paint, tested in test/reader_build_budget) reads this mark.
+        self.check(r'''
+  EpubReaderActivity reader;
+  assert(!reader.returnPushedForLoad);
+  reader.navigateToHref("c2.xhtml", true);
+  assert(reader.returnPushedForLoad && reader.footnoteDepth == 1);
 ''')
 
     def test_chapter_targets_compare_the_page_and_keep_missing_anchors_unchanged(self):

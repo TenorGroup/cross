@@ -453,6 +453,10 @@ struct EpubReaderActivity : ReaderActivity {
   float pendingSpineProgress = 0.0f;
   int forgottenJumps = 0;
   void forgetPendingJump() { ++forgottenJumps; pendingPercentJump = false; pendingAnchor.clear(); }
+  // The places Back returns to, and whether the jump being painted pushed the newest (EpubReaderActivity::dropFailedJumpReturn).
+  int footnoteDepth = 0;
+  bool returnPushedForLoad = false;
+  void dropFailedJumpReturn();
   // Where a starved jump or open leaves the reader (EpubReaderActivity::stayAfterStarvedJump).
   void stayAfterStarvedJump();
   void showBuildPopup(GfxRenderer&, int&);

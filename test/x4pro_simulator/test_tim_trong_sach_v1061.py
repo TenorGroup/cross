@@ -158,6 +158,25 @@ class BookSearchJourney(unittest.TestCase):
         self.assertNotIn('Exiting activity: EpubReader', log[log.index('[BKS] pick'):], 'Back left the book')
         self.assertEqual(saved[-1], before[-1], saved)
 
+    def test_a_hit_on_the_page_already_shown_is_no_jump_and_back_goes_to_the_page_before_the_search(self):
+        steps, t = open_search(3000)
+        typed, t = type_word(t, 'nghich')
+        steps += typed + [f'{t}:TAP:{OK_KEY[0]},{OK_KEY[1]}']
+        t += 6000
+        steps.append(f'{t + 500}:TAP:240,250')  # the third hit: chapter 5, page 19
+        t += 6500  # past the way-back bar's 3 seconds, which stands over the toolbar's tap
+        again, t = open_search(t)
+        # The list kept its hits: the fourth is in the same paragraph, on the page the reader is on.
+        steps += again + [f'{t + 800}:TAP:240,333', f'{t + 6000}:BACK']
+        log, _ = run(steps, [t + 11000])
+        saved = [(int(m.group(1)), int(m.group(3)))
+                 for m in re.finditer(r'Progress saved: spine=(\d+) offset=(\d+) page=(\d+)', log)]
+        before = [(int(m.group(1)), int(m.group(3))) for m in re.finditer(
+            r'Progress saved: spine=(\d+) offset=(\d+) page=(\d+)', log[:log.index('[BKS] begin')])]
+        self.assertEqual(len(re.findall(r'\[BKS\] pick', log)), 2, log[-3000:])
+        self.assertEqual(saved[-1], before[-1], f'one Back did not reach the page before the search: {saved}')
+        self.assertNotIn('Exiting activity: EpubReader', log[log.index('[BKS] pick'):], 'Back left the book')
+
     def test_a_word_the_book_lacks(self):
         steps, t = open_search(3000)
         typed, t = type_word(t, 'zzz')
