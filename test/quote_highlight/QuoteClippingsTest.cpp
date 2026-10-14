@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <map>
 #include <chrono>
@@ -21,6 +22,7 @@ struct TestResponse {
   std::string type, header, body;
   bool live = true, ended = false;
   size_t cutAfter = SIZE_MAX, transferred = 0;
+  std::function<void()> onSend;
   TestResponse& client() { return *this; }
   uint8_t connected() const { return live; }  // the real client answers with a byte
   void stop() { live = false; }
@@ -29,6 +31,7 @@ struct TestResponse {
   void send(int code, const char* mime, const char* text) { status = code; type = mime; body = text; }
   void sendContent(const char* data, size_t size) {
     body.append(data, size);
+    if (onSend) onSend();
     if (body.size() >= cutAfter) live = false;
   }
   void sendContent(const char*) { ended = true; }
@@ -38,6 +41,16 @@ struct CrossPointWebServer {
   TestResponse* server = &response;
   int requestLanguage() { return 0; }
   void noteTransferActivity(size_t size) { response.transferred += size; }
+  // The Send files screen sets uploadCancel to the Back latch; uploadCancelled() drops the connection when it is set.
+  bool back = false;
+  unsigned cancelChecks = 0, socketsNoted = 0, socketsRetracted = 0;
+  bool uploadCancelled() {
+    ++cancelChecks;
+    if (back) response.live = false;
+    return back;
+  }
+  void noteUploadSocket() { ++socketsNoted; }
+  struct { CrossPointWebServer* owner; void retract() { ++owner->socketsRetracted; } } uploadSocket{this};
   void handleQuotesExport();
 };
 #include "QuotesExport.inc"
@@ -207,6 +220,25 @@ TEST_F(QuoteClippingsTest, RouteStopsWhenBrowserDisconnects) {
   EXPECT_EQ(io.fullPathFileOpens, 0u);
 }
 
+// Back on the Send files screen must end an export like it ends a download (handleDownload polls the latch
+// between chunks and notes the socket so the Back sampler can interrupt a blocked write).
+TEST_F(QuoteClippingsTest, BackCutsTheExportBetweenRecords) {
+  for (int i = 0; i < 500; ++i) ASSERT_TRUE(quotes::save(quoteOf(i)));
+  CrossPointWebServer web;
+  web.response.onSend = [&] { web.back = true; };
+  web.handleQuotesExport();
+  size_t blocks = 0;
+  for (size_t at = web.response.body.find("=========="); at != std::string::npos;
+       at = web.response.body.find("==========", at + 1))
+    ++blocks;
+  EXPECT_FALSE(web.response.ended);
+  EXPECT_FALSE(web.response.live);
+  EXPECT_LT(blocks, 500u);
+  EXPECT_GT(web.cancelChecks, 0u);
+  EXPECT_EQ(web.socketsNoted, 1u);
+  EXPECT_EQ(web.socketsRetracted, 1u);
+}
+
 TEST_F(QuoteClippingsTest, RefusesShortHeapBeforeResponseStarts) {
   CrossPointWebServer web;
   heapcap::reset(8191);
@@ -246,6 +278,21 @@ TEST_F(QuoteClippingsTest, ReadErrorEndsPartialDownloadWithoutTerminator) {
   EXPECT_FALSE(web.response.ended);
   EXPECT_FALSE(web.response.live);
   EXPECT_EQ(web.response.body, "\xEF\xBB\xBF");
+}
+
+// A folder that exists but cannot be opened is a read error, not "no quotes yet".
+TEST_F(QuoteClippingsTest, AFolderThatWillNotOpenIsAnErrorNotAnEmptyFile) {
+  ASSERT_TRUE(quotes::save(quoteOf(0)));
+  readFault.path = "/.crosspoint/quotes";
+  readFault.fullPath = true;
+  readFault.openFails = true;
+  EXPECT_EQ(quotes::streamKindle([](const char*, size_t) { return true; }), SIZE_MAX);
+  CrossPointWebServer web;
+  web.handleQuotesExport();
+  EXPECT_FALSE(web.response.ended);  // the download breaks off, like any other read error
+  EXPECT_FALSE(web.response.live);
+  readFault = {};
+  EXPECT_EQ(quotes::streamKindle([](const char*, size_t) { return true; }), 1u);
 }
 
 TEST_F(QuoteClippingsTest, MaximumRecordFitsAndHeapDoesNotGrowWithCount) {

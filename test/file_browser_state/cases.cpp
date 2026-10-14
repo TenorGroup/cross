@@ -112,4 +112,31 @@ int main() {
     assert(recovered.get().crossSort == SortMode::Modified);
     std::puts("state: interrupted replacement recovers the committed backup");
   }
+  {
+    // A read that fails once must not make the next save write defaults over the other shell's folder and order.
+    Storage = {};
+    Storage.files[path] = R"({"version":1,"crossPath":"/Books","uglyPath":"/Poems","crossSort":2,"uglySort":1})";
+    Storage.failRead = true;
+    Store first;
+    first.get();
+    Storage.failRead = false;
+    first.note(false, "/Other", SortMode::Name);
+    assert(first.flush());
+    Store wake;
+    assert(wake.get().crossPath == "/Other");
+    assert(wake.get().uglyPath == "/Poems" && wake.get().uglySort == SortMode::Modified);
+    std::puts("state: one failed read does not cost the other shell its folder and order");
+  }
+  {
+    // A card that stays unreadable is never written over with what was not read.
+    Storage = {};
+    Storage.files[path] = R"({"version":1,"crossPath":"/Books","uglyPath":"/Poems","crossSort":2,"uglySort":1})";
+    const std::string before = Storage.files[path];
+    Storage.failRead = true;
+    Store stuck;
+    stuck.note(true, "/Elsewhere", SortMode::Size);
+    assert(!stuck.flush() && Storage.writes == 0);
+    assert(Storage.files[path] == before);
+    std::puts("state: nothing is written while the saved file cannot be read");
+  }
 }

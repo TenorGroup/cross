@@ -34,10 +34,12 @@ SortMode readSort(JsonVariantConst value) {
 
 const State& Store::get() {
   if (loaded) return data;
-  loaded = true;
   JsonDocument doc;
-  if (PersistableStoreBase::readDocFromFileStatus(PATH, doc, 2048) != PersistableStoreBase::ReadResult::Ready ||
-      !doc["version"].is<int>() || doc["version"].as<int>() != 1) return data;
+  const auto status = PersistableStoreBase::readDocFromFileStatus(PATH, doc, 2048);
+  if (status == PersistableStoreBase::ReadResult::Unavailable) return data;  // asked again on the next call
+  loaded = true;
+  if (status != PersistableStoreBase::ReadResult::Ready || !doc["version"].is<int>() ||
+      doc["version"].as<int>() != 1) return data;
   data.crossPath = pathOrRoot(doc["crossPath"]);
   data.uglyPath = pathOrRoot(doc["uglyPath"]);
   data.crossSort = readSort(doc["crossSort"]);
@@ -57,6 +59,7 @@ void Store::note(bool ugly, const std::string& path, SortMode mode) {
 }
 bool Store::flush() {
   if (!dirty) return true;
+  if (!loaded) return false;  // the saved file was never read: its other half would be written over with defaults
   JsonDocument doc;
   doc["version"] = 1;
   doc["crossPath"] = data.crossPath.c_str();

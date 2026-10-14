@@ -70,22 +70,24 @@ bool fits(const QuoteId id, const QuoteId base) { return id >> 16 == base >> 16 
 // `visit` runs, because the directory walk already holds one handle on the file and
 // `visit` may open it again by path.
 template <typename Visit>
-void forEachEntry(Visit&& visit) {
+bool forEachEntry(Visit&& visit) {
   auto directory = Storage.open(DIRECTORY);
-  if (!directory || !directory.isDirectory()) return;
+  if (!directory) return !Storage.exists(DIRECTORY);
+  if (!directory.isDirectory()) return true;
   char name[32];
   for (auto entry = directory.openNextFile(); entry; entry = directory.openNextFile()) {
     if (entry.isDirectory()) continue;
     entry.getName(name, sizeof(name));
     entry.close();
-    if (!visit(static_cast<const char*>(name))) return;
+    if (!visit(static_cast<const char*>(name))) return true;
   }
+  return true;
 }
 
 // Every quote in the directory, until `visit` returns false.
 template <typename Visit>
-void forEachId(Visit&& visit) {
-  forEachEntry([&](const char* name) {
+bool forEachId(Visit&& visit) {
+  return forEachEntry([&](const char* name) {
     QuoteId id;
     return !idOf(name, id) || visit(id);
   });
@@ -488,7 +490,7 @@ size_t streamKindle(const std::function<bool(const char*, size_t)>& sink) {
   if (!out.put("\xEF\xBB\xBF") || !out.flush()) return SIZE_MAX;
   size_t emitted = 0;
   bool ok = true;
-  forEachId([&](const QuoteId id) {
+  if (!forEachId([&](const QuoteId id) {
     auto file = Storage.open(filePath(nameOf(id)).c_str());
     if (!file) { ok = false; return false; }
     if (file.size() > 16384) return true;
@@ -509,7 +511,7 @@ size_t streamKindle(const std::function<bool(const char*, size_t)>& sink) {
          out.put(text) && out.put("\n==========\n");
     if (ok) ++emitted;
     return ok;
-  });
+  })) ok = false;
   // What was gathered before a read failure still goes out: the partial file ends at a record.
   return out.flush() && ok ? emitted : SIZE_MAX;
 }

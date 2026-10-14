@@ -37,6 +37,29 @@ class RuntimeTest : public ::testing::Test {
   Config config;
 };
 
+// The default (X3) profile: Home with a remote chosen never touches the radio, and a book to book change
+// still stops it. Home's arm and poll belong to the S3 profile alone (HomeStartTest).
+TEST_F(RuntimeTest, HomeDoesNotTouchTheRadioOnTheDefaultProfile) {
+  std::strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  bleturner::Scene home{};
+  home.where = bleturner::Where::Home;
+  home.visit = 1;
+  home.pageShown = true;
+  for (int i = 0; i < 40; ++i) {
+    radio().now += 1000;
+    bleturner::tick(home);
+  }
+  EXPECT_EQ(radio().beginCalls, 0u);
+  EXPECT_EQ(radio().creates, 0u);
+  EXPECT_FALSE(radio().running);
+  EXPECT_EQ(radio().polls, 0u);
+  EXPECT_EQ(radio().armCalls, 0u);
+  bleturner::tick(fake::reading(2));
+  ASSERT_TRUE(radio().running);
+  EXPECT_TRUE(bleturner::beforeScreenChange(0, /*nextIsReader=*/true));
+  EXPECT_FALSE(radio().running);
+}
+
 TEST_F(RuntimeTest, LowMemorySkipsHostWithoutInitialization) {
   host().heap.freeBytes = kEnoughFree - 1;
 

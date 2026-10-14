@@ -893,12 +893,13 @@ void CrossPointWebServer::handleQuotesExport() {
                                             , &freeMin, &largestMin
 #endif
                                           ](const char* data, const size_t size) -> bool {
-    if (!server->client().connected()) return false;
+    if (!server->client().connected() || uploadCancelled()) return false;  // Back ends it, as it ends a download
     if (!started) {
       server->setContentLength(CONTENT_LENGTH_UNKNOWN);
       server->sendHeader("Content-Disposition", "attachment; filename=\"My Clippings.txt\"");
       server->send(200, "text/plain; charset=utf-8", "");
       started = true;
+      noteUploadSocket();
     }
     resetTaskWatchdogIfSubscribed();
     server->sendContent(data, size);
@@ -909,6 +910,7 @@ void CrossPointWebServer::handleQuotesExport() {
 #endif
     return server->client().connected();
   });
+  uploadSocket.retract();
   if (count != SIZE_MAX) {
     server->sendContent("");
   } else if (!started) {

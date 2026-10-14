@@ -72,9 +72,10 @@ class Scanner {
 #endif
 };
 
-// THE rule every update path asks before an image may become the boot image: on a board that
-// keeps the cable channel, an image without it (an older release, another project) would leave
-// the device with no way to be flashed over the cable again, so it is refused.
+// The rule the cable session and the OTA ask before an image may become the boot image: on a board
+// that keeps the cable channel, an image without it (an older release, another project) would leave
+// the device with no way to be flashed over the cable again, so it is refused. The card path does not
+// ask it (see above).
 #if TENOR_CABLE_FLASH
 inline bool dropsCable(const Scanner& image) { return !image.matched() || !image.cable(); }
 #else

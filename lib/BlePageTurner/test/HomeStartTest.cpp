@@ -109,6 +109,57 @@ TEST_F(HomeStartTest, PressesMadeAtHomeAreDroppedNotCarriedIntoTheBook) {
   EXPECT_TRUE(host().delivered.empty());
 }
 
+// The radio that comes up at Home is there for the remote too: without the reconnect armed and polled it
+// finds nothing to link, and 30 s later the idle rule stops it for good (a60a, 14/10).
+TEST_F(HomeStartTest, HomeArmsTheBondedReconnectOnceAndPollsIt) {
+  pass(home());
+  ASSERT_TRUE(radio().running);
+  for (int i = 0; i < 10; ++i) {
+    radio().now += 1000;
+    pass(home());
+  }
+  EXPECT_EQ(radio().armCalls, 1u);
+  EXPECT_GE(radio().polls, 10u);
+  ASSERT_FALSE(radio().events.empty());
+  EXPECT_EQ(radio().events.front(), "arm");
+  EXPECT_EQ(radio().armedAddr, "7d:de:5c:bd:ae:ca");
+  // A new Home visit arms again (the SDK treats a repeat of the same arm as a no-op).
+  pass(home(2));
+  EXPECT_EQ(radio().armCalls, 2u);
+}
+
+TEST_F(HomeStartTest, ARemoteLinkedAtHomeKeepsTheRadioUpPastTheIdleLimit) {
+  pass(home());
+  ASSERT_TRUE(radio().running);
+  radio().connected = true;
+  for (int i = 0; i < 90; ++i) {
+    radio().now += 1000;
+    pass(home());
+  }
+  EXPECT_TRUE(radio().running);
+  EXPECT_TRUE(host().delivered.empty());
+}
+
+// The 30 s a remote gets to link count from the visit it is asked for: a book opened 25 s after the radio came up
+// at Home has its own 30 s, as a book that starts the radio itself has (a60a, 14/10).
+TEST_F(HomeStartTest, TheIdleLimitStartsOverWhenTheBookOpens) {
+  pass(home());
+  ASSERT_TRUE(radio().running);
+  for (int i = 0; i < 25; ++i) {
+    radio().now += 1000;
+    pass(home());
+  }
+  ASSERT_TRUE(radio().running);
+  ASSERT_TRUE(bleturner::beforeScreenChange(0, /*nextIsReader=*/true));
+  int stoppedAfter = -1;
+  for (int s = 1; s <= 40 && stoppedAfter < 0; ++s) {
+    radio().now += 1000;
+    pass(fake::reading(2));
+    if (!radio().running) stoppedAfter = s;
+  }
+  EXPECT_GE(stoppedAfter, 30) << "the book got " << stoppedAfter << " s to link";
+}
+
 // 13/10 11:38-12:10 on the unit: the first pairing can only start from Settings > Bluetooth page turner, where the
 // screens hold about 18 KB. The beta came up with 70,840 / 31,732 left and was rolled back by the X3 block rule.
 TEST_F(HomeStartTest, TheFirstPairingStartsFromTheSettingsScreen) {
