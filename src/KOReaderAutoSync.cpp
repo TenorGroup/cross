@@ -475,7 +475,8 @@ PullResult pullNow(GfxRenderer& renderer, const std::string& path, const uint32_
   std::optional<uint32_t> offset;
   if (mapped.hasVisibleTextOffset) offset = mapped.visibleTextOffset;
   if (!EpubReaderUtils::saveProgress(*epub, mapped.spineIndex, mapped.pageNumber, 0, offset)) return PullResult::Failed;
-  pullChange = {path, local.spineIndex, local.pageNumber, mapped.spineIndex, mapped.pageNumber};
+  pullChange = {path, local.spineIndex, local.pageNumber, mapped.spineIndex, mapped.pageNumber,
+                local.visibleTextOffset, local.hasVisibleTextOffset};
   hasPullChange = true;
   // The record taken is this machine's last synced one; written after the book's first frame.
   pendingMark = {hash, recordToken(remote.progress, remote.percentage), placeKey(mapped.spineIndex, mapped.pageNumber)};

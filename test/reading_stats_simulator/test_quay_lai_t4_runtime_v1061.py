@@ -19,6 +19,14 @@ def run_case(body):
              'jumpToQuoteForEdit', 'jumpToPercent']
     if 'void EpubReaderActivity::pushReturnPosition()' in text:
         names += ['pushReturnPosition']
+    # A wake pull that moved the place puts the page the reader was on on the back-stack. Absent in a
+    # source that does not have it yet: an empty body stands in, so the cases below fail on what they assert.
+    pulled = ''
+    for name in ['pushSavedPosition', 'pushPulledReturn']:
+        if f'EpubReaderActivity::{name}(' in text:
+            names.append(name)
+        elif name == 'pushPulledReturn':
+            pulled = 'void EpubReaderActivity::pushPulledReturn() {}\n'
     for name in ['hasReturnPosition', 'returnPageNumber', 'chapterTargetDiffers']:
         if f'EpubReaderActivity::{name}(' in text:
             names.append(name)
@@ -83,6 +91,18 @@ struct {
   void deferWrite(void (*write)()) { write(); }
 } activityManager;
 struct RenderLock {};
+namespace koautosync {
+struct PullChange {
+  std::string path;
+  int fromSpineIndex = 0, fromPage = 0, toSpineIndex = 0, toPage = 0;
+  uint32_t fromOffset = 0;
+  bool hasFromOffset = false;
+};
+PullChange pulledChange;
+bool hasPulledChange = false;
+const PullChange* progressJustPulled() { return hasPulledChange ? &pulledChange : nullptr; }
+void acknowledgeProgressPulled() { hasPulledChange = false; }
+}  // namespace koautosync
 struct Epub {
   std::string getCachePath() const { return "cache"; }
   int getSpineItemsCount() const { return 10; }
@@ -159,6 +179,8 @@ struct EpubReaderActivity {
   void saveLinkStack() const;
   void loadLinkStack();
   void pushReturnPosition();
+  void pushSavedPosition(const SavedPosition&);
+  void pushPulledReturn();
   void jumpToQuoteForEdit(const std::string&);
   void jumpToPercent(int);
   void loadCachedBookmarks() {}
@@ -169,7 +191,7 @@ struct EpubReaderActivity {
   int returnPageNumber() const;
   bool chapterTargetDiffers(int, const std::string&) const;
 };
-''' + namespace + methods + progress + toolbar + '\nint main() {\n' + body + '\n}\n'
+''' + namespace + methods + pulled + progress + toolbar + '\nint main() {\n' + body + '\n}\n'
     with tempfile.TemporaryDirectory(prefix='cross-return-runtime-') as folder:
         cpp, program = Path(folder) / 'test.cpp', Path(folder) / 'test'
         cpp.write_text(source)
@@ -382,6 +404,63 @@ class ReturnStackRuntimeTest(unittest.TestCase):
   assert(reader.chapterTargetDiffers(0, "here"));
   assert(reader.chapterTargetDiffers(0, "elsewhere"));
 ''')
+
+    def test_a_wake_pull_that_moved_the_place_leaves_the_old_page_one_back_press_away(self):
+        self.check(r'''
+  EpubReaderActivity reader;
+  reader.currentSpineIndex = 1;
+  reader.nextPageNumber = 5;
+  koautosync::pulledChange = {"book", 0, 12, 1, 5, 1200, true};
+  koautosync::hasPulledChange = true;
+  reader.pushPulledReturn();
+  assert(reader.footnoteDepth == 1 && reader.hasReturnPosition());
+  assert(reader.returnPageNumber() == 13);
+  assert(!koautosync::progressJustPulled());
+  reader.restoreSavedPosition();
+  assert(reader.currentSpineIndex == 0 && reader.nextPageNumber == 12 && reader.pendingOffsetJump == 1200);
+  assert(!reader.hasReturnPosition());
+''')
+
+    def test_a_pull_that_kept_the_place_or_belongs_to_another_book_leaves_the_stack_empty(self):
+        self.check(r'''
+  EpubReaderActivity reader;
+  reader.pushPulledReturn();  // no pull at all
+  assert(reader.footnoteDepth == 0);
+  reader.currentSpineIndex = 1;
+  reader.nextPageNumber = 5;
+  koautosync::pulledChange = {"book", 1, 5, 1, 5, 0, false};  // moved nowhere
+  koautosync::hasPulledChange = true;
+  reader.pushPulledReturn();
+  assert(reader.footnoteDepth == 0 && !koautosync::progressJustPulled());
+  koautosync::pulledChange = {"other", 0, 12, 1, 5, 0, false};
+  koautosync::hasPulledChange = true;
+  reader.pushPulledReturn();
+  assert(reader.footnoteDepth == 0 && !koautosync::progressJustPulled());  // used up, not kept for a later book
+  koautosync::pulledChange = {"book", 0, 12, 2, 7, 0, false};  // the place on disk is not the pulled one
+  koautosync::hasPulledChange = true;
+  reader.pushPulledReturn();
+  assert(reader.footnoteDepth == 0);
+''')
+
+    def test_the_pull_return_joins_a_stack_read_from_the_card_and_drops_the_oldest_when_full(self):
+        self.check(r'''
+  files["cache/links.bin"] = {3, 0, 0, 12, 0, 1, 0, 12, 0, 2, 0, 12, 0};
+  EpubReaderActivity reader;
+  reader.loadLinkStack();
+  assert(reader.footnoteDepth == 3);
+  reader.currentSpineIndex = 4;
+  reader.nextPageNumber = 8;
+  koautosync::pulledChange = {"book", 3, 2, 4, 8, 0, false};
+  koautosync::hasPulledChange = true;
+  reader.pushPulledReturn();
+  assert(reader.footnoteDepth == 3);
+  assert(reader.savedPositions[0].spineIndex == 1 && reader.savedPositions[2].spineIndex == 3);
+  assert(reader.savedPositions[2].pageNumber == 2 && reader.savedPositions[2].textOffset == UINT32_MAX);
+''')
+
+    def test_load_book_pushes_the_pull_return_right_after_it_reads_the_stack(self):
+        text = (REPO / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
+        self.assertRegex(text, r'if \(!preview\) \{\s*loadLinkStack\(\);\s*pushPulledReturn\(\);\s*\}')
 
 
 if __name__ == '__main__':

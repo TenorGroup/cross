@@ -467,7 +467,10 @@ bool EpubReaderActivity::loadBook() {
 #ifdef TENOR_TURN_TRACE
   const unsigned long progressRead = millis();
 #endif
-  if (!preview) loadLinkStack();
+  if (!preview) {
+    loadLinkStack();
+    pushPulledReturn();
+  }
   loadCachedBookmarks();
 #ifdef TENOR_TURN_TRACE
   const unsigned long bookmarksRead = millis();
@@ -6330,12 +6333,35 @@ int EpubReaderActivity::returnPageNumber() const {
   return hasReturnPosition() ? savedPositions[footnoteDepth - 1].pageNumber + 1 : -1;
 }
 
-void EpubReaderActivity::pushReturnPosition() {
+void EpubReaderActivity::pushSavedPosition(const SavedPosition& position) {
   // Full: drop the oldest entry so Back always returns from the newest jump.
   if (footnoteDepth == MAX_FOOTNOTE_DEPTH) {
     std::copy(savedPositions + 1, savedPositions + MAX_FOOTNOTE_DEPTH, savedPositions);
     footnoteDepth--;
   }
+  savedPositions[footnoteDepth] = position;
+  footnoteDepth++;
+}
+
+// The wake pull (KOReaderAutoSync) wrote the server's place as the saved place just before this book
+// opened: the page the reader was on goes on the back-stack, so Back returns to it and the "‹ page" pill
+// shows. One use: the note is spent whichever book it was for, and a pull that moved nowhere leaves nothing.
+void EpubReaderActivity::pushPulledReturn() {
+  const koautosync::PullChange* pulled = koautosync::progressJustPulled();
+  if (!pulled) return;
+  const bool moved = pulled->fromSpineIndex != pulled->toSpineIndex || pulled->fromPage != pulled->toPage;
+  const bool here = pulled->path == bookPath && pulled->toSpineIndex == currentSpineIndex &&
+                    pulled->toPage == nextPageNumber;
+  const SavedPosition back = {pulled->fromSpineIndex, pulled->fromPage,
+                              pulled->hasFromOffset ? pulled->fromOffset : UINT32_MAX};
+  koautosync::acknowledgeProgressPulled();
+  if (moved && here) {
+    pushSavedPosition(back);
+    LOG_DBG("ERS", "Pull moved the place: back-stack holds spine %d, page %d", back.spineIndex, back.pageNumber);
+  }
+}
+
+void EpubReaderActivity::pushReturnPosition() {
   // A child screen (menu, footnote list) may have released the section;
   // nextPageNumber then holds the page it was on.
   const int page = section ? section->currentPage : nextPageNumber;
@@ -6346,8 +6372,7 @@ void EpubReaderActivity::pushReturnPosition() {
     // The chapter list kept this offset before releasing its section.
     offset = cachedVisibleTextOffset;
   }
-  savedPositions[footnoteDepth] = {currentSpineIndex, page, offset.value_or(UINT32_MAX)};
-  footnoteDepth++;
+  pushSavedPosition({currentSpineIndex, page, offset.value_or(UINT32_MAX)});
   LOG_DBG("ERS", "Saved position [%d]: spine %d, page %d, offset %u", footnoteDepth, currentSpineIndex, page,
           offset.value_or(UINT32_MAX));
 }

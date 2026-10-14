@@ -48,6 +48,8 @@ struct PullChange {
   int fromPage = 0;
   int toSpineIndex = 0;
   int toPage = 0;
+  uint32_t fromOffset = 0;  // the text offset the reader was at, when the saved place had one
+  bool hasFromOffset = false;
 };
 const PullChange* progressJustPulled();
 void acknowledgeProgressPulled();
