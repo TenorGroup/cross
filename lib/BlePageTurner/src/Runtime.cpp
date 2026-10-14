@@ -427,6 +427,9 @@ bool tick(const Scene& s) {
     router = Router();  // the settings screen may have changed the tables meanwhile
     visit.retryAtMs = 0;
     visit.retries = 0;
+    // The time to link counts from this visit, not from when a radio left up by the last one started.
+    idleSinceMs = 0;
+    idleClockRunning = false;
   }
   visit.id = s.visit;
   const bool requested = connectRequested;

@@ -140,6 +140,26 @@ TEST_F(HomeStartTest, ARemoteLinkedAtHomeKeepsTheRadioUpPastTheIdleLimit) {
   EXPECT_TRUE(host().delivered.empty());
 }
 
+// The 30 s a remote gets to link count from the visit it is asked for: a book opened 25 s after the radio came up
+// at Home has its own 30 s, as a book that starts the radio itself has (a60a, 14/10).
+TEST_F(HomeStartTest, TheIdleLimitStartsOverWhenTheBookOpens) {
+  pass(home());
+  ASSERT_TRUE(radio().running);
+  for (int i = 0; i < 25; ++i) {
+    radio().now += 1000;
+    pass(home());
+  }
+  ASSERT_TRUE(radio().running);
+  ASSERT_TRUE(bleturner::beforeScreenChange(0, /*nextIsReader=*/true));
+  int stoppedAfter = -1;
+  for (int s = 1; s <= 40 && stoppedAfter < 0; ++s) {
+    radio().now += 1000;
+    pass(fake::reading(2));
+    if (!radio().running) stoppedAfter = s;
+  }
+  EXPECT_GE(stoppedAfter, 30) << "the book got " << stoppedAfter << " s to link";
+}
+
 // 13/10 11:38-12:10 on the unit: the first pairing can only start from Settings > Bluetooth page turner, where the
 // screens hold about 18 KB. The beta came up with 70,840 / 31,732 left and was rolled back by the X3 block rule.
 TEST_F(HomeStartTest, TheFirstPairingStartsFromTheSettingsScreen) {
