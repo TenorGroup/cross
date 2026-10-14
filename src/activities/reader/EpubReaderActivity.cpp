@@ -2031,7 +2031,10 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
           clearDeferredReposition();
           section->currentPage = targetPage;
         } else {
-          if (currentSpineIndex != sync.spineIndex) pushReturnPosition();
+          if (currentSpineIndex != sync.spineIndex ||
+              (!section && nextPageNumber != std::max(0, sync.page))) {
+            pushReturnPosition();
+          }
           clearDeferredReposition();
           currentSpineIndex = sync.spineIndex;
           pendingOffsetJump = sync.visibleTextOffset;
@@ -2059,7 +2062,8 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
 
       RenderLock lock;
       if (currentSpineIndex != targetSpineIndex ||
-          (section && section->currentPage != std::max(0, targetPage))) {
+          (section && section->currentPage != std::max(0, targetPage)) ||
+          (!section && nextPageNumber != std::max(0, targetPage))) {
         pushReturnPosition();
       }
       clearDeferredReposition();

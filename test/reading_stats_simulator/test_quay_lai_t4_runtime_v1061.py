@@ -329,6 +329,14 @@ class ReturnStackRuntimeTest(unittest.TestCase):
   assert(reader.footnoteDepth == 0);
   reader.changeProgress({false, progress});
   assert(reader.footnoteDepth == 1);
+  reader.restoreSavedPosition();
+  reader.section.reset();
+  progress.hasVisibleTextOffset = false;
+  progress.page = 15;
+  reader.nextPageNumber = 12;
+  reader.changeProgress({false, progress});
+  assert(reader.footnoteDepth == 1);
+  reader.restoreSavedPosition();
 ''')
 
     def test_scrub_remembers_the_origin_and_chapter_steps_do_not(self):
