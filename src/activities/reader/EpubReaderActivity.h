@@ -285,6 +285,7 @@ class EpubReaderActivity final : public ReaderActivity {
   struct SavedPosition {
     int spineIndex;
     int pageNumber;
+    uint32_t textOffset = UINT32_MAX;
   };
   static constexpr int MAX_FOOTNOTE_DEPTH = 3;
   SavedPosition savedPositions[MAX_FOOTNOTE_DEPTH] = {};
@@ -480,6 +481,8 @@ class EpubReaderActivity final : public ReaderActivity {
   void updateBookmarkFlag();
 
   void navigateToHref(const std::string& href, bool savePosition = false);
+  void pushReturnPosition();
+  bool chapterTargetDiffers(int spineIndex, const std::string& anchor) const;
   void restoreSavedPosition();
 
   void renderContents(std::unique_ptr<Page> page, int orientedMarginTop, int orientedMarginRight,
@@ -535,4 +538,6 @@ class EpubReaderActivity final : public ReaderActivity {
 
   ScreenshotInfo getScreenshotInfo() const override;
   CrossPointPosition getCurrentPosition() const;
+  bool hasReturnPosition() const;
+  int returnPageNumber() const;
 };

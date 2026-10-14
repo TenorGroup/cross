@@ -40,6 +40,9 @@ target_compile_options(crosspoint_test_common INTERFACE
 enable_testing()
 include(GoogleTest)
 
+add_test(NAME ReaderReturnPositionT4
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reading_stats_simulator/test_quay_lai_t4_runtime_v1061.py)
+
 add_subdirectory(streaming_json_parser)
 add_subdirectory(release_json_parser)
 add_subdirectory(differential_rounding)

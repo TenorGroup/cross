@@ -1073,14 +1073,17 @@ void EpubReaderActivity::jumpToQuoteForEdit(const std::string& name) {
   // A spine item this book does not have (the file was replaced by another edition) leaves
   // the reader where it is; the selector then says the quote is not on this page.
   if (quote.spine < 0 || quote.spine >= epub->getSpineItemsCount()) return;
-  clearDeferredReposition();
   const int page = std::max(0, quote.page);
   // The two roads the bookmark jump takes: an anchored quote is found by its visible text
   // offset, which survives a change of font size; an older one only knows its page number.
   if (section && currentSpineIndex == quote.spine) {
-    section->currentPage =
-        quote.hasAnchor ? section->getPageForVisibleTextOffset(quote.anchorStart).value_or(page) : page;
+    const int targetPage = quote.hasAnchor ? section->getPageForVisibleTextOffset(quote.anchorStart).value_or(page) : page;
+    if (section->currentPage != targetPage) pushReturnPosition();
+    clearDeferredReposition();
+    section->currentPage = targetPage;
   } else {
+    if (currentSpineIndex != quote.spine || (!quote.hasAnchor && nextPageNumber != page)) pushReturnPosition();
+    clearDeferredReposition();
     currentSpineIndex = quote.spine;
     TRACE_JUMP_BEGIN("quote");
     if (quote.hasAnchor) pendingOffsetJump = quote.anchorStart;
@@ -1989,6 +1992,11 @@ void EpubReaderActivity::jumpToPercent(int percent) {
 
   {
     RenderLock lock;
+    // The percent screen may have released the section: with no page to compare, count it as a move.
+    if (currentSpineIndex != targetSpineIndex || !section || !section->laidOutTo(pendingSpineProgress) ||
+        section->pageAtFraction(pendingSpineProgress) != section->currentPage) {
+      pushReturnPosition();
+    }
     clearDeferredReposition();
     currentSpineIndex = targetSpineIndex;
     TRACE_JUMP_BEGIN("percent");
@@ -2021,11 +2029,18 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
 
       if (sync.hasVisibleTextOffset && sync.spineIndex >= 0 && sync.spineIndex < epub->getSpineItemsCount()) {
         RenderLock lock;
-        clearDeferredReposition();
         if (section && currentSpineIndex == sync.spineIndex) {
           const auto page = section->getPageForVisibleTextOffset(sync.visibleTextOffset);
-          section->currentPage = page.value_or(std::max(0, sync.page));
+          const int targetPage = page.value_or(std::max(0, sync.page));
+          if (section->currentPage != targetPage) pushReturnPosition();
+          clearDeferredReposition();
+          section->currentPage = targetPage;
         } else {
+          if (currentSpineIndex != sync.spineIndex ||
+              (!section && nextPageNumber != std::max(0, sync.page))) {
+            pushReturnPosition();
+          }
+          clearDeferredReposition();
           currentSpineIndex = sync.spineIndex;
           pendingOffsetJump = sync.visibleTextOffset;
           nextPageNumber = std::max(0, sync.page);
@@ -2051,6 +2066,11 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
       }
 
       RenderLock lock;
+      if (currentSpineIndex != targetSpineIndex ||
+          (section && section->currentPage != std::max(0, targetPage)) ||
+          (!section && nextPageNumber != std::max(0, targetPage))) {
+        pushReturnPosition();
+      }
       clearDeferredReposition();
 
       if (currentSpineIndex != targetSpineIndex) {
@@ -2096,6 +2116,7 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
             }
             const auto& chapterResult = std::get<ChapterResult>(result.data);
             RenderLock lock;
+            if (chapterTargetDiffers(chapterResult.spineIndex, chapterResult.anchor)) pushReturnPosition();
             clearDeferredReposition();
             currentSpineIndex = chapterResult.spineIndex;
             TRACE_JUMP_BEGIN("toc");
@@ -5037,11 +5058,12 @@ void EpubReaderActivity::handleOverlayInput() {
 
   // Jump to another spine item (chapter scrub). The overlay stays up and is
   // re-drawn over the new page by renderBook().
-  const auto gotoSpine = [this](int target) {
+  const auto gotoSpine = [this](int target, bool saveReturn = false) {
     const int spineCount = epub->getSpineItemsCount();
     target = std::clamp(target, 0, spineCount - 1);
     if (target != currentSpineIndex) {
       RenderLock lock;
+      if (saveReturn) pushReturnPosition();
       clearDeferredReposition();
       nextPageNumber = 0;
       currentSpineIndex = target;
@@ -5110,7 +5132,8 @@ void EpubReaderActivity::handleOverlayInput() {
       case ReaderToolbarUi::Event::Scrub:
         gotoSpine(static_cast<int>((static_cast<float>(routed.permille) / 1000.0f) *
                                        static_cast<float>(epub->getSpineItemsCount() - 1) +
-                                   0.5f));
+                                   0.5f),
+                  true);
         return;
       default:
         break;
@@ -5183,6 +5206,7 @@ void EpubReaderActivity::handleOverlayInput() {
       const auto item = epub->getTocItem(panelIndex);
       if (item.spineIndex != -1) {
         RenderLock lock;
+        if (chapterTargetDiffers(item.spineIndex, item.anchor)) pushReturnPosition();
         clearDeferredReposition();
         currentSpineIndex = item.spineIndex;
         pendingAnchor = item.anchor;
@@ -6216,22 +6240,9 @@ void EpubReaderActivity::navigateToHref(const std::string& hrefStr, const bool s
     return;
   }
 
-  if (savePosition) {
-    // Full: drop the oldest entry so Back always returns from the newest jump.
-    if (footnoteDepth == MAX_FOOTNOTE_DEPTH) {
-      std::copy(savedPositions + 1, savedPositions + MAX_FOOTNOTE_DEPTH, savedPositions);
-      footnoteDepth--;
-    }
-    // A child screen (menu, footnote list) may have released the section;
-    // nextPageNumber then holds the page it was on.
-    const int page = section ? section->currentPage : nextPageNumber;
-    savedPositions[footnoteDepth] = {currentSpineIndex, page};
-    footnoteDepth++;
-    LOG_DBG("ERS", "Saved position [%d]: spine %d, page %d", footnoteDepth, currentSpineIndex, page);
-  }
-
   {
     RenderLock lock;
+    if (savePosition) pushReturnPosition();
     clearDeferredReposition();
     pendingAnchor = std::move(anchor);
     currentSpineIndex = targetSpineIndex;
@@ -6242,11 +6253,53 @@ void EpubReaderActivity::navigateToHref(const std::string& hrefStr, const bool s
   LOG_DBG("ERS", "Navigated to spine %d for href: %s", targetSpineIndex, hrefStr.c_str());
 }
 
+bool EpubReaderActivity::chapterTargetDiffers(const int spineIndex, const std::string& anchor) const {
+  if (spineIndex != currentSpineIndex) return true;
+  const int page = section ? section->currentPage : nextPageNumber;
+  if (anchor.empty()) return page != 0;
+  // No section (a chapter list released it): count it as a move rather than open the chapter's
+  // anchor map from the card under the render lock. At worst Back returns to the same page once.
+  if (!section) return true;
+  const auto targetPage = section->findAnchor(anchor);
+  return targetPage.has_value() && *targetPage != page;
+}
+
+bool EpubReaderActivity::hasReturnPosition() const {
+  return footnoteDepth > 0;
+}
+
+int EpubReaderActivity::returnPageNumber() const {
+  return hasReturnPosition() ? savedPositions[footnoteDepth - 1].pageNumber + 1 : -1;
+}
+
+void EpubReaderActivity::pushReturnPosition() {
+  // Full: drop the oldest entry so Back always returns from the newest jump.
+  if (footnoteDepth == MAX_FOOTNOTE_DEPTH) {
+    std::copy(savedPositions + 1, savedPositions + MAX_FOOTNOTE_DEPTH, savedPositions);
+    footnoteDepth--;
+  }
+  // A child screen (menu, footnote list) may have released the section;
+  // nextPageNumber then holds the page it was on.
+  const int page = section ? section->currentPage : nextPageNumber;
+  std::optional<uint32_t> offset;
+  if (section && page >= 0 && page < section->pageCount) {
+    offset = section->getVisibleTextOffsetForPage(static_cast<uint16_t>(page));
+  } else if (!section && currentSpineIndex == cachedSpineIndex) {
+    // The chapter list kept this offset before releasing its section.
+    offset = cachedVisibleTextOffset;
+  }
+  savedPositions[footnoteDepth] = {currentSpineIndex, page, offset.value_or(UINT32_MAX)};
+  footnoteDepth++;
+  LOG_DBG("ERS", "Saved position [%d]: spine %d, page %d, offset %u", footnoteDepth, currentSpineIndex, page,
+          offset.value_or(UINT32_MAX));
+}
+
 namespace {
 // The back-stack as the screen after the reader writes it (ActivityManager::deferWrite takes a plain
 // function). Empty bytes: the file is only to be removed.
 std::string stagedLinksPath;
 std::string stagedLinksBytes;
+constexpr uint8_t LINK_STACK_FILE_VERSION = 1;
 
 void writeStagedLinks() {
 #ifdef TENOR_PRESS_PROBE
@@ -6286,7 +6339,8 @@ void EpubReaderActivity::saveLinkStack() const {
   stagedLinksPath = epub->getCachePath() + "/links.bin";
   stagedLinksBytes.clear();
   if (footnoteDepth > 0) {
-    // [depth] then depth x (spine u16 LE, page u16 LE)
+    // [version, depth] then depth x (spine u16 LE, page u16 LE, text offset u32 LE).
+    stagedLinksBytes.push_back(static_cast<char>(LINK_STACK_FILE_VERSION));
     stagedLinksBytes.push_back(static_cast<char>(footnoteDepth));
     for (int i = 0; i < footnoteDepth; i++) {
       const SavedPosition& pos = savedPositions[i];
@@ -6294,6 +6348,9 @@ void EpubReaderActivity::saveLinkStack() const {
       stagedLinksBytes.push_back(static_cast<char>((pos.spineIndex >> 8) & 0xFF));
       stagedLinksBytes.push_back(static_cast<char>(pos.pageNumber & 0xFF));
       stagedLinksBytes.push_back(static_cast<char>((pos.pageNumber >> 8) & 0xFF));
+      for (int shift = 0; shift < 32; shift += 8) {
+        stagedLinksBytes.push_back(static_cast<char>((pos.textOffset >> shift) & 0xFF));
+      }
     }
   }
   // Sleep powers the card down next; any other exit leaves it for after the next screen's frame.
@@ -6320,16 +6377,23 @@ void EpubReaderActivity::loadLinkStack() {
   linkStackOnCard = true;
   {
     HalFile f;
-    uint8_t data[1 + MAX_FOOTNOTE_DEPTH * 4];
+    uint8_t data[2 + MAX_FOOTNOTE_DEPTH * 8];
     if (Storage.openFileForRead("ERS", path, f)) {
       const int size = f.read(data, sizeof(data));
-      const int depth = size > 0 ? data[0] : 0;
-      if (depth >= 1 && depth <= MAX_FOOTNOTE_DEPTH && size == 1 + depth * 4) {
+      const bool oldFormat = size > 0 && size == 1 + data[0] * 4;
+      const int depth = oldFormat ? data[0] : size > 1 && data[0] == LINK_STACK_FILE_VERSION ? data[1] : 0;
+      const int headerSize = oldFormat ? 1 : 2;
+      const int entrySize = oldFormat ? 4 : 8;
+      if (depth >= 1 && depth <= MAX_FOOTNOTE_DEPTH && size == headerSize + depth * entrySize &&
+          static_cast<size_t>(size) == f.size()) {
         const int spineCount = epub->getSpineItemsCount();
         bool valid = true;
         for (int i = 0; i < depth; i++) {
-          const uint8_t* p = data + 1 + i * 4;
-          savedPositions[i] = {p[0] | (p[1] << 8), p[2] | (p[3] << 8)};
+          const uint8_t* p = data + headerSize + i * entrySize;
+          const uint32_t offset = oldFormat ? UINT32_MAX
+              : static_cast<uint32_t>(p[4]) | (static_cast<uint32_t>(p[5]) << 8) |
+                    (static_cast<uint32_t>(p[6]) << 16) | (static_cast<uint32_t>(p[7]) << 24);
+          savedPositions[i] = {p[0] | (p[1] << 8), p[2] | (p[3] << 8), offset};
           valid = valid && savedPositions[i].spineIndex < spineCount;
         }
         if (valid) {
@@ -6355,6 +6419,7 @@ void EpubReaderActivity::restoreSavedPosition() {
     clearDeferredReposition();
     currentSpineIndex = pos.spineIndex;
     nextPageNumber = pos.pageNumber;
+    pendingOffsetJump = pos.textOffset == UINT32_MAX ? std::nullopt : std::optional<uint32_t>(pos.textOffset);
     section.reset();
   }
   requestUpdate();
