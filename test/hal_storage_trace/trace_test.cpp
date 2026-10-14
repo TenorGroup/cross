@@ -53,6 +53,17 @@ int main() {
     assert(child.isOpen());
   }
 
+  {
+    // The card root is never removed or emptied, whatever spelling reaches the card layer; folders below it are.
+    for (const char* root : {"", "/", "//", "///"}) {
+      assert(!storage.removeDir(root));
+      assert(!storage.rmdir(root));
+    }
+    assert(!storage.removeDir(nullptr));
+    assert(!storage.rmdir(nullptr));
+    assert(storage.removeDir("/cache"));
+    assert(storage.rmdir("/cache/empty"));
+  }
 #ifdef TENOR_UI_ACCEPTANCE
   assert(matching("SD_TRACE] OPEN") == 6);
   assert(matching("SD_TRACE] CLOSE ") == 6);
