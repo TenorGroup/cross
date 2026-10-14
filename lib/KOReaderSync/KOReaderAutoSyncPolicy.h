@@ -59,6 +59,19 @@ constexpr bool sleptLongEnough(const uint32_t sleptAt, const uint32_t now, const
   return clockTrusted && sleptAt != 0 && now >= sleptAt && now - sleptAt >= PULL_MIN_SLEEP_SECONDS;
 }
 
+// Only an Epub has a place the server's record maps onto; a text or XTC book is never pulled (the Wi-Fi
+// wait would be spent for a book that cannot take the result).
+inline bool isEpubPath(const std::string& path) {
+  static constexpr char ext[] = ".epub";
+  constexpr size_t n = sizeof(ext) - 1;
+  if (path.size() < n) return false;
+  for (size_t i = 0; i < n; ++i) {
+    const char c = path[path.size() - n + i];
+    if ((c >= 'A' && c <= 'Z' ? c + 32 : c) != ext[i]) return false;
+  }
+  return true;
+}
+
 // What the server said about a book.
 enum class Fetch : uint8_t { Found, NotFound, Failed };
 

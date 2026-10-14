@@ -423,6 +423,19 @@ TEST(WakePullSleep, NoTrustedClockCountsAsAShortSleep) {
   EXPECT_FALSE(sleptLongEnough(at, at - 10, true));     // the clock went backwards
 }
 
+TEST(WakePullBook, OnlyAnEpubIsPulled) {
+  EXPECT_TRUE(isEpubPath("/Books/a.epub"));
+  EXPECT_TRUE(isEpubPath("/Books/B.EPUB"));
+  EXPECT_TRUE(isEpubPath("/Books/c.Epub"));
+  EXPECT_FALSE(isEpubPath("/Books/notes.txt"));
+  EXPECT_FALSE(isEpubPath("/Books/scan.xtc"));
+  EXPECT_FALSE(isEpubPath("/Books/scan.xtch"));
+  EXPECT_FALSE(isEpubPath("/Books/epub"));
+  EXPECT_FALSE(isEpubPath("/Books/a.epub.txt"));
+  EXPECT_FALSE(isEpubPath(".epu"));
+  EXPECT_FALSE(isEpubPath(""));
+}
+
 // ---- remembered access point -----------------------------------------------------------------------------------
 
 namespace {

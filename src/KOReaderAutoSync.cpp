@@ -492,6 +492,7 @@ PullResult pullNow(GfxRenderer& renderer, const std::string& path, const uint32_
 }  // namespace
 
 PullResult pullOnWake(GfxRenderer& renderer, const std::string& path, const bool showNotice) {
+  if (!isEpubPath(path)) return PullResult::Skipped;  // a text or XTC book has no place to map onto
   const time_t now = time(nullptr);
   const bool slept = sleptLongEnough(APP_STATE.sleepStartedAt, now > 0 ? static_cast<uint32_t>(now) : 0,
                                      halClock.hasValidTime());

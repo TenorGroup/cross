@@ -46,8 +46,8 @@ add_test(NAME ReaderReturnPositionT4
 add_test(NAME KoreaderFavoritesRows
   COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/koreader_favorites/check.py ${REPO_ROOT})
 
-add_test(NAME KoreaderWakePullPower
-  COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/koreader_auto_sync/pull_power.py ${REPO_ROOT})
+add_test(NAME KoreaderWakePullSource
+  COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/koreader_auto_sync/pull_source.py ${REPO_ROOT})
 
 add_subdirectory(streaming_json_parser)
 add_subdirectory(release_json_parser)

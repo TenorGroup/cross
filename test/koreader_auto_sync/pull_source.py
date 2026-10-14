@@ -1,11 +1,15 @@
 #!/usr/bin/env python3 -I
-"""The wake pull must not drop the CPU to the low-power clock before the book is open.
+"""Two source-text checks on the wake pull (firmware-only code, so the text of the one function is read).
+
+1. The wake pull must not drop the CPU to the low-power clock before the book is open.
 
 setPowerSaving(true) with the radio off and no Lock held sets 10 MHz on the X3 (HalPowerManager.cpp).
 The pull runs in setup(), where nothing holds a Lock, and the Epub load, the XPath mapping and the book
 open that follow would run 12 times slower. The main loop lowers the clock by itself after 3 s without a
 key, so the pull leaves it alone; the sleep push (the sleep after it holds its own Lock) may lower it.
-Firmware-only code, so this checks the source text of the one function that matters.
+
+2. pullOnWake answers Skipped for a path that is not an .epub before any other work (a text or XTC book
+would spend the Wi-Fi wait and then fail to load as an Epub).
 """
 import re
 import sys
@@ -37,5 +41,8 @@ if not calls or any(c.strip() != "false" for c in calls):
     problems.append(f"pullNow must call leaveWifi(false) every time, found {calls}")
 if re.findall(r"leaveWifi\(([^)]*)\)", push) != ["true"]:
     problems.append("pushBeforeSleep must call leaveWifi(true) once")
+wake = body("PullResult pullOnWake(")
+if not re.match(r"\{\s*if \(!isEpubPath\(path\)\) return PullResult::Skipped;", wake):
+    problems.append("pullOnWake must start by skipping a path that is not an epub")
 print("DO: " + "; ".join(problems) if problems else "XANH")
 sys.exit(1 if problems else 0)
