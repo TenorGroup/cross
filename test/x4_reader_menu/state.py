@@ -144,6 +144,8 @@ class EpubReaderActivity {
  void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action,MenuResult){assert(action==EpubReaderMenuActivity::MenuAction::TEXT_SETTINGS);++textSettingsOpened;}
  void requestUpdate(){++requests;}
  void clearDeferredReposition(){}
+ void pushReturnPosition(){}
+ bool chapterTargetDiffers(int, const std::string&) const { return false; }
  void paintOverlayPopup(){}
  void settleOverlayRefresh(){}
  void pushOverlayRefresh(){}
