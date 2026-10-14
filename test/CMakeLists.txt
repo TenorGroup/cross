@@ -334,6 +334,7 @@ add_subdirectory(cover_holder)
 
 add_subdirectory(home_thumb_work)
 add_subdirectory(home_frame_strips)
+add_subdirectory(gfx_region_rows)
 add_subdirectory(bitmap_writer)
 add_subdirectory(telex_composer)
 add_subdirectory(file_browser_state)

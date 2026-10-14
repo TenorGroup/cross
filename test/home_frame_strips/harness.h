@@ -61,7 +61,7 @@ File Store::open(const char* p, int flags) {
 // The screen buffer as the X3 has it (528 x 792, 1 bit a pixel), the rect turned to bytes as GfxRenderer does.
 struct Renderer {
   static constexpr int W = 528, H = 792, ROW = W / 8;
-  std::array<uint8_t, ROW * H> fb{};
+  mutable std::array<uint8_t, ROW * H> fb{};
   int cleared = 0;
   bool bounds(int x, int y, int w, int h, int& byte0, int& bytes, int& y0, int& rows) const {
     if (w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > W || y + h > H) return false;
@@ -83,7 +83,7 @@ struct Renderer {
     for (int r = 0; r < rows; ++r) memcpy(buf + r * bytes, fb.data() + (y0 + first + r) * ROW + b0, bytes);
     return true;
   }
-  bool copyBufferToRegionRows(int x, int y, int w, int h, int first, int rows, const uint8_t* buf, size_t size) {
+  bool copyBufferToRegionRows(int x, int y, int w, int h, int first, int rows, const uint8_t* buf, size_t size) const {
     int b0, bytes, y0, count;
     if (!bounds(x, y, w, h, b0, bytes, y0, count) || first < 0 || rows < 0 || first + rows > count ||
         size < static_cast<size_t>(bytes) * rows || !buf) return false;
@@ -94,7 +94,7 @@ struct Renderer {
     int perRow, rows;
     return getRegionRows(x, y, w, h, perRow, rows) && copyRegionRowsToBuffer(x, y, w, h, 0, rows, buf, size);
   }
-  bool copyBufferToRegion(int x, int y, int w, int h, const uint8_t* buf, size_t size) {
+  bool copyBufferToRegion(int x, int y, int w, int h, const uint8_t* buf, size_t size) const {
     int perRow, rows;
     return getRegionRows(x, y, w, h, perRow, rows) && copyBufferToRegionRows(x, y, w, h, 0, rows, buf, size);
   }
@@ -144,7 +144,7 @@ class HomeActivity {
   bool storeCoverBuffer();
   bool restoreCoverBuffer();
   void freeCoverBuffer();
-  CardFile loadCardFile(const std::string&, uint32_t, uint32_t, const std::string&);
+  CardFile loadCardFile(const std::string&, uint32_t, uint32_t, const std::string&, bool = false);
   void saveCardFile();
   void holdFrame(const std::string&, uint32_t, bool);
   bool restoreFrame(const std::string&, uint32_t);

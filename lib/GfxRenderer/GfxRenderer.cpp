@@ -2243,6 +2243,46 @@ bool GfxRenderer::copyBufferToRegion(int lx, int ly, int lw, int lh, const uint8
   return true;
 }
 
+bool GfxRenderer::getRegionRows(int lx, int ly, int lw, int lh, int& bytesPerRow, int& rowCount) const {
+  int x0, y0, x1, y1;
+  if (!logicalRectToPhysicalBounds(orientation, lx, ly, lw, lh, panelWidth, panelHeight, &x0, &y0, &x1, &y1)) {
+    return false;
+  }
+  bytesPerRow = x1 / 8 - x0 / 8 + 1;
+  rowCount = y1 - y0 + 1;
+  return true;
+}
+
+bool GfxRenderer::copyRegionRowsToBuffer(int lx, int ly, int lw, int lh, int firstRow, int rows, uint8_t* buf,
+                                         size_t bufSize) const {
+  int bytesPerRow, rowCount;
+  if (!getRegionRows(lx, ly, lw, lh, bytesPerRow, rowCount) || firstRow < 0 || rows < 0 || rows > rowCount - firstRow ||
+      bufSize < static_cast<size_t>(bytesPerRow) * static_cast<size_t>(rows) || !frameBuffer || !buf) {
+    return false;
+  }
+  int x0, y0, x1, y1;
+  logicalRectToPhysicalBounds(orientation, lx, ly, lw, lh, panelWidth, panelHeight, &x0, &y0, &x1, &y1);
+  for (int row = 0; row < rows; row++) {
+    memcpy(buf + row * bytesPerRow, frameBuffer + (y0 + firstRow + row) * panelWidthBytes + x0 / 8, bytesPerRow);
+  }
+  return true;
+}
+
+bool GfxRenderer::copyBufferToRegionRows(int lx, int ly, int lw, int lh, int firstRow, int rows, const uint8_t* buf,
+                                         size_t bufSize) const {
+  int bytesPerRow, rowCount;
+  if (!getRegionRows(lx, ly, lw, lh, bytesPerRow, rowCount) || firstRow < 0 || rows < 0 || rows > rowCount - firstRow ||
+      bufSize < static_cast<size_t>(bytesPerRow) * static_cast<size_t>(rows) || !frameBuffer || !buf) {
+    return false;
+  }
+  int x0, y0, x1, y1;
+  logicalRectToPhysicalBounds(orientation, lx, ly, lw, lh, panelWidth, panelHeight, &x0, &y0, &x1, &y1);
+  for (int row = 0; row < rows; row++) {
+    memcpy(frameBuffer + (y0 + firstRow + row) * panelWidthBytes + x0 / 8, buf + row * bytesPerRow, bytesPerRow);
+  }
+  return true;
+}
+
 // The single place the word-spacing delta is computed. spaceFP is a U+0020
 // advance in 12.4 fixed point; readerSpacing::wordPixels() returns whole pixels,
 // so the delta re-enters the sum as 16x and the caller's single fp4::toPixel()

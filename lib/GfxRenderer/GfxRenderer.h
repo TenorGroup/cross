@@ -652,4 +652,12 @@ class GfxRenderer {
   bool copyRegionToBuffer(int logicalX, int logicalY, int logicalW, int logicalH, uint8_t* buf, size_t bufSize) const;
   bool copyBufferToRegion(int logicalX, int logicalY, int logicalW, int logicalH, const uint8_t* buf,
                           size_t bufSize) const;
+  // The same bytes row by row, for a region too big for the heap's largest block. getRegionRows gives the layout
+  // copyRegionToBuffer fills (rowCount rows of bytesPerRow bytes); the two row copies move rows [firstRow, firstRow + rows) of
+  // it, so every strip in order is the whole buffer. False if the rows are out of the region or `bufSize` is too small.
+  bool getRegionRows(int logicalX, int logicalY, int logicalW, int logicalH, int& bytesPerRow, int& rowCount) const;
+  bool copyRegionRowsToBuffer(int logicalX, int logicalY, int logicalW, int logicalH, int firstRow, int rows, uint8_t* buf,
+                              size_t bufSize) const;
+  bool copyBufferToRegionRows(int logicalX, int logicalY, int logicalW, int logicalH, int firstRow, int rows,
+                              const uint8_t* buf, size_t bufSize) const;
 };
