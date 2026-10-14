@@ -2320,7 +2320,11 @@ void HomeActivity::drawRecentCard() {
                               static_cast<int16_t>(frame.textX),  static_cast<int16_t>(frame.titleY),
                               static_cast<int16_t>(frame.textW),  static_cast<int16_t>(SETTINGS.uiTextSize),
                               static_cast<int16_t>(SETTINGS.screenInverted)};
-  const uint32_t coverKey = fnv(fnv(2166136261u, CROSSPOINT_VERSION), geometry, sizeof(geometry));
+  const uint32_t geometryKey = fnv(fnv(2166136261u, CROSSPOINT_VERSION), geometry, sizeof(geometry));
+  // The placeholder of a book with no cover has its name and author drawn in it, so they are part of the cover.
+  const uint32_t coverKey = coverless(shown)
+      ? fnv(fnv(fnv(geometryKey, title), std::string(author)), std::string(SETTINGS.sdFontFamilyName))
+      : geometryKey;
   const uint32_t key =
       fnv(fnv(fnv(fnv(coverKey, title), std::string(author)), quote), std::string(SETTINGS.sdFontFamilyName));
   // One file for the page excerpt and four for quotes, so a book with a few quotes finds its card
