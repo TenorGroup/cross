@@ -52,7 +52,10 @@ class S3Profiles(unittest.TestCase):
                 self.assertIn("scripts/s3_nimble_psram.h", flags)
                 self.assertEqual(flags[flags.index("-include") + 1], "scripts/s3_nimble_psram.h")
                 for plain in (board, board + "-gh_release", "x3-ble", "gh_release"):
-                    self.assertNotIn("-DTENOR_HYPH_NO_DE", option("env:" + plain, "build_flags").split())
+                    # German hyphenation is out of every X4 Pro build since v1.0.61 (flash headroom); the X4 Classic
+                    # and C3 builds keep it outside the Bluetooth beta.
+                    self.assertEqual("-DTENOR_HYPH_NO_DE" in option("env:" + plain, "build_flags").split(),
+                                     plain.startswith("x4pro"))
                     self.assertNotIn("scripts/s3_nimble_psram.h", option("env:" + plain, "build_flags").split())
                 self.assertIn("-DBOARD_HAS_PSRAM", flags)
                 self.assertNotIn("-DFREEINK_DEVICE_X3=1", flags)
