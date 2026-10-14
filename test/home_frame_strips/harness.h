@@ -12,6 +12,7 @@
 #include <vector>
 #include <HeapFloor.h>
 #define free(p) heapfloor::release(p)
+#include "FrameStrips.h"
 #define LOG_INF(...) ((void)0)
 #define LOG_ERR(...) ((void)0)
 #define O_WRONLY 1
@@ -131,8 +132,7 @@ class HomeActivity {
   int textRectX = 0, textRectY = 0, textRectW = 0, textRectH = 0;
   int coverBufferBook = -1;
   bool coverBufferStored = false, cardOnCard = false;
-  bool frameHeld = false;
-  uint32_t frameDigest = 0;
+  framestrip::Snapshot frameSnapshot;
   std::string cardFilePending;
   uint32_t cardFileCoverKey = 0, cardFileKey = 0;
   uint8_t cardFileThumb = 0;

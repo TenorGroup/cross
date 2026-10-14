@@ -10,10 +10,12 @@ inline size_t largest = 28660;  // the largest block the heap can give (the log 
 inline size_t biggestRequest = 0;
 inline size_t liveBytes = 0, peakBytes = 0;
 inline int refused = 0;
+inline int takesLeft = -1;  // -1: no limit; else this many blocks, then the door refuses (a heap that runs out midway)
 inline std::map<void*, size_t> blocks;
 inline void* take(const size_t bytes, const char*) {
   if (bytes > biggestRequest) biggestRequest = bytes;
-  if (bytes > largest) { ++refused; return nullptr; }
+  if (bytes > largest || takesLeft == 0) { ++refused; return nullptr; }
+  if (takesLeft > 0) --takesLeft;
   void* block = std::malloc(bytes);
   if (block) { blocks[block] = bytes; liveBytes += bytes; if (liveBytes > peakBytes) peakBytes = liveBytes; }
   return block;

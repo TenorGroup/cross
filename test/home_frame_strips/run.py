@@ -28,11 +28,8 @@ def function(signature):
     return t[start:end] + '\n'
 
 
-strips = repo / 'src/activities/home/FrameStrips.h'
 head = t[t.index('struct CardFileHead {'):t.index('// Books whose missing card thumbnail')]
 source = (here / 'harness.h').read_text()
-if strips.exists():
-    source += '#include "FrameStrips.h"\n'
 source += head
 source += ''.join(function(s) for s in (
     'bool HomeActivity::frameOnCard() const', 'bool HomeActivity::storeCoverBuffer()', 'bool HomeActivity::restoreCoverBuffer()',

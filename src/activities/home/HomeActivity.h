@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "./FileBrowserActivity.h"
+#include "./FrameStrips.h"
 #include "components/FileSearchScan.h"
 #include "components/FileSearchHalAdapter.h"
 #include "ReadingStatsStore.h"
@@ -258,9 +259,8 @@ class HomeActivity final : public UiTabListActivity {
   uint32_t cardFileCoverKey = 0, cardFileKey = 0;
   // The snapshot is also on the card (written, or read whole), so it need not stay in RAM.
   bool cardOnCard = false;
-  // X3 frame: it is on the screen buffer, not in RAM, and `frameDigest` sums what was drawn (see holdFrame).
-  bool frameHeld = false;
-  uint32_t frameDigest = 0;
+  // X3 frame: held in strips of 4 KB from its build to the write of its file (see holdFrame), never in one block.
+  framestrip::Snapshot frameSnapshot;
   uint8_t cardFileThumb = 0;
   int16_t cardFileCover = 0;
   // What a card file still shows: nothing, the cover alone (the text changed), or the whole card.

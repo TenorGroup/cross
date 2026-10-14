@@ -32,7 +32,6 @@
 #include "CrossPointState.h"
 #include "DocThuMuc.h"
 #include "FileActions.h"
-#include "FrameStrips.h"
 #include "HomeRows.h"
 #include "FileFavorites.h"
 #include "MappedInputManager.h"
@@ -1288,7 +1287,7 @@ void HomeActivity::freeCoverBuffer() {
   coverBufferStored = false;
   coverBufferBook = -1;
   cardOnCard = false;
-  frameHeld = false;
+  frameSnapshot.release();
 }
 
 void HomeActivity::loadRecentBooks() {
@@ -2545,8 +2544,7 @@ HomeActivity::CardFile HomeActivity::loadCardFile(const std::string& path, const
     if (toScreen) {
       // A frame goes strip by strip from the file to the screen buffer: no block the size of the frame. A read that fails
       // halfway leaves part of it on the screen, so the region is cleared for the frame to be built again.
-      const framestrip::Buffer strip;
-      const bool read = framestrip::fill(renderer, r[0], r[1], r[2], r[3], strip, [&](uint8_t* into, const size_t count) {
+      const bool read = framestrip::fill(renderer, r[0], r[1], r[2], r[3], [&](uint8_t* into, const size_t count) {
         return file.read(into, count) == static_cast<int>(count);
       });
       if (!read || !file.close()) {
@@ -3462,23 +3460,17 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
 
 // The frame just drawn goes to the card after the panel shows it. Not while a cover is still to be made: its frame is
 // drawn again, with the thumbnail asked for, once the cover is there.
-// The X3 keeps no copy of it in RAM. A copy is one block of 39.840 to 43.296 B, and after a Bluetooth session the largest block
-// is 28.660 B (the log of the device: it never fit, every paint built the frame again). The frame stays on the screen buffer
-// and is written from there, in strips of 4 KB, once the panel has it; a sum taken now tells the write that the picture is
-// still the one that was drawn. The Stats card, and the touch shells with PSRAM, keep their copy.
+// The X3 keeps it in blocks of 4 KB, not in one. A copy in one block is 39.840 to 43.296 B, and after a Bluetooth session the
+// largest block is 28.660 B (the log of the device: it never fit, every paint built the frame again). The blocks are given
+// back as soon as the file is written, and the next paint reads the file strip by strip: nothing is held at rest. The Stats
+// card, and the touch shells with PSRAM, keep their copy in one block.
 void HomeActivity::holdFrame(const std::string& framePath, const uint32_t frameKey, const bool settled) {
   if (!frameOnCard()) {
     coverBufferStored = storeCoverBuffer();
     return;
   }
-  frameHeld = false;
   if (framePath.empty() || !settled || touchThumbCount != 0) return;
-  const framestrip::Buffer strip;
-  uint32_t sum = 2166136261u;
-  frameHeld = framestrip::each(renderer, coverRectX, coverRectY, coverRectW, coverRectH, strip,
-                               [&](const uint8_t* bytes, const size_t count) { sum = fnv(sum, bytes, count); return true; });
-  if (!frameHeld) return;
-  frameDigest = sum;
+  if (!framestrip::capture(renderer, coverRectX, coverRectY, coverRectW, coverRectH, frameSnapshot)) return;
   cardFilePending = framePath;
   cardFileCoverKey = cardFileKey = frameKey;
   cardFileThumb = 0;
@@ -3495,10 +3487,13 @@ bool HomeActivity::restoreFrame(const std::string& framePath, const uint32_t fra
 void HomeActivity::saveCardFile() {
   const std::string path = std::move(cardFilePending);
   cardFilePending.clear();
-  // A frame the screen buffer holds (X3) is written from there in strips; a card from its copy in RAM.
-  const bool fromScreen = frameHeld;
-  frameHeld = false;
-  if (!fromScreen && (!coverBufferStored || !coverBuffer)) return;
+  // A frame held in strips (X3) is written from them and they go; a card from its copy in RAM.
+  struct Release {
+    framestrip::Snapshot& snapshot;
+    ~Release() { snapshot.release(); }
+  } release{frameSnapshot};
+  const bool fromStrips = static_cast<bool>(frameSnapshot);
+  if (!fromStrips && (!coverBufferStored || !coverBuffer)) return;
 #ifdef TENOR_PRESS_PROBE
   const uint32_t started = millis();
 #endif
@@ -3509,8 +3504,7 @@ void HomeActivity::saveCardFile() {
                            static_cast<int16_t>(coverRectW), static_cast<int16_t>(coverRectH),
                            static_cast<int16_t>(textRectX), static_cast<int16_t>(textRectY),
                            static_cast<int16_t>(textRectW), static_cast<int16_t>(textRectH)},
-                          static_cast<uint32_t>(fromScreen ? renderer.getRegionByteSize(coverRectX, coverRectY, coverRectW, coverRectH)
-                                                           : coverBufferSize),
+                          static_cast<uint32_t>(fromStrips ? frameSnapshot.total : coverBufferSize),
                           cardFileThumb,
                           cardFileCover};
   cardOnCard = false;
@@ -3547,17 +3541,9 @@ void HomeActivity::saveCardFile() {
   }
   auto file = Storage.open(staging.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
   bool written = file && file.write(&head, sizeof(head)) == sizeof(head);
-  if (written && fromScreen) {
-    const framestrip::Buffer strip;
-    uint32_t sum = 2166136261u;
-    const bool streamed = framestrip::each(renderer, coverRectX, coverRectY, coverRectW, coverRectH, strip,
-                                           [&](const uint8_t* bytes, const size_t count) {
-                                             sum = fnv(sum, bytes, count);
-                                             return file.write(bytes, count) == count;
-                                           });
-    // The picture must be the one that was drawn, not one with a notice drawn over it since.
-    if (streamed && sum != frameDigest) LOG_INF("HOME", "Frame changed since it was held, not written");
-    written = streamed && sum == frameDigest;
+  if (written && fromStrips) {
+    for (int i = 0; written && i < frameSnapshot.count; ++i)
+      written = file.write(frameSnapshot.strip[i], frameSnapshot.bytes[i]) == frameSnapshot.bytes[i];
   } else if (written) {
     written = file.write(coverBuffer, coverBufferSize) == coverBufferSize;
   }

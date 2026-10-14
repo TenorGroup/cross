@@ -118,6 +118,7 @@ SCENES = {
     'quote_detail': (QUOTES + ';8500:CONFIRM;11500:CONFIRM', QUOTES_X + ';9500:TAP:240,100;12500:TAP:240,150',
                      14000, 15000, 'QuoteDetail', {}),
     'sleep_quote': ('2500:SLEEP', '2500:SLEEP', 6500, 6500, 'Sleep', dict(settings={'sleepScreen': 10, 'sleepBwFold': 1})),
+    'sleep_stats': ('2500:SLEEP', '2500:SLEEP', 6500, 6500, 'Sleep', dict(settings={'sleepScreen': 9, 'sleepBwFold': 1})),
     'ugly_diary': ('', '', 2500, 2500, 'UglyDiary', dict(settings=UGLY, narrow=True)),
     'ugly_desk': ('1000:DOWN;2000:BACK', '2000:TAP:240,670', 4000, 4000, 'UglyDesk',
                   dict(settings=UGLY, narrow=True)),
@@ -176,6 +177,9 @@ class TenSachGonTest(unittest.TestCase):
 
     def test_sleep_quote(self):
         self.check('sleep_quote')
+
+    def test_sleep_stats(self):
+        self.check('sleep_stats')
 
     def test_ugly_diary(self):
         self.check('ugly_diary')

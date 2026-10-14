@@ -29,7 +29,7 @@ void rectOf(HomeActivity& h, const Box& b) {
 void reset() {
   Storage = {};
   heapfloor::largest = LARGEST; heapfloor::biggestRequest = 0; heapfloor::refused = 0;
-  heapfloor::peakBytes = 0;
+  heapfloor::peakBytes = 0; heapfloor::takesLeft = -1;
 }
 // The build of a frame: drawn on the screen buffer, held, then written after the panel shows it.
 bool buildAndSave(const Box& b, uint32_t seed, bool settled = true) {
@@ -91,14 +91,27 @@ int main() {
     check(gRenderer.cleared >= 1, "and clears what was put back");
     Storage.failReadAt = 0;
   }
-  {  // the screen buffer changed after the frame was held (a notice over it): that picture is not kept
+  {  // the footer draws chevrons over the frame after it is held (the Large cover reaches the screen edges): the file keeps the frame
     reset();
-    paint(SHELF, 4);
-    HomeActivity h; rectOf(h, SHELF);
+    paint(LARGE, 4);
+    const auto drawn = region(LARGE);
+    HomeActivity h; rectOf(h, LARGE);
     h.holdFrame(PATH, KEY, true);
-    gRenderer.fb[(SHELF.y + 100) * Renderer::ROW + 20] ^= 0xFF;
+    check(h.coverBuffer == nullptr && heapfloor::liveBytes >= drawn.size() && heapfloor::liveBytes <= drawn.size() + 4096,
+          "while held the frame is blocks of 4 KB, " + std::to_string(heapfloor::liveBytes) + " B for " + std::to_string(drawn.size()));
+    for (int y = 190; y < 205; ++y) gRenderer.fb[(LARGE.y + y) * Renderer::ROW + 64] ^= 0xFF;
     h.saveCardFile();
-    check(!Storage.exists(PATH.c_str()) && !Storage.exists((PATH + ".davtmp").c_str()), "a changed frame is not written");
+    std::vector<uint8_t> payload;
+    check(Storage.exists(PATH.c_str()) && payloadOf(Storage.files[PATH], payload) == drawn.size() &&
+              std::equal(payload.begin(), payload.end(), drawn.begin()),
+          "the file holds the frame as it was drawn, not as the footer left it");
+    check(heapfloor::liveBytes == 0, "the blocks are given back when the file is written");
+  }
+  {  // the heap runs out after a few strips: nothing kept, nothing leaked
+    reset(); heapfloor::takesLeft = 5;
+    check(!buildAndSave(SHELF, 11), "a heap that gives only 5 strips keeps no frame");
+    check(heapfloor::liveBytes == 0, "and holds nothing");
+    heapfloor::takesLeft = -1;
   }
   {  // a cover still to be made: the frame is drawn again, no file
     reset();
@@ -134,6 +147,6 @@ int main() {
     check(payloadOf(Storage.files[PATH], payload) == want.size() && std::equal(payload.begin(), payload.end(), want.begin()), "the file holds the newer frame");
     check(!Storage.exists(PATH + ".davbak"), "no backup left");
   }
-  std::cout << checks << " checks, " << failures << " failures, largest request " << heapfloor::biggestRequest << " B\n";
+  std::cout << checks << " checks, " << failures << " failures, largest request " << heapfloor::biggestRequest << " B, peak " << heapfloor::peakBytes << " B\n";
   return failures ? 1 : 0;
 }

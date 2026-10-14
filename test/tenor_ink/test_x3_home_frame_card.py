@@ -24,6 +24,8 @@ from test_home_card_v1011 import cover_jpeg  # noqa: E402
 from test_x3_home_styles import BOOKS, NO_COVER, PROGRAM, W, cache_hash  # noqa: E402
 
 RADIO = {'CROSSPOINT_SIM_FREE_HEAP': '61204', 'CROSSPOINT_SIM_MAX_ALLOC_HEAP': '55284'}
+# The X3 on 14/10/2026 after a Bluetooth session: free heap enough, largest block 28.660 B (the frame is 39.840 to 43.296 B).
+AFTER_BLE = {'CROSSPOINT_SIM_FREE_HEAP': '93716', 'CROSSPOINT_SIM_MAX_ALLOC_HEAP': '28660'}
 FREE_FLOOR, LARGEST_FLOOR = 10240, 8180  # heapfloor::kFreeFloor, and the largest block as the heap API reports it
 FRAME = re.compile(r'Frame row=\d+ top=\d+ total=\d+ms heap=(\d+) held=(\d+) largest=(\d+)')
 COVER = re.compile(r'Home cover book=(\d+) rect=(-?\d+),(-?\d+),(\d+),(\d+) native=(\d)')
@@ -147,6 +149,15 @@ def main():
                 check(native == 0 and mean >= 250, f'{name}: a cover not made yet is a ring, white inside: mean {mean:.0f}')
             else:
                 check(False, f'{name}: no cover rectangle in the log')
+
+        for style, name in ((1, 'Large cover'), (2, 'Shelf')):
+            sd = make_sd(tmp, f'ble{style}', style)
+            launch(sd, 9000, AFTER_BLE)
+            check(frame_files(sd) == [f'home-frame-{style}-0.card'], f'{name}: after Bluetooth the frame still reaches the card, got {frame_files(sd)}')
+            again = launch(sd, 3000, AFTER_BLE)
+            heap = held(again)
+            check('frame_file_us' in again and 'Home build start' not in again and heap is not None and heap[1] == 0,
+                  f'{name}: after Bluetooth the next paint reads the frame from the card, held=0')
 
         for style in (0,):
             sd = make_sd(tmp, 'stats', style)
