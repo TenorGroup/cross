@@ -3322,7 +3322,7 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
   if (frameOnCard()) {
     frameKey = homeFrameKey(f, quote);
     framePath = frameFilePath(static_cast<unsigned>(f.style), shown);
-    if (loadCardFile(framePath, frameKey, frameKey, std::string()) == CardFile::Whole && restoreCoverBuffer()) {
+    if (restoreFrame(framePath, frameKey)) {
       coverBufferBook = shown;
       coverBufferShelf = shelfFirst;
       coverRendered = true;
@@ -3433,23 +3433,32 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
   coverRectX = f.snapshot.x; coverRectY = f.snapshot.y;
   coverRectW = f.snapshot.w; coverRectH = f.snapshot.h;
   textRectW = textRectH = 0;
-  coverBufferStored = storeCoverBuffer();
+  holdFrame(framePath, frameKey, settled);
   coverBufferBook = shown;
   coverBufferShelf = shelfFirst;
   coverRendered = true;
-  // Written after the frame is on the panel, then the RAM copy goes. Not while a cover is still to be made: its frame
-  // is drawn again, with the thumbnail asked for, once the cover is there.
+  if (auto* cache = renderer.getFontCacheManager()) cache->releaseBuiltinPageCaches();
+  LOG_INF("HOME", "Home style=%u build_us=%lu snapshot=%u thumbs=%d free=%u largest=%u", static_cast<unsigned>(f.style),
+          static_cast<unsigned long>(micros() - started), static_cast<unsigned>(coverBufferSize), touchThumbCount,
+          ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  LOG_INF("HOME", "Home build end style=%u", static_cast<unsigned>(f.style));
+}
+
+// The frame just drawn goes to the card after the panel shows it, then the RAM copy goes. Not while a cover is still to be
+// made: its frame is drawn again, with the thumbnail asked for, once the cover is there.
+void HomeActivity::holdFrame(const std::string& framePath, const uint32_t frameKey, const bool settled) {
+  coverBufferStored = storeCoverBuffer();
   if (coverBufferStored && !framePath.empty() && settled && touchThumbCount == 0) {
     cardFilePending = framePath;
     cardFileCoverKey = cardFileKey = frameKey;
     cardFileThumb = 0;
     cardFileCover = 0;
   }
-  if (auto* cache = renderer.getFontCacheManager()) cache->releaseBuiltinPageCaches();
-  LOG_INF("HOME", "Home style=%u build_us=%lu snapshot=%u thumbs=%d free=%u largest=%u", static_cast<unsigned>(f.style),
-          static_cast<unsigned long>(micros() - started), static_cast<unsigned>(coverBufferSize), touchThumbCount,
-          ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-  LOG_INF("HOME", "Home build end style=%u", static_cast<unsigned>(f.style));
+}
+
+// The frame a file on the card holds, put back on the screen buffer.
+bool HomeActivity::restoreFrame(const std::string& framePath, const uint32_t frameKey) {
+  return loadCardFile(framePath, frameKey, frameKey, std::string()) == CardFile::Whole && restoreCoverBuffer();
 }
 
 // Runs after the frame is on the panel. Checked staging preserves the committed card

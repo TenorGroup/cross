@@ -264,6 +264,9 @@ class HomeActivity final : public UiTabListActivity {
   enum class CardFile : uint8_t { None, Cover, Whole };
   CardFile loadCardFile(const std::string& path, uint32_t coverKey, uint32_t key, const std::string& thumbPath);
   void saveCardFile();
+  // Large cover and Shelf (X3): the frame just drawn is queued for the card; and the frame a file holds is put back.
+  void holdFrame(const std::string& framePath, uint32_t frameKey, bool settled);
+  bool restoreFrame(const std::string& framePath, uint32_t frameKey);
   // A book whose card thumbnail is still missing: the reader writes it from the cover page or as
   // it closes, and a book read to the power key each time never took either route. The card asks
   // for it here (render task) and an idle pass writes it (main task), once per book, height and boot.
