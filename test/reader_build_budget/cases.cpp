@@ -877,6 +877,40 @@ int main() {
     require(landing.spine == 1 && landing.page == 7, "the next paint shows page 0 of the target chapter");
     require(r.saveAttempts == 0, "page 0 of the target chapter was saved as the progress");
   });
+  // A jump pushes the place Back returns to before it paints. A jump the heap could not lay out leaves the reader on its saved
+  // page, which is that place: it goes, or Back would "return" to the page the reader is on.
+  test("percent jump that runs out of heap drops the place it pushed", [starvedTarget] {
+    EpubReaderActivity r; starvedTarget(r);
+    r.lastSavedSpineIndex = 1; r.lastSavedPage = 7; r.lastSavedPageCount = 19;
+    r.footnoteDepth = 1; r.returnPushedForLoad = true;
+    r.currentSpineIndex = 2; r.pendingPercentJump = true; r.pendingSpineProgress = 0.6f;
+    { RenderLock held; r.percentJump(); }
+    require(r.footnoteDepth == 0, "Back keeps a place that is the page the reader is on");
+    require(!r.returnPushedForLoad, "the push is still counted against the next paint");
+  });
+  test("contents jump that runs out of heap drops the place it pushed", [starvedTarget] {
+    EpubReaderActivity r; starvedTarget(r);
+    r.lastSavedSpineIndex = 1; r.lastSavedPage = 7; r.lastSavedPageCount = 19;
+    r.footnoteDepth = 1; r.returnPushedForLoad = true;
+    r.currentSpineIndex = 2; r.pendingAnchor = "chuong-655";
+    { RenderLock held; r.initialResume(0); }
+    require(r.footnoteDepth == 0, "Back keeps a place that is the page the reader is on");
+  });
+  test("jump whose anchor is missing from the map drops the place it pushed", [] {
+    EpubReaderActivity r; r.lastSavedSpineIndex = 1; r.lastSavedPage = 7; r.lastSavedPageCount = 19;
+    r.footnoteDepth = 2; r.returnPushedForLoad = true;
+    r.currentSpineIndex = 2; r.pendingAnchor = "chuong-280"; r.section->currentPage = 0;
+    { RenderLock held; r.anchorLanding(); }
+    require(r.footnoteDepth == 1, "Back keeps the place the failed jump pushed, or lost an older one");
+  });
+  test("a starved paint that no jump asked for keeps every place Back returns to", [starvedTarget] {
+    EpubReaderActivity r; starvedTarget(r);
+    r.lastSavedSpineIndex = 1; r.lastSavedPage = 7; r.lastSavedPageCount = 19;
+    r.footnoteDepth = 1; r.returnPushedForLoad = false;  // an older jump, long painted
+    r.currentSpineIndex = 2; r.pendingAnchor = "chuong-655";
+    { RenderLock held; r.initialResume(0); }
+    require(r.footnoteDepth == 1, "a paint with no jump behind it took a place off the stack");
+  });
   test("opening a book that runs out of heap keeps its place for the next try and saves nothing", [starvedTarget, nextPaint] {
     // Nothing saved in this visit yet: the place is the one the book opened at (chapter 3, page 12).
     EpubReaderActivity r; starvedTarget(r);

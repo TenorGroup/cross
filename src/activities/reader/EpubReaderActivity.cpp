@@ -522,6 +522,57 @@ namespace {
 void saveTapTipHidden() { SETTINGS.saveToFile(); }
 }  // namespace
 
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+void EpubReaderActivity::dropJumpBar() {
+  jumpBarSeconds = 0;
+  jumpBarStartMs = 0;
+  tenorchrome::noteJumpBar(0, 0);
+}
+
+// The way back's bar is up (renderContents put it there after a jump). Its "<" goes back; a tap on the rest of the bar does
+// nothing and the count goes on; any other input does what it always does, and the paint that follows takes the bar down.
+// The seconds count down in the ring, each one a fast refresh of the ring alone; at 0 the page is painted again without the
+// bar, which gives the gray text under the band back as the page always draws it.
+bool EpubReaderActivity::handleJumpBar() {
+  if (jumpBarSeconds <= 0) return false;
+  if (overlay != Overlay::None || preview) {
+    dropJumpBar();
+    return false;
+  }
+  int x = 0, y = 0;
+  if (mappedInput.wasScreenTapped(x, y)) {
+    switch (tenorchrome::jumpBarHit(renderer.getScreenWidth(), renderer.getScreenHeight(), x, y)) {
+      case tenorchrome::JumpBarHit::Back:
+        restoreSavedPosition();
+        return true;
+      case tenorchrome::JumpBarHit::Face:
+        return true;
+      case tenorchrome::JumpBarHit::None:
+        break;
+    }
+  }
+  if (jumpBarStartMs == 0 || mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() ||
+      mappedInput.wasScreenTapped(x, y) || mappedInput.wasSwipe() != MappedInputManager::SwipeDir::None)
+    return false;
+  const unsigned long elapsed = millis() - jumpBarStartMs;
+  const int left =
+      elapsed >= tenorchrome::JUMP_BAR_MS ? 0 : static_cast<int>((tenorchrome::JUMP_BAR_MS - elapsed + 999) / 1000);
+  if (left == jumpBarSeconds) return false;
+  RenderLock lock(RenderLock::TryTake{});
+  if (!lock.acquired() || !pageFrameShown || renderer.refreshBusy()) return false;
+  if (left == 0) {
+    dropJumpBar();
+    requestUpdate();
+    return false;
+  }
+  jumpBarSeconds = left;
+  tenorchrome::noteJumpBar(returnPageNumber(), left);
+  const auto box = tenorchrome::drawJumpBarCount(renderer);
+  renderer.displayWindow(box.x, box.y, box.width, box.height);
+  return false;
+}
+#endif
+
 // The tap-zone map is up: it takes this pass's input. Its button hides it for good (one settings write,
 // after the page is back on the panel); any other tap, swipe or Back closes it for this open only. The
 // tap that closes it turns no page. The page comes back with 1 full refresh and its gray pass, nothing
@@ -914,6 +965,7 @@ void EpubReaderActivity::forgetPendingJump() {
 void EpubReaderActivity::stayAfterStarvedJump() {
   const bool backToSaved = lastSavedSpineIndex >= 0 && lastSavedSpineIndex != currentSpineIndex;
   if (lastSavedSpineIndex >= 0) {
+    dropFailedJumpReturn();
     forgetPendingJump();
     currentSpineIndex = lastSavedSpineIndex;
     nextPageNumber = lastSavedPage;
@@ -1117,16 +1169,19 @@ void EpubReaderActivity::jumpToSearchResult(const int spine, const uint32_t visi
     return;
   }
   RenderLock lock;
-  pushReturnPosition();
-  clearDeferredReposition();
-  // The chapter on screen answers from its laid-out pages; any other (or a page not laid out yet) is built to the offset.
+  // The chapter on screen answers from its laid-out pages; a hit on the page already shown is no jump and leaves no place
+  // to return to. Any other (or a page not laid out yet) is built to the offset.
   if (section && currentSpineIndex == spine) {
     if (const auto page = section->getPageForVisibleTextOffset(visibleOffset)) {
+      if (*page != section->currentPage) pushReturnPosition();
+      clearDeferredReposition();
       section->currentPage = *page;
       requestUpdate();
       return;
     }
   }
+  pushReturnPosition();
+  clearDeferredReposition();
   currentSpineIndex = spine;
   TRACE_JUMP_BEGIN("search");
   pendingOffsetJump = visibleOffset;
@@ -1551,6 +1606,9 @@ void EpubReaderActivity::loop() {
   }
 
   if (tenorchrome::kTouchShell && readertip::isOpen() && handleTapTip()) return;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  if (handleJumpBar()) return;
+#endif
 
   const auto touch =
       ReaderUtils::detectTouchPageTurn(renderer, mappedInput, ReaderUtils::isRtlBookLanguage(epub->getLanguage()),
@@ -3124,6 +3182,7 @@ void EpubReaderActivity::renderBook() {
         // outgrew the heap). Its first page would be a guess, saved as the progress: the reader
         // stays on the page it last saved instead, and nothing is written.
         LOG_ERR("ERS", "Anchor '%s' not in the chapter's map; staying on the saved page", pendingAnchor.c_str());
+        dropFailedJumpReturn();
         pendingAnchor.clear();
         if (lastSavedSpineIndex == currentSpineIndex) {
           section->currentPage = lastSavedPage;
@@ -3373,6 +3432,10 @@ void EpubReaderActivity::renderBook() {
 #endif
     LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
     lastRenderCompleteMs = millis();
+    returnPushedForLoad = false;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+    if (jumpBarSeconds > 0 && jumpBarStartMs == 0) jumpBarStartMs = lastRenderCompleteMs;
+#endif
     if (!pendingQuoteEdit.empty()) quoteEditPageShown = true;
     // The page is on the panel: write the cover thumbnails its decode built, before the page
     // counts as ready and the page-turner radio starts.
@@ -3515,6 +3578,10 @@ TextGrayContext EpubReaderActivity::textGrayContext() const {
   TextGrayContext context;
   context.textAntiAliasing = SETTINGS.textAntiAliasing;
   context.covered = overlay != Overlay::None || overlayPopup.isActive();
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  // The way back's bar stands on a black and white page (its ring refreshes alone); the paint that takes it down is gray.
+  context.covered = context.covered || jumpBarSeconds > 0;
+#endif
   context.preparingPopup = showBookmarkMessage || showDictionaryMessage || showIndexingMessage ||
                            buildPopupPending || buildPopupRefreshing || pendingSyncSaveError;
   context.pendingManualTurn = pendingManualTurn.load(std::memory_order_acquire) != 0;
@@ -3699,6 +3766,19 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 
   const bool pageHasImages = page->hasImages();
   const bool pageHasImagesNeedingDecode = pageHasImages && page->hasImagesNeedingDecode();
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  // A paint takes the way back's bar down; the one after a jump puts it up, on a text page of the open book: the pre-display
+  // hook draws it into this frame, and textGrayContext keeps the page black and white while it stands. A page with images
+  // keeps its grays and gets no bar.
+  dropJumpBar();
+  if (jumpBarPending && !preview && overlay == Overlay::None) {
+    jumpBarPending = false;
+    if (!pageHasImages && returnPageNumber() > 0) {
+      jumpBarSeconds = static_cast<int>(tenorchrome::JUMP_BAR_MS / 1000);
+      tenorchrome::noteJumpBar(returnPageNumber(), jumpBarSeconds);
+    }
+  }
+#endif
   const bool manualRefreshPending = forcedRefreshPending;
   forcedRefreshPending = false;
   const bool cleanImageBasePending = manualRefreshPending || pagesUntilFullRefresh <= 1;
@@ -4207,10 +4287,13 @@ void EpubReaderActivity::renderStatusBar() const {
 
   // After a jump the way back stands in the title's cell for the length of this draw. The page turner's note and the
   // automatic turn's line keep the cell.
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+  // (The X4 Pro shows it as the dynamic bar for a few seconds instead: renderContents, handleJumpBar.)
   struct JumpBackNote {
     explicit JumpBackNote(const int page) { tenorchrome::noteJumpBack(page); }
     ~JumpBackNote() { tenorchrome::noteJumpBack(0); }
   } jumpBackNote(hasReturnPosition() && !linkNote && !automaticPageTurnActive ? returnPageNumber() : 0);
+#endif
 
   if (sb.slotsEnabled) {
     std::string chapterName;
@@ -6330,6 +6413,15 @@ int EpubReaderActivity::returnPageNumber() const {
   return hasReturnPosition() ? savedPositions[footnoteDepth - 1].pageNumber + 1 : -1;
 }
 
+// A jump the heap could not lay out leaves the reader on its saved page: the place the jump pushed is that page, and a
+// Back that returned to it would do nothing. (A full stack already dropped its oldest place to make room; that stays.)
+void EpubReaderActivity::dropFailedJumpReturn() {
+  if (std::exchange(returnPushedForLoad, false) && footnoteDepth > 0) footnoteDepth--;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  jumpBarPending = false;
+#endif
+}
+
 void EpubReaderActivity::pushReturnPosition() {
   // Full: drop the oldest entry so Back always returns from the newest jump.
   if (footnoteDepth == MAX_FOOTNOTE_DEPTH) {
@@ -6348,6 +6440,10 @@ void EpubReaderActivity::pushReturnPosition() {
   }
   savedPositions[footnoteDepth] = {currentSpineIndex, page, offset.value_or(UINT32_MAX)};
   footnoteDepth++;
+  returnPushedForLoad = true;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  jumpBarPending = true;
+#endif
   LOG_DBG("ERS", "Saved position [%d]: spine %d, page %d, offset %u", footnoteDepth, currentSpineIndex, page,
           offset.value_or(UINT32_MAX));
 }
@@ -6471,6 +6567,10 @@ void EpubReaderActivity::restoreSavedPosition() {
   footnoteDepth--;
   const auto& pos = savedPositions[footnoteDepth];
   LOG_DBG("ERS", "Restoring position [%d]: spine %d, page %d", footnoteDepth, pos.spineIndex, pos.pageNumber);
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  jumpBarPending = false;
+  dropJumpBar();
+#endif
 
   {
     RenderLock lock;
@@ -6621,6 +6721,7 @@ CrossPointPosition EpubReaderActivity::getCurrentPosition() const {
 void EpubReaderActivity::onPause() {
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   tenorchrome::noteReaderFootBar(false, false, -1);
+  dropJumpBar();
   if (toolbarUi) toolbarUi->closeRouting();
 #endif
   pendingManualTurn = 0;

@@ -107,6 +107,18 @@ void clearFootBand(const GfxRenderer& renderer, int air = 12);
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
 // Reader view data for the existing pre-display hook. The reader owns its depth and drafts.
 void noteReaderFootBar(bool open, bool keypad, int activeTool);
+// The way back after a jump (founder 14/10, Q37 C): the reader's own dynamic bar for JUMP_BAR_MS, in the bar's place at the
+// foot: the round "<", the page it leads to in a pill, and the seconds left in a ring. page 0 = no bar. The reader names
+// it as it names the reader menu's bar; the next frame sent to the panel gets it (drawFootBar). The page under it is painted
+// black and white only while it stands, so a ring refresh can never touch gray text; the paint that takes it down gives the
+// page its grays as every page gets them.
+constexpr unsigned long JUMP_BAR_MS = 3000;
+void noteJumpBar(int page, int seconds);
+enum class JumpBarHit : uint8_t { None, Back, Face };
+// Where a tap at (x, y) lands on the bar: the "<" (Back), the rest of the bar (Face), or off it. None while no bar stands.
+JumpBarHit jumpBarHit(int screenWidth, int screenHeight, int x, int y);
+// Draws the seconds ring alone, on a frame that already shows the bar, and returns its box for displayWindow.
+TouchBarRect drawJumpBarCount(const GfxRenderer& renderer);
 struct ReaderToolRect { int x, y, width, height; };
 // The white band the status strip takes over a page with the reader menu open: down to the first blank row
 // under the strip, so a line of the page is covered whole or not at all.
@@ -254,8 +266,10 @@ BatteryInkBounds batteryInkBounds(const GfxRenderer& renderer, int font, int tex
 void drawStatus(const GfxRenderer& renderer, const char* title = nullptr, int currentPage = 0, int pageCount = 0,
                 float bookProgress = 0, int paddingBottom = 0, bool estimated = false, bool bookmarked = false,
                 bool titleIsName = true);
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
 // While page > 0 the reader strip draws "< tr. page" in the place of the title: the way back after a jump. 0 = none.
 void noteJumpBack(int page);
+#endif
 void drawReaderSlots(const GfxRenderer& renderer, const char* title, int currentPage, int pageCount,
                      float bookProgress, bool estimated, bool bookmarked,
                      int64_t chapterSeconds = -1, int64_t bookSeconds = -1, const char* chapterName = nullptr,

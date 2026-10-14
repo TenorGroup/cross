@@ -106,6 +106,7 @@ void drawMoreChevron(const GfxRenderer&,int,int,ChevronDir,int) {}
 const freeink::Icon& zoneIcon(Zone) { return icon_tenor_reader_reading_40; }
 const char* screenTitle() { return ""; }
 void noteReaderFootBar(bool,bool,int);
+void noteJumpBar(int,int);
 void drawFootBar(const GfxRenderer&,FootBar,Zone);
 void drawPathPill(const GfxRenderer&,int,const char*,int,int,int,int,int,int,bool) { assert(false); }
 struct PathPillLayout { std::string text; int width; };
@@ -115,6 +116,10 @@ void clearFootBand(const GfxRenderer&, int air);
 cpp += '\n'.join(re.findall(r'^ugly::MarkState (?:backMark|readerToolMark);', source, re.M)) + '\n'
 cpp += note[0] + '\n' + method(source, 'bool readerFootBarActive()') + '\n'
 cpp += method(source, 'void tenorchrome::noteReaderFootBar') + '\n'
+cpp += re.search(r'struct JumpBarNote \{.*?\} jumpBar;', source, re.S).group(0) + '\n'
+cpp += method(source, 'bool jumpBarActive()') + '\n'
+cpp += method(source, 'void tenorchrome::noteJumpBar') + '\n'
+cpp += 'int faces = 0;\nvoid drawJumpBarFace(const GfxRenderer&, const tenorchrome::TouchBarRect&, bool) { ++faces; }\n'
 cpp += method(source, 'void tenorchrome::clearFootBand') + '\n'
 cpp += method(source, 'void readerToolNames(') + '\n'
 cpp += method(source, 'void tenorchrome::drawFootBar') + r'''
@@ -133,6 +138,17 @@ int main() {
   noteReaderFootBar(true,false,1); activityManager.name="Settings"; draw(); assert(rings==0 && HeaderBackTapTarget::foot==0);
   activityManager.name="EpubReader"; noteReaderFootBar(true,false,-1); draw(); assert(rings==2 && icons==READER_TOOLS);
   assert(ugly::labels.empty() && ugly::circles.empty());
+  // The way back after a jump: its own bar (the "<", then its face) while the reader names it, over a page and no menu.
+  noteReaderFootBar(false,false,-1); noteJumpBar(3,3); faces=0; draw();
+  assert(rings==1 && icons==0 && faces==1 && HeaderBackTapTarget::foot==0 && HeaderBackTapTarget::zone==0);
+  // The reader menu's bar takes the band while the menu is open.
+  noteReaderFootBar(true,false,1); faces=0; draw(); assert(faces==0 && icons==READER_TOOLS && HeaderBackTapTarget::foot==1);
+  noteReaderFootBar(false,false,-1); faces=0; draw(); assert(faces==1);
+  noteJumpBar(0,0); faces=0; draw(); assert(rings==0 && faces==0 && HeaderBackTapTarget::foot==0);
+  // Another screen, or another generation of the reader, draws none of it.
+  noteJumpBar(3,3); activityManager.name="Settings"; draw(); assert(rings==0 && faces==0);
+  activityManager.name="EpubReader"; ++activityManager.generation; draw(); assert(rings==0 && faces==0);
+  noteJumpBar(0,0);
   shell::selected=shell::Kind::Ugly;
   I18N.setLanguage(Language::EN);
   for (int w : {480,800}) {

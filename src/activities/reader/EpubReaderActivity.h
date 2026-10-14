@@ -291,6 +291,19 @@ class EpubReaderActivity final : public ReaderActivity {
   static constexpr int MAX_FOOTNOTE_DEPTH = 3;
   SavedPosition savedPositions[MAX_FOOTNOTE_DEPTH] = {};
   int footnoteDepth = 0;
+  // A jump pushed the place Back returns to and the paint that shows its target has not finished: when the heap cannot lay
+  // that page out the reader stays where it was, and the place the jump pushed goes with it (dropFailedJumpReturn).
+  bool returnPushedForLoad = false;
+  void dropFailedJumpReturn();
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  // The way back after a jump stands as the dynamic bar for JUMP_BAR_MS (tenorchrome::noteJumpBar). A jump sets Pending; the
+  // paint that carries the bar clears it and sets the seconds on the ring; StartMs is when that page reached the panel.
+  bool jumpBarPending = false;
+  int jumpBarSeconds = 0;
+  unsigned long jumpBarStartMs = 0;
+  bool handleJumpBar();
+  void dropJumpBar();
+#endif
   // The back-stack outlives the reader (sleep, home) in links.bin so Back
   // still returns to where a followed link was tapped. The card is touched after a frame, never
   // before: open only reads the file and the first frame's tick removes it (linkStackOnCard), the
