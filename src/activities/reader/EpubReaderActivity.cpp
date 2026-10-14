@@ -4150,6 +4150,13 @@ void EpubReaderActivity::renderStatusBar() const {
     title = epub ? epub->getTitle() : "";
   }
 
+  // After a jump the way back stands in the title's cell for the length of this draw. The page turner's note and the
+  // automatic turn's line keep the cell.
+  struct JumpBackNote {
+    explicit JumpBackNote(const int page) { tenorchrome::noteJumpBack(page); }
+    ~JumpBackNote() { tenorchrome::noteJumpBack(0); }
+  } jumpBackNote(hasReturnPosition() && !linkNote && !automaticPageTurnActive ? returnPageNumber() : 0);
+
   if (sb.slotsEnabled) {
     std::string chapterName;
     if (sb.slots[1] == CrossPointSettings::STATUS_SLOT_CHAPTER_NAME && epub && epub->indexComplete()) {

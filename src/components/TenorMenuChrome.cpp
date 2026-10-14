@@ -1045,6 +1045,61 @@ ReaderBattery drawReaderBattery(const GfxRenderer& r, const int textY, const int
 }
 }  // namespace
 
+namespace {
+// The way back after a jump: the page the reader returns to (1-based), 0 when there is none.
+int jumpBackPage = 0;
+ugly::MarkState jumpBackMark;
+
+// The way back, "< tr. N", in the place of the strip's title: the open "<" of the dynamic bar's back pill and the page it
+// leads to. Reading only: it adds no touch area and changes no button. The ring stands where the strip's text line
+// starts (textY), 22 px tall, the dynamic bar's pill ring. Too narrow a room tries "< N", then draws nothing and returns
+// false, and the title is drawn as before. `x` is the cell's left edge, `room` its width.
+bool drawJumpBackPill(const GfxRenderer& r, const int x, const int textY, const int room, const bool rough) {
+  if (jumpBackPage <= 0) return false;
+  constexpr int HEIGHT = 22, PAD = 9, GAP = 6, SPAN = 5;
+  const int chevron = tenorchrome::moreChevronLength(SPAN);
+  // The pen's circle runs about 24 px wide of its box on each side: it starts clear of what stands to the left.
+  const int lead = rough ? 24 : 0, overshoot = rough ? 16 : 0;
+  for (const bool numberOnly : {false, true}) {
+    char label[24];
+    if (numberOnly) snprintf(label, sizeof(label), "%d", jumpBackPage);
+    else snprintf(label, sizeof(label), "%s %d", tr(STR_JUMP_BACK_PAGE), jumpBackPage);
+    int box[4];
+    if (rough) {
+      const auto bounds = ugly::textBounds(r, ugly::Size::S22, label);
+      box[0] = bounds.x0, box[1] = bounds.y0, box[2] = bounds.x1, box[3] = bounds.y1;
+    } else {
+      const auto bounds = r.getTextInkBounds(SMALL_FONT_ID, label, EpdFontFamily::REGULAR);
+      std::copy(std::begin(bounds), std::end(bounds), box);
+    }
+    const int textWidth = box[2] - box[0];
+    const int width = PAD + chevron + GAP + textWidth + PAD;
+    if (lead + width + overshoot > room) continue;
+    const int left = x + lead, top = textY, chevronX = left + PAD, centerY = top + HEIGHT / 2;
+    if (rough) {
+      ugly::circle(r, ugly::Circle::Row, {left + PAD, top + 5, left + width - PAD, top + HEIGHT - 5}, 3, 2,
+                   jumpBackMark.get(static_cast<uint64_t>(jumpBackPage)), 1);
+      const int cx = chevronX + chevron / 2;
+      ugly::line(r, cx + 3, centerY - SPAN, cx - 3, centerY, 821, 2);
+      ugly::line(r, cx - 3, centerY, cx + 3, centerY + SPAN, 822, 2);
+      ugly::text(r, ugly::Size::S22, chevronX + chevron + GAP - box[0], textY + 18, label);
+    } else {
+      tenorchrome::drawPillRing(r, left, top, width, HEIGHT, 2, true);
+      tenorchrome::drawMoreChevron(r, chevronX, top + (HEIGHT - (2 * SPAN + 1)) / 2, tenorchrome::ChevronDir::Left, SPAN);
+      r.drawText(SMALL_FONT_ID, chevronX + chevron + GAP - box[0], top + (HEIGHT - (box[3] - box[1])) / 2 - box[1], label);
+    }
+#ifdef SIMULATOR
+    LOG_INF("JUMPBACK", "page=%d label=%s x=%d y=%d w=%d h=%d rough=%d", jumpBackPage, label, left, top, width, HEIGHT,
+            rough ? 1 : 0);
+#endif
+    return true;
+  }
+  return false;
+}
+}  // namespace
+
+void tenorchrome::noteJumpBack(const int page) { jumpBackPage = page; }
+
 void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const int currentPage,
                                  const int pageCount, const float bookProgress, const bool estimated,
                                  const bool bookmarked, const int64_t chapterSeconds, const int64_t bookSeconds,
@@ -1176,6 +1231,7 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
   const int room = std::max(0, (centerX >= 0 ? centerX : rightStart() - gapRight) - gapMiddle - start - mark);
   std::string name = fit(title ? title : "", std::max(0, room - colonWidth));
   if (bookmarked) inlineSymbols::drawShape(r, inlineSymbols::Shape::Star, start + 6, markTop + 5, 10, true);
+  if (drawJumpBackPill(r, start + mark, y, room, rough)) return;
   if (name.empty() || width(name.c_str()) + colonWidth > room) return;
   if (colon) name += ":";
   text(start + mark, y, name.c_str());
@@ -1234,6 +1290,7 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
       ugly::icon(r, ugly::icons::Id::Star, {left, base - 20, 24, 24}, ugly::iconFrameSeed());
       left += 24;
     }
+    if (hienTieuDe && drawJumpBackPill(r, left, base - 18, right - left, true)) return;
     if (hienTieuDe && right - left > 40) {
       const std::string name = ugly::fit(r, ugly::Size::S22, title, right - left);
       ugly::text(r, ugly::Size::S22, left, base, name.c_str());
@@ -1309,6 +1366,7 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   if (bookmarked) inlineSymbols::drawShape(r, inlineSymbols::Shape::Star, trai + 6, y + 12, 10, true);
   if (!hienTieuDe) return;
   const int room = std::max(0, countX - trai - markWidth - 8);
+  if (trongTrinhDoc && drawJumpBackPill(r, trai + markWidth, y, room, false)) return;
   // The colon only separates a name from counts; alone, or after a note, it would dangle.
   const int colon = counts.empty() || !titleIsName ? 0 : r.getTextWidth(SMALL_FONT_ID, ":");
   std::string name = r.truncatedText(SMALL_FONT_ID, title, std::max(0, room - colon));
