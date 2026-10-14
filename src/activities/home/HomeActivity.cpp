@@ -3341,7 +3341,8 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
       coverBufferShelf = shelfFirst;
       coverRendered = true;
       LOG_INF("HOME", "Home style=%u frame_file_us=%lu snapshot=%u", static_cast<unsigned>(f.style),
-              static_cast<unsigned long>(micros() - started), static_cast<unsigned>(coverBufferSize));
+              static_cast<unsigned long>(micros() - started),
+              static_cast<unsigned>(renderer.getRegionByteSize(coverRectX, coverRectY, coverRectW, coverRectH)));
       if (f.style != HomeRecentStyle::Shelf && recentBooks.size() > 1) drawOtherBookArrows(shown, f.rowY);
       return;
     }
@@ -3453,7 +3454,7 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
   coverRendered = true;
   if (auto* cache = renderer.getFontCacheManager()) cache->releaseBuiltinPageCaches();
   LOG_INF("HOME", "Home style=%u build_us=%lu snapshot=%u thumbs=%d free=%u largest=%u", static_cast<unsigned>(f.style),
-          static_cast<unsigned long>(micros() - started), static_cast<unsigned>(coverBufferSize), touchThumbCount,
+          static_cast<unsigned long>(micros() - started), static_cast<unsigned>(coverBufferSize + frameSnapshot.total), touchThumbCount,
           ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   LOG_INF("HOME", "Home build end style=%u", static_cast<unsigned>(f.style));
 }
