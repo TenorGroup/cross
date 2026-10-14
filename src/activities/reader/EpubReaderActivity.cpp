@@ -4924,11 +4924,6 @@ void EpubReaderActivity::openOverlay(Overlay target) {
   }
 }
 
-// A list of fewer than 2 rows has no row for the front Left and Right to step to: on the X3 bar they turn the chapter.
-bool EpubReaderActivity::frontKeysTurnChapter(const int rows) const {
-  return ReaderToolbarUi::usesX3Bar() && rows < 2 && textDepth == TextDepth::Rows;
-}
-
 // What an overlay shows when it opens: the cursor, the list's viewport and the rows it lists.
 void EpubReaderActivity::prepareOverlayState(const Overlay target) {
   // Buttons show a cursor from the start; touch boards only once a button moves it.
@@ -5001,7 +4996,7 @@ void EpubReaderActivity::renderOverlay() {
 #endif
 
   ReaderToolbarUi::Model model;
-  const auto drawMenuChrome = [&]() {
+  const auto drawMenuChrome = [this]() {
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
     if (!SETTINGS.globalStatusBarHidden()) {
       renderer.fillRect(0, 0, renderer.getScreenWidth(), tenorchrome::readerStripBottom(renderer), false);
@@ -5018,9 +5013,9 @@ void EpubReaderActivity::renderOverlay() {
       } else {
         renderer.fillRect(0, renderer.getScreenHeight() - footer, renderer.getScreenWidth(), footer, false);
       }
-      const bool chapterKeys = overlay == Overlay::Toolbar || frontKeysTurnChapter(model.itemCount);
       const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT),
-          chapterKeys ? tr(STR_DIR_LEFT) : tr(STR_DIR_UP), chapterKeys ? tr(STR_DIR_RIGHT) : tr(STR_DIR_DOWN));
+          overlay == Overlay::Toolbar ? tr(STR_DIR_LEFT) : tr(STR_DIR_UP),
+          overlay == Overlay::Toolbar ? tr(STR_DIR_RIGHT) : tr(STR_DIR_DOWN));
       GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
       renderer.setOrientation(orientation);
     }
@@ -5603,13 +5598,6 @@ void EpubReaderActivity::handleOverlayInput() {
   }
   constexpr auto kRowBefore = MappedInputManager::Button::Left;
   constexpr auto kRowAfter = MappedInputManager::Button::Right;
-  if (frontKeysTurnChapter(count)) {
-    const bool back = mappedInput.wasReleased(kRowBefore);
-    if (back || mappedInput.wasReleased(kRowAfter)) {
-      gotoSpine(currentSpineIndex + (back ? -1 : 1));
-      return;
-    }
-  }
 #endif
 
   // The cursor buttons (X4 Pro: Up/Down and Left/Right; buttons: the front pair) step one row, holding

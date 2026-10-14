@@ -446,7 +446,6 @@ class EpubReaderActivity final : public ReaderActivity {
   bool usesToolbarMenu() const;
   void openOverlay(Overlay target);
   void prepareOverlayState(Overlay target);
-  bool frontKeysTurnChapter(int rows) const;
   void stopRadioForSheet();
   void closeOverlayToPage();
   void discardOverlayPage();

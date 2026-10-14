@@ -5,12 +5,14 @@ Founder: the menu opens on the Favorites tab, even with nothing pinned; the side
  2. Toolbar style, nothing pinned or one row pinned: the bar opens with the ring on the first tab.
  3. In both, side Down moves the ring to the next tab and side Up brings it back.
  4. tenor/ugly keeps what it had: a list menu with nothing pinned opens on the Reading tab.
- 5. The front buttons Left and Right on the bar turn the chapter back and forward.
+ 5. The front buttons Left and Right step the rows of the list, as in the list menu, and never turn the chapter (the chapter
+    is reached through Position > Select chapter).
  6. Toolbar style on the X3 bar: the menu opens straight on the list of the Favorites tab, with no scrub row (the old
     "Chapter" sheet with its drag row and its page line), and no press fewer than before reaches Contents, Text and
     the next chapter.
  7. Back from a list closes the menu to the page (it went to the toolbar before).
- 8. Where the list has 2 rows or more the front Left and Right step the rows, so the chapter stays where it is.
+ 8. With nothing pinned or 1 row pinned the front Left and Right change nothing; with 3 rows they step down and up. The
+    key strip says "^ v" in every case.
  9. Position > Select chapter shows where the reader stands (page of the chapter, share of the book) over the bar.
 10. The pin hint ("On any tab, hold Select to pin or unpin ...") stands alone inside the frame of the Favorites list
     while nothing is pinned (the toolbar's "Hold a row in Text or More to pin it here" is gone), and is gone once a row is pinned (the list gets its room), in the list menu and the toolbar menu.
@@ -167,20 +169,6 @@ class OpensOnFavoritesTest(unittest.TestCase):
             self.assertEqual([chosen_tab(s) for s in shots], [0, 1, 0])
 
 
-class FrontKeysTest(unittest.TestCase):
-    """The front Left and Right on the bar turn the chapter and leave the ring where it is (A)."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.shots = run(TOOLBAR, [14], ['RIGHT', 'LEFT'])
-
-    def test_5_front_right_turns_the_chapter_and_front_left_turns_it_back(self):
-        opened, forward, back = self.shots
-        self.assertTrue((page(forward) != page(opened)).any(), 'front Right: the next chapter')
-        self.assertTrue((page(back) == page(opened)).all(), 'front Left: the first chapter again')
-        self.assertEqual([chosen_tab(s) for s in self.shots], [0, 0, 0])
-
-
 class OpensOnTheListTest(unittest.TestCase):
     """The X3 bar has no toolbar step: the first press shows the list, and each way into the menu is a press shorter."""
 
@@ -191,8 +179,7 @@ class OpensOnTheListTest(unittest.TestCase):
         cls.text = run(TOOLBAR, [14], ['UP'])
         cls.back = run(TOOLBAR, [14], ['BACK'], page=True)
         cls.position_back = run(TOOLBAR, [14], ['DOWN', 'BACK'], page=True)
-        cls.two_rows = run(TOOLBAR, [14, 16], ['RIGHT'])
-        cls.empty_keys = run(TOOLBAR, [], ['RIGHT', 'LEFT'])
+        cls.keys = {rows: run(TOOLBAR, [14, 16, 3][:rows], ['RIGHT', 'LEFT']) for rows in (0, 1, 3)}
 
     def test_6_the_first_press_shows_the_list_and_no_drag_row(self):
         page_shot, opened = self.pinned
@@ -218,16 +205,26 @@ class OpensOnTheListTest(unittest.TestCase):
         self.assertFalse(same_page(page_shot, tab), 'side Down brought the Position list up')
         self.assertTrue(same_page(page_shot, closed), 'Back from the Position list went to the toolbar, not the page')
 
-    def test_8_two_rows_keep_the_front_keys_for_the_rows(self):
-        opened, after_right = self.two_rows
-        head = slice(0, 250)  # the chapter heading and the first lines, clear of the taller sheet of 2 rows
-        self.assertTrue((np.asarray(after_right)[head] == np.asarray(opened)[head]).all(), 'front Right turned the chapter')
-        self.assertTrue((np.asarray(after_right) != np.asarray(opened)).any(), 'front Right did not step the row')
+    def test_8_the_front_keys_never_turn_the_chapter(self):
+        head = slice(0, 250)  # the chapter heading and the first lines, clear of the taller sheet of 3 rows
+        for rows, shots in self.keys.items():
+            for shot in shots[1:]:
+                self.assertTrue((np.asarray(shot)[head] == np.asarray(shots[0])[head]).all(), f'{rows} pinned: the chapter turned')
 
-    def test_8_an_empty_list_leaves_the_front_keys_to_the_chapter(self):
-        opened, forward, back = self.empty_keys
-        self.assertTrue((page(forward) != page(opened)).any())
-        self.assertTrue((page(back) == page(opened)).all())
+    def test_8_with_nothing_or_1_row_the_front_keys_change_nothing(self):
+        for rows in (0, 1):
+            opened, right, left = self.keys[rows]
+            self.assertTrue((np.asarray(right) == np.asarray(opened)).all(), f'{rows} pinned: front Right changed the screen')
+            self.assertTrue((np.asarray(left) == np.asarray(opened)).all(), f'{rows} pinned: front Left changed the screen')
+
+    def test_8_with_3_rows_the_front_keys_step_down_and_up(self):
+        opened, right, left = self.keys[3]
+        self.assertTrue((np.asarray(right) != np.asarray(opened)).any(), 'front Right did not step the row')
+        self.assertTrue((np.asarray(left) == np.asarray(opened)).all(), 'front Left did not step back')
+
+    def test_8_the_key_strip_says_up_and_down_for_every_list(self):
+        strips = [np.asarray(self.keys[rows][0])[760:] for rows in (0, 1, 3)]
+        self.assertTrue((strips[0] == strips[2]).all() and (strips[1] == strips[2]).all(), 'the strip changes with the rows')
 
 
 class FavoritesHintTest(unittest.TestCase):
