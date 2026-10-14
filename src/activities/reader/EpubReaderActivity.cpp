@@ -1987,9 +1987,9 @@ void EpubReaderActivity::jumpToPercent(int percent) {
 
   {
     RenderLock lock;
-    if (currentSpineIndex != targetSpineIndex ||
-        (section && section->laidOutTo(pendingSpineProgress) &&
-         section->pageAtFraction(pendingSpineProgress) != section->currentPage)) {
+    // The percent screen may have released the section: with no page to compare, count it as a move.
+    if (currentSpineIndex != targetSpineIndex || !section || !section->laidOutTo(pendingSpineProgress) ||
+        section->pageAtFraction(pendingSpineProgress) != section->currentPage) {
       pushReturnPosition();
     }
     clearDeferredReposition();
