@@ -229,15 +229,19 @@ void drainRemote() {
   }
 }
 
+// Once per visit: the SDK finds a bonded remote again only after this.
+void armReconnectOnce() {
+  if (visit.reconnectArmed || port::stopping()) return;
+  visit.reconnectArmed = true;
+  if (!port::armBondedReconnect(config->pick, config->peerAddr)) {
+    say(false, "Bonded reader reconnect was not armed\n");
+  }
+}
+
 bool serveReader() {
   bool acted = false;
   readerStartDeferred.store(false, std::memory_order_relaxed);
-  if (!visit.reconnectArmed && !port::stopping()) {
-    visit.reconnectArmed = true;
-    if (!port::armBondedReconnect(config->pick, config->peerAddr)) {
-      say(false, "Bonded reader reconnect was not armed\n");
-    }
-  }
+  armReconnectOnce();
   port::poll();
   // A remote with a table goes by RAW edges: each edge checks at most 8 slots of the linked
   // remote's table, and a button the table does not name falls back to the key mapping.
@@ -515,7 +519,12 @@ bool tick(const Scene& s) {
     }
     if (reader && !attemptInFlight.load(std::memory_order_acquire) && port::running()) acted = serveReader();
     // At Home nothing takes a remote's presses; drop them rather than carry them into the next book.
-    if (home && !attemptInFlight.load(std::memory_order_acquire) && port::running()) drainRemote();
+    // The remote links here too, so the book finds it up.
+    if (home && !attemptInFlight.load(std::memory_order_acquire) && port::running()) {
+      armReconnectOnce();
+      port::poll();
+      drainRemote();
+    }
   }
 
   const bool up = reader && port::running() && !attemptInFlight.load(std::memory_order_acquire);
