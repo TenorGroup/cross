@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 
 #include "MappedInputManager.h"
@@ -240,6 +241,13 @@ void FontDownloadActivity::onWifiSelectionComplete(const bool success) {
 
   if (!hasGroupScreen()) buildFilteredIndices(0);
 
+#ifdef SIMULATOR
+  if (const char* spec = std::getenv("CROSSPOINT_SIM_FONT_STATE")) {
+    simulateState(spec);
+    requestUpdate();
+    return;
+  }
+#endif
   {
     RenderLock lock(*this);
     rowsDirty_ = true;  // families_ just loaded
@@ -252,6 +260,50 @@ void FontDownloadActivity::onWifiSelectionComplete(const bool success) {
     }
   }
 }
+
+#ifdef SIMULATOR
+// Test hook: CROSSPOINT_SIM_FONT_STATE="state=downloading,fam=5,fp=..,fd=..,b=1,bi=1,bc=2,bt=..,bd=.." freezes a
+// transfer screen on chosen numbers so a screenshot can read them. state: downloading, installing, done, error.
+void FontDownloadActivity::simulateState(const char* spec) {
+  RenderLock lock(*this);
+  const std::string text = spec;
+  size_t from = 0;
+  std::string mode;
+  while (from < text.size()) {
+    size_t to = text.find(',', from);
+    if (to == std::string::npos) to = text.size();
+    const std::string item = text.substr(from, to - from);
+    const size_t eq = item.find('=');
+    const std::string key = item.substr(0, eq);
+    const std::string value = eq == std::string::npos ? "" : item.substr(eq + 1);
+    const auto number = std::strtoull(value.c_str(), nullptr, 10);
+    if (key == "state") mode = value;
+    else if (key == "fam") downloadingFamilyIndex_ = static_cast<int>(number);
+    else if (key == "fp") fileProgress_ = static_cast<size_t>(number);
+    else if (key == "ft") fileTotal_ = static_cast<size_t>(number);
+    else if (key == "fd") familyDownloadedBytes_ = static_cast<uint32_t>(number);
+    else if (key == "b") batchRunning_ = number != 0;
+    else if (key == "bi") batchFamilyIndex_ = static_cast<unsigned>(number);
+    else if (key == "bc") batchFamilyCount_ = static_cast<unsigned>(number);
+    else if (key == "bt") batchTotalBytes_ = number;
+    else if (key == "bd") batchDownloadedBytes_ = number;
+    else if (key == "ok") batchSuccessCount_ = static_cast<unsigned>(number);
+    else if (key == "bad") batchFailureCount_ = static_cast<unsigned>(number);
+    else if (key == "failfam") {
+      resultFailureIndex_ = static_cast<int>(number);
+      families_[resultFailureIndex_].failureReason = tr(STR_FONT_PACK_CHECKSUM_ERROR);
+    } else if (key == "msg") errorMessage_ = value;
+    from = to + 1;
+  }
+  batchResult_ = mode == "done" && batchFamilyCount_ > 0;
+  installingPack_ = mode == "installing";
+  state_ = mode == "done" ? COMPLETE : mode == "error" ? ERROR : DOWNLOADING;
+  if (state_ == DOWNLOADING) {
+    currentFileIndex_ = 0;
+    currentFileTotal_ = 1;
+  }
+}
+#endif
 
 // --- Manifest fetching ---
 

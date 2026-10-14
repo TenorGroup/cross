@@ -216,4 +216,7 @@ class FontDownloadActivity final : public UiListActivity {
   void drawListHints();
   void drawChrome() override;
   void drawFooter() override { drawListHints(); }
+#ifdef SIMULATOR
+  void simulateState(const char* spec);
+#endif
 };

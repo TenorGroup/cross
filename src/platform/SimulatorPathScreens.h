@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "activities/settings/FontDownloadActivity.h"
 #include "activities/settings/HomeButtonSettingsActivity.h"
 #include "activities/settings/InfoUpdateActivity.h"
 #include "activities/settings/KOReaderSettingsActivity.h"
@@ -19,7 +20,8 @@ inline void simulatorPathScreen(GfxRenderer& renderer, MappedInputManager& input
   const char* current = activityManager.currentName();
   // The cable update screens open over Home, as a computer would open them.
   const bool cableScreen = target && std::strncmp(target, "Cable", 5) == 0;
-  const bool overHome = cableScreen || (target && std::strcmp(target, "KOReaderSettings") == 0);
+  const bool overHome = cableScreen || (target && (std::strcmp(target, "KOReaderSettings") == 0 ||
+                                                   std::strcmp(target, "FontDownload") == 0));
   if (opened || !target || !current || std::strcmp(current, overHome ? "Home" : "Settings") != 0 ||
       !activityManager.hasDrawnFrame() || (at && millis() < std::strtoul(at, nullptr, 10))) return;
   opened = true;
@@ -37,6 +39,8 @@ inline void simulatorPathScreen(GfxRenderer& renderer, MappedInputManager& input
   // Exercise the real screen on X3 when its menu row is gated by board capabilities.
   if (std::strcmp(target, "HomeButtonSettings") == 0)
     activityManager.pushActivity(std::make_unique<HomeButtonSettingsActivity>(renderer, input));
+  else if (std::strcmp(target, "FontDownload") == 0)
+    activityManager.pushActivity(std::make_unique<FontDownloadActivity>(renderer, input));
   else if (std::strcmp(target, "KeyboardLayouts") == 0)
     activityManager.pushActivity(std::make_unique<KeyboardLayoutsActivity>(renderer, input));
   else if (std::strcmp(target, "KOReaderSettings") == 0)
