@@ -458,6 +458,14 @@ TEST(AutoSyncDebt, ADebtIsDroppedOnlyWhenTheCardAnswersAndTheBookIsNotThere) {
   EXPECT_EQ(checkBook(true, true, false), BookCheck::Unreadable);
 }
 
+TEST(WakePullSleep, AMeasuringBuildCanLowerTheRuleAndTheDefaultStaysThirtyMinutes) {
+  const uint32_t at = 1791700000;
+  EXPECT_TRUE(sleptLongEnough(at, at + 10, true, 5));
+  EXPECT_FALSE(sleptLongEnough(at, at + 4, true, 5));
+  EXPECT_FALSE(sleptLongEnough(at, at + 10, false, 5));  // a clock that is not trusted still counts as short
+  EXPECT_FALSE(sleptLongEnough(at, at + PULL_MIN_SLEEP_SECONDS - 1, true));
+}
+
 // ---- remembered access point -----------------------------------------------------------------------------------
 
 namespace {

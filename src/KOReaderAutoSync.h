@@ -55,6 +55,15 @@ struct PullChange {
   uint32_t fromOffset = 0;  // the text offset the reader was at, when the saved place had one
   bool hasFromOffset = false;
 };
+#ifdef TENOR_PRESS_PROBE
+// Measuring build only. Lets a timed wake count as a long sleep: the 30 minute rule is read as `seconds`
+// from now on (0 puts the rule back), kept through deep sleep. Asked by the cable command KAS_MIN_SLEEP.
+void probeSetMinSleep(uint32_t seconds);
+// Once per pull that ran: prints the heap after the book's first frame (the line after the pull is
+// printed by pullOnWake itself, before the book opens).
+void probeAfterFirstFrame();
+#endif
+
 const PullChange* progressJustPulled();
 void acknowledgeProgressPulled();
 

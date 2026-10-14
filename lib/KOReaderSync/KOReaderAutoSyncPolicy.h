@@ -66,8 +66,10 @@ constexpr bool canStartRequest(const uint32_t elapsedMs) { return elapsedMs + RE
 
 // Has the machine slept long enough for a wake pull? Both stamps must come from a trusted clock:
 // without one (or with a clock that went backwards) the sleep counts as short and nothing is pulled.
-constexpr bool sleptLongEnough(const uint32_t sleptAt, const uint32_t now, const bool clockTrusted) {
-  return clockTrusted && sleptAt != 0 && now >= sleptAt && now - sleptAt >= PULL_MIN_SLEEP_SECONDS;
+// `minSeconds` is the rule; only a measuring build passes another value than the 30 minutes.
+constexpr bool sleptLongEnough(const uint32_t sleptAt, const uint32_t now, const bool clockTrusted,
+                               const uint32_t minSeconds = PULL_MIN_SLEEP_SECONDS) {
+  return clockTrusted && sleptAt != 0 && now >= sleptAt && now - sleptAt >= minSeconds;
 }
 
 // Only an Epub has a place the server's record maps onto; a text or XTC book is never pulled (the Wi-Fi

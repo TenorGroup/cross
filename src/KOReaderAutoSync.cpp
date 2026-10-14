@@ -54,6 +54,26 @@ bool hasPendingMark = false;
 PullChange pullChange;
 bool hasPullChange = false;
 
+#ifdef TENOR_PRESS_PROBE
+RTC_NOINIT_ATTR uint32_t probeMinSleepMagic;
+RTC_NOINIT_ATTR uint32_t probeMinSleepSeconds;
+constexpr uint32_t PROBE_MIN_SLEEP_MAGIC = 0x4B41534D;
+bool probeHeapPending = false;
+
+void probeHeap(const char* stage) {
+  LOG_INF("KAS", "HEAP_INFO stage=%s free=%u largest=%u min=%u", stage, static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()), static_cast<unsigned>(ESP.getMinFreeHeap()));
+}
+#endif
+
+// The 30 minute rule; a measuring build can lower it so a timed wake of a few seconds counts.
+uint32_t minSleepSeconds() {
+#ifdef TENOR_PRESS_PROBE
+  if (probeMinSleepMagic == PROBE_MIN_SLEEP_MAGIC && probeMinSleepSeconds > 0) return probeMinSleepSeconds;
+#endif
+  return PULL_MIN_SLEEP_SECONDS;
+}
+
 int32_t msLeft(const uint32_t deadline) { return static_cast<int32_t>(deadline - millis()); }
 
 // false: the card could not be read right now, so nothing may be written over the file.
@@ -503,7 +523,7 @@ PullResult pullOnWake(GfxRenderer& renderer, const std::string& path, const bool
   if (!isEpubPath(path)) return PullResult::Skipped;  // a text or XTC book has no place to map onto
   const time_t now = time(nullptr);
   const bool slept = sleptLongEnough(APP_STATE.sleepStartedAt, now > 0 ? static_cast<uint32_t>(now) : 0,
-                                     halClock.hasValidTime());
+                                     halClock.hasValidTime(), minSleepSeconds());
   if (!slept) {
     if (KOREADER_STORE.getAutoSync()) LOG_INF("KAS", "wake pull skipped: short sleep or no trusted clock");
     return PullResult::Skipped;
@@ -518,8 +538,25 @@ PullResult pullOnWake(GfxRenderer& renderer, const std::string& path, const bool
   const PullResult result = pullNow(renderer, path, started);
   LOG_INF("KAS", "wake pull result=%d total=%lu ms", static_cast<int>(result),
           static_cast<unsigned long>(millis() - started));
+#ifdef TENOR_PRESS_PROBE
+  probeHeap("after_pull");  // the book is not open yet
+  probeHeapPending = true;
+#endif
   return result;
 }
+
+#ifdef TENOR_PRESS_PROBE
+void probeSetMinSleep(const uint32_t seconds) {
+  probeMinSleepSeconds = seconds;
+  probeMinSleepMagic = seconds > 0 ? PROBE_MIN_SLEEP_MAGIC : 0;
+}
+
+void probeAfterFirstFrame() {
+  if (!probeHeapPending) return;
+  probeHeapPending = false;
+  probeHeap("first_frame");
+}
+#endif
 
 const PullChange* progressJustPulled() { return hasPullChange ? &pullChange : nullptr; }
 
