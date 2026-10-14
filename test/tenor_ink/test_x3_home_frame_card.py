@@ -152,7 +152,10 @@ def main():
 
         for style, name in ((1, 'Large cover'), (2, 'Shelf')):
             sd = make_sd(tmp, f'ble{style}', style)
-            launch(sd, 9000, AFTER_BLE)
+            launch(sd, 9000)  # the covers are made on a heap with room for them
+            for old in (sd / '.crosspoint').glob('home-frame-*.card'):
+                old.unlink()
+            launch(sd, 3000, AFTER_BLE)
             check(frame_files(sd) == [f'home-frame-{style}-0.card'], f'{name}: after Bluetooth the frame still reaches the card, got {frame_files(sd)}')
             again = launch(sd, 3000, AFTER_BLE)
             heap = held(again)
