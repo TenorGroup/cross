@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstdio>
 #include "components/ReadingStatsView.h"
+#include "ReadingStatsStore.h"
 int main() {
  int scenarios = 0;
  for (uint8_t tier : {1, 2}) for (int width : {480, 528}) for (int locale : {0, 1, 2}) for (int page : {0, 1, 2}) {
@@ -26,5 +27,18 @@ int main() {
   }
   ++scenarios;
  }
- printf("PASS: %d production stats page/sleep renders, three real locales, full line-box bounds\n",scenarios);
+ // The reading card names the book as every other screen does: no subtitle (Atomic Habits: An Easy and Proven Way...).
+ {
+  READING_STATS.activeBookTitle = "Atomic Habits: An Easy and Proven Way to Build Good Habits and Break Bad Ones";
+  SETTINGS.uiTextSize = 0;
+  GfxRenderer renderer;
+  readingstatsview::drawSleep(renderer);
+  bool named = false;
+  for (const auto& run : renderer.runs) {
+    assert(run.text.find("Easy") == std::string::npos);
+    named = named || run.text == "Atomic Habits";
+  }
+  assert(named);
+ }
+ printf("PASS: %d production stats page/sleep renders, three real locales, full line-box bounds, short book name\n",scenarios);
 }
