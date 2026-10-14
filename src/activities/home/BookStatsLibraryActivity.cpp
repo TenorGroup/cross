@@ -8,6 +8,7 @@
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
+#include "util/BookTitleDisplay.h"
 namespace {
 bool fitsPageCache(const std::vector<ReadingStatsStore::BookEntry>& books) {
   size_t retained = books.capacity() * sizeof(ReadingStatsStore::BookEntry);
@@ -61,7 +62,8 @@ void BookStatsLibraryActivity::loadPage(const ReadingStatsStore::BookEntry& boun
     rows[count].actionValue = count;
     ++count;
   }
-  for (const auto& book : books) {
+  for (auto& book : books) {
+    book.title = booktitle::display(book.title);  // this page's own copy, drawn only
     rows[count].label = book.title.c_str();
     rows[count].actionValue = count;
     ++count;

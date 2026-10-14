@@ -45,6 +45,7 @@
 #include "components/themes/TenorRadius.h"
 #include "fontIds.h"
 #include "images/MoonIcon.h"
+#include "util/BookTitleDisplay.h"
 
 namespace {
 
@@ -1298,9 +1299,10 @@ void SleepActivity::renderQuoteSleepScreen() const {
   // Bottom row: title (at most three lines) and place, beside the cover or from the margin.
   const int textX = hasCover ? MARGIN_X + COVER_W + COVER_TEXT_GAP : MARGIN_X;
   constexpr int TITLE_FONT = NOTOSERIF_12_FONT_ID;
-  if (fcm && !quote.title.empty()) fcm->prewarmCache(TITLE_FONT, quote.title.c_str(), 1u << EpdFontFamily::ITALIC);
+  const std::string shownTitle = booktitle::display(quote.title);
+  if (fcm && !quote.title.empty()) fcm->prewarmCache(TITLE_FONT, shownTitle.c_str(), 1u << EpdFontFamily::ITALIC);
   auto title = quote.title.empty() ? std::vector<std::string>{}
-                                   : renderer.wrappedText(TITLE_FONT, quote.title.c_str(), bodyRight - textX,
+                                   : renderer.wrappedText(TITLE_FONT, shownTitle.c_str(), bodyRight - textX,
                                                           TITLE_MAX_LINES, EpdFontFamily::ITALIC);
   if (!title.empty()) tidyEllipsis(title.back());
   char place[96];

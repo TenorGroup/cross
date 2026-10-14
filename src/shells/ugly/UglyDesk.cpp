@@ -14,6 +14,7 @@
 #include "UglyShell.h"
 #include "activities/ActivityManager.h"
 #include "components/X3BrandCodec.h"
+#include "util/BookTitleDisplay.h"
 #if FREEINK_DEVICE_X4PRO
 #include <Memory.h>
 
@@ -118,7 +119,7 @@ void Desk::render(RenderLock&&) {
   }
   const Lift& b = LIFTS[READING];
   if (hasBook) {
-    text(renderer, Size::S30, 95 + b.dx, 370 + b.dy, fit(renderer, Size::S30, book.title, 150).c_str());
+    text(renderer, Size::S30, 95 + b.dx, 370 + b.dy, fit(renderer, Size::S30, booktitle::display(book.title), 150).c_str());
     text(renderer, Size::S22, 105 + b.dx, 402 + b.dy, fit(renderer, Size::S22, book.author, 140).c_str());
     char pct[8];
     snprintf(pct, sizeof(pct), "%d%%", percent);
@@ -166,7 +167,7 @@ void Desk::render(RenderLock&&) {
 
   // The open book shows the one being read.
   if (hasBook) {
-    text(renderer, Size::S30, 95, 370, fit(renderer, Size::S30, book.title, 150).c_str());
+    text(renderer, Size::S30, 95, 370, fit(renderer, Size::S30, booktitle::display(book.title), 150).c_str());
     text(renderer, Size::S22, 105, 402, fit(renderer, Size::S22, book.author, 140).c_str());
     char pct[8];
     snprintf(pct, sizeof(pct), "%d%%", percent);

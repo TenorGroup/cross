@@ -31,6 +31,7 @@
 #include "activities/ActivityManager.h"
 #include "activities/RenderLock.h"
 #include "activities/settings/SettingsActivity.h"
+#include "util/BookTitleDisplay.h"
 #if FREEINK_DEVICE_X4PRO
 #include "SettingsList.h"
 #include "UglyTouch.h"
@@ -86,7 +87,7 @@ Notebook::Rows Notebook::read(const homerows::Page p) const {
       // The book being read is in the diary and on the desk: the page lists the others.
       auto books = homerows::recent(RecentBooksStore::MAX_RECENT_BOOKS);
       if (!books.empty()) books.erase(books.begin());
-      for (const auto& b : books) r.labels.push_back(utf8ComposeNfc(b.title));
+      for (const auto& b : books) r.labels.push_back(utf8ComposeNfc(booktitle::display(b.title)));
       r.books = std::move(books);
       break;
     }

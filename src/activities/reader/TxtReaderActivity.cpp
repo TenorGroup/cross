@@ -32,6 +32,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/ReadingExcerpt.h"
+#include "util/BookTitleDisplay.h"
 
 namespace {
 constexpr size_t CHUNK_SIZE = 8 * 1024;  // 8KB chunk for reading
@@ -649,7 +650,7 @@ void TxtReaderActivity::renderStatusBar() const {
   std::string title;
   const bool linkNote = SETTINGS.statusBarSpec().showsTitle() && linkNoteTitle(title);
   if (SETTINGS.statusBarSpec().showsTitle() && !linkNote) {
-    title = txt->getTitle();
+    title = booktitle::display(txt->getTitle());
   }
   GUI.drawStatusBar(renderer, progress, currentPage + 1, totalPages, title, 0, 0, true, false, false, !linkNote);
 }

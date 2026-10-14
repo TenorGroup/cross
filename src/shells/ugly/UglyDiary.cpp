@@ -13,6 +13,7 @@
 #include "UglyShell.h"
 #include "UglySleepSet.h"
 #include "activities/ActivityManager.h"
+#include "util/BookTitleDisplay.h"
 
 void saveAppState();  // main.cpp
 
@@ -54,7 +55,7 @@ std::vector<std::string> splitWords(const char* text) {
 }  // namespace
 
 void Diary::buildSentence() {
-  const std::string title = hasBook ? fit(renderer, Size::S38, book.title, 300) : std::string();
+  const std::string title = hasBook ? fit(renderer, Size::S38, booktitle::display(book.title), 300) : std::string();
   char text[256];
   using K = logic::DiaryKind;
   switch (kind) {
