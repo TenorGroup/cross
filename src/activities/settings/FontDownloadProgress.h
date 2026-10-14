@@ -63,4 +63,25 @@ class ProgressRenderGate {
   bool hasPainted_ = false;
 };
 
+// Rows of the transfer screen (family name, size line, two bars, total line, byte line). Every bar writes its own
+// percent label gap pixels below itself, so a row placed under a bar has to start under that label too.
+struct TransferLayout {
+  int name, status, bar1, total, bar2, size;
+};
+
+inline TransferLayout transferLayout(const int centerY, const int lineHeight, const int spacing, const int barHeight,
+                                     const int labelGap) {
+  const int step = lineHeight + spacing;
+  const int barStep = barHeight + labelGap + step;  // bar, its percent label, then the next row
+  const int blockHeight = 6 * lineHeight + 5 * spacing + 2 * (barHeight + labelGap);
+  TransferLayout layout;
+  layout.name = centerY + lineHeight / 2 - blockHeight / 2;
+  layout.status = layout.name + step;
+  layout.bar1 = layout.status + step;
+  layout.total = layout.bar1 + barStep;
+  layout.bar2 = layout.total + step;
+  layout.size = layout.bar2 + barStep;
+  return layout;
+}
+
 }  // namespace fontdownload

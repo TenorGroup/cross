@@ -29,3 +29,14 @@ add_test(NAME FontDownloadReleaseGuardTest COMMAND FontDownloadReleaseGuardTest)
 add_test(NAME FontDownloadX3Merge
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/x3_merge.py"
           --work "${CMAKE_CURRENT_BINARY_DIR}/x3-merge")
+
+add_executable(FontDownloadTransferLayoutTest TransferLayoutTest.cpp)
+
+target_include_directories(FontDownloadTransferLayoutTest PRIVATE
+  ${REPO_ROOT}/src
+)
+target_link_libraries(FontDownloadTransferLayoutTest PRIVATE
+  crosspoint_test_common
+)
+
+add_test(NAME FontDownloadTransferLayoutTest COMMAND FontDownloadTransferLayoutTest)

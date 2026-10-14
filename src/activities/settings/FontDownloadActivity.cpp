@@ -1552,10 +1552,11 @@ void FontDownloadActivity::render(RenderLock&&) {
     const auto downloadedBytes = batchRunning_ ? batchDownloadedBytes_ + fileProgress_ : familyBytes;
     const unsigned currentPercent = family.totalSize ? static_cast<unsigned>(familyBytes * 100 / family.totalSize) : 0;
     const unsigned totalPercent = totalBytes ? static_cast<unsigned>(downloadedBytes * 100 / totalBytes) : 0;
-    const int startY = centerY - 3 * lineHeight;
+    const auto rows = fontdownload::transferLayout(centerY, lineHeight, metrics.verticalSpacing,
+                                                   metrics.progressBarHeight, BaseTheme::PROGRESS_LABEL_GAP);
     const int width = pageWidth - metrics.contentSidePadding * 2;
     const auto name = renderer.truncatedText(UI_10_FONT_ID, str(family.name), width);
-    renderer.drawCenteredText(UI_10_FONT_ID, startY, name.c_str());
+    renderer.drawCenteredText(UI_10_FONT_ID, rows.name, name.c_str());
     char status[128];
     if (installingPack_) {
       std::snprintf(status, sizeof(status), "%s", tr(STR_FONT_PACK_INSTALLING));
@@ -1563,20 +1564,16 @@ void FontDownloadActivity::render(RenderLock&&) {
       std::snprintf(status, sizeof(status), tr(STR_FONT_BATCH_DOWNLOADING),
                     formatSize(familyBytes).c_str(), formatSize(family.totalSize).c_str());
     }
-    renderer.drawCenteredText(UI_10_FONT_ID, startY + lineHeight + metrics.verticalSpacing, status);
-    const int barY = startY + 2 * lineHeight + 2 * metrics.verticalSpacing;
-    GUI.drawProgressBar(renderer, Rect{metrics.contentSidePadding, barY, width, metrics.progressBarHeight},
+    renderer.drawCenteredText(UI_10_FONT_ID, rows.status, status);
+    GUI.drawProgressBar(renderer, Rect{metrics.contentSidePadding, rows.bar1, width, metrics.progressBarHeight},
                         std::min(currentPercent, 100u), 100);
     std::snprintf(status, sizeof(status), tr(STR_FONT_BATCH_TOTAL), batchRunning_ ? batchFamilyIndex_ : 1u,
                   batchRunning_ ? batchFamilyCount_ : 1u, totalPercent);
-    const int totalY = barY + metrics.progressBarHeight + 2 * metrics.verticalSpacing;
-    renderer.drawCenteredText(UI_10_FONT_ID, totalY, status);
-    GUI.drawProgressBar(renderer,
-                        Rect{metrics.contentSidePadding, totalY + lineHeight + metrics.verticalSpacing,
-                             width, metrics.progressBarHeight}, std::min(totalPercent, 100u), 100);
+    renderer.drawCenteredText(UI_10_FONT_ID, rows.total, status);
+    GUI.drawProgressBar(renderer, Rect{metrics.contentSidePadding, rows.bar2, width, metrics.progressBarHeight},
+                        std::min(totalPercent, 100u), 100);
     const auto sizeText = formatSize(downloadedBytes) + " / " + formatSize(totalBytes);
-    renderer.drawCenteredText(UI_10_FONT_ID, totalY + lineHeight + metrics.progressBarHeight +
-                                               2 * metrics.verticalSpacing, sizeText.c_str());
+    renderer.drawCenteredText(UI_10_FONT_ID, rows.size, sizeText.c_str());
     const auto labels = mappedInput.mapLabels(installingPack_ ? "" : tr(STR_CANCEL), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else if (state_ == COMPLETE) {

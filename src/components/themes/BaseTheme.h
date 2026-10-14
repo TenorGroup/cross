@@ -243,6 +243,8 @@ class BaseTheme {
   // Draws a pre-dithered cover thumb 1:1, centered and clipped to fill the
   // slot. Rescaling a dithered bitmap aliases badly, so overflow is cropped.
   static bool drawCoverThumbFill(const GfxRenderer& renderer, const Bitmap& bitmap, Rect slot, int xOffset = 0);
+  // Pixels between a bar and the percent label drawProgressBar writes under it.
+  static constexpr int PROGRESS_LABEL_GAP = 15;
   static void drawProgressBar(const GfxRenderer& renderer, Rect rect, size_t current, size_t total);
   void drawBatteryLeft(const GfxRenderer& renderer, Rect rect,
                        bool showPercentage = true) const;  // Left aligned (reader mode)
