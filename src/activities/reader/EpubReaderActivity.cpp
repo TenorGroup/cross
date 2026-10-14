@@ -1110,18 +1110,14 @@ void EpubReaderActivity::openBookSearch() {
   });
 }
 
-// TODO-T4: pushReturnPosition is the one call a search hit makes before it moves the reader; the way-back stack lane
-// fills it in (push the page the reader leaves, by chapter and visible text offset, so Back returns to it).
-void EpubReaderActivity::pushReturnPosition() {}
-
 void EpubReaderActivity::jumpToSearchResult(const int spine, const uint32_t visibleOffset) {
   if (!epub || spine < 0 || spine >= epub->getSpineItemsCount()) {
     requestUpdate();
     return;
   }
   RenderLock lock;
-  clearDeferredReposition();
   pushReturnPosition();
+  clearDeferredReposition();
   // The chapter on screen answers from its laid-out pages; any other (or a page not laid out yet) is built to the offset.
   if (section && currentSpineIndex == spine) {
     if (const auto page = section->getPageForVisibleTextOffset(visibleOffset)) {

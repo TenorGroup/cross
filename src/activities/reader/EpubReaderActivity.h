@@ -479,8 +479,6 @@ class EpubReaderActivity final : public ReaderActivity {
   // book closes.
   void openBookSearch();
   void jumpToSearchResult(int spine, uint32_t visibleOffset);
-  // The place the reader leaves for a jump, put where Back returns to it.
-  void pushReturnPosition();
   BookSearchMemory bookSearch;
 #endif
   bool launchKOReaderSync();
