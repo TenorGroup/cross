@@ -25,6 +25,7 @@
 #include "KOReaderDocumentId.h"
 #include "KOReaderSyncClient.h"
 #include "KOReaderSyncDebt.h"
+#include "KOReaderSyncMark.h"
 #include "KOReaderWifiHint.h"
 #include "ProgressComparison.h"
 #include "ProgressMapper.h"
@@ -43,11 +44,35 @@ using namespace kosyncauto;
 constexpr char DEBT_FILE[] = "/.crosspoint/kosync-no.json";
 constexpr char HINT_FILE[] = "/.crosspoint/kosync-wifi.json";
 constexpr size_t DEBT_FILE_MAX_BYTES = 8192;  // 4 books of long paths stay far under this
+constexpr char MARK_FILE[] = "/.crosspoint/kosync-last.json";
+constexpr size_t MARK_FILE_MAX_BYTES = 2048;  // 8 marks of about 70 bytes
 
 SyncDebt pendingNote;
 bool hasPendingNote = false;
+SyncMark pendingMark;
+bool hasPendingMark = false;
 PullChange pullChange;
 bool hasPullChange = false;
+
+#ifdef TENOR_PRESS_PROBE
+RTC_NOINIT_ATTR uint32_t probeMinSleepMagic;
+RTC_NOINIT_ATTR uint32_t probeMinSleepSeconds;
+constexpr uint32_t PROBE_MIN_SLEEP_MAGIC = 0x4B41534D;
+bool probeHeapPending = false;
+
+void probeHeap(const char* stage) {
+  LOG_INF("KAS", "HEAP_INFO stage=%s free=%u largest=%u min=%u", stage, static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()), static_cast<unsigned>(ESP.getMinFreeHeap()));
+}
+#endif
+
+// The 30 minute rule; a measuring build can lower it so a timed wake of a few seconds counts.
+uint32_t minSleepSeconds() {
+#ifdef TENOR_PRESS_PROBE
+  if (probeMinSleepMagic == PROBE_MIN_SLEEP_MAGIC && probeMinSleepSeconds > 0) return probeMinSleepSeconds;
+#endif
+  return PULL_MIN_SLEEP_SECONDS;
+}
 
 int32_t msLeft(const uint32_t deadline) { return static_cast<int32_t>(deadline - millis()); }
 
@@ -74,6 +99,38 @@ bool saveDebts(const SyncDebtList& list) {
   JsonDocument doc;
   list.toJson(doc);
   return PersistableStoreBase::writeDocToFile(DEBT_FILE, doc);
+}
+
+// false: the card could not be read right now, so nothing may be written over the file.
+bool loadMarks(SyncMarkList& list) {
+  JsonDocument doc;
+  switch (PersistableStoreBase::readDocFromFileStatus(MARK_FILE, doc, MARK_FILE_MAX_BYTES)) {
+    case PersistableStoreBase::ReadResult::Ready:
+      list.fromJson(doc);
+      return true;
+    case PersistableStoreBase::ReadResult::Invalid:
+      return true;  // missing or damaged: no book has a mark, the decisions fall back to the plain comparison
+    case PersistableStoreBase::ReadResult::Unavailable:
+      return false;
+  }
+  return false;
+}
+
+bool saveMarks(const SyncMarkList& list) {
+  JsonDocument doc;
+  list.toJson(doc);
+  return PersistableStoreBase::writeDocToFile(MARK_FILE, doc);
+}
+
+// Writes the mark the wake pull left in memory, after the book's first frame (deferred write) or at
+// sleep. A card that cannot be read keeps it for the next try.
+void flushMark() {
+  if (!hasPendingMark) return;
+  SyncMarkList list;
+  if (!loadMarks(list)) return;
+  hasPendingMark = false;
+  list.put(std::move(pendingMark));
+  if (!saveMarks(list)) LOG_ERR("KAS", "Could not write %s", MARK_FILE);
 }
 
 // BLE and Wi-Fi do not share the radio on the X3. True when the page turner's radio is down.
@@ -202,13 +259,17 @@ bool joinSavedNetwork(const uint32_t deadline) {
   return false;
 }
 
-void leaveWifi() {
+// restCpu: let the clock drop to the low-power one now that the radio is off. The sleep push says yes (the
+// sleep after it holds its own Lock). The wake pull says no: it runs in setup() with no Lock held, and the
+// Epub load, the mapping and the book open after it would run at 10 MHz; the main loop lowers the clock
+// by itself after the idle time.
+void leaveWifi(const bool restCpu) {
   KOReaderSyncClient::requestTimeoutMs = 0;
   if (WiFi.getMode() != WIFI_MODE_NULL) {
     WiFi.disconnect(true, false);
     WiFi.mode(WIFI_OFF);
   }
-  powerManager.setPowerSaving(true);
+  if (restCpu) powerManager.setPowerSaving(true);
 }
 
 // Same dispatch as the manual sync (KOReaderSyncActivity).
@@ -219,10 +280,7 @@ std::string documentHash(const std::string& path) {
 }
 
 // One request, bounded by what is left of the round.
-void limitRequest(const uint32_t started) {
-  const int32_t left = static_cast<int32_t>(ROUND_BUDGET_MS) - static_cast<int32_t>(millis() - started);
-  KOReaderSyncClient::requestTimeoutMs = static_cast<uint32_t>(std::clamp<int32_t>(left, 1000, 6000));
-}
+void limitRequest(const uint32_t started) { KOReaderSyncClient::requestTimeoutMs = requestTimeoutMs(millis() - started); }
 
 Fetch fetchRemote(const std::string& hash, KOReaderProgress& remote, const uint32_t started) {
   limitRequest(started);
@@ -242,11 +300,18 @@ std::shared_ptr<Epub> loadEpubForMapping(const std::string& path) {
 
 enum class PushOutcome : uint8_t { Done, Keep, OutOfTime };
 
-PushOutcome pushOne(const SyncDebt& debt, GfxRenderer& renderer, const uint32_t started) {
+PushOutcome pushOne(const SyncDebt& debt, GfxRenderer& renderer, const uint32_t started, SyncMarkList& marks,
+                    bool& marksChanged) {
   if (!canStartRequest(millis() - started)) return PushOutcome::OutOfTime;
-  if (!Storage.exists(debt.path.c_str())) return PushOutcome::Done;  // the book is gone: nothing to push
-  const std::string hash = documentHash(debt.path);
-  if (hash.empty()) return PushOutcome::Done;
+  // "Gone" needs the card to answer (it holds this very folder); a read that fails keeps the debt.
+  const bool cardAnswers = Storage.ready() && Storage.exists("/.crosspoint");
+  const bool bookThere = cardAnswers && Storage.exists(debt.path.c_str());
+  const std::string hash = bookThere ? documentHash(debt.path) : std::string();
+  switch (checkBook(cardAnswers, bookThere, !hash.empty())) {
+    case BookCheck::Gone: return PushOutcome::Done;  // the book is gone: nothing to push
+    case BookCheck::Unreadable: return PushOutcome::Keep;
+    case BookCheck::Ready: break;
+  }
 
   KOReaderProgress remote{};
   const Fetch fetch = fetchRemote(hash, remote, started);
@@ -255,9 +320,12 @@ PushOutcome pushOne(const SyncDebt& debt, GfxRenderer& renderer, const uint32_t 
       fetch == Fetch::Found ? compareProgress(CrossPointPosition{}, debt.percentage, CrossPointPosition{},
                                               remote.percentage)
                             : ProgressComparison::Unknown;
-  const PushAction action = pushAction(fetch, comparison);
-  LOG_INF("KAS", "push decision fetch=%d cmp=%d action=%d local=%.4f remote=%.4f", static_cast<int>(fetch),
-          static_cast<int>(comparison), static_cast<int>(action), static_cast<double>(debt.percentage),
+  // A server record this machine left itself, with the place moved since (even backwards): push it.
+  const uint32_t place = placeKey(debt.spineIndex, debt.pageNumber);
+  const bool ours = fetch == Fetch::Found && marks.serverIsOurs(hash, remote.progress, remote.percentage);
+  const PushAction action = pushAction(fetch, comparison, ours, marks.placeChanged(hash, place));
+  LOG_INF("KAS", "push decision fetch=%d cmp=%d ours=%d action=%d local=%.4f remote=%.4f", static_cast<int>(fetch),
+          static_cast<int>(comparison), ours, static_cast<int>(action), static_cast<double>(debt.percentage),
           static_cast<double>(remote.percentage));
   if (action == PushAction::KeepDebt) return PushOutcome::Keep;
   if (action == PushAction::DropDebt) return PushOutcome::Done;
@@ -287,7 +355,10 @@ PushOutcome pushOne(const SyncDebt& debt, GfxRenderer& renderer, const uint32_t 
   limitRequest(started);
   const auto result = KOReaderSyncClient::updateProgress(upload);
   LOG_INF("KAS", "PUT result=%d http=%d", static_cast<int>(result), KOReaderSyncClient::lastHttpCode);
-  return result == KOReaderSyncClient::OK ? PushOutcome::Done : PushOutcome::Keep;
+  if (result != KOReaderSyncClient::OK) return PushOutcome::Keep;
+  marks.put({hash, recordToken(upload.progress, upload.percentage), place});
+  marksChanged = true;
+  return PushOutcome::Done;
 }
 
 }  // namespace
@@ -322,6 +393,11 @@ void noteLeftBook(const std::string& path, const CrossPointPosition& position, c
   }
 }
 
+void switchedOff() {
+  hasPendingNote = false;
+  Storage.remove(DEBT_FILE);
+}
+
 void flushNote() {
   if (!hasPendingNote) return;
   SyncDebtList list;
@@ -333,6 +409,7 @@ void flushNote() {
 
 void pushBeforeSleep(GfxRenderer& renderer) {
   flushNote();
+  flushMark();
   const Eligibility eligible = gate();
   if (eligible != Eligibility::Ready) {
     if (eligible != Eligibility::Disabled) LOG_INF("KAS", "sleep push skipped: %s", why(eligible));
@@ -340,6 +417,9 @@ void pushBeforeSleep(GfxRenderer& renderer) {
   }
   SyncDebtList list;
   if (!loadDebts(list) || list.empty()) return;
+  SyncMarkList marks;
+  const bool marksReadable = loadMarks(marks);  // unreadable: decide by the plain comparison, write nothing back
+  bool marksChanged = false;
 
   const uint32_t started = millis();
   LOG_INF("KAS", "sleep push begin books=%u", static_cast<unsigned>(list.size()));
@@ -352,13 +432,14 @@ void pushBeforeSleep(GfxRenderer& renderer) {
     // Newest book first: the one read last is the one most likely to be picked up elsewhere.
     for (size_t i = list.size(); i-- > 0;) {
       const SyncDebt debt = list.at(i);
-      const PushOutcome outcome = pushOne(debt, renderer, started);
+      const PushOutcome outcome = pushOne(debt, renderer, started, marks, marksChanged);
       if (outcome == PushOutcome::OutOfTime) break;
       if (outcome == PushOutcome::Done) changed = list.remove(debt.path) || changed;
     }
   }
-  leaveWifi();
+  leaveWifi(true);
   if (changed && !saveDebts(list)) LOG_ERR("KAS", "Could not write %s", DEBT_FILE);
+  if (marksChanged && marksReadable && !saveMarks(marks)) LOG_ERR("KAS", "Could not write %s", MARK_FILE);
   LOG_INF("KAS", "sleep push done total=%lu ms left=%u", static_cast<unsigned long>(millis() - started),
           static_cast<unsigned>(list.size()));
 }
@@ -374,12 +455,12 @@ namespace {
 PullResult pullNow(GfxRenderer& renderer, const std::string& path, const uint32_t started) {
   const std::string hash = documentHash(path);
   if (hash.empty() || !joinSavedNetwork(started + ROUND_BUDGET_MS - REQUEST_MS)) {
-    leaveWifi();
+    leaveWifi(false);
     return PullResult::Failed;
   }
   KOReaderProgress remote{};
   const Fetch fetch = canStartRequest(millis() - started) ? fetchRemote(hash, remote, started) : Fetch::Failed;
-  leaveWifi();  // the radio is off before the book opens (BLE needs it on the X3)
+  leaveWifi(false);  // the radio is off before the book opens (BLE needs it on the X3)
   if (fetch != Fetch::Found) return fetch == Fetch::Failed ? PullResult::Failed : PullResult::Kept;
 
   auto epub = loadEpubForMapping(path);
@@ -414,25 +495,35 @@ PullResult pullNow(GfxRenderer& renderer, const std::string& path, const uint32_
   // paint of the book drives every pixel.
   renderer.redriveNextRefresh();
   const ProgressComparison comparison = compareProgress(local, localPercentage, mapped, remote.percentage);
-  const PullAction action = pullAction(fetch, comparison);
-  LOG_INF("KAS", "wake pull decision cmp=%d action=%d local=%.4f remote=%.4f", static_cast<int>(comparison),
-          static_cast<int>(action), static_cast<double>(localPercentage), static_cast<double>(remote.percentage));
+  // Only another machine's record moves the book: the one this machine left there is older than its own reading.
+  SyncMarkList marks;
+  loadMarks(marks);
+  const bool ours = marks.serverIsOurs(hash, remote.progress, remote.percentage);
+  const PullAction action = pullAction(fetch, comparison, ours);
+  LOG_INF("KAS", "wake pull decision cmp=%d ours=%d action=%d local=%.4f remote=%.4f", static_cast<int>(comparison),
+          ours, static_cast<int>(action), static_cast<double>(localPercentage), static_cast<double>(remote.percentage));
   if (action != PullAction::Apply) return PullResult::Kept;
 
   std::optional<uint32_t> offset;
   if (mapped.hasVisibleTextOffset) offset = mapped.visibleTextOffset;
   if (!EpubReaderUtils::saveProgress(*epub, mapped.spineIndex, mapped.pageNumber, 0, offset)) return PullResult::Failed;
-  pullChange = {path, local.spineIndex, local.pageNumber, mapped.spineIndex, mapped.pageNumber};
+  pullChange = {path, local.spineIndex, local.pageNumber, mapped.spineIndex, mapped.pageNumber,
+                local.visibleTextOffset, local.hasVisibleTextOffset};
   hasPullChange = true;
+  // The record taken is this machine's last synced one; written after the book's first frame.
+  pendingMark = {hash, recordToken(remote.progress, remote.percentage), placeKey(mapped.spineIndex, mapped.pageNumber)};
+  hasPendingMark = true;
+  activityManager.deferWrite(&flushMark);
   return PullResult::Applied;
 }
 
 }  // namespace
 
 PullResult pullOnWake(GfxRenderer& renderer, const std::string& path, const bool showNotice) {
+  if (!isEpubPath(path)) return PullResult::Skipped;  // a text or XTC book has no place to map onto
   const time_t now = time(nullptr);
   const bool slept = sleptLongEnough(APP_STATE.sleepStartedAt, now > 0 ? static_cast<uint32_t>(now) : 0,
-                                     halClock.hasValidTime());
+                                     halClock.hasValidTime(), minSleepSeconds());
   if (!slept) {
     if (KOREADER_STORE.getAutoSync()) LOG_INF("KAS", "wake pull skipped: short sleep or no trusted clock");
     return PullResult::Skipped;
@@ -447,8 +538,25 @@ PullResult pullOnWake(GfxRenderer& renderer, const std::string& path, const bool
   const PullResult result = pullNow(renderer, path, started);
   LOG_INF("KAS", "wake pull result=%d total=%lu ms", static_cast<int>(result),
           static_cast<unsigned long>(millis() - started));
+#ifdef TENOR_PRESS_PROBE
+  probeHeap("after_pull");  // the book is not open yet
+  probeHeapPending = true;
+#endif
   return result;
 }
+
+#ifdef TENOR_PRESS_PROBE
+void probeSetMinSleep(const uint32_t seconds) {
+  probeMinSleepSeconds = seconds;
+  probeMinSleepMagic = seconds > 0 ? PROBE_MIN_SLEEP_MAGIC : 0;
+}
+
+void probeAfterFirstFrame() {
+  if (!probeHeapPending) return;
+  probeHeapPending = false;
+  probeHeap("first_frame");
+}
+#endif
 
 const PullChange* progressJustPulled() { return hasPullChange ? &pullChange : nullptr; }
 

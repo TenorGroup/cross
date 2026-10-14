@@ -43,6 +43,12 @@ include(GoogleTest)
 add_test(NAME ReaderReturnPositionT4
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reading_stats_simulator/test_quay_lai_t4_runtime_v1061.py)
 
+add_test(NAME KoreaderFavoritesRows
+  COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/koreader_favorites/check.py ${REPO_ROOT})
+
+add_test(NAME KoreaderAutoSyncSource
+  COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/koreader_auto_sync/source_checks.py ${REPO_ROOT})
+
 add_subdirectory(streaming_json_parser)
 add_subdirectory(release_json_parser)
 add_subdirectory(differential_rounding)

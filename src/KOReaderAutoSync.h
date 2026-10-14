@@ -27,6 +27,10 @@ void flushNote();
 // card power down: pushes the books owed to the server, within kosyncauto::ROUND_BUDGET_MS.
 void pushBeforeSleep(GfxRenderer& renderer);
 
+// The switch was turned off: what was owed is forgotten, in memory and on the card, so turning it on again
+// later pushes nothing from before.
+void switchedOff();
+
 // What to store as APP_STATE.sleepStartedAt when going to sleep: now, or 0 when automatic sync is off
 // or the clock cannot be trusted (then the next wake counts as a short sleep and pulls nothing).
 uint32_t sleepStamp();
@@ -48,7 +52,18 @@ struct PullChange {
   int fromPage = 0;
   int toSpineIndex = 0;
   int toPage = 0;
+  uint32_t fromOffset = 0;  // the text offset the reader was at, when the saved place had one
+  bool hasFromOffset = false;
 };
+#ifdef TENOR_PRESS_PROBE
+// Measuring build only. Lets a timed wake count as a long sleep: the 30 minute rule is read as `seconds`
+// from now on (0 puts the rule back), kept through deep sleep. Asked by the cable command KAS_MIN_SLEEP.
+void probeSetMinSleep(uint32_t seconds);
+// Once per pull that ran: prints the heap after the book's first frame (the line after the pull is
+// printed by pullOnWake itself, before the book opens).
+void probeAfterFirstFrame();
+#endif
+
 const PullChange* progressJustPulled();
 void acknowledgeProgressPulled();
 

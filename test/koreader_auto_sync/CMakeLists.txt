@@ -3,6 +3,7 @@
 add_executable(KoreaderAutoSyncTest
   KoreaderAutoSyncTest.cpp
   ${REPO_ROOT}/lib/KOReaderSync/KOReaderSyncDebt.cpp
+  ${REPO_ROOT}/lib/KOReaderSync/KOReaderSyncMark.cpp
   ${REPO_ROOT}/lib/KOReaderSync/KOReaderWifiHint.cpp
   ${REPO_ROOT}/lib/KOReaderSync/ProgressComparison.cpp
 )

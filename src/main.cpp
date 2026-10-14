@@ -1871,6 +1871,10 @@ void loop() {
         probeWakeSeconds = static_cast<uint32_t>(cmd.substring(11).toInt());
         probeWakeMagic = PROBE_WAKE_MAGIC;
         logSerial.printf("WAKE_TIMER:%u\n", static_cast<unsigned>(probeWakeSeconds));
+      } else if (cmd.startsWith("KAS_MIN_SLEEP ")) {
+        // CMD:KAS_MIN_SLEEP <s>: the wake pull counts a sleep of <s> seconds as long (0 = the 30 minute rule).
+        koautosync::probeSetMinSleep(static_cast<uint32_t>(cmd.substring(14).toInt()));
+        logSerial.printf("KAS_MIN_SLEEP:%d\n", static_cast<int>(cmd.substring(14).toInt()));
       } else if (cmd.startsWith("WAKE_HOLD ")) {
         probeWakeHoldMs = static_cast<uint32_t>(cmd.substring(10).toInt());
         probeWakeHoldMagic = PROBE_WAKE_MAGIC;
