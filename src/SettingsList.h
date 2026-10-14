@@ -744,7 +744,11 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
 // Dong nao khong thuoc ve ban may nay. Tach rieng de duong luu va duong doc soi
 // duoc tung dong ma khong phai chep ca bang ra mot vector moi.
 inline bool settingHiddenOnThisBoard(const SettingInfo& s) {
-  if (!BoardConfig::hasTouch() && s.nameId == StrId::STR_HOME_STYLE) return true;
+  // The 3 Home styles are drawn on the touch shell and on the X3 (tenor/ink 1 bit); the X4 keeps its card.
+  if (s.nameId == StrId::STR_HOME_STYLE && !BoardConfig::hasTouch() &&
+      BoardConfig::ACTIVE.board != BoardConfig::Board::XteinkX3 &&
+      BoardConfig::ACTIVE.board != BoardConfig::Board::XteinkX3Uc8279)
+    return true;
   if (BoardConfig::hasTouch() && s.nameId == StrId::STR_TIPS) return true;
   // Touch controls and the per-direction gestures they drive need a touch
   // controller. The toolbar reader menu style does not (#3603 re-enabled it

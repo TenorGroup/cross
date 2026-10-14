@@ -136,6 +136,9 @@ struct CardFileHead {
 // card an older firmware wrote under the same version string holds a former placeholder, the dithered
 // picture of components/CoverHolder.h, and is drawn again; its file is replaced at the same name.
 constexpr uint32_t CARD_FILE_MAGIC = 0x36445243;
+// The Large cover and Shelf frame files of the X3 (home-frame-<style>-<place>.card) keep this head too. The number goes
+// into their key: a change in how the frame is drawn that the key does not see bumps it, and the old files are never read.
+constexpr int32_t FRAME_FILE_FORMAT = 1;
 
 uint32_t fnv(uint32_t hash, const void* data, size_t size) {
   for (const auto* p = static_cast<const uint8_t*>(data); size--; ++p) hash = (hash ^ *p) * 16777619u;
@@ -244,6 +247,7 @@ void HomeActivity::onEnter() {
 
   UiTabListActivity::onEnter();  // sizes the per-tab state; needs listCount()
   app.on(ACTION_OTHER_BOOK, &HomeActivity::otherBookTrampoline, this);
+  app.on(ACTION_STEP_BOOK, &HomeActivity::stepBookTrampoline, this);
   if (initialMenuItem == HomeMenuItem::RECENT_CONTINUE) {
     activeNav().selected = recentBooks.empty() ? 0 : 1;
     activeNav().top = 0;
@@ -644,11 +648,14 @@ bool HomeActivity::handleButtons() {
       return true;
     }
   }
-  // Touch: a sideways swipe on the Recent card steps between books, as the front buttons do.
+  // Touch: a sideways swipe on the Recent card steps between books, as the front buttons do. On the Shelf the
+  // shown book stays and the swipe, anywhere on the card, slides the row of other books by 3.
   if (tenorchrome::kTouchShell && activeTabId == Tab::RECENT) {
     const auto swipe = mappedInput.wasSwipe();
     if (swipe == MappedInputManager::SwipeDir::Left || swipe == MappedInputManager::SwipeDir::Right) {
-      queueNavIntent(swipe == MappedInputManager::SwipeDir::Left ? NavIntent::StepNext : NavIntent::StepPrev);
+      const int direction = swipe == MappedInputManager::SwipeDir::Left ? 1 : -1;
+      if (shelfPages()) stepShelf(direction);
+      else queueNavIntent(direction > 0 ? NavIntent::StepNext : NavIntent::StepPrev);
       return true;
     }
   }
@@ -994,12 +1001,24 @@ void HomeActivity::buildScreen(UiScreen& screen) {
       if (layout.style == HomeRecentStyle::Shelf) {
         for (int slot = 0; slot < layout.shelfCount; ++slot) {
           const auto& r = layout.shelf[slot];
-          screen.frame().hit({static_cast<int16_t>(24 + slot * 152), static_cast<int16_t>(r.y), 128,
+          screen.frame().hit({static_cast<int16_t>(layout.shelfCellX(slot)), static_cast<int16_t>(r.y), 128,
                               static_cast<int16_t>(r.h + layout.shelfLabelHeight)},
                              ACTION_ROW, static_cast<int16_t>(layout.shelfBooks[slot]),
                              fui::InputTouch | fui::InputLongPress);
         }
       } else if (count > 1) {
+        // The edge of the book before and after, outside the shown cover: a tap there makes it the shown book.
+        if (layout.style == HomeRecentStyle::LargeCover)
+          for (const bool left : {true, false}) {
+            const int neighbour = largeNeighbour(shownRecent(), left);
+            if (neighbour < 0) continue;
+            const auto size = cardCoverSize(neighbour);
+            const auto r = homePeekRect(renderer.getScreenWidth(), layout.cover, left, size.width, size.height);
+            const int x0 = std::max(0, r.x), x1 = std::min(renderer.getScreenWidth(), r.x + r.w);
+            screen.frame().hit({static_cast<int16_t>(x0), static_cast<int16_t>(r.y), static_cast<int16_t>(x1 - x0),
+                                static_cast<int16_t>(r.h)},
+                               ACTION_STEP_BOOK, left ? -1 : 1, fui::InputTouch);
+          }
         constexpr int16_t STRIP = 56;
         screen.frame().hit(fui::Rect{body.x, static_cast<int16_t>(body.y + body.height - STRIP), body.width, STRIP},
                            ACTION_OTHER_BOOK, 0, fui::InputTouch | fui::InputLongPress);
@@ -1108,7 +1127,7 @@ void HomeActivity::render(RenderLock&&) {
   const bool recent = activeTabId == Tab::RECENT && homeInkEnabled();
   const uint16_t surface = (static_cast<uint16_t>(renderer.getOrientation()) << 8) |
                            (normalizedUiTextSize(SETTINGS.uiTextSize) << 4) | SETTINGS.homeStyle;
-  const auto refresh = homeRefresh.choose(recent, shownRecent(), surface);
+  const auto refresh = homeRefresh.choose(recent, paintKey(), surface);
   const bool window = refresh.mode == HomeRefresh::Mode::Window;
   const auto body = refreshBody();
   const auto clip = renderer.getClipRect();
@@ -1204,7 +1223,7 @@ void HomeActivity::render(RenderLock&&) {
   // The wake's first frame is up: the main task writes the splash setup() re-armed (onTick).
   if (cleanInitialRefresh) wakeStatePending = true;
   cleanInitialRefresh = false;
-  homeRefresh.painted(recent, shownRecent(), surface, millis());
+  homeRefresh.painted(recent, paintKey(), surface, millis());
   queueIdleCovers();
 }
 
@@ -1245,7 +1264,7 @@ bool HomeActivity::storeCoverBuffer() {
 
 bool HomeActivity::restoreCoverBuffer() {
   if (coverBufferUiSize != normalizedUiTextSize(SETTINGS.uiTextSize) ||
-      (tenorchrome::kTouchShell && coverBufferStyle != SETTINGS.homeStyle)) {
+      (stylesAvailable() && coverBufferStyle != SETTINGS.homeStyle)) {
     freeCoverBuffer();
     return false;
   }
@@ -1813,6 +1832,34 @@ void HomeActivity::drawStatsEdges() {
 int HomeActivity::shownRecent() const {
   const int count = static_cast<int>(recentBooks.size());
   return count == 0 ? -1 : std::clamp(ringPos() - 1, 0, count - 1);
+}
+
+bool HomeActivity::stylesAvailable() const {
+  return tenorchrome::kTouchShell || (kInkX3 && tenorchrome::x3ScreenLayoutEnabled() && !shell::isUgly());
+}
+
+bool HomeActivity::shelfPages() const {
+  return stylesAvailable() && SETTINGS.homeStyle == 2 && activeTabId == Tab::RECENT && recentBooks.size() > 4;
+}
+
+// 3 cells a page, in the ring of the other books; fewer than 4 others fit one page and there is nothing to slide.
+void HomeActivity::stepShelf(const int direction) {
+  RenderLock lock(*this);
+  shelfFirst = homeShelfPage(shelfFirst, static_cast<int>(recentBooks.size()), direction);
+  freeCoverBuffer();
+  coverRendered = false;
+  requestUpdate();
+}
+
+// What a paint shows of the Recent tab: the shown book, and the shelf page when the shelf has pages. A change of
+// either is a new card for the refresh choice.
+int HomeActivity::paintKey() const { return shownRecent() + 16 * shelfFirst; }
+
+// The Large cover shows the book before and after the shown one in Recent, round the ring; -1 with fewer than 3
+// books (2 books would show the same one on both sides).
+int HomeActivity::largeNeighbour(const int shown, const bool left) const {
+  const int count = static_cast<int>(recentBooks.size());
+  return count < 3 || shown < 0 ? -1 : (shown + (left ? count - 1 : 1)) % count;
 }
 
 std::string HomeActivity::cardExcerpt(const int index, bool& quoted) {
@@ -2483,7 +2530,7 @@ HomeActivity::CardFile HomeActivity::loadCardFile(const std::string& path, const
     if (file.read(&head, sizeof(head)) != static_cast<int>(sizeof(head)) || head.magic != CARD_FILE_MAGIC ||
         head.coverKey != coverKey || file.size() != sizeof(head) + head.bytes)
       return CardFile::None;
-    if (Storage.exists(thumbPath.c_str()) != static_cast<bool>(head.thumb)) return CardFile::None;
+    if (!thumbPath.empty() && Storage.exists(thumbPath.c_str()) != static_cast<bool>(head.thumb)) return CardFile::None;
     const auto* r = head.rects;
     const size_t first = renderer.getRegionByteSize(r[0], r[1], r[2], r[3]);
     if (first == 0 || first + (r[7] > 0 ? renderer.getRegionByteSize(r[4], r[5], r[6], r[7]) : 0) != head.bytes)
@@ -2808,7 +2855,10 @@ void HomeActivity::idleStep() {
           static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
 #endif
   const auto outcome = static_cast<coverink::Outcome>(idleOutcome);
-  if (outcome == coverink::Outcome::Sharp) requestUpdate();
+  if (outcome == coverink::Outcome::Sharp) {
+    dropFrameFiles();  // the frames saved show the temporary cover
+    requestUpdate();
+  }
   // A heap that would not hold the step: wait longer each time, up to 10 minutes.
   if (outcome == coverink::Outcome::NoHeap) {
     idleRetryAt = millis() + idleBackoffMs;
@@ -2855,14 +2905,22 @@ idlework::Step HomeActivity::coverStep(const idlework::Job& job, const idlework:
 
 HomeRecentLayout HomeActivity::recentLayout() {
   const int shown = shownRecent();
-  const auto size = tenorchrome::kTouchShell && shown >= 0 ? cardCoverSize(shown) : CoverSize{};
+  const auto size = shown >= 0 ? cardCoverSize(shown) : CoverSize{};
   const int serif = SETTINGS.uiTextSize == 1 ? NOTOSERIF_14_FONT_ID
                     : SETTINGS.uiTextSize == 2 ? NOTOSERIF_16_FONT_ID : NOTOSERIF_12_FONT_ID;
-  return homeRecentLayout(tenorchrome::kTouchShell, SETTINGS.homeStyle, renderer.getScreenWidth(),
-                          coverTileTop() - 4, tenorchrome::footBackTop(renderer.getScreenHeight()) - 8,
+  // The X3 body starts at the screen layout's top and ends over the information line, as its Stats card does.
+  int top = coverTileTop() - 4;
+  int bottom = tenorchrome::footBackTop(renderer.getScreenHeight()) - 8;
+  if (!tenorchrome::kTouchShell && tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto layout = homeScreenLayout();
+    top = layout.bodyRect.y;
+    bottom = layout.bodyRect.bottom();
+    if (const char* info = homeInfoText()) bottom -= 8 + tenorchrome::tipHeight(renderer, info, 3);
+  }
+  return homeRecentLayout(stylesAvailable(), SETTINGS.homeStyle, renderer.getScreenWidth(), top, bottom,
                           renderer.getLineHeight(UI_TITLE_FONT_ID), renderer.getLineHeight(UI_10_FONT_ID),
                           renderer.getLineHeight(SMALL_FONT_ID), renderer.getLineHeight(serif),
-                          shown, static_cast<int>(recentBooks.size()), size.width, size.height);
+                          shown, static_cast<int>(recentBooks.size()), size.width, size.height, shelfFirst);
 }
 
 void HomeActivity::queueTouchThumb(const int index, const int width, const int height) {
@@ -2928,7 +2986,7 @@ bool HomeActivity::showHomeGray() {
     const auto& cover = recentBooks[slot.book].coverBmpPath;
     for (int attempt = 0; attempt < 2 && !present[i]; ++attempt) {
       if (attempt == 0 && cover.empty()) continue;
-      if (attempt == 1 && !coverless(slot.book)) continue;
+      if (attempt == 1 && (slot.peek || !coverless(slot.book))) continue;
       paths[i] = attempt == 0 ? touchCoverPath(cover, r.w, r.h) : holderPath(r.w, r.h);
       auto file = Storage.open(paths[i].c_str());
       if (!file) continue;
@@ -3079,6 +3137,14 @@ bool HomeActivity::drawHolder(const int book, const bool holder, const int x, co
   return false;
 }
 
+// The ring alone: the gray 2 px ring round a white cover. A cover still to be made stands as this, and so does the
+// sliver of a neighbour's placeholder at the Large cover's edge, where a name would be cut through.
+void HomeActivity::drawHolderRing(const int x, const int y, const int width, const int height) {
+  const int radius = tenorradius::cover(width);
+  renderer.fillRoundedRect(x, y, width, height, radius, Color::LightGray);
+  renderer.fillRoundedRect(x + 2, y + 2, width - 4, height - 4, tenorradius::nest(radius, 2), Color::White);
+}
+
 // The placeholder of a 1 bit frame, made on the spot from the book's own name: a white cover inside a 2 px dotted
 // ring of gray (the plain frame's gray, as the page has no black rule round a cover; 2 px because a 1 px line of
 // the 4 x 4 dither vanishes on odd columns and rows), the title in bold up to 3 lines with
@@ -3087,8 +3153,7 @@ bool HomeActivity::drawHolder(const int book, const bool holder, const int x, co
 // Each line is centred on its ink and the block is centred in the frame. Margins: 1.5 corner radii.
 void HomeActivity::drawNameHolder(const int book, const int x, const int y, const int width, const int height) {
   const int radius = tenorradius::cover(width);
-  renderer.fillRoundedRect(x, y, width, height, radius, Color::LightGray);
-  renderer.fillRoundedRect(x + 2, y + 2, width - 4, height - 4, tenorradius::nest(radius, 2), Color::White);
+  drawHolderRing(x, y, width, height);
   const auto& entry = recentBooks[book];
   const auto title = recentName(entry);
   const bool narrow = width < 200;
@@ -3177,8 +3242,9 @@ bool HomeActivity::writeHolder(const int width, const int height) {
   return ok;
 }
 
-void HomeActivity::drawTouchCover(const HomeRecentRect& rect, const int index) {
+bool HomeActivity::drawTouchCover(const HomeRecentRect& rect, const int index, const bool peek) {
   const auto& book = recentBooks[index];
+  bool settled = true;
   bool image = false;
   if (!book.coverBmpPath.empty()) {
     HalFile file;
@@ -3192,7 +3258,12 @@ void HomeActivity::drawTouchCover(const HomeRecentRect& rect, const int index) {
   if (!image) {
     const bool holder = coverless(index);
     if (!holder) queueTouchThumb(index, rect.w, rect.h);
-    drawHolder(index, holder, rect.x, rect.y, rect.w, rect.h);
+    if (!holder || peek) {
+      drawHolderRing(rect.x, rect.y, rect.w, rect.h);
+      settled = holder;
+    } else {
+      settled = drawHolder(index, holder, rect.x, rect.y, rect.w, rect.h);
+    }
   } else if (tenorchrome::kTouchShell && homeInkEnabled() && !homeGraySelected &&
              !Storage.exists(tenorink::cachePath(book.coverBmpPath, rect.w, rect.h, false).c_str())) {
     // The four-level stand-in loses its grays in one bit: make the dithered one-bit cover.
@@ -3201,6 +3272,7 @@ void HomeActivity::drawTouchCover(const HomeRecentRect& rect, const int index) {
   homeCoverCorners(renderer, rect.x, rect.y, rect.w, rect.h);
   LOG_INF("HOME", "Home cover book=%d rect=%d,%d,%d,%d native=%u", index, rect.x, rect.y, rect.w, rect.h,
           image ? 1u : 0u);
+  return settled;
 }
 
 void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
@@ -3218,25 +3290,65 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
       const auto size = cardCoverSize(book);
       const auto fit = homeCoverFit(f.shelf[slot].w, f.shelf[slot].h, size.width, size.height);
       const auto& cell = f.shelf[slot];
-      inkSlots[inkSlotCount++] = {{24 + slot * 152 + (128 - fit.first) / 2,
+      inkSlots[inkSlotCount++] = {{f.shelfCellX(slot) + (128 - fit.first) / 2,
                                  cell.y + (cell.h - fit.second) / 2, fit.first, fit.second}, book};
     }
+    if (f.style == HomeRecentStyle::LargeCover)
+      for (const bool left : {true, false}) {
+        const int book = largeNeighbour(shown, left);
+        if (book < 0) continue;
+        const auto size = cardCoverSize(book);
+        inkSlots[inkSlotCount++] = {homePeekRect(renderer.getScreenWidth(), f.cover, left, size.width, size.height), book,
+                                    true};
+      }
   }
   heldCover = {static_cast<int16_t>(f.cover.x), static_cast<int16_t>(f.cover.y),
                 static_cast<int16_t>(f.cover.w), static_cast<int16_t>(f.cover.h)};
-  if (coverBufferStored && coverBufferBook == shown && restoreCoverBuffer()) {
+  if (coverBufferStored && coverBufferBook == shown && coverBufferShelf == shelfFirst && restoreCoverBuffer()) {
     LOG_INF("HOME", "Home style=%u restore_us=%lu snapshot=%u", static_cast<unsigned>(f.style),
             static_cast<unsigned long>(micros() - started), static_cast<unsigned>(coverBufferSize));
     if (f.style != HomeRecentStyle::Shelf && recentBooks.size() > 1) drawOtherBookArrows(shown, f.rowY);
     return;
   }
+  // The Shelf names the shown book's quote or page excerpt under its title; it is drawn below and keys the frame.
+  bool quoted = false;
+  std::string excerpt;
+  if (f.style == HomeRecentStyle::Shelf) excerpt = cardExcerpt(shown, quoted);
+  const std::string quote = excerpt.empty() ? std::string(tr(STR_RECENT_NO_EXCERPT))
+                            : quoted ? std::string("“") + excerpt + "”" : excerpt;
+  // X3: the frame was left on the card by an earlier paint, read it back whole.
+  uint32_t frameKey = 0;
+  std::string framePath;
+  if (frameOnCard()) {
+    frameKey = homeFrameKey(f, quote);
+    framePath = frameFilePath(static_cast<unsigned>(f.style), shown);
+    if (loadCardFile(framePath, frameKey, frameKey, std::string()) == CardFile::Whole && restoreCoverBuffer()) {
+      coverBufferBook = shown;
+      coverBufferShelf = shelfFirst;
+      coverRendered = true;
+      LOG_INF("HOME", "Home style=%u frame_file_us=%lu snapshot=%u", static_cast<unsigned>(f.style),
+              static_cast<unsigned long>(micros() - started), static_cast<unsigned>(coverBufferSize));
+      if (f.style != HomeRecentStyle::Shelf && recentBooks.size() > 1) drawOtherBookArrows(shown, f.rowY);
+      return;
+    }
+  }
   freeCoverBuffer();
   touchThumbCount = 0;
+  bool settled = true;
   LOG_INF("HOME", "Home build start style=%u", static_cast<unsigned>(f.style));
   LOG_INF("HOME", "Home layout style=%u title=%d author=%d progress=%d excerpt=%d rule=%d shelf=%d", static_cast<unsigned>(f.style),
           f.titleY, f.authorY, f.progressY, f.excerptY, f.ruleY, f.shelfHeadingY);
   loadCardStats(shown);
-  drawTouchCover(f.cover, shown);
+  // Large cover: the neighbours' own covers, drawn first so the main cover stands over their inner edges.
+  if (f.style == HomeRecentStyle::LargeCover)
+    for (const bool left : {true, false}) {
+      const int neighbour = largeNeighbour(shown, left);
+      if (neighbour < 0) continue;
+      const auto size = cardCoverSize(neighbour);
+      settled = drawTouchCover(homePeekRect(renderer.getScreenWidth(), f.cover, left, size.width, size.height), neighbour,
+                               true) && settled;
+    }
+  settled = drawTouchCover(f.cover, shown) && settled;
   const auto& book = recentBooks[shown];
   const auto title = recentName(book);
   const int titleFont = homeExcerptUsesUiFont(title.c_str()) ? UI_12_FONT_ID : UI_TITLE_FONT_ID;
@@ -3287,10 +3399,6 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
   const auto fitted = renderer.truncatedText(progressFont, progress, f.text.w);
   line(progressFont, f.text.x, f.progressY + 22, f.text.w, fitted, EpdFontFamily::REGULAR);
   if (f.style == HomeRecentStyle::Shelf) {
-    bool quoted = false;
-    const auto excerpt = cardExcerpt(shown, quoted);
-    const std::string quote = excerpt.empty() ? std::string(tr(STR_RECENT_NO_EXCERPT))
-                              : quoted ? std::string("“") + excerpt + "”" : excerpt;
     const bool cjk = homeExcerptUsesUiFont(quote.c_str());
     const int serif = SETTINGS.uiTextSize == 1 ? NOTOSERIF_14_FONT_ID
                       : SETTINGS.uiTextSize == 2 ? NOTOSERIF_16_FONT_ID : NOTOSERIF_12_FONT_ID;
@@ -3304,9 +3412,9 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
       const auto size = cardCoverSize(index);
       const auto fittedCover = homeCoverFit(f.shelf[slot].w, f.shelf[slot].h, size.width, size.height);
       const auto& cell = f.shelf[slot];
-      const int x = 24 + slot * 152;
-      drawTouchCover({x + (128 - fittedCover.first) / 2, cell.y + (cell.h - fittedCover.second) / 2,
-                      fittedCover.first, fittedCover.second}, index);
+      const int x = f.shelfCellX(slot);
+      settled = drawTouchCover({x + (128 - fittedCover.first) / 2, cell.y + (cell.h - fittedCover.second) / 2,
+                                fittedCover.first, fittedCover.second}, index) && settled;
       loadCardStats(index);
       const int bottom = cell.y + cell.h;
       bar(x, bottom + 8, 128, 6, cardStats.percent);
@@ -3327,7 +3435,16 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
   textRectW = textRectH = 0;
   coverBufferStored = storeCoverBuffer();
   coverBufferBook = shown;
+  coverBufferShelf = shelfFirst;
   coverRendered = true;
+  // Written after the frame is on the panel, then the RAM copy goes. Not while a cover is still to be made: its frame
+  // is drawn again, with the thumbnail asked for, once the cover is there.
+  if (coverBufferStored && !framePath.empty() && settled && touchThumbCount == 0) {
+    cardFilePending = framePath;
+    cardFileCoverKey = cardFileKey = frameKey;
+    cardFileThumb = 0;
+    cardFileCover = 0;
+  }
   if (auto* cache = renderer.getFontCacheManager()) cache->releaseBuiltinPageCaches();
   LOG_INF("HOME", "Home style=%u build_us=%lu snapshot=%u thumbs=%d free=%u largest=%u", static_cast<unsigned>(f.style),
           static_cast<unsigned long>(micros() - started), static_cast<unsigned>(coverBufferSize), touchThumbCount,
@@ -3408,6 +3525,62 @@ void HomeActivity::saveCardFile() {
 #ifdef TENOR_PRESS_PROBE
   LOG_INF("HOME", "Card file saved ok=%u ms=%lu", ok ? 1u : 0u, static_cast<unsigned long>(millis() - started));
 #endif
+}
+
+bool HomeActivity::frameOnCard() const { return !tenorchrome::kTouchShell; }
+
+// One file for each style and place in the ring, so 2 styles x 7 books at most, each overwritten when the place shows
+// another frame.
+std::string HomeActivity::frameFilePath(const unsigned style, const int shown) {
+  char path[48];
+  snprintf(path, sizeof(path), "/.crosspoint/home-frame-%u-%d.card", style, shown);
+  return path;
+}
+
+void HomeActivity::dropFrameFiles() {
+  if (!frameOnCard()) return;
+  for (unsigned style = 1; style <= 2; ++style)
+    for (int shown = 0; shown < static_cast<int>(RECENT_LIMIT); ++shown) {
+      const std::string path = frameFilePath(style, shown);
+      for (const char* tail : {"", ".davbak", ".davtmp"}) Storage.remove((path + tail).c_str());
+    }
+}
+
+// Everything the frame is made of, in one number: the layout, for each cover its place and whether its file is there, for
+// each book its name, author and reading record, and the Shelf's line of text. A frame file is read only for this number.
+uint32_t HomeActivity::homeFrameKey(const HomeRecentLayout& f, const std::string& quote) {
+  const int32_t head[] = {FRAME_FILE_FORMAT, static_cast<int32_t>(f.style), shownRecent(), shelfFirst,
+                          renderer.getScreenWidth(), renderer.getScreenHeight(),
+                          static_cast<int32_t>(renderer.getOrientation()), SETTINGS.uiTextSize, SETTINGS.screenInverted,
+                          static_cast<int32_t>(I18N.getLanguage()), homeGraySelected ? 1 : 0,
+                          f.snapshot.x, f.snapshot.y, f.snapshot.w, f.snapshot.h, f.cover.x, f.cover.y, f.cover.w, f.cover.h,
+                          f.titleY, f.authorY, f.progressY, f.excerptY, f.ruleY, f.rowY, f.shelfHeadingY, f.shelfCount,
+                          f.titleLines, f.authorLines, f.progressHeight, static_cast<int32_t>(recentBooks.size())};
+  uint32_t key = fnv(fnv(2166136261u, CROSSPOINT_VERSION), head, sizeof(head));
+  key = fnv(key, std::string(SETTINGS.sdFontFamilyName));
+  const auto book = [&](const int index) {
+    const auto& b = recentBooks[index];
+    key = fnv(fnv(fnv(key, b.path), b.title), b.author);
+    loadCardStats(index);
+    const int32_t record[] = {cardStats.percent, cardStats.recorded ? 1 : 0, cardStats.rows, coverless(index) ? 1 : 0};
+    key = fnv(fnv(key, record, sizeof(record)), cardStats.values[HOME_STAT_FINISH]);
+  };
+  for (int i = 0; i < inkSlotCount; ++i) {
+    const auto& slot = inkSlots[i];
+    const auto& r = slot.rect;
+    book(slot.book);
+    const auto& cover = recentBooks[slot.book].coverBmpPath;
+    // The path says which file is drawn (a 4 level stand-in or the 1 bit cover), the flag whether it is there.
+    const std::string file = cover.empty() ? std::string() : touchCoverPath(cover, r.w, r.h);
+    const int32_t place[] = {r.x, r.y, r.w, r.h, slot.book, slot.peek ? 1 : 0,
+                             !file.empty() && Storage.exists(file.c_str()) ? 1 : 0,
+                             homeGraySelected && Storage.exists(holderPath(r.w, r.h).c_str()) ? 1 : 0};
+    key = fnv(fnv(key, place, sizeof(place)), file);
+  }
+  // The line under the Large cover names the next book.
+  if (recentBooks.size() > 1) book((shownRecent() + 1) % static_cast<int>(recentBooks.size()));
+  if (f.style == HomeRecentStyle::Shelf) key = fnv(key, quote);
+  return key;
 }
 
 // "Another book" and the next book's title under a rule, with an open V on each side that has a

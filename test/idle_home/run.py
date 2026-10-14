@@ -105,14 +105,15 @@ struct HomeActivity : UiTabListActivity {
   Tab activeTabId = Tab::RECENT;
   struct { bool active = false; bool isActive() const { return active; } } rowMenu;
   bool ink = true, homeGraySelected = false, coverRendered = true, snapshot = true;
-  struct InkSlot { HomeRecentRect rect; int book = -1; };
+  struct InkSlot { HomeRecentRect rect; int book = -1; bool peek = false; };
   InkSlot inkSlots[4]{};
   int inkSlotCount = 0;
   idlework::Queue<> idleQueue;
   uint32_t idleQuietSince = 0, idleRetryAt = 0, idleBackoffMs = 30000;
   uint8_t idleOutcome = 0;
   const char* idleWhy = "";
-  int updates = 0;
+  int updates = 0, dropped = 0;
+  void dropFrameFiles() { ++dropped; }
   bool homeInkEnabled() const { return ink; }
   void freeCoverBuffer() { snapshot = false; }
   void requestUpdate() { ++updates; }
@@ -200,8 +201,8 @@ int main() {
   std::puts("GREEN a key pressed, let go or held past 3 s, a menu over Home, another tab, a low battery: no step, no lock tried");
   gpio.usb = true;
   h.idleStep();
-  assert(runs == 1 && locksDuringRun == 1 && !snapshotDuringRun && locks == 0 && !h.coverRendered && h.updates == 1);
-  std::puts("GREEN on USB a step runs at full CPU speed; a sharp cover draws again");
+  assert(runs == 1 && locksDuringRun == 1 && !snapshotDuringRun && locks == 0 && !h.coverRendered && h.updates == 1 && h.dropped == 1);
+  std::puts("GREEN on USB a step runs at full CPU speed; a sharp cover draws again and drops the frame files saved with the temporary one");
 
   h.queueIdleCovers();  // the redraw queues the shown cover again; done this visit, it is not
   now += 3000;
@@ -215,7 +216,7 @@ int main() {
   now += 3000;
   next = coverink::Outcome::Nothing;
   h.idleStep();
-  assert(runs == 2 && h.snapshot && h.coverRendered && h.updates == 1 && h.idleQueue.empty());
+  assert(runs == 2 && h.snapshot && h.coverRendered && h.updates == 1 && h.dropped == 1 && h.idleQueue.empty());
   std::puts("GREEN a done cover is not queued again; a step with nothing to do keeps the snapshot and draws nothing");
 
   // Back in front (onResume): what ended this visit is queued again.

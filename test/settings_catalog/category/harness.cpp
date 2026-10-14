@@ -215,7 +215,8 @@ int main(int argc, char** argv) {
               settingsChoiceStyle(*homeRow, true) == SettingsChoiceStyle::Popup,
               "Home has 3 named choices in a popup");
   if (homeRow != catalog.end())
-    ok &= check(settingHiddenOnThisBoard(*homeRow) == !BoardConfig::hasTouch(), "Home style belongs to touch boards");
+    ok &= check(settingHiddenOnThisBoard(*homeRow) == (!BoardConfig::hasTouch() && board != "x3"),
+                "Home style belongs to touch boards and the X3");
   ok &= choiceSemantics(buildFontFamilySetting(nullptr));
   ok &= choiceSemantics(buildFontSizeSetting(nullptr));
   SettingInfo states = SettingInfo::Enum(StrId::STR_NIGHT_MODE, &CrossPointSettings::screenInverted,
