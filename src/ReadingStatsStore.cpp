@@ -210,6 +210,14 @@ bool writeSnapshot(const std::string& path, const JsonDocument& doc, const int m
   if (staged) *staged = false;
   if (doc.overflowed()) return false;
   const std::string temporary = path + ".tmp", backup = path + ".bak";
+  // A save cut at its last rename leaves the whole new snapshot in .tmp and no main file. Writing .tmp again would
+  // truncate it, and a failure then loses what that save had put on the card: it becomes the main file first.
+  if (!Storage.exists(path.c_str()) && Storage.exists(temporary.c_str())) {
+    JsonDocument staged;
+    const auto result = memo == MEMO_LEDGER ? readLedger(temporary, staged)
+                                            : PersistableStoreBase::readDocFromFileStatus(temporary.c_str(), staged, 32768);
+    if (result == PersistableStoreBase::ReadResult::Ready) Storage.rename(temporary.c_str(), path.c_str());
+  }
   bool readable = memo >= 0 && knownReadable[memo] == path;
   if (memo >= 0) knownReadable[memo].clear();  // known again once the new main file is in place
   if (!readable && Storage.exists(path.c_str())) {
