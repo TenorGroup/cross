@@ -239,13 +239,17 @@ bool joinSavedNetwork(const uint32_t deadline) {
   return false;
 }
 
-void leaveWifi() {
+// restCpu: let the clock drop to the low-power one now that the radio is off. The sleep push says yes (the
+// sleep after it holds its own Lock). The wake pull says no: it runs in setup() with no Lock held, and the
+// Epub load, the mapping and the book open after it would run at 10 MHz; the main loop lowers the clock
+// by itself after the idle time.
+void leaveWifi(const bool restCpu) {
   KOReaderSyncClient::requestTimeoutMs = 0;
   if (WiFi.getMode() != WIFI_MODE_NULL) {
     WiFi.disconnect(true, false);
     WiFi.mode(WIFI_OFF);
   }
-  powerManager.setPowerSaving(true);
+  if (restCpu) powerManager.setPowerSaving(true);
 }
 
 // Same dispatch as the manual sync (KOReaderSyncActivity).
@@ -405,7 +409,7 @@ void pushBeforeSleep(GfxRenderer& renderer) {
       if (outcome == PushOutcome::Done) changed = list.remove(debt.path) || changed;
     }
   }
-  leaveWifi();
+  leaveWifi(true);
   if (changed && !saveDebts(list)) LOG_ERR("KAS", "Could not write %s", DEBT_FILE);
   if (marksChanged && marksReadable && !saveMarks(marks)) LOG_ERR("KAS", "Could not write %s", MARK_FILE);
   LOG_INF("KAS", "sleep push done total=%lu ms left=%u", static_cast<unsigned long>(millis() - started),
@@ -423,12 +427,12 @@ namespace {
 PullResult pullNow(GfxRenderer& renderer, const std::string& path, const uint32_t started) {
   const std::string hash = documentHash(path);
   if (hash.empty() || !joinSavedNetwork(started + ROUND_BUDGET_MS - REQUEST_MS)) {
-    leaveWifi();
+    leaveWifi(false);
     return PullResult::Failed;
   }
   KOReaderProgress remote{};
   const Fetch fetch = canStartRequest(millis() - started) ? fetchRemote(hash, remote, started) : Fetch::Failed;
-  leaveWifi();  // the radio is off before the book opens (BLE needs it on the X3)
+  leaveWifi(false);  // the radio is off before the book opens (BLE needs it on the X3)
   if (fetch != Fetch::Found) return fetch == Fetch::Failed ? PullResult::Failed : PullResult::Kept;
 
   auto epub = loadEpubForMapping(path);
