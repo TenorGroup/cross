@@ -8,6 +8,7 @@
 #include <cstring>
 
 #include "ChapterXPathResolver.h"
+#include "KOReaderCredentialStore.h"
 #include "Epub/Section.h"
 #include "Epub/VisibleTextUtils.h"
 #include "Epub/htmlEntities.h"
@@ -791,6 +792,67 @@ SavedProgressPosition ProgressMapper::toSavedProgress(const std::shared_ptr<Epub
   LOG_DBG("PM", "-> Progress: spine=%d page=%d/%d %.2f%% %s", pos.spineIndex, pos.pageNumber, pos.totalPages,
           static_cast<double>(result.percentage * 100), result.xpath.c_str());
   return result;
+}
+
+CrossPointPosition ProgressMapper::fromRemoteProgress(const std::shared_ptr<Epub>& epub,
+                                                      const KOReaderProgress& progress, GfxRenderer& renderer,
+                                                      const int currentSpineIndex,
+                                                      const int totalPagesInCurrentSpine) {
+  // The standard KOReader progress XPath is the authoritative content anchor.
+  // The CrossPoint server's existing rich page hints remain a legacy fallback.
+  const SavedProgressPosition koPos = {progress.progress, progress.percentage};
+  CrossPointPosition mapped =
+      toCrossPoint(epub, koPos, renderer, currentSpineIndex, totalPagesInCurrentSpine);
+  if (!mapped.hasVisibleTextOffset && progress.position.has_value()) {
+    // toCrossPoint above already tried koPos.xpath; if the rich position carries the same XPath,
+    // tell fromRichPosition to skip re-resolving it and use its page hints directly.
+    const bool sameXPath = progress.position->xpath == progress.progress;
+    if (const auto richMapped = fromRichPosition(epub, *progress.position, renderer, sameXPath)) {
+      mapped = *richMapped;
+    }
+  }
+  return mapped;
+}
+
+KOReaderProgress ProgressMapper::toUploadRecord(const std::string& documentHash, const SavedProgressPosition& saved,
+                                                const CrossPointPosition& position, const std::string& epubPath,
+                                                const Epub* metadataSource) {
+  KOReaderProgress progress;
+  progress.document = documentHash;
+  progress.progress = saved.xpath;
+  progress.percentage = saved.percentage;
+
+  // Rich CrossPoint position for the default CrossPoint sync server (lossless
+  // CrossPoint<->CrossPoint sync). The HTTP client also enforces this boundary
+  // before serializing the extension.
+  if (KOREADER_STORE.usesCrossPointSyncServer()) {
+    KOReaderRichPosition pos;
+    const float pct = saved.percentage < 0.0f ? 0.0f : saved.percentage > 1.0f ? 1.0f : saved.percentage;
+    pos.pctQ = static_cast<uint32_t>(pct * 1000000.0f + 0.5f);
+    pos.spineIndex = static_cast<uint16_t>(position.spineIndex);
+    pos.pageNumber = static_cast<uint16_t>(position.pageNumber);
+    pos.totalPages = static_cast<uint16_t>(position.totalPages > 0 ? position.totalPages : 1);
+    if (position.hasParagraphIndex) {
+      pos.paragraphIndex = position.paragraphIndex;
+    }
+    pos.xpath = saved.xpath;
+    progress.position = std::move(pos);
+  }
+
+  // Optionally include document metadata (KOReader PR #15306)
+  if (KOREADER_STORE.getSendMetadata()) {
+    KOReaderMetadata meta;
+    const auto lastSlash = epubPath.rfind('/');
+    meta.filename = (lastSlash != std::string::npos) ? epubPath.substr(lastSlash + 1) : epubPath;
+    if (metadataSource) {
+      meta.title = metadataSource->getTitle();
+      meta.authors = metadataSource->getAuthor();
+    } else {
+      LOG_ERR("PM", "Epub unavailable for metadata; sending filename only");
+    }
+    progress.metadata = std::move(meta);
+  }
+  return progress;
 }
 
 std::optional<CrossPointPosition> ProgressMapper::fromRichPosition(const std::shared_ptr<Epub>& epub,

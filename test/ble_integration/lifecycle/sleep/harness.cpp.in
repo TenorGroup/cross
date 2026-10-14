@@ -116,6 +116,7 @@ struct Settings {
 struct AppState {
   bool lastSleepFromReader = false;
   bool showBootScreen = true;
+  uint32_t sleepStartedAt = 0;
   void saveToFile() { events.push_back("state-save"); }
 } APP_STATE;
 struct GPIO {
@@ -133,6 +134,10 @@ struct RendererBoundary {
   bool diffOnlyPanel() const { return true; }
   bool panelFrameKnown() const { return true; }
 } renderer;
+namespace koautosync {  // automatic KOReader sync is off in this harness
+inline uint32_t sleepStamp() { return 0; }
+template <class R> void pushBeforeSleep(R&) {}
+}  // namespace koautosync
 struct StorageBoundary {
   bool exists(const char*) { return false; }
   void remove(const char*) {}

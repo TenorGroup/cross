@@ -670,6 +670,13 @@ void SleepActivity::showStartingUp(GfxRenderer& renderer) {
   LOG_INF("SLP", "Wake notice shown: %s", text);
 }
 
+void SleepActivity::showSyncing(GfxRenderer& renderer) {
+  GUI.drawPopup(renderer, tr(STR_AUTO_SYNCING), false);
+  renderer.displayBufferAsync();
+  wakeNoticeRunning = true;
+  LOG_INF("SLP", "Wake sync notice shown");
+}
+
 #ifdef TENOR_WAKE_LABEL_GRAY
 void SleepActivity::showStartingUpOverGray(GfxRenderer& renderer) {
   // The card keeps no frame of a gray sleep screen, so what the glass shows is not known. The

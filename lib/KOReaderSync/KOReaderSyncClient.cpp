@@ -12,9 +12,11 @@
 #include <ctime>
 #include <string>
 
+#include "KOReaderAutoSyncPolicy.h"
 #include "KOReaderCredentialStore.h"
 
 int KOReaderSyncClient::lastHttpCode = 0;
+uint32_t KOReaderSyncClient::requestTimeoutMs = 0;
 
 namespace {
 // Device identifier for CrossPoint reader
@@ -25,8 +27,8 @@ constexpr char DEVICE_ID[] = "crosspoint-reader";
 // Keep a free-space floor and room for a full TLS record when the server does
 // not negotiate our smaller record limit. These are preflight margins, not a
 // guarantee that a handshake will fit.
-constexpr uint32_t MIN_FREE_FOR_TLS = 35000;
-constexpr uint32_t MIN_BLOCK_FOR_TLS = 20000;
+constexpr uint32_t MIN_FREE_FOR_TLS = kosyncauto::MIN_FREE_FOR_TLS;
+constexpr uint32_t MIN_BLOCK_FOR_TLS = kosyncauto::MIN_BLOCK_FOR_TLS;
 
 // Apply the shared KOSync auth headers after begin(). x-auth-* is the native
 // KOSync scheme; Basic auth is added for Calibre-Web-Automated compatibility.
@@ -151,6 +153,7 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
     return NETWORK_ERROR;
   }
   applyAuthHeaders(http);
+  if (requestTimeoutMs) http.setTimeout(requestTimeoutMs);
   const int httpCode = http.GET();
   lastHttpCode = httpCode;
 
@@ -269,6 +272,7 @@ KOReaderSyncClient::Error KOReaderSyncClient::updateProgress(const KOReaderProgr
   }
   applyAuthHeaders(http);
   http.addHeader("Content-Type", "application/json");
+  if (requestTimeoutMs) http.setTimeout(requestTimeoutMs);
   const int httpCode = http.sendRequest("PUT", body);
   http.end();
   lastHttpCode = httpCode;

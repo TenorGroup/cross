@@ -245,20 +245,8 @@ void KOReaderSyncActivity::performSync() {
     GfxRenderer::FrameBufferLoan loan(renderer);
 
     const auto mapRemoteProgress = [&](const KOReaderProgress& progress) {
-      // The standard KOReader progress XPath is the authoritative content anchor.
-      // The CrossPoint server's existing rich page hints remain a legacy fallback.
-      const SavedProgressPosition koPos = {progress.progress, progress.percentage};
-      CrossPointPosition mapped =
-          ProgressMapper::toCrossPoint(epub, koPos, renderer, localPosition.spineIndex, localPosition.totalPages);
-      if (!mapped.hasVisibleTextOffset && progress.position.has_value()) {
-        // toCrossPoint above already tried koPos.xpath; if the rich position carries the same XPath,
-        // tell fromRichPosition to skip re-resolving it and use its page hints directly.
-        const bool sameXPath = progress.position->xpath == progress.progress;
-        if (const auto richMapped = ProgressMapper::fromRichPosition(epub, *progress.position, renderer, sameXPath)) {
-          mapped = *richMapped;
-        }
-      }
-      return mapped;
+      return ProgressMapper::fromRemoteProgress(epub, progress, renderer, localPosition.spineIndex,
+                                                localPosition.totalPages);
     };
 
     remotePosition = mapRemoteProgress(remoteProgress);
@@ -316,48 +304,13 @@ void KOReaderSyncActivity::performUpload() {
   requestUpdateAndWait();
 
   // localProgress was pre-computed in EpubReaderActivity before the Epub was released.
-  KOReaderProgress progress;
-  progress.document = documentHash;
-  progress.progress = localProgress.xpath;
-  progress.percentage = localProgress.percentage;
-
-  // Rich CrossPoint position for the default CrossPoint sync server (lossless
-  // CrossPoint<->CrossPoint sync). The HTTP client also enforces this boundary
-  // before serializing the extension.
-  if (KOREADER_STORE.usesCrossPointSyncServer()) {
-    KOReaderRichPosition pos;
-    const float pct = localProgress.percentage < 0.0f   ? 0.0f
-                      : localProgress.percentage > 1.0f ? 1.0f
-                                                        : localProgress.percentage;
-    pos.pctQ = static_cast<uint32_t>(pct * 1000000.0f + 0.5f);
-    pos.spineIndex = static_cast<uint16_t>(localPosition.spineIndex);
-    pos.pageNumber = static_cast<uint16_t>(localPosition.pageNumber);
-    pos.totalPages = static_cast<uint16_t>(localPosition.totalPages > 0 ? localPosition.totalPages : 1);
-    if (localPosition.hasParagraphIndex) {
-      pos.paragraphIndex = localPosition.paragraphIndex;
-    }
-    pos.xpath = localProgress.xpath;
-    progress.position = std::move(pos);
-  }
-
-  // Optionally include document metadata (KOReader PR #15306)
-  if (KOREADER_STORE.getSendMetadata()) {
-    // The Epub is released before the sync network calls and is only reloaded on the
-    // remote-progress path (performSync). When uploading from NO_REMOTE_PROGRESS the
-    // Epub is still null, so reload it here and guard the title/author reads to avoid
-    // dereferencing a null Epub. Filename is derived from the path and is always safe.
-    ensureEpubLoaded();
-    KOReaderMetadata meta;
-    const auto lastSlash = epubPath.rfind('/');
-    meta.filename = (lastSlash != std::string::npos) ? epubPath.substr(lastSlash + 1) : epubPath;
-    if (epub) {
-      meta.title = epub->getTitle();
-      meta.authors = epub->getAuthor();
-    } else {
-      LOG_ERR("KOSync", "Epub unavailable for metadata; sending filename only");
-    }
-    progress.metadata = std::move(meta);
-  }
+  // The Epub is released before the sync network calls and is only reloaded on the
+  // remote-progress path (performSync). When uploading from NO_REMOTE_PROGRESS the
+  // Epub is still null, so reload it for the metadata; the record builder sends the
+  // file name alone when it is unavailable.
+  if (KOREADER_STORE.getSendMetadata()) ensureEpubLoaded();
+  KOReaderProgress progress =
+      ProgressMapper::toUploadRecord(documentHash, localProgress, localPosition, epubPath, epub.get());
 
   // Release the Epub before the network call so the TLS handshake has enough free heap
   // (consistent with the release-before-sync pattern in performSync); nothing below needs it.

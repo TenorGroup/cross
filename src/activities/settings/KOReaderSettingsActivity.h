@@ -14,15 +14,16 @@ class KOReaderSettingsActivity final : public UiListActivity {
   tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Network; }
   explicit KOReaderSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
-  static constexpr int MENU_ITEMS = 8;
+  static constexpr int MENU_ITEMS = 9;
 
  private:
   bool supportsFavorites() const override { return true; }
   std::string favoriteKey(int row) const override;
   int listCount() const override;
-  int settingsChoiceCount(int row) const override { return row >= 3 && row <= 5 ? 2 : 0; }
+  // Rows 4 (send metadata) and 6 (automatic sync) are plain On/Off switches.
+  int settingsChoiceCount(int row) const override { return row >= 3 && row <= 6 ? 2 : 0; }
   SettingsChoiceStyle rowChoiceStyle(int row) const override {
-    return settingsChoiceStyle(settingsChoiceCount(row), tenorchrome::kTouchShell, row == 4);
+    return settingsChoiceStyle(settingsChoiceCount(row), tenorchrome::kTouchShell, row == 4 || row == 6);
   }
   OptionPopup optionPopup_;
   OptionPopup* tiltPopup() override { return &optionPopup_; }
