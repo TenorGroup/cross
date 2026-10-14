@@ -61,6 +61,7 @@
 #include "HeapBigProbe.h"
 #include "SettingsList.h"
 #include "CrossPointState.h"
+#include "KOReaderAutoSync.h"
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
@@ -514,6 +515,7 @@ void enterDeepSleep(bool fromTimeout = false) {
   if (asleep) LOG_INF("SLP", "Timing image-ready=%lu ms", static_cast<unsigned long>(millis() - sleepStarted));
   // One write of the state, once the sleep screen is up: what that screen chose (the quote shown,
   // the picture) goes in this write instead of a second write of the same file of its own.
+  APP_STATE.sleepStartedAt = koautosync::sleepStamp();  // the wake pull runs only after a long sleep
   APP_STATE.saveToFile();
   LOG_INF("SLP", "Timing save-state=%lu ms", static_cast<unsigned long>(millis() - sleepStarted));
   if (!asleep) {
@@ -548,6 +550,9 @@ void enterDeepSleep(bool fromTimeout = false) {
   halGaugeCapacity.abandon();
 #endif
   display.deepSleep();
+  // Automatic KOReader sync (off by default): the sleep screen and its retained frame are done and the
+  // panel is down; push what is owed, within a fixed time, then the card powers down as before.
+  koautosync::pushBeforeSleep(renderer);
 #if TENOR_COLD_LOG
   coldlog::flush("sleep");
 #endif
@@ -1042,6 +1047,9 @@ void setup() {
     // Wake straight into the book last opened. The reader's
     // first paint is a cleaning waveform (allowFastInitialRefresh stays false),
     // which is the pass that takes the retained sleep frame off the panel.
+    // Automatic KOReader sync (off by default): after a sleep of 30 minutes or more the server's place
+    // is fetched first, so the page about to be drawn is the right one. Whatever happens, the book opens.
+    if (resume == BootResume::SplashlessWake) koautosync::pullOnWake(renderer, wakeBook, sleepFrameKept);
     activityManager.goToReader(wakeBook);
   } else {
     const HomeMenuItem startHome = shell::isUgly() && uglyStart == CrossPointSettings::UGLY_START_RECENT

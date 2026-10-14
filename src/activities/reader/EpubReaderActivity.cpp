@@ -46,6 +46,7 @@
 #include "EpubReaderFootnoteSelectActivity.h"
 #include "EpubReaderPercentSelectionActivity.h"
 #include "EpubReaderUtils.h"
+#include "KOReaderAutoSync.h"
 #include "KOReaderCredentialStore.h"
 #include "KOReaderSyncActivity.h"
 #include "HeapBigProbe.h"
@@ -6658,6 +6659,16 @@ void EpubReaderActivity::onExit() {
   }
   // A paint cut short by Back left the page it showed unsaved.
   if (progressSaveDeferred.load(std::memory_order_acquire)) saveProgressIfMoved();
+  // Automatic KOReader sync: this book is now owed a push. Only the place is noted here, after the last
+  // progress save and while the Epub is loaded; the debt file is written after the next screen's first
+  // frame and the push happens at sleep.
+  if (!preview && !recentsEntryRemoved && epub && koautosync::wantsNote()) {
+    const CrossPointPosition place = getCurrentPosition();
+    const float intra =
+        place.totalPages > 1 ? static_cast<float>(place.pageNumber) / static_cast<float>(place.totalPages - 1) : 0.0f;
+    koautosync::noteLeftBook(epub->getPath(), place, epub->calculateProgress(place.spineIndex, intra),
+                             activityManager.isSleepTransition());
+  }
 #ifdef TENOR_TURN_TRACE
   [[maybe_unused]] const unsigned long excerptDone = millis();
 #endif

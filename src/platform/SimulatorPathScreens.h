@@ -6,6 +6,7 @@
 
 #include "activities/settings/HomeButtonSettingsActivity.h"
 #include "activities/settings/InfoUpdateActivity.h"
+#include "activities/settings/KOReaderSettingsActivity.h"
 #include "activities/settings/KeyboardLayoutsActivity.h"
 #if TENOR_CABLE_FLASH
 #include "activities/settings/SdFirmwareUpdateActivity.h"
@@ -18,7 +19,8 @@ inline void simulatorPathScreen(GfxRenderer& renderer, MappedInputManager& input
   const char* current = activityManager.currentName();
   // The cable update screens open over Home, as a computer would open them.
   const bool cableScreen = target && std::strncmp(target, "Cable", 5) == 0;
-  if (opened || !target || !current || std::strcmp(current, cableScreen ? "Home" : "Settings") != 0 ||
+  const bool overHome = cableScreen || (target && std::strcmp(target, "KOReaderSettings") == 0);
+  if (opened || !target || !current || std::strcmp(current, overHome ? "Home" : "Settings") != 0 ||
       !activityManager.hasDrawnFrame() || (at && millis() < std::strtoul(at, nullptr, 10))) return;
   opened = true;
 #if TENOR_CABLE_FLASH
@@ -37,6 +39,8 @@ inline void simulatorPathScreen(GfxRenderer& renderer, MappedInputManager& input
     activityManager.pushActivity(std::make_unique<HomeButtonSettingsActivity>(renderer, input));
   else if (std::strcmp(target, "KeyboardLayouts") == 0)
     activityManager.pushActivity(std::make_unique<KeyboardLayoutsActivity>(renderer, input));
+  else if (std::strcmp(target, "KOReaderSettings") == 0)
+    activityManager.pushActivity(std::make_unique<KOReaderSettingsActivity>(renderer, input));
   else if (std::strcmp(target, "InfoUpdate") == 0)
     activityManager.pushActivity(std::make_unique<InfoUpdateActivity>(renderer, input));
 }

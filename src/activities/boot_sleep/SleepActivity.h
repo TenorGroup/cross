@@ -14,6 +14,9 @@ class SleepActivity final : public Activity {
   static void showEnteringSleep(GfxRenderer& renderer);
   // The same notice in the same place when waking, over the sleep screen the panel still shows.
   static void showStartingUp(GfxRenderer& renderer);
+  // The wake pull of the automatic KOReader sync is running: the same popup over the kept sleep frame,
+  // started and left running like showStartingUp.
+  static void showSyncing(GfxRenderer& renderer);
   // True once, after a wake notice started its refresh: the first screen then waits it out.
   static bool takeWakeNoticeRunning();
 #ifdef TENOR_WAKE_LABEL_GRAY

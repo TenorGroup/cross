@@ -26,6 +26,9 @@ class CrossPointState : public PersistableStore<CrossPointState> {
   uint8_t readerActivityLoadCount = 0;
   bool lastSleepFromReader = false;
   bool showBootScreen = true;
+  // Unix seconds when the machine last went to sleep with automatic KOReader sync on and a trusted
+  // clock; 0 otherwise. The wake pull runs only after a long enough sleep (kosyncauto).
+  uint32_t sleepStartedAt = 0;
 
   static const char* getFilePath() { return "/.crosspoint/state.json"; }
   void toJson(JsonDocument& doc) const;

@@ -57,6 +57,23 @@ class ProgressMapper {
                                          int totalPagesInCurrentSpine = 0, int fallbackTotalPages = 0);
 
   /**
+   * Map a progress record fetched from the server onto this device's layout: the standard KOReader
+   * XPath first, the server's rich page hints when that XPath cannot be applied. The framebuffer must
+   * be loaned (GfxRenderer::FrameBufferLoan) by the caller. Shared by the manual and the automatic sync.
+   */
+  static CrossPointPosition fromRemoteProgress(const std::shared_ptr<Epub>& epub, const KOReaderProgress& progress,
+                                               GfxRenderer& renderer, int currentSpineIndex, int totalPagesInCurrentSpine);
+
+  /**
+   * The upload record for a local position: document id, XPath, percentage, the rich position for the
+   * CrossPoint servers and, when enabled in the settings, the book metadata (`metadataSource` may be null:
+   * the file name alone is sent). Shared by the manual and the automatic sync.
+   */
+  static KOReaderProgress toUploadRecord(const std::string& documentHash, const SavedProgressPosition& saved,
+                                         const CrossPointPosition& position, const std::string& epubPath,
+                                         const Epub* metadataSource);
+
+  /**
    * Convert a rich CrossPoint position (downloaded from a crosspoint-sync
    * server) directly to a CrossPoint position. Its standard KOReader XPath is
    * resolved to a content offset first; legacy spine/page/paragraph hints are

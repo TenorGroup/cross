@@ -20,7 +20,8 @@ namespace fui = freeink::ui;
 namespace {
 const StrId menuNames[KOReaderSettingsActivity::MENU_ITEMS] = {
     StrId::STR_USERNAME,      StrId::STR_PASSWORD,      StrId::STR_SYNC_SERVER_URL, StrId::STR_DOCUMENT_MATCHING,
-    StrId::STR_SEND_METADATA, StrId::STR_SYNC_BEHAVIOR, StrId::STR_AUTHENTICATE,    StrId::STR_SIGN_UP};
+    StrId::STR_SEND_METADATA, StrId::STR_SYNC_BEHAVIOR, StrId::STR_AUTO_SYNC,       StrId::STR_AUTHENTICATE,
+    StrId::STR_SIGN_UP};
 }  // namespace
 
 KOReaderSettingsActivity::KOReaderSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -124,7 +125,12 @@ void KOReaderSettingsActivity::activateIndex(const int index) {
     KOREADER_STORE.setSyncBehavior(newBehavior);
     KOREADER_STORE.saveToFile();
     requestUpdate();
-  } else if (index == 7) {
+  } else if (index == 6) {
+    // Automatic sync - toggle on/off (off by default)
+    KOREADER_STORE.setAutoSync(!KOREADER_STORE.getAutoSync());
+    KOREADER_STORE.saveToFile();
+    requestUpdate();
+  } else if (index == 8) {
     // Sign Up - create a new account on the sync server with the entered credentials
     if (!KOREADER_STORE.hasCredentials()) {
       return;
@@ -132,7 +138,7 @@ void KOReaderSettingsActivity::activateIndex(const int index) {
     startActivityForResult(
         std::make_unique<KOReaderAuthActivity>(renderer, mappedInput, KOReaderAuthActivity::Mode::SIGN_UP),
         [](const ActivityResult&) {});
-  } else if (index == 6) {
+  } else if (index == 7) {
     // Log in
     if (!KOREADER_STORE.hasCredentials()) {
       // Can't authenticate without credentials - just show message briefly
@@ -182,17 +188,20 @@ void KOReaderSettingsActivity::buildScreen(UiScreen& screen) {
     } else if (i == 5) {
       rowValues_[i] =
           KOREADER_STORE.getSyncBehavior() == KOReaderSyncBehavior::SMART ? tr(STR_SMART_SYNC) : tr(STR_ASK_EVERY_TIME);
+    } else if (i == 6) {
+      rowValues_[i] = KOREADER_STORE.getAutoSync() ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
     } else {
       rowValues_[i] = KOREADER_STORE.hasCredentials() ? "" : std::string("[") + tr(STR_SET_CREDENTIALS_FIRST) + "]";
     }
     // Account actions have a full-width label. Their prerequisite belongs
     // below it, so the longer Vietnamese hint cannot squeeze Log in/Sign up.
-    const bool accountAction = i >= 6;
+    const bool accountAction = i >= 7;
     rowItems_[i].value = accountAction || rowValues_[i].empty() ? nullptr : rowValues_[i].c_str();
     rowItems_[i].subtitle = accountAction && !rowValues_[i].empty() ? rowValues_[i].c_str() : nullptr;
-    rowItems_[i].toggle = rowChoiceStyle(i) == SettingsChoiceStyle::Inline && i == 4;
+    rowItems_[i].toggle = rowChoiceStyle(i) == SettingsChoiceStyle::Inline && (i == 4 || i == 6);
     rowItems_[i].toggleChecked = i == 3 ? KOREADER_STORE.getMatchMethod() == DocumentMatchMethod::BINARY
-        : i == 4 ? KOREADER_STORE.getSendMetadata() : KOREADER_STORE.getSyncBehavior() == KOReaderSyncBehavior::SMART;
+        : i == 4 ? KOREADER_STORE.getSendMetadata()
+        : i == 6 ? KOREADER_STORE.getAutoSync() : KOREADER_STORE.getSyncBehavior() == KOReaderSyncBehavior::SMART;
   }
 
   fui::ListProps props;

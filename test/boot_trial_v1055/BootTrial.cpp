@@ -67,6 +67,10 @@ BootResume resume = BootResume::Splash;
 unsigned snapshotTarget = 0;
 HomeMenuItem snapshotHomeMenu = HomeMenuItem::NONE;
 std::string wakeBook = "/huge.epub";
+bool sleepFrameKept = false;
+namespace koautosync {
+template<class R> int pullOnWake(R&, const std::string&, bool) { return 0; }  // automatic sync is off here
+}
 struct { std::string openEpubPath = "/huge.epub"; } APP_STATE;
 int renderer = 0, mappedInputManager = 0, otaBoot = 0;
 struct SdFirmwareUpdateActivity { template<class... T> explicit SdFirmwareUpdateActivity(T...) {} };
