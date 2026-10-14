@@ -68,6 +68,18 @@ TEST(AutoSyncGate, RoundCeilingStopsNewRequests) {
   EXPECT_LE(7100u + 2100u + 2000u, ROUND_BUDGET_MS);
 }
 
+TEST(AutoSyncGate, ARequestIsNeverGivenLessThanTheTimeItMeasuredAt) {
+  // The mapping before the upload can use up the round: the PUT still gets REQUEST_MS (measured 2.0 s), not 1 s.
+  EXPECT_EQ(requestTimeoutMs(0), REQUEST_TIMEOUT_MAX_MS);
+  EXPECT_EQ(requestTimeoutMs(9000), REQUEST_TIMEOUT_MAX_MS);
+  EXPECT_EQ(requestTimeoutMs(10000), 5000u);
+  EXPECT_EQ(requestTimeoutMs(ROUND_BUDGET_MS - REQUEST_MS), REQUEST_MS);
+  EXPECT_EQ(requestTimeoutMs(14000), REQUEST_MS);
+  EXPECT_EQ(requestTimeoutMs(ROUND_BUDGET_MS), REQUEST_MS);
+  EXPECT_EQ(requestTimeoutMs(ROUND_BUDGET_MS + 4000), REQUEST_MS);  // past the round: still the floor
+  EXPECT_GE(requestTimeoutMs(14000), 2000u);                        // longer than the 2.0 s PUT
+}
+
 // ---- push and pull decisions ----------------------------------------------------------------------------------
 
 TEST(AutoSyncPush, OnlyALocalAheadBookOrAMissingServerCopyIsUploaded) {

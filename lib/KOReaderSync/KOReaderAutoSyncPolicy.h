@@ -19,6 +19,17 @@ constexpr uint32_t ROUND_BUDGET_MS = 15000;
 // A request starts only when this much of the round is left (measured 2.1 s and 2.0 s, plus 50%).
 constexpr uint32_t REQUEST_MS = 3000;
 
+// The timeout of one request: what is left of the round, never above the cap and never below REQUEST_MS.
+// The Epub load and the mapping before an upload can use up the round; the PUT (2.0 s measured) must
+// still have the time of a request, so the floor is REQUEST_MS. A round can overrun by at most that.
+constexpr uint32_t REQUEST_TIMEOUT_MAX_MS = 6000;
+constexpr uint32_t requestTimeoutMs(const uint32_t elapsedMs) {
+  const int32_t left = static_cast<int32_t>(ROUND_BUDGET_MS) - static_cast<int32_t>(elapsedMs);
+  const int32_t floor = static_cast<int32_t>(REQUEST_MS);
+  const int32_t cap = static_cast<int32_t>(REQUEST_TIMEOUT_MAX_MS);
+  return static_cast<uint32_t>(left < floor ? floor : left > cap ? cap : left);
+}
+
 // What the TLS handshake needs (the same floor the manual sync checks).
 constexpr uint32_t MIN_FREE_FOR_TLS = 35000;
 constexpr uint32_t MIN_BLOCK_FOR_TLS = 20000;

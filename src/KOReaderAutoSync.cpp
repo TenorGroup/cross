@@ -260,10 +260,7 @@ std::string documentHash(const std::string& path) {
 }
 
 // One request, bounded by what is left of the round.
-void limitRequest(const uint32_t started) {
-  const int32_t left = static_cast<int32_t>(ROUND_BUDGET_MS) - static_cast<int32_t>(millis() - started);
-  KOReaderSyncClient::requestTimeoutMs = static_cast<uint32_t>(std::clamp<int32_t>(left, 1000, 6000));
-}
+void limitRequest(const uint32_t started) { KOReaderSyncClient::requestTimeoutMs = requestTimeoutMs(millis() - started); }
 
 Fetch fetchRemote(const std::string& hash, KOReaderProgress& remote, const uint32_t started) {
   limitRequest(started);
