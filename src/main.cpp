@@ -1770,20 +1770,22 @@ void loop() {
         if (!found) logSerial.printf("GET:INVALID:%s\n", ten.c_str());
       } else if (cmd.startsWith("FONT_TEST ")) {
         char family[32] = {};
-        unsigned point = 0, weight = 0;
-        if (SCAN_COMMAND(cmd.c_str() + 10, "%31s %u %u", family, &point, &weight) == 3 && point >= 12 && point <= 26 &&
-            weight < readerInk::LEVEL_COUNT && sdFontSystem.registry().findFamily(family)) {
+        unsigned point = 0;
+        int weight = 0;  // the level the user reads, -3..+5
+        if (SCAN_COMMAND(cmd.c_str() + 10, "%31s %u %d", family, &point, &weight) == 3 && point >= 12 && point <= 26 &&
+            weight >= -static_cast<int>(readerInk::ZERO) && weight < readerInk::LEVEL_COUNT - readerInk::ZERO &&
+            sdFontSystem.registry().findFamily(family)) {
           const uint32_t started = millis();
           {
             RenderLock lock;
             snprintf(SETTINGS.sdFontFamilyName, sizeof(SETTINGS.sdFontFamilyName), "%s", family);
             SETTINGS.fontPointSize = point;
-            SETTINGS.readerInkWeight = weight;
+            SETTINGS.readerInkWeight = static_cast<uint8_t>(weight + readerInk::ZERO);
             sdFontSystem.ensureLoaded(renderer);
           }
-          logSerial.printf("FONT_TEST:family=%s,pt=%u,requested=%u,effective=%u,ms=%u,heap=%u,largest=%u\n", family,
-                           point, weight, sdFontSystem.effectiveWeight(), millis() - started, ESP.getFreeHeap(),
-                           ESP.getMaxAllocHeap());
+          logSerial.printf("FONT_TEST:family=%s,pt=%u,requested=%d,effective=%d,ms=%u,heap=%u,largest=%u\n", family,
+                           point, weight, readerInk::level(sdFontSystem.effectiveWeight()), millis() - started,
+                           ESP.getFreeHeap(), ESP.getMaxAllocHeap());
         } else {
           logSerial.printf("FONT_TEST:INVALID\n");
         }

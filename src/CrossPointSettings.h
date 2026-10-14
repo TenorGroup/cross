@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdint>
 
+#include "ReaderInkWeight.h"
 #include "util/HomeButtonInput.h"
 
 class CrossPointSettings : public PersistableStore<CrossPointSettings> {
@@ -421,8 +422,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // are selectable; SdCardFontSystem::ensureLoaded() snaps this to the nearest
   // available size (and persists the snap) whenever the family changes.
   uint8_t fontPointSize = DEFAULT_FONT_POINT_SIZE;
-  // User preference; a family without the variant temporarily renders at weight 0.
-  uint8_t readerInkWeight = 0;
+  // User preference, stored shifted (readerInk::ZERO is level "0"); a family without the variant temporarily
+  // renders at level 0.
+  uint8_t readerInkWeight = readerInk::ZERO;
   // readerSpacing::Level. Was LINE_COMPRESSION TIGHT/NORMAL/WIDE before
   // textSpacingVersion 3; fromJson maps those old ordinals onto the levels.
   uint8_t lineSpacing = readerSpacing::LEVEL_DEFAULT;
@@ -653,7 +655,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     lineSpacing = readerSpacing::NARROW;
     wordSpacing = readerSpacing::WIDE;
     paragraphIndent = 2;  // wide
-    readerInkWeight = 1;
+    readerInkWeight = readerInk::ZERO + 1;
     frontButtonFollowOrientation = 1;
     shortPwrBtn = tenorPresetPowerAction();
     sleepScreen = QUOTE;

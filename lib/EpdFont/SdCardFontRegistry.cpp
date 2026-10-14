@@ -17,7 +17,7 @@ std::string SdCardFontFamilyInfo::dir() const {
 }
 
 std::string SdCardFontFamilyInfo::filePath(const SdCardFontFileInfo& file, const uint8_t weight) const {
-  if (weight > 6 || file.stem >= stems.size()) return {};
+  if (weight > MAX_WEIGHT || file.stem >= stems.size()) return {};
   std::string path = dir();
   if (weight != 0) {
     path += "/weight-";
@@ -33,6 +33,10 @@ uint8_t SdCardFontFamilyInfo::weights(const SdCardFontFileInfo& file) const {
     if (Storage.exists(filePath(file, weight).c_str())) mask |= static_cast<uint8_t>(1u << weight);
   }
   return mask;
+}
+
+bool SdCardFontFamilyInfo::hasWeight(const SdCardFontFileInfo& file, const uint8_t weight) const {
+  return weight <= MAX_WEIGHT && Storage.exists(filePath(file, weight).c_str());
 }
 
 // --- SdCardFontFamilyInfo helpers ---

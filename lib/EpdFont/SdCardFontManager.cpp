@@ -30,9 +30,8 @@ int SdCardFontManager::computeFontId(uint32_t contentHash, const char* familyNam
 }
 
 uint8_t SdCardFontManager::selectWeight(const uint8_t availableMask, const uint8_t requested) {
-  if (requested == 0) return 0;
+  if (requested == 0 || requested > 6) return 0;  // the thin variants (7..9) are looked up by hasWeight
   if (requested == 1) return (availableMask & (1u << 1)) ? 1 : 0;
-  if (requested > 6) return 0;
   for (int weight = requested; weight >= 2; --weight) {
     if (availableMask & (1u << weight)) return static_cast<uint8_t>(weight);
   }
@@ -85,21 +84,28 @@ bool SdCardFontManager::loadFamily(const SdCardFontFamilyInfo& family, GfxRender
     return false;
   }
 
-  const uint8_t available = family.weights(*selected);
-  uint8_t effectiveWeight = selectWeight(available, weight);
+  // A thin variant (7..9) is the exact file or none: the base file stands in when the pack has not got it.
+  const bool thin = weight >= 7;
+  const uint8_t available = thin ? 0 : family.weights(*selected);
+  uint8_t effectiveWeight = thin ? (family.hasWeight(*selected, weight) ? weight : uint8_t{0})
+                                 : selectWeight(available, weight);
   if (!loadedFamilyName_.empty()) {
     unloadAll(renderer);
   }
 
   loaded_.reserve(4);  // reader plus up to three UI fallback sizes
   int id = 0;
-  for (int candidate = effectiveWeight; candidate >= 2 && id == 0; --candidate) {
-    if (available & (1u << candidate)) {
-      id = loadFile(family, *selected, renderer, static_cast<uint8_t>(candidate));
-      if (id != 0) effectiveWeight = static_cast<uint8_t>(candidate);
+  if (effectiveWeight >= 7) {
+    id = loadFile(family, *selected, renderer, effectiveWeight);
+  } else {
+    for (int candidate = effectiveWeight; candidate >= 2 && id == 0; --candidate) {
+      if (available & (1u << candidate)) {
+        id = loadFile(family, *selected, renderer, static_cast<uint8_t>(candidate));
+        if (id != 0) effectiveWeight = static_cast<uint8_t>(candidate);
+      }
     }
+    if (id == 0 && effectiveWeight == 1) id = loadFile(family, *selected, renderer, 1);
   }
-  if (id == 0 && effectiveWeight == 1) id = loadFile(family, *selected, renderer, 1);
   if (id == 0) {
     effectiveWeight = 0;
     id = loadFile(family, *selected, renderer);

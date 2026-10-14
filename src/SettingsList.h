@@ -267,9 +267,9 @@ inline std::optional<SettingInfo> getBaseTextSetting(const char* key) {
   static constexpr StrId spacing[] = {StrId::STR_INK_DEFAULT, StrId::STR_VERY_NARROW, StrId::STR_TIGHT,
                                       StrId::STR_WIDE, StrId::STR_VERY_WIDE};
   static constexpr StrId indent[] = {StrId::STR_STATE_OFF, StrId::STR_INK_DEFAULT, StrId::STR_WIDE};
-  static constexpr StrId ink[] = {StrId::STR_READER_INK_0, StrId::STR_READER_INK_1,
-                                  StrId::STR_READER_INK_2, StrId::STR_READER_INK_3,
-                                  StrId::STR_READER_INK_4, StrId::STR_READER_INK_5};
+  static constexpr StrId ink[] = {StrId::STR_READER_INK_M3, StrId::STR_READER_INK_M2, StrId::STR_READER_INK_M1,
+                                  StrId::STR_READER_INK_0,  StrId::STR_READER_INK_1,  StrId::STR_READER_INK_2,
+                                  StrId::STR_READER_INK_3,  StrId::STR_READER_INK_4,  StrId::STR_READER_INK_5};
   SettingInfo row;
   if (strcmp(key, "letterSpacing") == 0)
     row = SettingInfo::StaticEnum(StrId::STR_LETTER_SPACING, &CrossPointSettings::letterSpacing, spacing,

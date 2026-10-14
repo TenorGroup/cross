@@ -271,20 +271,19 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
 
   const uint8_t inkVersion = doc["readerInkWeightVersion"] | uint8_t{0};
   if (inkVersion < readerInk::SCHEMA_VERSION) {
-    readerInkWeight = doc["readerInkWeight"].isNull()
-                          ? uint8_t{0}
-                          : inkVersion == 0 ? readerInk::fromLegacy(doc["readerInkWeight"].as<int>())
-                                            : (doc["readerInkWeight"].as<int>() >= 1 &&
-                                                       doc["readerInkWeight"].as<int>() <= 3
-                                                   ? uint8_t{1}
-                                                   : uint8_t{0});
+    // Older files kept the level unshifted: schema 2 as 0..5, schema 1 as 1..3, schema 0 as the 3 old levels.
+    const int old = doc["readerInkWeight"].as<int>();
+    readerInkWeight = doc["readerInkWeight"].isNull() ? readerInk::ZERO
+                      : inkVersion == 0               ? readerInk::fromLegacy(old)
+                      : inkVersion == 1               ? readerInk::fromSchema1(old)
+                                                      : readerInk::fromSchema2(old);
     needsResave = true;
   } else if (!doc["readerInkWeight"].isNull()) {
     const int storedInkWeight = doc["readerInkWeight"].as<int>();
     readerInkWeight = readerInk::clamp(storedInkWeight);
     if (storedInkWeight != readerInkWeight) needsResave = true;
   } else {
-    readerInkWeight = 0;
+    readerInkWeight = readerInk::ZERO;
   }
 
   // v1.0.2 luu hai co an rieng cho thanh trang thai ngoai/trong trinh doc. Quy doi

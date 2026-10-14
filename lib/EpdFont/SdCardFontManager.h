@@ -63,9 +63,10 @@ class SdCardFontManager {
     uint8_t weight;
   };
   static int computeFontId(uint32_t contentHash, const char* familyName, uint8_t pointSize, uint8_t weight);
-  // Resolve a requested physical level to the strongest installed level that
+  // Map a requested physical level 0..6 to the strongest installed level that
   // does not exceed it. Legacy weight-1 is used only by packs without any
-  // weight-2 to weight-4 variant.
+  // weight-2 to weight-4 variant. The thin levels 7..9 never fall back to another
+  // thin or heavier level, so they are not handled here.
   static uint8_t selectWeight(uint8_t availableMask, uint8_t requested);
 
   // Load+register a single .cpfont file and append it to loaded_.

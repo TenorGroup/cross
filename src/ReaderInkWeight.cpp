@@ -9,5 +9,6 @@
 void readerInk::apply(GfxRenderer& renderer) {
   sdFontSystem.ensureLoadedImpl(renderer);
   if (auto* manager = renderer.getFontCacheManager())
-    manager->setReaderInk(SETTINGS.getReaderFontId(), clamp(SETTINGS.readerInkWeight), SETTINGS.textAntiAliasing);
+    manager->setReaderInk(SETTINGS.getReaderFontId(), outlineStrength(SETTINGS.readerInkWeight),
+                          SETTINGS.textAntiAliasing);
 }
