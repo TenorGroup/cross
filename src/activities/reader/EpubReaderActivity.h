@@ -285,6 +285,7 @@ class EpubReaderActivity final : public ReaderActivity {
   struct SavedPosition {
     int spineIndex;
     int pageNumber;
+    uint32_t textOffset = UINT32_MAX;
   };
   static constexpr int MAX_FOOTNOTE_DEPTH = 3;
   SavedPosition savedPositions[MAX_FOOTNOTE_DEPTH] = {};
