@@ -183,7 +183,7 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
     outProgress.document = documentHash;
     outProgress.progress = doc["progress"].as<std::string>();
     outProgress.percentage = doc["percentage"].as<float>();
-    outProgress.device = doc["device"].as<std::string>();
+    outProgress.device = doc["device"] | "";  // null or absent is no name, not the word "null"
     outProgress.deviceId = doc["device_id"].as<std::string>();
     outProgress.timestamp = doc["timestamp"].as<int64_t>();
 
