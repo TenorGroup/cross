@@ -6208,17 +6208,7 @@ void EpubReaderActivity::navigateToHref(const std::string& hrefStr, const bool s
   }
 
   if (savePosition) {
-    // Full: drop the oldest entry so Back always returns from the newest jump.
-    if (footnoteDepth == MAX_FOOTNOTE_DEPTH) {
-      std::copy(savedPositions + 1, savedPositions + MAX_FOOTNOTE_DEPTH, savedPositions);
-      footnoteDepth--;
-    }
-    // A child screen (menu, footnote list) may have released the section;
-    // nextPageNumber then holds the page it was on.
-    const int page = section ? section->currentPage : nextPageNumber;
-    savedPositions[footnoteDepth] = {currentSpineIndex, page};
-    footnoteDepth++;
-    LOG_DBG("ERS", "Saved position [%d]: spine %d, page %d", footnoteDepth, currentSpineIndex, page);
+    pushReturnPosition();
   }
 
   {
@@ -6231,6 +6221,20 @@ void EpubReaderActivity::navigateToHref(const std::string& hrefStr, const bool s
   }
   requestUpdate();
   LOG_DBG("ERS", "Navigated to spine %d for href: %s", targetSpineIndex, hrefStr.c_str());
+}
+
+void EpubReaderActivity::pushReturnPosition() {
+  // Full: drop the oldest entry so Back always returns from the newest jump.
+  if (footnoteDepth == MAX_FOOTNOTE_DEPTH) {
+    std::copy(savedPositions + 1, savedPositions + MAX_FOOTNOTE_DEPTH, savedPositions);
+    footnoteDepth--;
+  }
+  // A child screen (menu, footnote list) may have released the section;
+  // nextPageNumber then holds the page it was on.
+  const int page = section ? section->currentPage : nextPageNumber;
+  savedPositions[footnoteDepth] = {currentSpineIndex, page};
+  footnoteDepth++;
+  LOG_DBG("ERS", "Saved position [%d]: spine %d, page %d", footnoteDepth, currentSpineIndex, page);
 }
 
 namespace {

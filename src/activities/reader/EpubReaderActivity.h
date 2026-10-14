@@ -480,6 +480,7 @@ class EpubReaderActivity final : public ReaderActivity {
   void updateBookmarkFlag();
 
   void navigateToHref(const std::string& href, bool savePosition = false);
+  void pushReturnPosition();
   void restoreSavedPosition();
 
   void renderContents(std::unique_ptr<Page> page, int orientedMarginTop, int orientedMarginRight,
