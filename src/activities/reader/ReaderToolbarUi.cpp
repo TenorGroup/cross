@@ -603,12 +603,12 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
     hint.align = fui::TextAlign::Center;
     hint.maxLines = 3;
     screen.target().text(listRect.inset(fui::Insets{0, tokens.spaceLg, 0, tokens.spaceLg}), model_.emptyText, hint);
-    if (model_.emptyHint && renderer_ && uiTarget.paintingEnabled() && tenorchrome::tipShown(model_.emptyHint)) {
-      const int16_t height = static_cast<int16_t>(tenorchrome::tipHeight(*renderer_, model_.emptyHint, 4));
-      tenorchrome::drawInfoInRect(*renderer_, model_.emptyHint,
-                                  {listRect.x, static_cast<int16_t>(listRect.bottom() - height - tokens.spaceSm),
-                                   listRect.width, height}, 4);
-    }
+  } else if (model_.emptyHint && renderer_ && uiTarget.paintingEnabled()) {
+    // The hint stands alone in the empty list, in the middle where the empty text would.
+    const int16_t height = static_cast<int16_t>(tenorchrome::tipHeight(*renderer_, model_.emptyHint, 4));
+    tenorchrome::drawInfoInRect(*renderer_, model_.emptyHint,
+                                {listRect.x, static_cast<int16_t>(listRect.y + (listRect.height - height) / 2),
+                                 listRect.width, height}, 4);
   }
 
   if (usesX3Bar() && count > 0 && renderer_ && uiTarget.paintingEnabled()) {

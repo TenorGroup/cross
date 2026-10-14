@@ -12,8 +12,8 @@ Founder: the menu opens on the Favorites tab, even with nothing pinned; the side
  7. Back from a list closes the menu to the page (it went to the toolbar before).
  8. Where the list has 2 rows or more the front Left and Right step the rows, so the chapter stays where it is.
  9. Position > Select chapter shows where the reader stands (page of the chapter, share of the book) over the bar.
-10. The pin hint ("On any tab, hold Select to pin or unpin ...") stands inside the frame of the Favorites list while
-    nothing is pinned, and is gone once a row is pinned (the list gets its room), in the list menu and the toolbar menu.
+10. The pin hint ("On any tab, hold Select to pin or unpin ...") stands alone inside the frame of the Favorites list
+    while nothing is pinned (the toolbar's "Hold a row in Text or More to pin it here" is gone), and is gone once a row is pinned (the list gets its room), in the list menu and the toolbar menu.
 One simulator run per case: Home opens the book (1800), Select opens the menu (4500), then a key every 2000 ms with
 a screenshot 1500 ms after it.
 TEST_PROGRAM picks the simulator (simulator_x3_uc8279 is the UC8279 panel).
@@ -254,7 +254,7 @@ class FavoritesHintTest(unittest.TestCase):
     def test_10_toolbar_menu_empty_holds_the_hint_in_its_sheet(self):
         foot = sheet_bottom(self.bar_empty)
         self.assertGreaterEqual(foot, 680, f'the sheet ends at {foot}: room is kept under it for the hint')
-        self.assertEqual(ink_bands(self.bar_empty, 380, foot - 4, 40, 488), 4, 'the empty text (2 lines) and the hint (2)')
+        self.assertEqual(ink_bands(self.bar_empty, 380, foot - 4, 40, 488), 2, 'the hint (2 lines) alone, no empty text')
 
     def test_10_toolbar_menu_with_a_pin_has_no_hint_and_its_sheet_stands_on_the_bar(self):
         foot = sheet_bottom(self.bar_pinned)

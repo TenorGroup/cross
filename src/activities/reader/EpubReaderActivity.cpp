@@ -4962,7 +4962,7 @@ void EpubReaderActivity::renderOverlay() {
   // Panels override below: there the pill marks the open panel on every board.
   model.activeTool = (overlay == Overlay::Toolbar && !panelCursorShown) ? -1 : focusedTool;
   if (ReaderToolbarUi::usesX3Bar() && overlay == Overlay::Favorites &&
-      readermenu::favoritesHintShown(static_cast<int>(favoriteRows.size())))
+      readermenu::favoritesHintShown(static_cast<int>(favoriteRows.size())) && tenorchrome::tipShown(tr(STR_FAVORITES_HINT)))
     model.emptyHint = tr(STR_FAVORITES_HINT);
   // Strings the model points at live here until render() returns.
   std::string chapterTitle, pageInfo;
@@ -5058,7 +5058,7 @@ void EpubReaderActivity::renderOverlay() {
     model.itemCount = static_cast<int>(favoriteRows.size());
     model.rowText = [this](int i) { return favoriteRowName(i); };
     model.rowValue = [this](int i) { return favoriteRowValue(i); };
-    model.emptyText = tr(STR_READER_FAVORITES_EMPTY);
+    if (!model.emptyHint) model.emptyText = tr(STR_READER_FAVORITES_EMPTY);  // the X3 hint says it, in the list
     model.rowOpens = [this](int i) {
       const uint8_t pin = i < static_cast<int>(favoriteRows.size()) ? favoriteRows[i] : 0;
       return (pin & readermenu::PIN_TEXT) ? !textRowToggles(textRowPlace(pin & ~readermenu::PIN_TEXT))
