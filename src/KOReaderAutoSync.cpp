@@ -373,6 +373,11 @@ void noteLeftBook(const std::string& path, const CrossPointPosition& position, c
   }
 }
 
+void switchedOff() {
+  hasPendingNote = false;
+  Storage.remove(DEBT_FILE);
+}
+
 void flushNote() {
   if (!hasPendingNote) return;
   SyncDebtList list;

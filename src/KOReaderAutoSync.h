@@ -27,6 +27,10 @@ void flushNote();
 // card power down: pushes the books owed to the server, within kosyncauto::ROUND_BUDGET_MS.
 void pushBeforeSleep(GfxRenderer& renderer);
 
+// The switch was turned off: what was owed is forgotten, in memory and on the card, so turning it on again
+// later pushes nothing from before.
+void switchedOff();
+
 // What to store as APP_STATE.sleepStartedAt when going to sleep: now, or 0 when automatic sync is off
 // or the clock cannot be trusted (then the next wake counts as a short sleep and pulls nothing).
 uint32_t sleepStamp();

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3 -I
-"""Two source-text checks on the wake pull (firmware-only code, so the text of the one function is read).
+"""Source-text checks on the automatic sync (firmware-only code, so the text of the one function is read).
 
 1. The wake pull must not drop the CPU to the low-power clock before the book is open.
 
@@ -10,6 +10,9 @@ key, so the pull leaves it alone; the sleep push (the sleep after it holds its o
 
 2. pullOnWake answers Skipped for a path that is not an .epub before any other work (a text or XTC book
 would spend the Wi-Fi wait and then fail to load as an Epub).
+
+3. Turning the switch off forgets what was owed: the debt file goes and the note in memory with it, so
+turning it on weeks later pushes nothing from before.
 """
 import re
 import sys
@@ -19,7 +22,9 @@ text = open(f"{root}/src/KOReaderAutoSync.cpp", encoding="utf-8").read()
 
 
 def body(name):
-    start = text.index(name)
+    start = text.find(name)
+    if start < 0:
+        return ""
     depth, i = 0, text.index("{", start)
     first = i
     while True:
@@ -44,5 +49,12 @@ if re.findall(r"leaveWifi\(([^)]*)\)", push) != ["true"]:
 wake = body("PullResult pullOnWake(")
 if not re.match(r"\{\s*if \(!isEpubPath\(path\)\) return PullResult::Skipped;", wake):
     problems.append("pullOnWake must start by skipping a path that is not an epub")
+off = body("void switchedOff(")
+if "hasPendingNote = false" not in off or "Storage.remove(DEBT_FILE)" not in off:
+    problems.append("switchedOff must clear the note in memory and remove the debt file")
+settings = open(f"{root}/src/activities/settings/KOReaderSettingsActivity.cpp", encoding="utf-8").read()
+branch = settings[settings.index("index == 6"):settings.index("index == 8")]
+if not re.search(r"setAutoSync\(!KOREADER_STORE\.getAutoSync\(\)\);\s*if \(!KOREADER_STORE\.getAutoSync\(\)\) koautosync::switchedOff\(\);", branch):
+    problems.append("the Automatic sync row must call koautosync::switchedOff() when the switch goes off")
 print("DO: " + "; ".join(problems) if problems else "XANH")
 sys.exit(1 if problems else 0)

@@ -8,6 +8,7 @@
 #include <string>
 
 #include "KOReaderAuthActivity.h"
+#include "KOReaderAutoSync.h"
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
 #include "MenuFavorites.h"
@@ -128,6 +129,7 @@ void KOReaderSettingsActivity::activateIndex(const int index) {
   } else if (index == 6) {
     // Automatic sync - toggle on/off (off by default)
     KOREADER_STORE.setAutoSync(!KOREADER_STORE.getAutoSync());
+    if (!KOREADER_STORE.getAutoSync()) koautosync::switchedOff();
     KOREADER_STORE.saveToFile();
     requestUpdate();
   } else if (index == 8) {
