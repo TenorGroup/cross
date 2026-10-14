@@ -661,7 +661,7 @@ else:
     fixture += Path(__file__).with_name('FooterSpacingTest.cpp' if args.footer_spacing else 'X3ScreenLayoutTest.cpp').read_text()
 args.work.mkdir(parents=True, exist_ok=True)
 unit = args.work / 'layout.cpp'
-unit.write_text('#include <cstdlib>\n#include "BitmapFixture.h"\n' + fixture)
+unit.write_text('#include <cstdlib>\n#include "BitmapFixture.h"\n#include "util/BookTitleDisplay.h"\n' + fixture)
 program = args.work / 'layout'
 units = [str(ROOT / 'src/components/QuoteDetailLayout.cpp'), str(ROOT / 'src/components/QuoteListLayout.cpp')] if args.phase2 else []
 subprocess.run(['c++', '-std=c++17', '-O0', '-UNDEBUG',

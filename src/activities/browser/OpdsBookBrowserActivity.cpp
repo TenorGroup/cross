@@ -36,6 +36,7 @@
 #include "util/OpdsFeedError.h"
 #include "util/OpdsFilename.h"
 #include "util/StringUtils.h"
+#include "util/BookTitleDisplay.h"
 #include "util/UrlUtils.h"
 
 namespace fui = freeink::ui;
@@ -639,7 +640,7 @@ void OpdsBookBrowserActivity::navigateBack() {
 
 void OpdsBookBrowserActivity::downloadBook(const OpdsEntry& book) {
   state = BrowserState::DOWNLOADING;
-  statusMessage = book.title;
+  statusMessage = booktitle::display(book.title);
   downloadProgress = downloadTotal = 0;
   cancelDownload = false;
   goHomeAfterCancel = false;

@@ -11,9 +11,10 @@
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
+#include "util/BookTitleDisplay.h"
 
 BookStatsActivity::BookStatsActivity(GfxRenderer& r, MappedInputManager& input, std::string path, std::string title)
-    : UiListActivity("BookStats", r, input), path(std::move(path)), title(std::move(title)) {}
+    : UiListActivity("BookStats", r, input), path(std::move(path)), title(booktitle::display(title)) {}
 void BookStatsActivity::onEnter() {
   RenderLock lock(*this);
   BookReadingRecord b;

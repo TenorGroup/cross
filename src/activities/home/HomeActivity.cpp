@@ -1592,7 +1592,7 @@ void HomeActivity::drawContextBackground(const fui::Rect menu) {
 
 void HomeActivity::showRecentRemovalConfirmation(RecentBook book) {
   recentRemovalFailed = false;
-  const std::string body = book.title.empty() ? book.path : book.title;
+  const std::string body = book.title.empty() ? book.path : booktitle::display(book.title);
   auto confirmation = makeUniqueNoThrow<ConfirmationActivity>(
       renderer, mappedInput, tr(STR_REMOVE_FROM_RECENTS), body,
       ConfirmationContent{tr(STR_ALERT_RECENT_QUESTION), body + " " + tr(STR_ALERT_RECENT_MESSAGE_SUFFIX),

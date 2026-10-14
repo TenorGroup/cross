@@ -82,6 +82,7 @@
 #include "util/ButtonNavigator.h"
 #include "util/ReadingExcerpt.h"
 #include "util/ScreenshotUtil.h"
+#include "util/BookTitleDisplay.h"
 
 // Where a jump to another place in the book began; the paint that lands it logs JUMP_BUILD and,
 // once readable, READABLE_BOUND. Press-probe builds only.
@@ -618,7 +619,7 @@ void EpubReaderActivity::openReaderMenu() {
 
   pauseKeepsStatsInRam = true;
   startActivityForResult(
-      std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, epub->getTitle(), position.displayPage(),
+      std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, booktitle::display(epub->getTitle()), position.displayPage(),
                                                position.totalPages, bookProgressPercent, SETTINGS.orientation,
                                                !currentPageFootnotes.empty(), !cachedBookmarks.empty()),
       [this, readerStatusBarHeightBeforeMenu](const ActivityResult& result) {
@@ -4119,7 +4120,7 @@ void EpubReaderActivity::renderStatusBar() const {
     }
   } else if (sb.titleMode == CrossPointSettings::STATUS_BAR_TITLE::CHAPTER_TITLE && epub && !epub->indexComplete()) {
     // No TOC yet: the book's title stands in for the chapter's.
-    title = epub->getTitle();
+    title = booktitle::display(epub->getTitle());
   } else if (sb.titleMode == CrossPointSettings::STATUS_BAR_TITLE::CHAPTER_TITLE) {
     title = tr(STR_UNNAMED);
     if (epub) {
@@ -4130,7 +4131,7 @@ void EpubReaderActivity::renderStatusBar() const {
       }
     }
   } else if (sb.titleMode == CrossPointSettings::STATUS_BAR_TITLE::BOOK_TITLE) {
-    title = epub ? epub->getTitle() : "";
+    title = epub ? booktitle::display(epub->getTitle()) : "";
   }
 
   if (sb.slotsEnabled) {

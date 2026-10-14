@@ -48,6 +48,8 @@ const std::vector<std::pair<std::string, std::string>> kCases = {
     {"Kinh doanh bằng chuyên môn: Cách các chuyên gia khởi nghiệp biến hiểu biết (tenor version)",
      "Kinh doanh bằng chuyên môn (tenor version)"},
     {"Evergreen Love: Từ Điển Tranh Về Thực Vật (bản đẹp)", "Evergreen Love (bản đẹp)"},
+    {"Những việc lớn được hoàn thành như thế nào: Những yếu tố bất ngờ quyết định thành bại (tenor version)",
+     "Những việc lớn được hoàn thành như thế nào (tenor version)"},
 };
 
 TEST(BookTitleDisplay, CutsOrKeepsEachTitle) {

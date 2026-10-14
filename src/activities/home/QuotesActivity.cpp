@@ -21,6 +21,7 @@
 #include "fontIds.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglyInk.h"
+#include "util/BookTitleDisplay.h"
 
 namespace {
 
@@ -216,7 +217,7 @@ void QuotesActivity::sortByPlace() {
       places.push_back({id, INT32_MAX, 2, 0});
       continue;
     }
-    if (bookTitle.empty()) bookTitle = clipped(quote.title, 256);
+    if (bookTitle.empty()) bookTitle = clipped(booktitle::display(quote.title), 256);
     places.push_back({id, quote.spine, static_cast<uint8_t>(quote.hasAnchor ? 0 : 1),
                       quote.hasAnchor ? quote.anchorStart : static_cast<uint32_t>(quote.page)});
   }
@@ -260,7 +261,7 @@ void QuotesActivity::reload() {
     bookTotal = static_cast<int>(keys.size());
     if (bookLevel() && bookTitle.empty() && !ids.empty()) {
       QuoteRecord quote;
-      if (quotes::load(ids.front(), quote)) bookTitle = clipped(quote.title, 256);
+      if (quotes::load(ids.front(), quote)) bookTitle = clipped(booktitle::display(quote.title), 256);
     }
   }
   const int count = itemCount();
@@ -282,7 +283,7 @@ void QuotesActivity::loadPage() {
       row.count = summary.count;
       QuoteRecord quote;
       if (quotes::load(summary.newest, quote)) {
-        row.title = clipped(quote.title.empty() ? quote.path : quote.title, 256);
+        row.title = clipped(quote.title.empty() ? quote.path : booktitle::display(quote.title), 256);
         row.path = quote.path;
         row.latest = latestLine(quote);
       } else {
@@ -303,7 +304,7 @@ void QuotesActivity::loadPage() {
     if (block.readable) {
       block.preview = clipped(quote.text, previewBytes);
       if (block.preview.size() < quote.text.size()) block.preview += ELLIPSIS;
-      block.title = clipped(quote.title, 256);
+      block.title = clipped(booktitle::display(quote.title), 256);
       block.place = formatted(tr(STR_QUOTES_LIST_PLACE), quote);
     }
   }

@@ -25,6 +25,7 @@
 #include "shells/Shell.h"
 #include "shells/ugly/UglyInk.h"
 #include "shells/ugly/UglyScrap.h"
+#include "util/BookTitleDisplay.h"
 
 namespace quotetext {
 std::string clipped(const std::string& text, const size_t limit) {
@@ -218,7 +219,7 @@ void QuoteDetailActivity::show(const int newIndex) {
     return;
   }
   if (!quote.title.empty()) {
-    titleLines = renderer.wrappedText(TITLE_FONT_ID, clipped(quote.title, 512).c_str(), width, TITLE_MAX_LINES,
+    titleLines = renderer.wrappedText(TITLE_FONT_ID, clipped(booktitle::display(quote.title), 512).c_str(), width, TITLE_MAX_LINES,
                                       EpdFontFamily::ITALIC);
     m = metrics();
   }
@@ -670,7 +671,8 @@ int QuoteDetailActivity::visitX3Meta(const bool paint, const int firstLine, cons
     return hand ? ugly::width(renderer, ugly::Size::S22, line) : renderer.getTextWidth(SMALL_FONT_ID, line);
   };
   int count = 0;
-  for (const char* text : {quote.title.c_str(), chapter.c_str(), when.c_str(), pageLine.c_str()}) {
+  const std::string shownTitle = booktitle::display(quote.title);
+  for (const char* text : {shownTitle.c_str(), chapter.c_str(), when.c_str(), pageLine.c_str()}) {
     count += x3readerchrome::eachInfoLine(
         renderer, text,
         [&](const int offset, const char* line) {
