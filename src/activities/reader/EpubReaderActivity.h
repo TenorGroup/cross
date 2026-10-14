@@ -11,6 +11,7 @@
 #include <optional>
 #include <vector>
 
+#include "BookSearchMemory.h"
 #include "BookmarkEntry.h"
 #include "ChapterPosition.h"
 #include "EpubReaderMenuActivity.h"
@@ -471,6 +472,16 @@ class EpubReaderActivity final : public ReaderActivity {
   // back for reselection is jumped to, and the selector opens once its page is drawn.
   void openBookQuotes();
   void jumpToQuoteForEdit(const std::string& name);
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  // More > Search in book: the search screens over the page. A hit handed back is jumped to by its chapter and
+  // visible text offset (pendingOffsetJump, as a quote or a bookmark is). The last search stays in RAM until the
+  // book closes.
+  void openBookSearch();
+  void jumpToSearchResult(int spine, uint32_t visibleOffset);
+  // The place the reader leaves for a jump, put where Back returns to it.
+  void pushReturnPosition();
+  BookSearchMemory bookSearch;
+#endif
   bool launchKOReaderSync();
   unsigned long confirmLongPressThreshold() const;
   void toggleTiltFromReader();

@@ -280,6 +280,9 @@ constexpr const char* FULL_BAR[] = {
     "EpubReaderChapterSelection", "EpubReaderFootnoteSelect", "FileBrowser", "FontDownload", "HomeButtonSettings",
     "InfoUpdate", "KOReaderAuth", "KOReaderSettings", "KOReaderSync", "KeyboardLayouts", "LanguageSelect",
     "NetworkModeSelection", "OpdsBookBrowser", "OpdsServerList", "OpdsSettings", "QrDisplay",
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+    "BookSearch",  // the search in a book's text, X4 Pro only
+#endif
     "QuoteDetail", "QuoteTrim", "Quotes", "ReadingHabits", "ReadingHistory", "Settings",
     "SettingsChoices", "StatusBarSettings", "TimezonePicker", "WifiSelection", "XtcReaderChapterSelection"};
 // "<" at the left, the screen's own content in the rest of the foot: the keyboard of an input screen,
@@ -677,6 +680,10 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
   const std::string name = std::strchr(title, '/') ? title
       : r.truncatedText(font, title, std::max(0, room - PAD_LEFT - PAD_RIGHT), EpdFontFamily::REGULAR);
   drawPathPill(r, font, name.c_str(), x, y, room, SIZE, PAD_LEFT, PAD_RIGHT, true);
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  // A screen that lets the reader tap its name (Search in book: the query) reads the pill's place here.
+  HeaderBackTapTarget::setName(x, y, layoutPathPill(r, font, name.c_str(), room, PAD_LEFT, PAD_RIGHT).width, SIZE);
+#endif
 }
 
 namespace {

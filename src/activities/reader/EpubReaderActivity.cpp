@@ -66,6 +66,7 @@
 #include "SdCardFontSystem.h"
 #include "SettingsList.h"
 #include "activities/home/QuotesActivity.h"
+#include "activities/reader/BookSearchActivity.h"
 #include "activities/settings/BlePageTurnerActivity.h"
 #include "activities/settings/SettingsActivity.h"
 #include "activities/settings/TextSettingsActivity.h"
@@ -1084,6 +1085,52 @@ void EpubReaderActivity::jumpToQuoteForEdit(const std::string& name) {
   }
 }
 
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+void EpubReaderActivity::openBookSearch() {
+  auto screen = makeUniqueNoThrow<BookSearchActivity>(renderer, mappedInput, epub, bookSearch);
+  if (!screen) return;
+  startActivityForResult(std::move(screen), [this](const ActivityResult& result) {
+    if (result.isCancelled) {
+      openReaderMenu();
+      return;
+    }
+    if (const auto* hit = std::get_if<ProgressChangeResult>(&result.data)) {
+      jumpToSearchResult(hit->spineIndex, hit->visibleTextOffset);
+      return;
+    }
+    requestUpdate();
+  });
+}
+
+// TODO-T4: pushReturnPosition is the one call a search hit makes before it moves the reader; the way-back stack lane
+// fills it in (push the page the reader leaves, by chapter and visible text offset, so Back returns to it).
+void EpubReaderActivity::pushReturnPosition() {}
+
+void EpubReaderActivity::jumpToSearchResult(const int spine, const uint32_t visibleOffset) {
+  if (!epub || spine < 0 || spine >= epub->getSpineItemsCount()) {
+    requestUpdate();
+    return;
+  }
+  RenderLock lock;
+  clearDeferredReposition();
+  pushReturnPosition();
+  // The chapter on screen answers from its laid-out pages; any other (or a page not laid out yet) is built to the offset.
+  if (section && currentSpineIndex == spine) {
+    if (const auto page = section->getPageForVisibleTextOffset(visibleOffset)) {
+      section->currentPage = *page;
+      requestUpdate();
+      return;
+    }
+  }
+  currentSpineIndex = spine;
+  TRACE_JUMP_BEGIN("search");
+  pendingOffsetJump = visibleOffset;
+  nextPageNumber = 0;
+  section.reset();
+  requestUpdate();
+}
+#endif
+
 bool EpubReaderActivity::externalPageTurnAllowed() const {
   return !preview && overlay == Overlay::None;
 }
@@ -2002,6 +2049,7 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
     case EpubReaderMenuActivity::MenuAction::SYNC:
     case EpubReaderMenuActivity::MenuAction::BOOKMARKS:
     case EpubReaderMenuActivity::MenuAction::TOGGLE_BOOKMARK:
+    case EpubReaderMenuActivity::MenuAction::BOOK_SEARCH:
       if (waitsForIndex()) return;
       break;
     default:
@@ -2191,6 +2239,11 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
       break;
     case EpubReaderMenuActivity::MenuAction::QUOTES_OF_BOOK:
       openBookQuotes();
+      break;
+    case EpubReaderMenuActivity::MenuAction::BOOK_SEARCH:
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+      openBookSearch();
+#endif
       break;
     case EpubReaderMenuActivity::MenuAction::DICTIONARY: {
       openDictionaryWordSelect();
@@ -5833,7 +5886,8 @@ void EpubReaderActivity::buildMoreActions() {
     readermenu::separateTextTab(moreItems);
     return;
   }
-  readermenu::buildMoreItems(moreItems, !currentPageFootnotes.empty(), !cachedBookmarks.empty(), Frontlight.present());
+  readermenu::buildMoreItems(moreItems, !currentPageFootnotes.empty(), !cachedBookmarks.empty(), Frontlight.present(),
+                             tenorchrome::kTouchShell && BookSearchRunner::supported());
 }
 
 int EpubReaderActivity::panelActionRow(const int row) const {

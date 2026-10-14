@@ -35,12 +35,13 @@ enum class Action {
   BLUETOOTH,
   QUOTES_OF_BOOK,  // mo man Trich dan cua dung cuon dang doc
   FILE_TRANSFER,   // leaves the book for the file transfer screen
-  TILT_PAGE_TURN   // toggles tilt page turn in place; boards with an IMU only
+  TILT_PAGE_TURN,  // toggles tilt page turn in place; boards with an IMU only
+  BOOK_SEARCH      // opens the search of the book's text; the X4 Pro's More panel only
 };
 
 // So lenh dang co. Dung de loc mot o rac doc len tu settings.json: mot so vuot tam nghia
 // la ban ghi cu tro toi mot lenh khong con ton tai.
-inline constexpr int ACTION_COUNT = static_cast<int>(Action::TILT_PAGE_TURN) + 1;
+inline constexpr int ACTION_COUNT = static_cast<int>(Action::BOOK_SEARCH) + 1;
 
 enum class Tab : uint8_t { FAVORITES, POSITION, READING, TOOLS, TEXT };
 inline constexpr int TAB_COUNT = 4;
@@ -72,8 +73,10 @@ struct Item {
 void buildItems(std::vector<Item>& items, bool hasFootnotes, bool hasBookmarks, bool hasFrontlight,
                 bool hasTilt = false);
 
-// Toolbar More keeps its original order independently of the tab layout.
-void buildMoreItems(std::vector<Item>& items, bool hasFootnotes, bool hasBookmarks, bool hasFrontlight);
+// Toolbar More keeps its original order independently of the tab layout. A board that can search the book's text
+// (hasSearch) gets that row on top.
+void buildMoreItems(std::vector<Item>& items, bool hasFootnotes, bool hasBookmarks, bool hasFrontlight,
+                    bool hasSearch = false);
 void separateTextTab(std::vector<Item>& items);
 
 // Hai ham duoi ghi CHI SO trong `all` vao `out`, toi da `max` chi so, va tra ve
