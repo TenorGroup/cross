@@ -10,6 +10,7 @@ class SecureHttpClient {
   static inline int replyCode = 200;
   static inline std::string replyBody;
   void setCACert(const char*) {}
+  void setTimeout(uint32_t) {}
   bool begin(const std::string&) { return true; }
   void addHeader(const char*, const std::string&) {}
   int GET() { return replyCode; }
