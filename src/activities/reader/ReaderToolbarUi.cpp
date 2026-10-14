@@ -85,7 +85,7 @@ bool ReaderToolbarUi::usesX3Bar() { return tenorchrome::x3ScreenLayoutEnabled() 
 int ReaderToolbarUi::toolCount() { return usesX3Bar() ? readermenu::X3_TAB_COUNT : kToolCount; }
 
 tenorchrome::X3ScreenLayout ReaderToolbarUi::screenLayout() const {
-  return tenorchrome::x3ScreenLayout(*renderer_, tenorchrome::tipHeight(*renderer_, model_.tipText, 4));
+  return tenorchrome::x3ScreenLayout(*renderer_);
 }
 
 fui::Rect ReaderToolbarUi::toolRect(const int index) const {
@@ -187,7 +187,6 @@ void ReaderToolbarUi::buildX3Bar(UiScreen& screen) {
                             active);
     screen.frame().hit(slot, ACTION_TOOL, static_cast<int16_t>(index), fui::InputTouch);
   }
-  tenorchrome::drawTipInRect(*renderer_, model_.tipText, layout.tipRect, 4);
 }
 
 void ReaderToolbarUi::begin() {
@@ -604,6 +603,12 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
     hint.align = fui::TextAlign::Center;
     hint.maxLines = 3;
     screen.target().text(listRect.inset(fui::Insets{0, tokens.spaceLg, 0, tokens.spaceLg}), model_.emptyText, hint);
+    if (model_.emptyHint && renderer_ && uiTarget.paintingEnabled() && tenorchrome::tipShown(model_.emptyHint)) {
+      const int16_t height = static_cast<int16_t>(tenorchrome::tipHeight(*renderer_, model_.emptyHint, 4));
+      tenorchrome::drawInfoInRect(*renderer_, model_.emptyHint,
+                                  {listRect.x, static_cast<int16_t>(listRect.bottom() - height - tokens.spaceSm),
+                                   listRect.width, height}, 4);
+    }
   }
 
   if (usesX3Bar() && count > 0 && renderer_ && uiTarget.paintingEnabled()) {

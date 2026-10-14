@@ -4961,7 +4961,9 @@ void EpubReaderActivity::renderOverlay() {
   // convention as the panel lists), it only shows once a button has moved it.
   // Panels override below: there the pill marks the open panel on every board.
   model.activeTool = (overlay == Overlay::Toolbar && !panelCursorShown) ? -1 : focusedTool;
-  if (ReaderToolbarUi::usesX3Bar() && overlay == Overlay::Favorites) model.tipText = tr(STR_FAVORITES_HINT);
+  if (ReaderToolbarUi::usesX3Bar() && overlay == Overlay::Favorites &&
+      readermenu::favoritesHintShown(static_cast<int>(favoriteRows.size())))
+    model.emptyHint = tr(STR_FAVORITES_HINT);
   // Strings the model points at live here until render() returns.
   std::string chapterTitle, pageInfo;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO

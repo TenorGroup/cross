@@ -66,6 +66,13 @@ std::vector<MenuItem> menuDayDu() { return menu(true, true, true, true); }
 
 TEST(ReaderMenuTabs, BonTab) { EXPECT_EQ(readermenu::TAB_COUNT, 4); }
 
+// The pin hint stands in the Favorites list while nothing is pinned and goes with the first pinned row.
+TEST(ReaderMenuTabs, FavoritesHintStandsOnlyWhileNothingIsPinned) {
+  EXPECT_TRUE(readermenu::favoritesHintShown(0));
+  EXPECT_FALSE(readermenu::favoritesHintShown(1));
+  EXPECT_FALSE(readermenu::favoritesHintShown(5));
+}
+
 TEST(ReaderMenuTabs, BluetoothAppendsSavedActionAndKeepsFavoriteOrder) {
   EXPECT_EQ(static_cast<int>(MenuAction::SAVE_QUOTE), 19);
   EXPECT_EQ(static_cast<int>(MenuAction::BLUETOOTH), 20);

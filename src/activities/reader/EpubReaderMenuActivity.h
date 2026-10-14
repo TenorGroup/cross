@@ -66,6 +66,7 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   bool ownsX3Chrome() const override { return true; }
   tenorchrome::X3ScreenLayout screenLayout() const;
   bool infoOverBar() const;
+  void drawFavoritesHintCard() const;
   std::string progressText() const;
   void drawX3Content() const;
   void activateIndex(int index) override;

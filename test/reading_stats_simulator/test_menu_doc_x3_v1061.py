@@ -12,6 +12,8 @@ Founder: the menu opens on the Favorites tab, even with nothing pinned; the side
  7. Back from a list closes the menu to the page (it went to the toolbar before).
  8. Where the list has 2 rows or more the front Left and Right step the rows, so the chapter stays where it is.
  9. Position > Select chapter shows where the reader stands (page of the chapter, share of the book) over the bar.
+10. The pin hint ("On any tab, hold Select to pin or unpin ...") stands inside the frame of the Favorites list while
+    nothing is pinned, and is gone once a row is pinned (the list gets its room), in the list menu and the toolbar menu.
 One simulator run per case: Home opens the book (1800), Select opens the menu (4500), then a key every 2000 ms with
 a screenshot 1500 ms after it.
 TEST_PROGRAM picks the simulator (simulator_x3_uc8279 is the UC8279 panel).
@@ -124,6 +126,19 @@ def cursor_pill(image):
     return sum(thick >= 3 and longest >= 400 for thick, longest in bands(image, 300)) >= 2
 
 
+def ink_bands(image, top, bottom, left=24, right=504):
+    """How many separate lines of ink stand between rows top and bottom, inside columns left to right."""
+    rows = (np.asarray(image)[top:bottom, left:right] < 128).any(axis=1)
+    return int(sum(1 for i, row in enumerate(rows) if row and (i == 0 or not rows[i - 1])))
+
+
+def sheet_bottom(image):
+    """The foot of the toolbar's sheet: the last pair of rows of its dotted ring (a dot on every other point)."""
+    dark = (np.asarray(image)[:, 20:510] < 128).sum(axis=1)
+    rows = [y for y in range(560, 696) if 225 <= dark[y] <= 250]
+    return max((y for y in rows if y - 1 in rows or y + 1 in rows), default=0)
+
+
 def same_page(a, b):
     """Two screens show the same page (the status line at the foot and the gray pass left out)."""
     return int(np.count_nonzero(np.asarray(a)[:680] != np.asarray(b)[:680])) < 40
@@ -213,6 +228,37 @@ class OpensOnTheListTest(unittest.TestCase):
         opened, forward, back = self.empty_keys
         self.assertTrue((page(forward) != page(opened)).any())
         self.assertTrue((page(back) == page(opened)).all())
+
+
+class FavoritesHintTest(unittest.TestCase):
+    """The pin hint is 2 lines. Empty: inside the list's frame. A pinned row: gone, and the list has its room."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.list_empty = run(LIST, [], [])[0]
+        cls.list_pinned = run(LIST, [14], [])[0]
+        cls.bar_empty = run(TOOLBAR, [], [])[0]
+        cls.bar_pinned = run(TOOLBAR, [14], [])[0]
+
+    def test_10_list_menu_empty_holds_the_hint_in_its_frame_and_not_under_it(self):
+        self.assertEqual(ink_bands(self.list_empty, 36, 100, 40, 488), 2, 'the 2 hint lines in the frame at the top')
+        self.assertEqual(ink_bands(self.list_empty, 596, 694), 1, 'only the position line stands over the bar')
+
+    def test_10_list_menu_with_a_pin_has_no_hint(self):
+        self.assertEqual(ink_bands(self.list_pinned, 596, 694), 1, 'only the position line stands over the bar')
+        row = (np.asarray(self.list_pinned)[46:92, 300:440] < 128).sum()
+        self.assertEqual(int(row), 0, 'nothing but the row\'s own name stands in the first frame')
+        below = (np.asarray(self.list_pinned)[108:140, 40:488] < 128).sum()
+        self.assertEqual(int(below), 0, 'the frame of the 1 row ends at its row: no card of the hint under it')
+
+    def test_10_toolbar_menu_empty_holds_the_hint_in_its_sheet(self):
+        foot = sheet_bottom(self.bar_empty)
+        self.assertGreaterEqual(foot, 680, f'the sheet ends at {foot}: room is kept under it for the hint')
+        self.assertEqual(ink_bands(self.bar_empty, 380, foot - 4, 40, 488), 4, 'the empty text (2 lines) and the hint (2)')
+
+    def test_10_toolbar_menu_with_a_pin_has_no_hint_and_its_sheet_stands_on_the_bar(self):
+        foot = sheet_bottom(self.bar_pinned)
+        self.assertGreaterEqual(foot, 680, f'the sheet ends at {foot}: room is kept under it for the hint')
 
 
 class ChapterListShowsWhereYouStandTest(unittest.TestCase):
