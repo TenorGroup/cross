@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build deterministic STORE packs with six layout-identical cpfont v4 levels."""
+"""Build deterministic STORE packs with nine layout-identical cpfont v4 levels (-3 to +5)."""
 from __future__ import annotations
 
 import argparse
@@ -23,8 +23,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'lib/EpdFont/scripts'))
 import fontconvert_sdcard as converter
 
-RECIPE = 'reader-outline-v3-ramp'
-STRENGTHS = (0, 16, 32, 48, 64, 96)
+RECIPE = 'reader-outline-v4-thin'
+# Pack level n lives in weight-(n + 1): 0 the base file, 1..5 the levels +1..+5, 6..8 the thin levels -1..-3.
+STRENGTHS = (0, 16, 32, 48, 64, 96, -16, -32, -48)
 STYLE_NAMES = ('regular', 'bold', 'italic', 'bolditalic')
 ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 
@@ -168,6 +169,21 @@ def entry_name(family, size, level):
     return f'weight-{level + 1}/{filename}' if level else filename
 
 
+def ink_coverage(data):
+    """Sum of the 2 bit coverage over every glyph of every style."""
+    _, styles = read_font(data)
+    return sum(int(weights.unpack((glyph, bitmap)).sum())
+               for style in styles for _, glyph, bitmap in style['records'])
+
+
+def assert_ink_ramp(coverage_by_strength):
+    """More outline strength must mean more ink, so a sign or recipe mistake cannot ship."""
+    ordered = sorted(coverage_by_strength.items())
+    for (low, low_ink), (high, high_ink) in zip(ordered, ordered[1:]):
+        if low_ink >= high_ink:
+            raise ValueError(f'Ink ramp not increasing: strength {low} has {low_ink}, strength {high} has {high_ink}')
+
+
 def build_pack(family, style_fonts, sizes, strengths, intervals, license_path, output,
                pnum=False, force_autohint=False, builtin_family=None, base_dir=None,
                fallback_style_fonts=None, line_factor=1.2):
@@ -237,6 +253,7 @@ def build_pack(family, style_fonts, sizes, strengths, intervals, license_path, o
                         raster, pixels = rasters[style['toc'][0]].glyph(codepoint, 0)
                         if raster[:5] != glyph[:5] or pixels != bitmap:
                             raise ValueError(f'Source raster differs from published base: {size}/{style["toc"][0]}/U+{codepoint:04X}')
+            coverage = {}
             for level, strength in enumerate(strengths):
                 data = base_data
                 if level:
@@ -244,11 +261,13 @@ def build_pack(family, style_fonts, sizes, strengths, intervals, license_path, o
                                     for style in styles for codepoint, _, _ in style['records']}
                     data = weights.encode_pack(header, styles, replacements)
                 assert_same_layout(base_data, data)
+                coverage[strength] = ink_coverage(data)
                 name = entry_name(family, size, level)
                 payloads[name] = data
                 metadata['entries'].append({'path': name, 'point_size': size, 'level': level,
                                             'layout_signature': signature, 'ink_bounds': ink_bounds(data),
                                             'reading_quality': reading_quality(data, line_factor)})
+            assert_ink_ramp(coverage)
         metadata['entries'].append({'path': 'OFL.txt'})
         for entry in metadata['entries']:
             data = payloads[entry['path']]

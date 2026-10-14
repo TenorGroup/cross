@@ -33,9 +33,15 @@ struct SdCardFontFamilyInfo {
   std::string dir() const;  // "/<root>/<name>"
   // "/<root>/<name>/<stem>_<size>.cpfont", or its "weight-N" variant.
   std::string filePath(const SdCardFontFileInfo& file, uint8_t weight = 0) const;
-  // Physical mask: base at bit 0, legacy outlines at 1/2, guarded variants at 3/4.
+  // Highest weight directory a family can have: weight-2 to weight-6 hold the heavier variants, weight-7 to
+  // weight-9 the thinner ones (readerInk physical numbers).
+  static constexpr uint8_t MAX_WEIGHT = 9;
+  // Physical mask of the base file and weight-1 to weight-6, base at bit 0 (the heavier variants).
   // Resolved on demand, never at discovery. The app maps this to public levels.
   uint8_t weights(const SdCardFontFileInfo& file) const;
+  // One weight directory (any of 1..MAX_WEIGHT) holds this size's file. The thin variants are looked up
+  // singly, so the common case pays no extra card reads.
+  bool hasWeight(const SdCardFontFileInfo& file, uint8_t weight) const;
 
   const SdCardFontFileInfo* findFile(uint8_t size, uint8_t style = 0) const;
   // Installed file closest to `pointSize` (ties → smaller). nullptr when the

@@ -114,7 +114,7 @@ class FontDownloadPack(unittest.TestCase):
     def test_manifest_dispatch(self):
         self.assertTrue('fontdownload::classifyManifestFile' in source, 'manifest entries must use the classifier')
         header = (args.repo / 'src/activities/settings/FontDownloadActivity.h').read_text()
-        self.assertIn('https://cross.tenor.vn/firmware/v1.0.56/fonts/fonts.json', header)
+        self.assertIn('https://cross.tenor.vn/firmware/v1.0.61/fonts/fonts.json', header)
 
 
 if args.range_only:

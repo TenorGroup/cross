@@ -72,13 +72,13 @@ TEST_F(SdFontBoot, ReaderInkLoadsVariantsAndKeepsLayoutIdentity) {
   boot(ESP_RST_POWERON, system, renderer);
   const auto fontId = system.resolveFontId("Bokerlam", 14);
   const size_t loads = hostLoads.size();
-  EXPECT_EQ(system.availableWeightMask(), 0x3f);
-  for (int level = 0; level < 6; ++level) {
+  EXPECT_EQ(system.availableWeightMask(), 0x1ff);
+  for (int level = 0; level < readerInk::LEVEL_COUNT; ++level) {
     SETTINGS.readerInkWeight = level;
     system.ensureLoaded(renderer);
     EXPECT_EQ(system.resolveFontId("Bokerlam", 14), fontId);
     EXPECT_EQ(hostLoads.size(), loads + level);
-    EXPECT_EQ(system.effectiveWeight(), 0);
+    EXPECT_EQ(system.effectiveWeight(), readerInk::ZERO);  // the fixture card holds the base file only
   }
 }
 

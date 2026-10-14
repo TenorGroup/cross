@@ -21,6 +21,10 @@ namespace {
 using Result = FontPackInstaller::Result;
 constexpr uint32_t MAX_PACK_BYTES = 128 * 1024 * 1024;
 constexpr uint16_t MAX_ENTRIES = 128;
+constexpr char RECIPE[] = "reader-outline-v3-ramp";        // 6 levels, base and +1..+5
+constexpr char RECIPE_THIN[] = "reader-outline-v4-thin";   // 9 levels, the 3 thin ones added
+constexpr uint32_t MAX_LEVEL = 8;
+constexpr uint16_t LEGACY_LEVELS = 0x3f, THIN_LEVELS = 0x1ff;
 std::atomic_flag installing = ATOMIC_FLAG_INIT;
 
 uint16_t u16(const uint8_t* bytes) { return bytes[0] | (static_cast<uint16_t>(bytes[1]) << 8); }
@@ -63,7 +67,7 @@ bool entryName(const char* family, const char* name, uint8_t* point = nullptr) {
   if (!FontInstaller::isValidCpfontRelativePath(name)) return false;
   const char* leaf = name;
   if (std::strchr(name, '/')) {
-    if (name[7] < '2' || name[7] > '6') return false;
+    if (name[7] < '2' || name[7] > '9') return false;
     leaf += 9;
   }
   const size_t familyLength = std::strlen(family);
@@ -85,8 +89,11 @@ struct Metadata {
   uint8_t point = 0;
   unsigned depth = 0, entriesDepth = 0, levelsDepth = 0, signaturesDepth = 0;
   unsigned itemDepth = 0, levelDepth = 0, roots = 0, matches = 0, entryCount = 0;
-  uint8_t rootFields = 0, levels = 0, levelFields = 0;
-  uint32_t level = 0, strength = 0;
+  uint8_t rootFields = 0, levelFields = 0;
+  uint16_t levels = 0;
+  uint32_t level = 0;
+  int32_t strength = 0;
+  bool thin = false;  // recipe with the thin levels: 9 levels, weight-7 to weight-9 added
   char key[64] = {}, rootLayout[65] = {}, directory[16] = {};
   Item item;
   bool error = false, closed = false;
@@ -120,8 +127,10 @@ struct Metadata {
     if (state.depth == state.levelDepth) {
       char expected[16] = {};
       if (state.level) std::snprintf(expected, sizeof(expected), "weight-%u", static_cast<unsigned>(state.level + 1));
-      if (state.levelFields != 7 || state.level > 5 || state.strength != static_cast<uint32_t>(readerInk::outlineStrength(state.level)) || std::strcmp(expected, state.directory) || (state.levels & (1u << std::min<uint32_t>(state.level, 7)))) state.error = true;
-      if (state.level <= 5) state.levels |= static_cast<uint8_t>(1u << state.level);
+      // A pack level is the physical weight minus 1: 0 the base file, 1..5 the +1..+5 files, 6..8 the -1..-3 files.
+      const bool known = state.level <= MAX_LEVEL;
+      if (state.levelFields != 7 || !known || state.strength != readerInk::outlineStrength(readerInk::publicFromPhysical(state.level + 1)) || std::strcmp(expected, state.directory) || (state.levels & (1u << state.level))) state.error = true;
+      if (known) state.levels |= static_cast<uint16_t>(1u << state.level);
       state.levelDepth = 0;
     }
     if (state.depth == state.signaturesDepth) state.signaturesDepth = 0;
@@ -147,8 +156,11 @@ struct Metadata {
     if (state.closed) state.error = true;
     if (state.depth == 1 && (!std::strcmp(state.key, "family") || !std::strcmp(state.key, "recipe"))) {
       const uint8_t bit = !std::strcmp(state.key, "family") ? 1 : 2;
-      const char* expected = bit == 1 ? state.family : "reader-outline-v3-ramp";
-      if ((state.rootFields & bit) || std::strlen(expected) != count || std::memcmp(value, expected, count)) state.error = true;
+      const auto is = [&](const char* expected) { return std::strlen(expected) == count && !std::memcmp(value, expected, count); };
+      if (state.rootFields & bit) state.error = true;
+      if (bit == 1) { if (!is(state.family)) state.error = true; }
+      else if (is(RECIPE_THIN)) state.thin = true;
+      else if (!is(RECIPE)) state.error = true;
       state.rootFields |= bit;
     } else if (state.depth == state.itemDepth) {
       if (!std::strcmp(state.key, "path")) { if (state.item.fields & 1) state.error = true; state.item.fields |= 1; state.error |= !copyText(state.item.path, sizeof(state.item.path), value, count); }
@@ -167,7 +179,8 @@ struct Metadata {
     if (state.closed) state.error = true;
     uint32_t number = 0;
     if (!count || count > 9) { state.error = true; return; }
-    for (size_t offset = 0; offset < count; ++offset) {
+    const bool negative = count > 1 && value[0] == '-' && !std::strcmp(state.key, "strength_26_6");
+    for (size_t offset = negative ? 1 : 0; offset < count; ++offset) {
       if (value[offset] < '0' || value[offset] > '9') {
         if (!std::strcmp(state.key, "size") || !std::strcmp(state.key, "level") || !std::strcmp(state.key, "strength_26_6")) state.error = true;
         return;
@@ -183,7 +196,7 @@ struct Metadata {
       state.item.fields |= 4; state.item.size = number;
     } else if (state.depth == state.levelDepth) {
       if (!std::strcmp(state.key, "level")) { if (state.levelFields & 1) state.error = true; state.levelFields |= 1; state.level = number; }
-      if (!std::strcmp(state.key, "strength_26_6")) { if (state.levelFields & 2) state.error = true; state.levelFields |= 2; state.strength = number; }
+      if (!std::strcmp(state.key, "strength_26_6")) { if (state.levelFields & 2) state.error = true; state.levelFields |= 2; state.strength = negative ? -static_cast<int32_t>(number) : static_cast<int32_t>(number); }
     }
   }
 };
@@ -277,7 +290,7 @@ bool manifest(HalFile& archive, Workspace& work, const char* wanted = nullptr, u
     }
     remaining -= count; resetTaskWatchdogIfSubscribed();
   }
-  return !parser.hasError() && !state.error && state.closed && state.roots == 1 && state.depth == 0 && state.rootFields == 15 && state.levels == 63 && state.entryCount == work.info.count - 1 && ~checksum == work.info.jsonCrc && (!wanted || state.matches == 1) && (!point || (hexHash(state.rootLayout) && !std::strcmp(state.rootLayout, work.layout)));
+  return !parser.hasError() && !state.error && state.closed && state.roots == 1 && state.depth == 0 && state.rootFields == 15 && state.levels == (state.thin ? THIN_LEVELS : LEGACY_LEVELS) && state.entryCount == work.info.count - 1 && ~checksum == work.info.jsonCrc && (!wanted || state.matches == 1) && (!point || (hexHash(state.rootLayout) && !std::strcmp(state.rootLayout, work.layout)));
 }
 Result walk(HalFile& archive, Workspace& work, bool extract) {
   if (!archive.seekSet(0)) return Result::INVALID_PACK;

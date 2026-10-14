@@ -111,8 +111,9 @@ int runRealFile(const char* fixtureName, const char* label) {
   const JsonDocument after = saved();
   auto preserved = HOST_BOARD_HIDDEN;
   preserved.push_back("readerInkWeightVersion");
+  preserved.push_back("readerInkWeight");  // the old +1 moves to stored 4: checked just below
   ok = roundTripsExcept(before, after, preserved, label) && ok;
-  ok = expect(after["readerInkWeightVersion"] == 2 && after["readerInkWeight"] == 1, "ink schema 2") && ok;
+  ok = expect(after["readerInkWeightVersion"] == 3 && after["readerInkWeight"] == 4, "ink schema 3, old +1 kept") && ok;
 
   // clockUtcOffsetQ (legacy quarter-hour offset) stays a stored key: #3562 added
   // clockTimezone/clockDst/clockShowInHeader beside it, it did not retype or drop it.
@@ -153,7 +154,7 @@ int runOlderFile() {
   // and test/tenor_preset's own TENOR[] table.
   struct { const char* key; int forced; } PRESET[] = {
       {"extraParagraphSpacing", 1}, {"lineSpacing", 2},  {"wordSpacing", 3},
-      {"paragraphIndent", 2},      {"readerInkWeight", 1}, {"frontButtonFollowOrientation", 1},
+      {"paragraphIndent", 2},      {"readerInkWeight", 4}, {"frontButtonFollowOrientation", 1},
       {"shortPwrBtn", 3},          {"sleepScreen", 10},   {"statusBarClock", 1},
       {"tiltMenuNavigation", 1},   {"tiltPageTurn", 1},   {"tiltStrengthV", 0},
       {"tiltTabNavigation", 2},

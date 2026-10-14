@@ -20,10 +20,10 @@ class DownloadManifestTest(unittest.TestCase):
     def test_all_physical_levels_keep_unique_download_names(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            paths = [self.fixture(root / 'Example' / (f'weight-{w}' if w else '') / 'Example_14.cpfont') for w in range(7)]
+            paths = [self.fixture(root / 'Example' / (f'weight-{w}' if w else '') / 'Example_14.cpfont') for w in range(10)]
             manifest = generator.build_manifest({'Example': paths}, 'https://example.test/')
             names = [f['name'] for f in manifest['families'][0]['files']]
-            self.assertEqual(set(names), {'Example_14.cpfont'} | {f'weight-{w}/Example_14.cpfont' for w in range(1, 7)})
+            self.assertEqual(set(names), {'Example_14.cpfont'} | {f'weight-{w}/Example_14.cpfont' for w in range(1, 10)})
 
     def test_duplicate_download_targets_fail_closed(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -35,7 +35,7 @@ class DownloadManifestTest(unittest.TestCase):
 
     def test_unknown_weight_directory_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
-            path = self.fixture(Path(temp) / 'weight-9' / 'Example_14.cpfont')
+            path = self.fixture(Path(temp) / 'weight-10' / 'Example_14.cpfont')
             with self.assertRaises(ValueError):
                 generator.build_manifest({'Example': [path]}, 'https://example.test/')
 

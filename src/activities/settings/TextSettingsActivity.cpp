@@ -59,9 +59,9 @@ constexpr StrId LINE_SPACING_IDS[] = {StrId::STR_INK_DEFAULT, StrId::STR_VERY_NA
                                      StrId::STR_WIDE, StrId::STR_VERY_WIDE, StrId::STR_LINE_SPACING_130,
                                      StrId::STR_LINE_SPACING_160};
 static_assert(std::size(LINE_SPACING_IDS) == readerSpacing::LINE_LEVEL_COUNT, "line spacing labels");
-constexpr StrId INK_WEIGHT_IDS[] = {StrId::STR_READER_INK_0, StrId::STR_READER_INK_1,
-                                    StrId::STR_READER_INK_2, StrId::STR_READER_INK_3,
-                                    StrId::STR_READER_INK_4, StrId::STR_READER_INK_5};
+constexpr StrId INK_WEIGHT_IDS[] = {StrId::STR_READER_INK_M3, StrId::STR_READER_INK_M2, StrId::STR_READER_INK_M1,
+                                    StrId::STR_READER_INK_0,  StrId::STR_READER_INK_1,  StrId::STR_READER_INK_2,
+                                    StrId::STR_READER_INK_3,  StrId::STR_READER_INK_4,  StrId::STR_READER_INK_5};
 static_assert(std::size(INK_WEIGHT_IDS) == readerInk::LEVEL_COUNT, "reader ink labels");
 // Tắt / Mặc định / Lớn, matching readerSpacing::DropCapMode.
 constexpr StrId DROP_CAP_IDS[] = {StrId::STR_STATE_OFF, StrId::STR_INK_DEFAULT, StrId::STR_SPACING_LARGE};

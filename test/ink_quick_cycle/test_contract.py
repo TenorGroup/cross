@@ -81,7 +81,7 @@ class InkQuickCycleContractTest(unittest.TestCase):
 #include "components/SettingsChoiceStyle.h"
 #define LOG_ERR(...) ((void)0)
 struct CrossPointSettings {
-  uint8_t readerInkWeight = 0;
+  uint8_t readerInkWeight = readerInk::ZERO;
   uint8_t textAntiAliasing = 0;
   int writes = 0;
   bool writable = true;
@@ -179,12 +179,12 @@ int main() {
   for (bool touch : {false,true}) for (uint8_t mask : {uint8_t(1), uint8_t(15)}) {
     tenorchrome::kTouchShell=touch;
     sdFontSystem.mask = mask;
-    for (int current : {0, 1, 2, 3, 4, 5, 255}) {
+    for (int current : {0, 1, 2, 3, 4, 5, 6, 7, 8, 255}) {
       SETTINGS.readerInkWeight = current;
       SETTINGS.writes=0; a.paints=0; sdFontSystem.loads=0;
       a.confirmStyleRow(row);
       assert(SETTINGS.readerInkWeight==current && SETTINGS.writes==0 && a.paints==1 && sdFontSystem.loads==0);
-      assert(a.optionPopup_.labels.size()==6 && a.optionPopup_.selected==readerInk::clamp(current));
+      assert(a.optionPopup_.labels.size()==9 && a.optionPopup_.selected==readerInk::clamp(current));
       assert(a.optionPopup_.inFrame==touch && a.optionPopup_.callback);
       a.optionPopup_.callback(readerInk::next(current));
       assert(SETTINGS.readerInkWeight == readerInk::next(current));
@@ -216,7 +216,7 @@ int main() {
                             str(source), "-o", str(binary)], check=True)
             subprocess.run([str(binary)], check=True)
 
-    def test_row_keeps_requested_label_with_root_only_six_levels(self):
+    def test_row_keeps_requested_label_with_root_only_nine_levels(self):
         self.assertIn(
             "INK_WEIGHT_IDS[readerInk::clamp(SETTINGS.readerInkWeight)]", self.value
         )

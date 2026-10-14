@@ -90,15 +90,21 @@ static void install(const SdCardFontFamilyInfo& family, std::initializer_list<in
 int main() {
  const auto full=family();
  const auto& fullFile=full.files.front();
- for (int weight=0;weight<=6;++weight) {
+ for (int weight=0;weight<=9;++weight) {
    const std::string path=full.filePath(fullFile,static_cast<uint8_t>(weight));
    assert(full.filePath(fullFile,static_cast<uint8_t>(weight))==path);
+   assert(weight==0 || path.find("/weight-"+std::to_string(weight)+"/")!=std::string::npos);
  }
+ assert(full.filePath(fullFile,10).empty());
  GfxRenderer renderer; SdCardFontManager manager;
  install(full,{0,1,2,3,4,5,6});
- assert(readerInk::publicMask(full.weights(fullFile))==63);
- int fullIds[6];
- for (int level=0;level<6;++level) {
+ assert(readerInk::publicMask(full.weights(fullFile))==0x1f8);
+ for (int weight=7;weight<=9;++weight) assert(!full.hasWeight(fullFile,weight));
+ install(full,{0,1,2,3,4,5,6,7,8,9});
+ for (int weight=1;weight<=9;++weight) assert(full.hasWeight(fullFile,weight));
+ assert(!full.hasWeight(fullFile,10));
+ int fullIds[9];
+ for (int level=0;level<9;++level) {
    const int physical=readerInk::physical(level);
    assert(manager.loadFamily(full,renderer,15,physical));
    assert(manager.currentPointSize()==14 && manager.currentWeight()==physical);
@@ -107,15 +113,15 @@ int main() {
    assert(opens.back()==full.filePath(fullFile,static_cast<uint8_t>(physical)));
    assert(renderer.fonts.size()==1);
  }
- std::printf("SD_LAYOUT_IDS=%d,%d,%d\\n", fullIds[0], fullIds[5], fullIds[0]);
+ std::printf("SD_LAYOUT_IDS=%d,%d,%d\\n", fullIds[3], fullIds[8], fullIds[3]);
  std::fflush(stdout);
- for(int index=1;index<6;++index)assert(fullIds[index]==fullIds[0]);
+ for(int index=0;index<9;++index)assert(fullIds[index]==fullIds[3]);
 
  const auto partial=family();
  install(partial,{0,1,2});
- assert(readerInk::publicMask(partial.weights(partial.files.front()))==3);
+ assert(readerInk::publicMask(partial.weights(partial.files.front()))==0x18);
  opens.clear(); renderer.clearSdCardFontsCalls=0;
- const int sequence[] = {5, 0, 1, 2, 5};
+ const int sequence[] = {8, 3, 4, 5, 8};  // stored levels: +5, 0, +1, +2, +5
  const uint8_t expectedWeights[] = {2, 0, 2, 2, 2};
  const char* expectedPaths[] = {
    "/.fonts/Example/weight-2/Example_14.cpfont",
@@ -132,8 +138,8 @@ int main() {
    assert(opens.back()==expectedPaths[step]);
    assert(renderer.clearSdCardFontsCalls==step + 1);
    const int id=manager.getFontId("Example");
-   if (sequence[step]==0) baseId=id;
-   if (sequence[step]!=0) {
+   if (sequence[step]==3) baseId=id;
+   if (sequence[step]!=3) {
      if (weight2Id==0) weight2Id=id;
      else assert(id==weight2Id);
    }
@@ -142,7 +148,7 @@ int main() {
 
  const auto legacy=family();
  install(legacy,{0,1});
- assert(manager.loadFamily(legacy,renderer,14,readerInk::physical(1)));
+ assert(manager.loadFamily(legacy,renderer,14,readerInk::physical(4)));  // stored +1 = physical 2, served by the old file
  assert(manager.currentWeight()==1);
  assert(opens.back()==legacy.filePath(legacy.files.front(),1));
 
@@ -158,7 +164,7 @@ int main() {
  const auto baseOnly=family();
  install(baseOnly,{0});
  opens.clear();
- for (int level=0;level<6;++level) {
+ for (int level=0;level<9;++level) {
    assert(manager.loadFamily(baseOnly,renderer,14,readerInk::physical(level)));
    assert(manager.currentWeight()==0 && manager.getFontId("Example")==baseId &&
           opens.size()==static_cast<size_t>(level + 1));
@@ -182,6 +188,41 @@ int main() {
  assert(!manager.loadBuiltinFamily(full,renderer,14,6,777));
  assert(renderer.fonts.at(777).regular==&originalFace && manager.currentWeight()==0);
  layoutMatches=true;
+
+ // Thin variants (weight-7..9) are the exact file or the base file, never a neighbour.
+ const auto noThin=family();
+ install(noThin,{0,2,3,4,5,6});
+ for (int level=0;level<3;++level) {
+   opens.clear();
+   assert(manager.loadFamily(noThin,renderer,14,readerInk::physical(level)));
+   assert(manager.currentWeight()==0 && opens.size()==1);
+   assert(opens.back()==noThin.filePath(noThin.files.front(),0));
+ }
+ const auto oneThin=family();
+ install(oneThin,{0,7});
+ for (const int level : {2,1,0}) {
+   opens.clear();
+   assert(manager.loadFamily(oneThin,renderer,14,readerInk::physical(level)));
+   const uint8_t expected=level==2 ? 7 : 0;
+   assert(manager.currentWeight()==expected && opens.size()==1);
+   assert(opens.back()==oneThin.filePath(oneThin.files.front(),expected));
+ }
+ const auto badThin=family();
+ install(badThin,{0,7,8,9});
+ files[badThin.filePath(badThin.files.front(),9)]='B';
+ opens.clear();
+ assert(manager.loadFamily(badThin,renderer,14,readerInk::physical(0)));
+ assert(manager.currentWeight()==0 && opens.size()==2);
+ assert(opens[0]==badThin.filePath(badThin.files.front(),9));
+ assert(opens[1]==badThin.filePath(badThin.files.front(),0));
+ install(full,{0,9});
+ for(int physical : {9,9}) {
+   assert(manager.loadBuiltinFamily(full,renderer,14,physical,777));
+   assert(manager.currentWeight()==9 && manager.isBuiltinRaster() && renderer.fonts.at(777).regular!=&originalFace);
+ }
+ manager.unloadAll(renderer);
+ assert(!manager.loadBuiltinFamily(full,renderer,14,8,777));  // -2 asked, only -3 installed
+ assert(renderer.fonts.at(777).regular==&originalFace);
 }
 ''')
             manager = REPO / 'lib/EpdFont/SdCardFontManager.cpp'

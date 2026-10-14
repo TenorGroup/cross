@@ -42,7 +42,7 @@ class SdCardFontSystem {
   // Caller holds RenderLock and clears font caches before changing UI faces.
   // Missing auxiliary packs leave that UI alias on its built-in glyphs.
   void refreshUiFallbacks(GfxRenderer& renderer, uint8_t uiTextSize);
-  uint8_t availableWeightMask() const;
+  uint16_t availableWeightMask() const;
   uint8_t effectiveWeight() const;
   bool needsNotoPack() const { return notoPackMissing_; }
 

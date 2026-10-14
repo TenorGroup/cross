@@ -29,7 +29,7 @@ constexpr Expected TENOR[] = {
     {"lineSpacing", 2},
     {"wordSpacing", 3},
     {"paragraphIndent", 2},
-    {"readerInkWeight", 1},
+    {"readerInkWeight", 4},
     {"frontButtonFollowOrientation", 1},
     {"shortPwrBtn", 3},
     {"sleepScreen", 10},

@@ -290,7 +290,7 @@ void SdCardFontSystem::ensureLoadedImpl(GfxRenderer& renderer) {
                                                SETTINGS.fontPointSize));
     const auto level = readerInk::clamp(SETTINGS.readerInkWeight);
     const char* notoFamily = SETTINGS.fontFamily == CrossPointSettings::NOTOSERIF ? "NotoSerif" : "NotoSans";
-    if (level == 0 || SETTINGS.fontFamily > CrossPointSettings::NOTOSANS) {
+    if (level == readerInk::ZERO || SETTINGS.fontFamily > CrossPointSettings::NOTOSANS) {
       if (!currentFamily.empty()) manager_.unloadAll(renderer);
       return;
     }
@@ -428,8 +428,8 @@ int SdCardFontSystem::resolveFontId(const char* familyName, uint8_t /*pointSize*
   return manager_.getFontId(familyName);
 }
 
-uint8_t SdCardFontSystem::availableWeightMask() const {
-  return 0x3f;
+uint16_t SdCardFontSystem::availableWeightMask() const {
+  return (1u << readerInk::LEVEL_COUNT) - 1;  // every level can be chosen; a pack without the file shows level 0
 }
 
 uint8_t SdCardFontSystem::effectiveWeight() const {
