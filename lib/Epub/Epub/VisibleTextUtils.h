@@ -5,6 +5,10 @@
 
 namespace VisibleTextUtils {
 
+inline bool countsSourceCharacters(const bool insideBody, const std::size_t nonVisibleDepth, const bool synthetic) {
+  return insideBody && nonVisibleDepth == 0 && !synthetic;
+}
+
 inline bool equalsTag(const std::string_view name, const std::string_view tag) {
   if (name.size() != tag.size()) return false;
   for (std::size_t i = 0; i < name.size(); i++) {

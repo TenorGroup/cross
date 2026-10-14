@@ -69,7 +69,7 @@ TEST(ReaderMenuTabs, BonTab) { EXPECT_EQ(readermenu::TAB_COUNT, 4); }
 TEST(ReaderMenuTabs, BluetoothAppendsSavedActionAndKeepsFavoriteOrder) {
   EXPECT_EQ(static_cast<int>(MenuAction::SAVE_QUOTE), 19);
   EXPECT_EQ(static_cast<int>(MenuAction::BLUETOOTH), 20);
-  EXPECT_EQ(readermenu::ACTION_COUNT, 24);
+  EXPECT_EQ(readermenu::ACTION_COUNT, 25);  // Search in book is the 25th (24 is its number)
   const MenuAction pins[] = {MenuAction::SAVE_QUOTE, MenuAction::BLUETOOTH, MenuAction::SYNC};
   for (int flags = 0; flags < 16; ++flags) {
     const auto all = menu(flags & 1, flags & 2, flags & 4, flags & 8);
@@ -88,7 +88,7 @@ constexpr auto kQuotesOfBook = static_cast<MenuAction>(21);
 
 TEST(ReaderMenuTabs, QuotesOfBookIsAppendedAsActionTwentyOne) {
   EXPECT_EQ(static_cast<int>(MenuAction::BLUETOOTH), 20);
-  EXPECT_EQ(readermenu::ACTION_COUNT, 24);
+  EXPECT_EQ(readermenu::ACTION_COUNT, 25);  // Search in book is the 25th (24 is its number)
   const MenuAction pins[] = {kQuotesOfBook, MenuAction::SAVE_QUOTE, MenuAction::SYNC};
   for (int flags = 0; flags < 8; ++flags) {
     const auto all = menu(flags & 1, flags & 2, flags & 4);
@@ -347,6 +347,24 @@ TEST(ToolbarMore, KeepsLegacyOrderForEveryOptionalItemCombination) {
     }
     EXPECT_EQ(items.size(), row);
   }
+}
+
+TEST(ToolbarMore, SearchRowStandsFirstOnlyWhenTheBoardCanSearch) {
+  std::vector<readermenu::Item> with, without;
+  readermenu::buildMoreItems(with, true, true, true, true);
+  readermenu::buildMoreItems(without, true, true, true);
+  ASSERT_EQ(with.size(), without.size() + 1);
+  EXPECT_EQ(with.front().action, MenuAction::BOOK_SEARCH);
+  EXPECT_EQ(with.front().labelId, StrId::STR_BOOK_SEARCH);
+  for (size_t i = 0; i < without.size(); ++i) {
+    EXPECT_EQ(with[i + 1].action, without[i].action);
+    EXPECT_NE(without[i].action, MenuAction::BOOK_SEARCH);
+  }
+  // A pin stores the action's number: the new one goes last, the numbers before it stay.
+  EXPECT_EQ(static_cast<int>(MenuAction::BOOK_SEARCH), static_cast<int>(MenuAction::TILT_PAGE_TURN) + 1);
+  EXPECT_EQ(readermenu::ACTION_COUNT, static_cast<int>(MenuAction::BOOK_SEARCH) + 1);
+  EXPECT_TRUE(readermenu::rowOpens(MenuAction::BOOK_SEARCH));
+  EXPECT_EQ(readermenu::rowEnd(MenuAction::BOOK_SEARCH), readermenu::RowEnd::Opens);
 }
 
 }  // namespace

@@ -44,6 +44,7 @@ namespace HeaderBackTapTarget {
   void clearFoot() { foot=zone=0; }
   void setFoot(int,int,int,int) { ++foot; }
   void setZone(int,int,int,int) { ++zone; }
+  void setName(int,int,int,int) {}
 }
 namespace freeink { struct Icon { const unsigned char* bits=nullptr; int w=0,h=0; }; }
 freeink::Icon icon_tenor_reader_position_40,icon_tenor_reader_reading_40,icon_tenor_reader_tools_40;
@@ -107,6 +108,8 @@ const char* screenTitle() { return ""; }
 void noteReaderFootBar(bool,bool,int);
 void drawFootBar(const GfxRenderer&,FootBar,Zone);
 void drawPathPill(const GfxRenderer&,int,const char*,int,int,int,int,int,int,bool) { assert(false); }
+struct PathPillLayout { std::string text; int width; };
+PathPillLayout layoutPathPill(const GfxRenderer&,int,const char*,int,int,int) { assert(false); return {}; }
 void clearFootBand(const GfxRenderer&, int air);
 ''' + method(header, 'struct TouchBarRect') + ';\n' + method(header, 'inline TouchBarRect touchTabBarRect') + '\n' + method(header, 'struct ReaderToolRect') + ';\n' + method(header, 'inline ReaderToolRect readerToolRect') + '\n}\n'
 cpp += '\n'.join(re.findall(r'^ugly::MarkState (?:backMark|readerToolMark);', source, re.M)) + '\n'

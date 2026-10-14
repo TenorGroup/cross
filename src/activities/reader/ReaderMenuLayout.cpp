@@ -57,7 +57,7 @@ void buildItems(std::vector<Item>& items, const bool hasFootnotes, const bool ha
 }
 
 void buildMoreItems(std::vector<Item>& items, const bool hasFootnotes, const bool hasBookmarks,
-                    const bool hasFrontlight) {
+                    const bool hasFrontlight, const bool hasSearch) {
   buildItems(items, hasFootnotes, hasBookmarks, hasFrontlight);
   items.erase(std::remove_if(items.begin(), items.end(),
                              [](const auto& item) {
@@ -75,6 +75,7 @@ void buildMoreItems(std::vector<Item>& items, const bool hasFootnotes, const boo
     return std::find(std::begin(order), std::end(order), a.action) <
            std::find(std::begin(order), std::end(order), b.action);
   });
+  if (hasSearch) items.insert(items.begin(), {Action::BOOK_SEARCH, StrId::STR_BOOK_SEARCH, Tab::TOOLS});
 }
 
 int rowsOfTab(const std::vector<Item>& all, const Tab tab, uint8_t* out, const int max) {

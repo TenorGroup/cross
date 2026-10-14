@@ -1735,7 +1735,8 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
 void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char* s, const int len) {
   auto* self = static_cast<ChapterHtmlSlimParser*>(userData);
   if (self->buildFailed_) return;
-  const bool countVisibleOffsets = self->insideBody && self->nonVisibleTextDepth == 0 && !self->syntheticCharacterData;
+  const bool countVisibleOffsets = VisibleTextUtils::countsSourceCharacters(
+      self->insideBody, self->nonVisibleTextDepth, self->syntheticCharacterData);
   const uint32_t callbackVisibleOffset = self->visibleTextOffset;
   if (countVisibleOffsets) {
     const unsigned char* ptr = reinterpret_cast<const unsigned char*>(s);

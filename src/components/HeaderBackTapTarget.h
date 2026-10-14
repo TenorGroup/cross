@@ -48,9 +48,28 @@ inline void setZone(const int newX, const int newY, const int newW, const int ne
   zoneW = newW;
   zoneH = newH;
 }
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+// The screen's name in its pill beside them (a screen that lets the reader tap its name, like Search in book's query).
+inline int nameX = 0;
+inline int nameY = 0;
+inline int nameW = 0;
+inline int nameH = 0;
+inline void setName(const int newX, const int newY, const int newW, const int newH) {
+  nameX = newX;
+  nameY = newY;
+  nameW = newW;
+  nameH = newH;
+}
+inline bool nameContains(const int tx, const int ty) {
+  return nameW > 0 && tx >= nameX && tx < nameX + nameW && ty >= nameY && ty < nameY + nameH;
+}
+#endif
 inline void clearFoot() {
   footW = 0;
   zoneW = 0;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  nameW = 0;
+#endif
 }
 inline bool zoneContains(const int tx, const int ty) {
   return zoneW > 0 && tx >= zoneX && tx < zoneX + zoneW && ty >= zoneY && ty < zoneY + zoneH;
