@@ -12,6 +12,7 @@ struct SdCardFontFamilyInfo {
   }
   const SdCardFontFileInfo* findNearestSize(uint8_t size) const { return findFile(size); }
   uint8_t weights(const SdCardFontFileInfo&) const { return 7; }
+  bool hasWeight(const SdCardFontFileInfo&, uint8_t weight) const { return weight <= 2; }
   std::string filePath(const SdCardFontFileInfo& file, uint8_t weight) const {
     return std::to_string(1000 + file.pointSize * 10 + weight);
   }

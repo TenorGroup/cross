@@ -41,13 +41,13 @@ class MaliRecipeTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.temporary.cleanup()
 
-    def test_four_sizes_styles_and_six_levels(self):
+    def test_four_sizes_styles_and_nine_levels(self):
         self.assertEqual(self.family['sizes'], [12, 14, 16, 18])
         self.assertEqual(set(self.family['styles']), set(pack.STYLE_NAMES))
         with zipfile.ZipFile(self.output) as archive:
             metadata = json.loads(archive.read('pack.json'))
             fonts = [e for e in metadata['entries'] if e['path'].endswith('.cpfont')]
-            self.assertEqual(len(fonts), 24)
+            self.assertEqual(len(fonts), 36)
             for entry in fonts:
                 data = archive.read(entry['path'])
                 quality = pack.reading_quality(data, 1.2)

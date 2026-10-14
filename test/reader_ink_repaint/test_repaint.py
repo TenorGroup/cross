@@ -82,7 +82,7 @@ struct EpubReaderActivity {
 };
 int main() {
  EpubReaderActivity reader;
- for(int level=0;level<6;++level) for(int aa=0;aa<2;++aa) {
+ for(int level=0;level<9;++level) for(int aa=0;aa<2;++aa) {
   const auto snapshot=AnhChupChu::chup();
   auto inkTruoc=SETTINGS.readerInkWeight,aaTruoc=SETTINGS.textAntiAliasing;
   SETTINGS.readerInkWeight=level;SETTINGS.textAntiAliasing=aa;
@@ -200,7 +200,7 @@ int main() {
  GfxRenderer renderer;textsettings::PreviewLayout layout;
  textsettings::renderPreview(renderer,layout,8,8,0,400,"Geist","16");
  auto* line=layout.lines[0].get();
- for(int level=0;level<6;++level) for(int aa=0;aa<2;++aa) {
+ for(int level=0;level<9;++level) for(int aa=0;aa<2;++aa) {
   const bool changed=SETTINGS.readerInkWeight!=level || SETTINGS.textAntiAliasing!=aa;
   const int before=renderer.manager.prewarms;
   SETTINGS.readerInkWeight=level;SETTINGS.textAntiAliasing=aa;

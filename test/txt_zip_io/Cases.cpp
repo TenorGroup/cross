@@ -260,7 +260,7 @@ static void inkKeepsIndexHit() {
     GfxRenderer gfx;initial.initializeReader(gfx);CHECK(initial.initialized);
     const auto path = preview ? "/cache/preview_index.bin" : "/cache/index.bin";
     const auto bytes = Storage.files.at(path)->bytes;
-    for (int level = 0; level < 6; ++level) for (int aa = 0; aa < 2; ++aa) {
+    for (int level = 0; level < 9; ++level) for (int aa = 0; aa < 2; ++aa) {
       SETTINGS.readerInkWeight = level;SETTINGS.textAntiAliasing = aa;
       TxtReaderActivity reopened;reopened.txt = std::make_unique<Txt>();reopened.txt->fileSize = size;reopened.preview = preview;
       GfxRenderer hit;reopened.initializeReader(hit);

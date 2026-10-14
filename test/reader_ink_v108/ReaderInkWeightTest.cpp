@@ -26,60 +26,75 @@ constexpr uint8_t nextAvailable(int current, uint8_t mask) {
 #include "ReaderInkWeight.h"
 #endif
 int main() {
-  // Old Strong must keep its appearance and become public +1 exactly once.
-  assert(readerInk::fromLegacy(2) == 1);
-  assert(readerInk::fromLegacy(1) == 1);
-  assert(readerInk::fromLegacy(0) == 0);
-  assert(readerInk::fromLegacy(3) == 0);
-  assert(readerInk::fromLegacy(-1) == 0);
-  assert(readerInk::SCHEMA_VERSION == 2);
-  assert(readerInk::LEVEL_COUNT == 6);
-  constexpr uint8_t physical[] = {0, 2, 3, 4, 5, 6};
-  constexpr int32_t strength[] = {0, 16, 32, 48, 64, 96};
-  for (int publicLevel = 0; publicLevel < 6; ++publicLevel) {
-    assert(readerInk::physical(publicLevel) == physical[publicLevel]);
-    assert(readerInk::publicFromPhysical(physical[publicLevel]) == publicLevel);
-    assert(readerInk::clamp(publicLevel) == publicLevel);
+  // Stored byte = level + 3: 0..2 are -3..-1, 3 is level "0", 4..8 are +1..+5.
+  assert(readerInk::SCHEMA_VERSION == 3);
+  assert(readerInk::LEVEL_COUNT == 9);
+  assert(readerInk::ZERO == 3);
+  // Old Strong must keep its appearance and become public +1 exactly once, in every older schema.
+  assert(readerInk::fromLegacy(2) == 4);
+  assert(readerInk::fromLegacy(1) == 4);
+  assert(readerInk::fromLegacy(0) == 3);
+  assert(readerInk::fromLegacy(3) == 3);
+  assert(readerInk::fromLegacy(-1) == 3);
+  assert(readerInk::fromSchema1(0) == 3);
+  assert(readerInk::fromSchema1(1) == 4 && readerInk::fromSchema1(3) == 4);
+  assert(readerInk::fromSchema1(4) == 3 && readerInk::fromSchema1(-1) == 3);
+  for (int old = 0; old < 6; ++old) assert(readerInk::fromSchema2(old) == old + 3);
+  assert(readerInk::fromSchema2(6) == 3 && readerInk::fromSchema2(255) == 3 && readerInk::fromSchema2(-1) == 3);
+  constexpr uint8_t physical[] = {9, 8, 7, 0, 2, 3, 4, 5, 6};
+  constexpr int32_t strength[] = {-48, -32, -16, 0, 16, 32, 48, 64, 96};
+  for (int stored = 0; stored < 9; ++stored) {
+    assert(readerInk::physical(stored) == physical[stored]);
+    assert(readerInk::publicFromPhysical(physical[stored]) == stored);
+    assert(readerInk::clamp(stored) == stored);
+    assert(readerInk::level(stored) == stored - 3);
 #ifndef READER_INK_V107_BASELINE
-    assert(readerInk::outlineStrength(publicLevel) == strength[publicLevel]);
+    assert(readerInk::outlineStrength(stored) == strength[stored]);
 #endif
   }
-  assert(readerInk::publicFromPhysical(1) == 0);
-  assert(readerInk::clamp(4) == 4);
-  assert(readerInk::clamp(5) == 5);
-  assert(readerInk::clamp(6) == 0);
-  assert(readerInk::publicFromPhysical(5) == 4);
-  assert(readerInk::clamp(255) == 0);
+  assert(readerInk::publicFromPhysical(1) == 3);
+  assert(readerInk::publicFromPhysical(10) == 3);
+  assert(readerInk::clamp(8) == 8);
+  assert(readerInk::clamp(9) == 3);
+  assert(readerInk::clamp(-1) == 3);
+  assert(readerInk::clamp(255) == 3);
+  assert(readerInk::publicFromPhysical(5) == 7);
+  assert(readerInk::physical(255) == 0 && readerInk::physical(-1) == 0);
 #ifndef READER_INK_V107_BASELINE
   assert(readerInk::outlineStrength(-1) == 0);
-  assert(readerInk::outlineStrength(6) == 0);
+  assert(readerInk::outlineStrength(9) == 0);
 #endif
-  assert(readerInk::publicMask(0x7f) == 0x3f);
-  assert(readerInk::publicMask(0x1f) == 0x0f);
-  assert(readerInk::publicMask(0x03) == 0x01); // old Light is not new +1
-  assert(readerInk::publicMask(0x05) == 0x03); // old Strong is new +1
-  assert(readerInk::publicMask(0x11) == 0x09);
-  assert(readerInk::nextAvailable(0, 0x0f) == 1);
-  assert(readerInk::nextAvailable(1, 0x0f) == 2);
-  assert(readerInk::nextAvailable(2, 0x0f) == 3);
-  assert(readerInk::nextAvailable(3, 0x0f) == 0);
-  assert(readerInk::nextAvailable(0, 0x09) == 3);
-  assert(readerInk::nextAvailable(3, 0x09) == 0);
-  assert(readerInk::nextAvailable(0, 0x01) == 0);
-  assert(readerInk::nextAvailable(255, 0x09) == 3);
+  // Pack files to stored-level bits: base 3, weight-2..6 at 4..8, weight-7..9 at 2..0.
+  assert(readerInk::publicMask(0x7f) == 0x1f8);
+  assert(readerInk::publicMask(0x1f) == 0x078);
+  assert(readerInk::publicMask(0x03) == 0x008);  // old Light is not new +1
+  assert(readerInk::publicMask(0x05) == 0x018);  // old Strong is new +1
+  assert(readerInk::publicMask(0x11) == 0x048);
+  assert(readerInk::publicMask(0x381) == 0x00f);  // base and weight-7..9
+  assert(readerInk::publicMask(0x080) == 0x004);  // weight-7 alone is -1
+  assert(readerInk::publicMask(0x3ff) == 0x1ff);
+  assert(readerInk::nextAvailable(3, 0x078) == 4);
+  assert(readerInk::nextAvailable(4, 0x078) == 5);
+  assert(readerInk::nextAvailable(5, 0x078) == 6);
+  assert(readerInk::nextAvailable(6, 0x078) == 3);
+  assert(readerInk::nextAvailable(3, 0x048) == 6);
+  assert(readerInk::nextAvailable(6, 0x048) == 3);
+  assert(readerInk::nextAvailable(3, 0x008) == 3);
+  assert(readerInk::nextAvailable(255, 0x048) == 6);
+  assert(readerInk::nextAvailable(0, 0x00f) == 1);
+  assert(readerInk::nextAvailable(2, 0x00f) == 3);
+  assert(readerInk::nextAvailable(3, 0x00f) == 0);
 
-  // A short press always advances the requested public level. Availability
+  // A short press always advances the requested level, -3 up to +5 and round to -3. Availability
   // controls the rendered fallback and warning, never which labels are reachable.
-  for (const uint8_t mask : {uint8_t{0x03}, uint8_t{0x0f}}) {
-    assert(readerInk::next(0) == 1);
-    assert(readerInk::next(1) == 2);
-    assert(readerInk::next(2) == 3);
-    assert(readerInk::next(3) == 4);
-    assert(readerInk::next(4) == 5);
-    assert(readerInk::next(5) == 0);
-    assert(readerInk::available(0, mask));
-    assert(readerInk::available(1, mask));
-    assert(readerInk::available(2, mask) == (mask == 0x0f));
-    assert(readerInk::available(3, mask) == (mask == 0x0f));
+  for (const uint16_t mask : {uint16_t{0x018}, uint16_t{0x078}, uint16_t{0x1ff}}) {
+    for (int stored = 0; stored < 8; ++stored) assert(readerInk::next(stored) == stored + 1);
+    assert(readerInk::next(8) == 0);
+    assert(readerInk::next(255) == 4);  // a corrupt byte is level 0, so the next press is +1
+    assert(readerInk::available(3, mask));
+    assert(readerInk::available(4, mask));
+    assert(readerInk::available(5, mask) == (mask >= 0x078));
+    assert(readerInk::available(0, mask) == (mask == 0x1ff));
+    assert(!readerInk::available(9, mask) && !readerInk::available(-1, mask));
   }
 }

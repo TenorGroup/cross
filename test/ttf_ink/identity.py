@@ -8,7 +8,7 @@ REPO = Path(__file__).resolve().parents[2]
 
 
 class TtfIdentity(unittest.TestCase):
-    def test_font_identity_ignores_all_six_ink_levels(self):
+    def test_font_identity_ignores_all_nine_ink_levels(self):
         text = (REPO / "src/SdCardFontSystem.cpp").read_text()
         start = text.index("int computeTtfFontId(")
         stop = text.index("\n}", start) + 2
@@ -18,7 +18,7 @@ class TtfIdentity(unittest.TestCase):
             "template<typename Function> int identity(Function fn,uint8_t level) {",
             "if constexpr(std::is_invocable_r_v<int,Function,const char*,uint8_t,uint8_t>) return fn(\"Geist\",16,level);",
             "else return fn(\"Geist\",16); }",
-            "int main() { for(uint8_t level=0;level<6;++level) assert(identity(&computeTtfFontId,level)==identity(&computeTtfFontId,0)); }",
+            "int main() { for(uint8_t level=0;level<9;++level) assert(identity(&computeTtfFontId,level)==identity(&computeTtfFontId,0)); }",
         ])
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "identity.cpp"

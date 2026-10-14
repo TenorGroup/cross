@@ -26,10 +26,11 @@ class InkStrengthContractTests(unittest.TestCase):
         header = (ROOT / 'src/ReaderInkWeight.h').read_text()
         table = re.search(r'OUTLINE_STRENGTHS\s*\[\s*LEVEL_COUNT\s*\]\s*=\s*\{([^}]+)\}', header)
         self.assertIsNotNone(table)
-        strengths = tuple(int(value.strip()) for value in table.group(1).split(','))
-        self.assertEqual(strengths, (0, 16, 32, 48, 64, 96))
-        self.assertEqual(pack.STRENGTHS, strengths)
-        self.assertEqual(pack.RECIPE, 'reader-outline-v3-ramp')
+        stored = tuple(int(value.strip()) for value in table.group(1).split(','))
+        # Stored level 3 is "0"; the firmware keeps -3..+5, the pack keeps 0, +1..+5, then -1, -2, -3.
+        self.assertEqual(stored, (-48, -32, -16, 0, 16, 32, 48, 64, 96))
+        self.assertEqual(pack.STRENGTHS, stored[3:] + tuple(reversed(stored[:3])))
+        self.assertEqual(pack.RECIPE, 'reader-outline-v4-thin')
 
 
 class FontPackTests(unittest.TestCase):
@@ -120,7 +121,8 @@ class FontPackTests(unittest.TestCase):
             metadata = json.loads(archive.read('pack.json'))
         self.assertEqual(metadata['recipe'], pack.RECIPE)
         self.assertEqual([level['directory'] for level in metadata['levels']],
-                         ['', 'weight-2', 'weight-3', 'weight-4', 'weight-5', 'weight-6'])
+                         ['', 'weight-2', 'weight-3', 'weight-4', 'weight-5', 'weight-6', 'weight-7', 'weight-8',
+                          'weight-9'])
         self.assertEqual(metadata['legacy_compatible_directory'], 'weight-1')
         for entry in metadata['entries']:
             content = (self.directory / 'unpacked' / entry['path']).read_bytes()
@@ -132,7 +134,7 @@ class FontPackTests(unittest.TestCase):
     def test_advance_and_metadata_invariant(self):
         with zipfile.ZipFile(self.output) as archive:
             base = archive.read('Small_12.cpfont')
-            for level in range(6):
+            for level in range(9):
                 candidate = bytearray(archive.read(pack.entry_name('Small', 12, level)))
                 if os.environ.get('FONT_PACK_INJECT_ADVANCE_BUG') and level == 1:
                     _, styles = pack.read_font(candidate)
@@ -144,6 +146,35 @@ class FontPackTests(unittest.TestCase):
             _, strongest = pack.read_font(archive.read('weight-6/Small_12.cpfont'))
             self.assertTrue(any(old[1][:2] != new[1][:2] or old[2] != new[2]
                                 for old, new in zip(base_styles[0]['records'], strongest[0]['records'])))
+
+    def test_thin_levels_remove_ink_and_keep_the_layout(self):
+        with zipfile.ZipFile(self.output) as archive:
+            base = archive.read('Small_12.cpfont')
+            ink = {0: pack.ink_coverage(base)}
+            for level, directory in ((6, 'weight-7'), (7, 'weight-8'), (8, 'weight-9')):
+                data = archive.read(f'{directory}/Small_12.cpfont')
+                pack.assert_same_layout(base, data)
+                ink[pack.STRENGTHS[level]] = pack.ink_coverage(data)
+            ink[pack.STRENGTHS[1]] = pack.ink_coverage(archive.read('weight-2/Small_12.cpfont'))
+        self.assertLess(ink[-48], ink[-32])
+        self.assertLess(ink[-32], ink[-16])
+        self.assertLess(ink[-16], ink[0])
+        self.assertLess(ink[0], ink[16])
+        # The three thin steps are about as wide as the +1 step is: not one tiny nudge, not a collapse.
+        self.assertGreater(ink[-48] / ink[0], 0.5)
+        self.assertLess(ink[-16] / ink[0], 0.95)
+
+    def test_a_thin_level_with_more_ink_than_the_base_is_rejected(self):
+        original = pack.weights.RasterSource.glyph
+
+        def flipped(source, codepoint, strength):
+            return original(source, codepoint, abs(strength))
+
+        with patch.object(pack.weights.RasterSource, 'glyph', flipped):
+            with contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaisesRegex(ValueError, 'Ink ramp not increasing'):
+                    self.build(self.directory / 'flipped.cpfontpack')
+        self.assertFalse((self.directory / 'flipped.cpfontpack').exists())
 
     def test_published_base_preserved(self):
         with zipfile.ZipFile(self.output) as archive:
@@ -181,7 +212,7 @@ class FontPackTests(unittest.TestCase):
             license_data = archive.read('OFL.txt')
             self.assertIn((FONT_ROOT / 'OFL.txt').read_bytes(), license_data)
             self.assertIn((fallback / 'OFL.txt').read_bytes(), license_data)
-            self.assertEqual(len(archive.namelist()), 8)
+            self.assertEqual(len(archive.namelist()), 11)
             self.assertIn('0', json.loads(archive.read('pack.json'))['fallback_sources'])
 
     def test_encode_rejects_advance_bug(self):

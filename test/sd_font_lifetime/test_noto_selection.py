@@ -24,13 +24,14 @@ class NotoSelection(unittest.TestCase):
 #include <string>
 struct CrossPointSettings { enum {NOTOSERIF=0,NOTOSANS=1}; };
 struct Settings {
- uint8_t fontFamily=0,fontPointSize=14,readerInkWeight=0;
+ uint8_t fontFamily=0,fontPointSize=14,readerInkWeight=3;
  char sdFontFamilyName[32]="";
  int getReaderFontId()const{return 1000+fontFamily*100+fontPointSize;}
 } SETTINGS;
 namespace readerInk {
- uint8_t clamp(uint8_t value){return value<6?value:5;}
- uint8_t physical(uint8_t value){return value?value+1:0;}
+ constexpr uint8_t ZERO=3;
+ uint8_t clamp(uint8_t value){return value<9?value:ZERO;}
+ uint8_t physical(uint8_t value){return value==ZERO?0:value>ZERO?value-2:9-value;}
 }
 const uint8_t BUILTIN_READER_POINT_SIZES[]={12,14,16,18};
 uint8_t snapToNearestPointSize(const uint8_t*,size_t,uint8_t value){return value;}
@@ -70,18 +71,24 @@ struct System {
 int main(){
  Renderer renderer;System system;
  const int id=SETTINGS.getReaderFontId();
- for(int level : {0,5,1,5,0}){
+ // stored 3 is level 0 (the built-in font); 4..8 are +1..+5 and 0..2 are -3..-1 (the thin files, weight-9..7)
+ for(int level : {3,8,4,8,3,0,2,0,3}){
    SETTINGS.readerInkWeight=level;system.apply(renderer);
    assert(SETTINGS.sdFontFamilyName[0]==0 && SETTINGS.getReaderFontId()==id);
-   if(level){assert(system.manager_.id==id && system.manager_.isBuiltinRaster());}
+   if(level!=3){assert(system.manager_.id==id && system.manager_.isBuiltinRaster());}
    else {assert(!system.manager_.isBuiltinRaster());}
+   if(level==0)assert(system.manager_.weight==9);
+   if(level==2)assert(system.manager_.weight==7);
  }
- SETTINGS.readerInkWeight=5;system.present=false;system.apply(renderer);
- assert(system.notoPackMissing_ && system.manager_.weight==0);
- system.present=true;system.manager_.matching=false;system.apply(renderer);
- assert(system.notoPackMissing_ && system.manager_.weight==0);
- system.manager_.matching=true;system.apply(renderer);
- assert(!system.notoPackMissing_);
+ for(int level : {8,0}){
+   SETTINGS.readerInkWeight=level;system.present=false;system.apply(renderer);
+   assert(system.notoPackMissing_ && system.manager_.weight==0);
+   system.present=true;system.manager_.matching=false;system.apply(renderer);
+   assert(system.notoPackMissing_ && system.manager_.weight==0);
+   system.manager_.matching=true;system.apply(renderer);
+   assert(!system.notoPackMissing_);
+ }
+ SETTINGS.readerInkWeight=8;system.apply(renderer);
  const int calls=system.manager_.calls;system.apply(renderer);
  assert(system.manager_.calls==calls);
  SETTINGS.fontFamily=1;system.apply(renderer);

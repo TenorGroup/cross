@@ -30,14 +30,14 @@ std::vector<uint8_t> bitmap(TtfEpdFont& font, uint32_t cp, EpdFontFamily::Style 
 }
 }
 
-TEST(TtfInk, SixStrengths) {
-  constexpr int32_t expected[] = {0, 16, 32, 48, 64, 96};
-  for (int level = 0; level < 6; ++level) EXPECT_EQ(readerInk::outlineStrength(level), expected[level]);
+TEST(TtfInk, NineStrengths) {
+  constexpr int32_t expected[] = {-48, -32, -16, 0, 16, 32, 48, 64, 96};
+  for (int level = 0; level < 9; ++level) EXPECT_EQ(readerInk::outlineStrength(level), expected[level]);
   EXPECT_EQ(readerInk::outlineStrength(-1), 0);
-  EXPECT_EQ(readerInk::outlineStrength(6), 0);
+  EXPECT_EQ(readerInk::outlineStrength(9), 0);
 }
 
-TEST(TtfInk, ProductionFtAdvanceAtZeroAndFiveIsIdentical) {
+TEST(TtfInk, ProductionFtAdvanceAtEveryLevelIsIdentical) {
   const auto bytes = source();
   ASSERT_FALSE(bytes.empty());
   for (int weight : {400, 700}) for (bool italic : {false, true}) {
@@ -51,13 +51,16 @@ TEST(TtfInk, ProductionFtAdvanceAtZeroAndFiveIsIdentical) {
       ASSERT_TRUE(font.setRenderOptions(options));
       freeink::font::FtFont::GlyphMetrics raw;
       ASSERT_TRUE(font.metrics26_6(cp, 33 * 64, raw));
-      options.embolden26_6 = readerInk::outlineStrength(5);
-      ASSERT_TRUE(font.setRenderOptions(options));
-      freeink::font::FtFont::GlyphMetrics bold;
-      ASSERT_TRUE(font.metrics26_6(cp, 33 * 64, bold));
-      EXPECT_EQ(raw.advance26_6, bold.advance26_6) << cp << ' ' << weight << ' ' << italic;
-      std::printf("TTF cp=%u weight=%d italic=%d advance0=%d advance5=%d\n", cp, weight, italic,
-                  raw.advance26_6, bold.advance26_6);
+      for (int stored = 0; stored < readerInk::LEVEL_COUNT; ++stored) {
+        options.embolden26_6 = readerInk::outlineStrength(stored);
+        ASSERT_TRUE(font.setRenderOptions(options));
+        freeink::font::FtFont::GlyphMetrics level;
+        ASSERT_TRUE(font.metrics26_6(cp, 33 * 64, level));
+        EXPECT_EQ(raw.advance26_6, level.advance26_6) << cp << ' ' << weight << ' ' << italic << ' ' << stored;
+        if (stored == 0 || stored == 8)
+          std::printf("TTF cp=%u weight=%d italic=%d advance0=%d advance%s=%d\n", cp, weight, italic,
+                      raw.advance26_6, stored ? "+5" : "-3", level.advance26_6);
+      }
     }
   }
 }
@@ -104,4 +107,71 @@ TEST(TtfInk, AntiAliasingChangeFlushesRasterWhileSameConfigRetainsIt) {
   EXPECT_NE(bitmap(font, 'm', EpdFontFamily::REGULAR), expected);
   configureAa(font, false);
   EXPECT_EQ(bitmap(font, 'm', EpdFontFamily::REGULAR), expected);
+}
+
+namespace {
+struct Ink {
+  long sum = 0;
+  double x = 0, y = 0;  // ink-weighted centre, in pixels from the pen position, y up
+};
+Ink inkOf(TtfEpdFont& font, uint32_t cp, EpdFontFamily::Style style) {
+  Ink ink;
+  const auto* glyph = font.family().getGlyph(cp, style);
+  const auto bytes = bitmap(font, cp, style);
+  if (!glyph) return ink;
+  for (int row = 0; row < glyph->height; ++row) {
+    for (int col = 0; col < glyph->width; ++col) {
+      const int index = row * glyph->width + col;
+      const int value = (bytes[index >> 2] >> ((3 - (index & 3)) * 2)) & 3;
+      ink.sum += value;
+      ink.x += value * (glyph->left + col + 0.5);
+      ink.y += value * (glyph->top - row - 0.5);
+    }
+  }
+  if (ink.sum) ink.x /= ink.sum, ink.y /= ink.sum;
+  return ink;
+}
+}  // namespace
+
+// A thin level removes ink and keeps the stroke where it was: the outline is moved back by the half
+// strength FT_Outline_Embolden shifts it, as the font pack bake does. The same holds above level 0.
+TEST(TtfInk, EveryLevelKeepsTheStrokeCentreAndOrdersTheInk) {
+  const auto bytes = source();
+  for (const uint32_t cp : {'o', 'm', 'l', 'H'}) {
+    // The round "o" shows the placement alone (about 0.04 px off); the flat-sided letters move up to 0.3 px
+    // with the 2 bit quantising of their hinted edges. Without the move back the shift is half the strength:
+    // 0.375 px at -3 and 0.75 px at +5.
+    const double tolerance = cp == 'o' ? 0.15 : 0.35;
+    TtfEpdFont font;
+    font.addResidentSource(0, bytes.data(), bytes.size());
+    ASSERT_TRUE(font.load(16));
+    font.setInkStrength(0);
+    const Ink base = inkOf(font, cp, EpdFontFamily::REGULAR);
+    ASSERT_GT(base.sum, 0);
+    long previous = 0;
+    for (int stored = 0; stored < readerInk::LEVEL_COUNT; ++stored) {
+      font.setInkStrength(readerInk::outlineStrength(stored));
+      const Ink ink = inkOf(font, cp, EpdFontFamily::REGULAR);
+      EXPECT_GT(ink.sum, previous) << char(cp) << " level " << stored - readerInk::ZERO;
+      previous = ink.sum;
+      EXPECT_NEAR(ink.x, base.x, tolerance) << char(cp) << " level " << stored - readerInk::ZERO;
+      EXPECT_NEAR(ink.y, base.y, tolerance) << char(cp) << " level " << stored - readerInk::ZERO;
+    }
+  }
+}
+
+TEST(TtfInk, ThinLevelLoadedDirectlyMatchesTheOneSetLater) {
+  const auto bytes = source();
+  for (const int stored : {0, 1, 2}) {
+    TtfEpdFont set;
+    set.addResidentSource(0, bytes.data(), bytes.size());
+    ASSERT_TRUE(set.load(16));
+    set.setInkStrength(readerInk::outlineStrength(stored));
+    TtfEpdFont direct;
+    direct.addResidentSource(0, bytes.data(), bytes.size());
+    ASSERT_TRUE(direct.load(16, true, 32768, 768, readerInk::outlineStrength(stored)));
+    const auto expected = bitmap(set, 'm', EpdFontFamily::REGULAR);
+    ASSERT_FALSE(expected.empty());
+    EXPECT_EQ(bitmap(direct, 'm', EpdFontFamily::REGULAR), expected);
+  }
 }
