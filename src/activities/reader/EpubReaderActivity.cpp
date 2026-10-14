@@ -1068,14 +1068,17 @@ void EpubReaderActivity::jumpToQuoteForEdit(const std::string& name) {
   // A spine item this book does not have (the file was replaced by another edition) leaves
   // the reader where it is; the selector then says the quote is not on this page.
   if (quote.spine < 0 || quote.spine >= epub->getSpineItemsCount()) return;
-  clearDeferredReposition();
   const int page = std::max(0, quote.page);
   // The two roads the bookmark jump takes: an anchored quote is found by its visible text
   // offset, which survives a change of font size; an older one only knows its page number.
   if (section && currentSpineIndex == quote.spine) {
-    section->currentPage =
-        quote.hasAnchor ? section->getPageForVisibleTextOffset(quote.anchorStart).value_or(page) : page;
+    const int targetPage = quote.hasAnchor ? section->getPageForVisibleTextOffset(quote.anchorStart).value_or(page) : page;
+    if (section->currentPage != targetPage) pushReturnPosition();
+    clearDeferredReposition();
+    section->currentPage = targetPage;
   } else {
+    if (currentSpineIndex != quote.spine || (!quote.hasAnchor && nextPageNumber != page)) pushReturnPosition();
+    clearDeferredReposition();
     currentSpineIndex = quote.spine;
     TRACE_JUMP_BEGIN("quote");
     if (quote.hasAnchor) pendingOffsetJump = quote.anchorStart;
@@ -1984,6 +1987,11 @@ void EpubReaderActivity::jumpToPercent(int percent) {
 
   {
     RenderLock lock;
+    if (currentSpineIndex != targetSpineIndex ||
+        (section && section->laidOutTo(pendingSpineProgress) &&
+         section->pageAtFraction(pendingSpineProgress) != section->currentPage)) {
+      pushReturnPosition();
+    }
     clearDeferredReposition();
     currentSpineIndex = targetSpineIndex;
     TRACE_JUMP_BEGIN("percent");
@@ -2016,11 +2024,15 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
 
       if (sync.hasVisibleTextOffset && sync.spineIndex >= 0 && sync.spineIndex < epub->getSpineItemsCount()) {
         RenderLock lock;
-        clearDeferredReposition();
         if (section && currentSpineIndex == sync.spineIndex) {
           const auto page = section->getPageForVisibleTextOffset(sync.visibleTextOffset);
-          section->currentPage = page.value_or(std::max(0, sync.page));
+          const int targetPage = page.value_or(std::max(0, sync.page));
+          if (section->currentPage != targetPage) pushReturnPosition();
+          clearDeferredReposition();
+          section->currentPage = targetPage;
         } else {
+          if (currentSpineIndex != sync.spineIndex) pushReturnPosition();
+          clearDeferredReposition();
           currentSpineIndex = sync.spineIndex;
           pendingOffsetJump = sync.visibleTextOffset;
           nextPageNumber = std::max(0, sync.page);
@@ -2046,6 +2058,10 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
       }
 
       RenderLock lock;
+      if (currentSpineIndex != targetSpineIndex ||
+          (section && section->currentPage != std::max(0, targetPage))) {
+        pushReturnPosition();
+      }
       clearDeferredReposition();
 
       if (currentSpineIndex != targetSpineIndex) {
@@ -2091,6 +2107,7 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
             }
             const auto& chapterResult = std::get<ChapterResult>(result.data);
             RenderLock lock;
+            if (chapterTargetDiffers(chapterResult.spineIndex, chapterResult.anchor)) pushReturnPosition();
             clearDeferredReposition();
             currentSpineIndex = chapterResult.spineIndex;
             TRACE_JUMP_BEGIN("toc");
@@ -5032,11 +5049,12 @@ void EpubReaderActivity::handleOverlayInput() {
 
   // Jump to another spine item (chapter scrub). The overlay stays up and is
   // re-drawn over the new page by renderBook().
-  const auto gotoSpine = [this](int target) {
+  const auto gotoSpine = [this](int target, bool saveReturn = false) {
     const int spineCount = epub->getSpineItemsCount();
     target = std::clamp(target, 0, spineCount - 1);
     if (target != currentSpineIndex) {
       RenderLock lock;
+      if (saveReturn) pushReturnPosition();
       clearDeferredReposition();
       nextPageNumber = 0;
       currentSpineIndex = target;
@@ -5105,7 +5123,8 @@ void EpubReaderActivity::handleOverlayInput() {
       case ReaderToolbarUi::Event::Scrub:
         gotoSpine(static_cast<int>((static_cast<float>(routed.permille) / 1000.0f) *
                                        static_cast<float>(epub->getSpineItemsCount() - 1) +
-                                   0.5f));
+                                   0.5f),
+                  true);
         return;
       default:
         break;
@@ -5174,6 +5193,7 @@ void EpubReaderActivity::handleOverlayInput() {
       const auto item = epub->getTocItem(panelIndex);
       if (item.spineIndex != -1) {
         RenderLock lock;
+        if (chapterTargetDiffers(item.spineIndex, item.anchor)) pushReturnPosition();
         clearDeferredReposition();
         currentSpineIndex = item.spineIndex;
         pendingAnchor = item.anchor;
@@ -6218,6 +6238,15 @@ void EpubReaderActivity::navigateToHref(const std::string& hrefStr, const bool s
   }
   requestUpdate();
   LOG_DBG("ERS", "Navigated to spine %d for href: %s", targetSpineIndex, hrefStr.c_str());
+}
+
+bool EpubReaderActivity::chapterTargetDiffers(const int spineIndex, const std::string& anchor) const {
+  if (spineIndex != currentSpineIndex) return true;
+  const int page = section ? section->currentPage : nextPageNumber;
+  if (anchor.empty()) return page != 0;
+  const auto targetPage = section ? section->findAnchor(anchor)
+                                  : Section(epub, currentSpineIndex, renderer).getPageForAnchor(anchor);
+  return targetPage.has_value() && *targetPage != page;
 }
 
 void EpubReaderActivity::pushReturnPosition() {

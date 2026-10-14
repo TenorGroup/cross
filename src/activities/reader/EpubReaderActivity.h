@@ -482,6 +482,7 @@ class EpubReaderActivity final : public ReaderActivity {
 
   void navigateToHref(const std::string& href, bool savePosition = false);
   void pushReturnPosition();
+  bool chapterTargetDiffers(int spineIndex, const std::string& anchor) const;
   void restoreSavedPosition();
 
   void renderContents(std::unique_ptr<Page> page, int orientedMarginTop, int orientedMarginRight,
