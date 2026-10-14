@@ -23,3 +23,6 @@ The start-screen regression adds 12 `-ugly` cases with the same board, sensor an
 The 4 Pro hashes include the dynamic bar default change in 3afef460: `homeButtonDoubleTapAction` is Ignore (1). Replacing only that value with the earlier ToggleFrontlight (10) reproduces each earlier hash; all other fields retain the same oracle. The harness also asserts Ignore directly.
 
 Recommended CTest registration: `MenuSleepSplitRegression`, `RUN_SERIAL TRUE`, `TIMEOUT 180`. Root owns CMake registration.
+
+The 24 hashes now carry 9 reader ink options (-3 to +5, value stored plus 3). Dropping STR_READER_INK_M3, M2 and M1 from
+that row and taking 3 off its value reproduces every hash recorded before the thin levels; no other row moves.
