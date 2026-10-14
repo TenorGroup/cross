@@ -14,6 +14,7 @@
 #include "ReadingStatsFormat.h"
 #include "ReadingStatsStore.h"
 #include "fontIds.h"
+#include "util/BookTitleDisplay.h"
 #include "shells/ugly/UglyInk.h"
 #include "util/NgayGio.h"
 namespace readingstatsview {
@@ -226,8 +227,8 @@ void drawSleep(const GfxRenderer& r, const bool uglySignature) {
     const int bookLabel = enlarged ? bookTitle + r.getLineHeight(UI_10_FONT_ID) + 4 : 644;
     const int bookValue = enlarged ? bookLabel + r.getLineHeight(SMALL_FONT_ID) + 4 : 669;
     r.fillRect(24, bookRule, width - 48, 2);
-    const auto& title =
-        READING_STATS.activeBookTitle.empty() ? READING_STATS.activeBookPath : READING_STATS.activeBookTitle;
+    const std::string title = READING_STATS.activeBookTitle.empty() ? READING_STATS.activeBookPath
+                                                                    : booktitle::display(READING_STATS.activeBookTitle);
     r.drawText(UI_10_FONT_ID, 24, bookTitle,
                r.truncatedText(UI_10_FONT_ID, title.c_str(), width - 48, EpdFontFamily::BOLD).c_str(), true,
                EpdFontFamily::BOLD);

@@ -15,21 +15,22 @@ code=r'''
 #include <cstdio>
 bool refExists = true;
 std::string refHref;
-int probes = 0;
+int probes = 0, opened = 0, thumbW = 300, thumbH = 450;
+bool thumbExists = false;
 struct ImageDimensions { int width = 0, height = 0; };
 namespace coverref { bool load(const std::string&, std::string& h) { h = refHref; return refExists; } }
 struct Epub {
- Epub(const std::string&, const char*) {}
+ Epub(const std::string&, const char*) { ++opened; }
  std::string getCachePath() { return "/cache"; }
  bool readCoverDimensions(const std::string&, ImageDimensions& d) { ++probes; d={600,900}; return true; }
 };
 struct FsHelpers { static bool hasEpubExtension(const std::string&) { return true; } };
 struct HalFile { void close() {} };
-struct { bool openFileForRead(const char*, const std::string&, HalFile&) { return false; } } Storage;
+struct { bool openFileForRead(const char*, const std::string&, HalFile&) { return thumbExists; } } Storage;
 struct UITheme { static std::string getCoverThumbPath(const std::string&, int) { return ""; } };
 constexpr int HOME_CARD_COVER_H = 450;
 enum class BmpReaderError { Ok };
-struct Bitmap { Bitmap(HalFile&) {} BmpReaderError parseHeaders() { return BmpReaderError::Ok; } int getWidth() { return 1; } int getHeight() { return 1; } };
+struct Bitmap { Bitmap(HalFile&) {} BmpReaderError parseHeaders() { return BmpReaderError::Ok; } int getWidth() { return thumbW; } int getHeight() { return thumbH; } };
 struct HomeActivity {
  struct CoverSize { int width = 0, height = 0; };
  uint8_t cardCoverSizesRead = 0;
@@ -51,7 +52,15 @@ int main() {
  HomeActivity known;
  assert(known.cardCoverSize(0).height == 900 && probes == 2);
  assert(known.cardCoverSize(0).height == 900 && probes == 2);
- std::puts("GREEN empty references skip probes, missing and populated references still probe");
+ // A book whose card thumbnail is on the card is sized from its 54 B header: no Epub, no zip, no inflate window.
+ thumbExists = true; opened = 0; probes = 0;
+ HomeActivity thumbed;
+ assert(thumbed.cardCoverSize(0).width == 300 && thumbed.cardCoverSize(0).height == 450);
+ assert(opened == 0 && probes == 0);
+ thumbed.cardCoverSizesRead = 0;
+ thumbW = 0;  // a header that does not parse as a picture falls back to the book itself
+ assert(thumbed.cardCoverSize(0).height == 900 && opened == 1 && probes == 1);
+ std::puts("GREEN empty references skip probes, missing and populated references still probe, a card thumbnail is read first");
 }
 '''
 p=args.output/'dimensions.cpp';p.write_text(code)

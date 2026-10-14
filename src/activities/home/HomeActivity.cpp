@@ -1287,6 +1287,7 @@ void HomeActivity::freeCoverBuffer() {
   coverBufferStored = false;
   coverBufferBook = -1;
   cardOnCard = false;
+  frameSnapshot.release();
 }
 
 void HomeActivity::loadRecentBooks() {
@@ -1930,22 +1931,22 @@ HomeActivity::CoverSize HomeActivity::cardCoverSize(const int index) {
   cardCoverSizes[index] = {};
   const auto& book = recentBooks[index];
   if (book.coverBmpPath.empty()) return {};
-  ImageDimensions dims{};
-  if (FsHelpers::hasEpubExtension(book.path)) {
-    Epub epub(book.path, "/.crosspoint");
-    std::string href;
-    if (coverref::load(epub.getCachePath(), href) && href.empty()) return {};
-    if (epub.readCoverDimensions(href, dims)) {
-      cardCoverSizes[index] = {dims.width, dims.height};
-      return cardCoverSizes[index];
-    }
-  }
+  // The card thumbnail the reader made keeps the cover's proportions, and its header is 54 B: a book that has one is not
+  // opened (an Epub, its zip directory and an inflate window of 32 KB, which the heap after Bluetooth cannot give).
   HalFile file;
   if (Storage.openFileForRead("HOME", UITheme::getCoverThumbPath(book.coverBmpPath, HOME_CARD_COVER_H), file)) {
     Bitmap bitmap(file);
     if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0)
       cardCoverSizes[index] = {bitmap.getWidth(), bitmap.getHeight()};
     file.close();
+    if (cardCoverSizes[index].width > 0) return cardCoverSizes[index];
+  }
+  ImageDimensions dims{};
+  if (FsHelpers::hasEpubExtension(book.path)) {
+    Epub epub(book.path, "/.crosspoint");
+    std::string href;
+    if (coverref::load(epub.getCachePath(), href) && href.empty()) return {};
+    if (epub.readCoverDimensions(href, dims)) cardCoverSizes[index] = {dims.width, dims.height};
   }
   return cardCoverSizes[index];
 }
@@ -2519,7 +2520,7 @@ void HomeActivity::drawRecentCard() {
 }
 
 HomeActivity::CardFile HomeActivity::loadCardFile(const std::string& path, const uint32_t coverKey,
-                                                  const uint32_t key, const std::string& thumbPath) {
+                                                  const uint32_t key, const std::string& thumbPath, const bool toScreen) {
   // A failed metadata restore can still leave a readable backup.
   freeink::recoverFile(Storage, path.c_str());
   const std::string backup = path + ".davbak";
@@ -2537,24 +2538,37 @@ HomeActivity::CardFile HomeActivity::loadCardFile(const std::string& path, const
       return CardFile::None;
     // The cover alone is read when the text is stale.
     const bool whole = head.key == key;
+    if (toScreen && !whole) return CardFile::None;
     const size_t bytes = whole ? head.bytes : first;
     freeCoverBuffer();
-    if (tenorchrome::kTouchShell) {
-      touchCoverBuffer = HalMemory::allocatePsram(bytes);
-      coverBuffer = touchCoverBuffer.get();
-    } else coverBuffer = static_cast<uint8_t*>(heapfloor::take(bytes, "home-card"));
-    if (!coverBuffer) return CardFile::None;
-    if (file.read(coverBuffer, bytes) != static_cast<int>(bytes)) {
-      freeCoverBuffer();
-      return CardFile::None;
-    }
-    if (!file.close()) {
-      freeCoverBuffer();
-      return CardFile::None;
+    if (toScreen) {
+      // A frame goes strip by strip from the file to the screen buffer: no block the size of the frame. A read that fails
+      // halfway leaves part of it on the screen, so the region is cleared for the frame to be built again.
+      const bool read = framestrip::fill(renderer, r[0], r[1], r[2], r[3], [&](uint8_t* into, const size_t count) {
+        return file.read(into, count) == static_cast<int>(count);
+      });
+      if (!read || !file.close()) {
+        renderer.fillRect(r[0], r[1], r[2], r[3], false);
+        return CardFile::None;
+      }
+    } else {
+      if (tenorchrome::kTouchShell) {
+        touchCoverBuffer = HalMemory::allocatePsram(bytes);
+        coverBuffer = touchCoverBuffer.get();
+      } else coverBuffer = static_cast<uint8_t*>(heapfloor::take(bytes, "home-card"));
+      if (!coverBuffer) return CardFile::None;
+      if (file.read(coverBuffer, bytes) != static_cast<int>(bytes)) {
+        freeCoverBuffer();
+        return CardFile::None;
+      }
+      if (!file.close()) {
+        freeCoverBuffer();
+        return CardFile::None;
+      }
     }
     cardFileThumb = head.thumb;
     cardFileCover = head.cover;
-    coverBufferSize = bytes;
+    coverBufferSize = toScreen ? 0 : bytes;
     coverBufferUiSize = normalizedUiTextSize(SETTINGS.uiTextSize);
     coverBufferStyle = SETTINGS.homeStyle;
     coverRectX = r[0];
@@ -2565,7 +2579,7 @@ HomeActivity::CardFile HomeActivity::loadCardFile(const std::string& path, const
     textRectY = r[5];
     textRectW = r[6];
     textRectH = whole ? r[7] : 0;
-    coverBufferStored = true;
+    coverBufferStored = !toScreen;
     cardOnCard = whole;
     return whole ? CardFile::Whole : CardFile::Cover;
   };
@@ -3322,12 +3336,13 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
   if (frameOnCard()) {
     frameKey = homeFrameKey(f, quote);
     framePath = frameFilePath(static_cast<unsigned>(f.style), shown);
-    if (loadCardFile(framePath, frameKey, frameKey, std::string()) == CardFile::Whole && restoreCoverBuffer()) {
+    if (restoreFrame(framePath, frameKey)) {
       coverBufferBook = shown;
       coverBufferShelf = shelfFirst;
       coverRendered = true;
       LOG_INF("HOME", "Home style=%u frame_file_us=%lu snapshot=%u", static_cast<unsigned>(f.style),
-              static_cast<unsigned long>(micros() - started), static_cast<unsigned>(coverBufferSize));
+              static_cast<unsigned long>(micros() - started),
+              static_cast<unsigned>(renderer.getRegionByteSize(coverRectX, coverRectY, coverRectW, coverRectH)));
       if (f.style != HomeRecentStyle::Shelf && recentBooks.size() > 1) drawOtherBookArrows(shown, f.rowY);
       return;
     }
@@ -3433,23 +3448,39 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
   coverRectX = f.snapshot.x; coverRectY = f.snapshot.y;
   coverRectW = f.snapshot.w; coverRectH = f.snapshot.h;
   textRectW = textRectH = 0;
-  coverBufferStored = storeCoverBuffer();
+  holdFrame(framePath, frameKey, settled);
   coverBufferBook = shown;
   coverBufferShelf = shelfFirst;
   coverRendered = true;
-  // Written after the frame is on the panel, then the RAM copy goes. Not while a cover is still to be made: its frame
-  // is drawn again, with the thumbnail asked for, once the cover is there.
-  if (coverBufferStored && !framePath.empty() && settled && touchThumbCount == 0) {
-    cardFilePending = framePath;
-    cardFileCoverKey = cardFileKey = frameKey;
-    cardFileThumb = 0;
-    cardFileCover = 0;
-  }
   if (auto* cache = renderer.getFontCacheManager()) cache->releaseBuiltinPageCaches();
   LOG_INF("HOME", "Home style=%u build_us=%lu snapshot=%u thumbs=%d free=%u largest=%u", static_cast<unsigned>(f.style),
-          static_cast<unsigned long>(micros() - started), static_cast<unsigned>(coverBufferSize), touchThumbCount,
+          static_cast<unsigned long>(micros() - started), static_cast<unsigned>(coverBufferSize + frameSnapshot.total), touchThumbCount,
           ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   LOG_INF("HOME", "Home build end style=%u", static_cast<unsigned>(f.style));
+}
+
+// The frame just drawn goes to the card after the panel shows it. Not while a cover is still to be made: its frame is
+// drawn again, with the thumbnail asked for, once the cover is there.
+// The X3 keeps it in blocks of 4 KB, not in one. A copy in one block is 39.840 to 43.296 B, and after a Bluetooth session the
+// largest block is 28.660 B (the log of the device: it never fit, every paint built the frame again). The blocks are given
+// back as soon as the file is written, and the next paint reads the file strip by strip: nothing is held at rest. The Stats
+// card, and the touch shells with PSRAM, keep their copy in one block.
+void HomeActivity::holdFrame(const std::string& framePath, const uint32_t frameKey, const bool settled) {
+  if (!frameOnCard()) {
+    coverBufferStored = storeCoverBuffer();
+    return;
+  }
+  if (framePath.empty() || !settled || touchThumbCount != 0) return;
+  if (!framestrip::capture(renderer, coverRectX, coverRectY, coverRectW, coverRectH, frameSnapshot)) return;
+  cardFilePending = framePath;
+  cardFileCoverKey = cardFileKey = frameKey;
+  cardFileThumb = 0;
+  cardFileCover = 0;
+}
+
+// The frame a file on the card holds, read into the screen buffer a strip at a time.
+bool HomeActivity::restoreFrame(const std::string& framePath, const uint32_t frameKey) {
+  return loadCardFile(framePath, frameKey, frameKey, std::string(), true) == CardFile::Whole;
 }
 
 // Runs after the frame is on the panel. Checked staging preserves the committed card
@@ -3457,7 +3488,13 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
 void HomeActivity::saveCardFile() {
   const std::string path = std::move(cardFilePending);
   cardFilePending.clear();
-  if (!coverBufferStored || !coverBuffer) return;
+  // A frame held in strips (X3) is written from them and they go; a card from its copy in RAM.
+  struct Release {
+    framestrip::Snapshot& snapshot;
+    ~Release() { snapshot.release(); }
+  } release{frameSnapshot};
+  const bool fromStrips = static_cast<bool>(frameSnapshot);
+  if (!fromStrips && (!coverBufferStored || !coverBuffer)) return;
 #ifdef TENOR_PRESS_PROBE
   const uint32_t started = millis();
 #endif
@@ -3468,7 +3505,7 @@ void HomeActivity::saveCardFile() {
                            static_cast<int16_t>(coverRectW), static_cast<int16_t>(coverRectH),
                            static_cast<int16_t>(textRectX), static_cast<int16_t>(textRectY),
                            static_cast<int16_t>(textRectW), static_cast<int16_t>(textRectH)},
-                          static_cast<uint32_t>(coverBufferSize),
+                          static_cast<uint32_t>(fromStrips ? frameSnapshot.total : coverBufferSize),
                           cardFileThumb,
                           cardFileCover};
   cardOnCard = false;
@@ -3504,8 +3541,13 @@ void HomeActivity::saveCardFile() {
     }
   }
   auto file = Storage.open(staging.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
-  const bool written = file && file.write(&head, sizeof(head)) == sizeof(head) &&
-                       file.write(coverBuffer, coverBufferSize) == coverBufferSize;
+  bool written = file && file.write(&head, sizeof(head)) == sizeof(head);
+  if (written && fromStrips) {
+    for (int i = 0; written && i < frameSnapshot.count; ++i)
+      written = file.write(frameSnapshot.strip[i], frameSnapshot.bytes[i]) == frameSnapshot.bytes[i];
+  } else if (written) {
+    written = file.write(coverBuffer, coverBufferSize) == coverBufferSize;
+  }
   const bool synced = written && file.sync();
   const bool closed = file.close();
   bool valid = false;

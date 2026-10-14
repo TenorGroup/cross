@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "./FileBrowserActivity.h"
+#include "./FrameStrips.h"
 #include "components/FileSearchScan.h"
 #include "components/FileSearchHalAdapter.h"
 #include "ReadingStatsStore.h"
@@ -258,12 +259,19 @@ class HomeActivity final : public UiTabListActivity {
   uint32_t cardFileCoverKey = 0, cardFileKey = 0;
   // The snapshot is also on the card (written, or read whole), so it need not stay in RAM.
   bool cardOnCard = false;
+  // X3 frame: held in strips of 4 KB from its build to the write of its file (see holdFrame), never in one block.
+  framestrip::Snapshot frameSnapshot;
   uint8_t cardFileThumb = 0;
   int16_t cardFileCover = 0;
   // What a card file still shows: nothing, the cover alone (the text changed), or the whole card.
   enum class CardFile : uint8_t { None, Cover, Whole };
-  CardFile loadCardFile(const std::string& path, uint32_t coverKey, uint32_t key, const std::string& thumbPath);
+  // `toScreen`: the card is read into the screen buffer strip by strip, and no RAM copy is made (the X3 frames).
+  CardFile loadCardFile(const std::string& path, uint32_t coverKey, uint32_t key, const std::string& thumbPath,
+                        bool toScreen = false);
   void saveCardFile();
+  // Large cover and Shelf (X3): the frame just drawn is queued for the card; and the frame a file holds is put back.
+  void holdFrame(const std::string& framePath, uint32_t frameKey, bool settled);
+  bool restoreFrame(const std::string& framePath, uint32_t frameKey);
   // A book whose card thumbnail is still missing: the reader writes it from the cover page or as
   // it closes, and a book read to the power key each time never took either route. The card asks
   // for it here (render task) and an idle pass writes it (main task), once per book, height and boot.
