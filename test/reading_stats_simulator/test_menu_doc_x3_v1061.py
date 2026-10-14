@@ -6,6 +6,12 @@ Founder: the menu opens on the Favorites tab, even with nothing pinned; the side
  3. In both, side Down moves the ring to the next tab and side Up brings it back.
  4. tenor/ugly keeps what it had: a list menu with nothing pinned opens on the Reading tab.
  5. The front buttons Left and Right on the bar turn the chapter back and forward.
+ 6. Toolbar style on the X3 bar: the menu opens straight on the list of the Favorites tab, with no scrub row (the old
+    "Chapter" sheet with its drag row and its page line), and no press fewer than before reaches Contents, Text and
+    the next chapter.
+ 7. Back from a list closes the menu to the page (it went to the toolbar before).
+ 8. Where the list has 2 rows or more the front Left and Right step the rows, so the chapter stays where it is.
+ 9. Position > Select chapter shows where the reader stands (page of the chapter, share of the book) over the bar.
 One simulator run per case: Home opens the book (1800), Select opens the menu (4500), then a key every 2000 ms with
 a screenshot 1500 ms after it.
 TEST_PROGRAM picks the simulator (simulator_x3_uc8279 is the UC8279 panel).
@@ -32,8 +38,9 @@ TAB_CENTRES = [66, 165, 264, 362, 461]  # the 5 tab slots of the bar (y 696 to 7
 LIST, TOOLBAR = 0, 1
 
 
-def run(style, favorites, keys=(), shell=0):
-    """The menu opened, then each key: the screens (L mode, 528 x 792), the menu's own shot first."""
+def run(style, favorites, keys=(), shell=0, page=False):
+    """The menu opened, then each key: the screens (L mode, 528 x 792), the menu's own shot first (the page before the
+    menu opened ahead of it with page=True)."""
     tmp = Path(tempfile.mkdtemp(prefix='menu-doc-x3-'))
     try:
         store = tmp / '.crosspoint'
@@ -60,7 +67,8 @@ def run(style, favorites, keys=(), shell=0):
                                                       'showBootScreen': False, 'readerActivityLoadCount': 0}))
         (store / 'recent.json').write_text(json.dumps({'books': [{'path': '/book.epub', 'title': 'Keys'}]}))
         actions = [(1800, 'CONFIRM'), (4500, 'CONFIRM')] + [(6400 + 2000 * i, k) for i, k in enumerate(keys)]
-        shots = [(5800, 0)] + [(6400 + 2000 * i + 1500, i + 1) for i in range(len(keys))]
+        shots = ([(4000, 'page')] if page else []) + [(5800, 0)] + [(6400 + 2000 * i + 1500, i + 1)
+                                                                      for i in range(len(keys))]
         script = ';'.join(f'{ms}:{key}' for ms, key in actions) + f';{shots[-1][0] + 700}:QUIT'
         env = {k: v for k, v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')}
         env.update(SDL_VIDEODRIVER='dummy', CROSSPOINT_SIM_SD=str(tmp), CROSSPOINT_SIM_INPUT_SCRIPT=script,
@@ -85,6 +93,40 @@ def chosen_tab(image):
 def page(image):
     """The page above the sheet (the chapter heading and text), the bar and the foot left out."""
     return np.asarray(image)[:520]
+
+
+def bands(image, least, top=300, bottom=690):
+    """(thickness, longest run) of each group of consecutive rows whose longest dark run is at least `least`."""
+    a = np.asarray(image) < 128
+    out, start, longest = [], None, 0
+    for y in range(top, bottom + 1):
+        run = best = 0
+        if y < bottom:
+            for v in a[y]:
+                run = run + 1 if v else 0
+                best = max(best, run)
+        if best >= least:
+            start = y if start is None else start
+            longest = max(longest, best)
+        elif start is not None:
+            out.append((y - start, longest))
+            start, longest = None, 0
+    return out
+
+
+def scrub_row(image):
+    """The old sheet's drag row: a 2 px track about 370 px long (the cursor pill's rings are 3 px thick and longer)."""
+    return any(thick == 2 and 340 <= longest <= 400 for thick, longest in bands(image, 300))
+
+
+def cursor_pill(image):
+    """A list's selected row: the ring along its top and its foot, 3 px thick and over 400 px long."""
+    return sum(thick >= 3 and longest >= 400 for thick, longest in bands(image, 300)) >= 2
+
+
+def same_page(a, b):
+    """Two screens show the same page (the status line at the foot and the gray pass left out)."""
+    return int(np.count_nonzero(np.asarray(a)[:680] != np.asarray(b)[:680])) < 40
 
 
 class OpensOnFavoritesTest(unittest.TestCase):
@@ -122,6 +164,72 @@ class FrontKeysTest(unittest.TestCase):
         self.assertTrue((page(forward) != page(opened)).any(), 'front Right: the next chapter')
         self.assertTrue((page(back) == page(opened)).all(), 'front Left: the first chapter again')
         self.assertEqual([chosen_tab(s) for s in self.shots], [0, 0, 0])
+
+
+class OpensOnTheListTest(unittest.TestCase):
+    """The X3 bar has no toolbar step: the first press shows the list, and each way into the menu is a press shorter."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.pinned = run(TOOLBAR, [14], [], page=True)
+        cls.empty = run(TOOLBAR, [], [])
+        cls.text = run(TOOLBAR, [14], ['UP'])
+        cls.back = run(TOOLBAR, [14], ['BACK'], page=True)
+        cls.position_back = run(TOOLBAR, [14], ['DOWN', 'BACK'], page=True)
+        cls.two_rows = run(TOOLBAR, [14, 16], ['RIGHT'])
+        cls.empty_keys = run(TOOLBAR, [], ['RIGHT', 'LEFT'])
+
+    def test_6_the_first_press_shows_the_list_and_no_drag_row(self):
+        page_shot, opened = self.pinned
+        self.assertFalse(scrub_row(page_shot))
+        self.assertFalse(scrub_row(opened), 'the old Chapter sheet (drag row) is still the first screen')
+        self.assertTrue(cursor_pill(opened), 'the first pinned row is not under the cursor')
+        self.assertFalse(scrub_row(self.empty[0]))
+        self.assertEqual(chosen_tab(opened), 0)
+
+    def test_6_side_up_from_the_first_tab_shows_the_text_list_at_once(self):
+        """Contents, Text and the next chapter: one press after the menu opened, none more (they took 2 and 3 before)."""
+        opened, text = self.text
+        self.assertEqual(chosen_tab(text), 4)
+        self.assertFalse(scrub_row(text))
+        self.assertTrue(cursor_pill(text), 'the Text list is not on screen after side Up')
+
+    def test_7_back_closes_the_menu_to_the_page_from_the_list(self):
+        page_shot, opened, closed = self.back
+        self.assertTrue(same_page(page_shot, closed))
+
+    def test_7_back_from_another_tab_closes_the_menu_too(self):
+        page_shot, opened, tab, closed = self.position_back
+        self.assertFalse(same_page(page_shot, tab), 'side Down brought the Position list up')
+        self.assertTrue(same_page(page_shot, closed), 'Back from the Position list went to the toolbar, not the page')
+
+    def test_8_two_rows_keep_the_front_keys_for_the_rows(self):
+        opened, after_right = self.two_rows
+        head = slice(0, 250)  # the chapter heading and the first lines, clear of the taller sheet of 2 rows
+        self.assertTrue((np.asarray(after_right)[head] == np.asarray(opened)[head]).all(), 'front Right turned the chapter')
+        self.assertTrue((np.asarray(after_right) != np.asarray(opened)).any(), 'front Right did not step the row')
+
+    def test_8_an_empty_list_leaves_the_front_keys_to_the_chapter(self):
+        opened, forward, back = self.empty_keys
+        self.assertTrue((page(forward) != page(opened)).any())
+        self.assertTrue((page(back) == page(opened)).all())
+
+
+class ChapterListShowsWhereYouStandTest(unittest.TestCase):
+    """Position > Select chapter (3 presses from the page): the position line over the bar, above the hint."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.opened, cls.tab, cls.chapters = run(TOOLBAR, [14], ['DOWN', 'CONFIRM'])
+
+    def test_9_the_chapter_list_has_the_position_line_over_the_bar(self):
+        self.assertFalse(scrub_row(self.chapters))
+        a = np.asarray(self.chapters)[560:696] < 128
+        lines, inside = 0, False
+        for row in a.any(axis=1):
+            lines += int(row and not inside)
+            inside = bool(row)
+        self.assertGreaterEqual(lines, 2, f'{lines} text line(s) above the bar: the hint alone')
 
 
 class UglyKeepsItsOpeningTabTest(unittest.TestCase):

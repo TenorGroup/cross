@@ -111,7 +111,7 @@ external_tick = ("void EpubReaderActivity::externalThenInput(bool prevTriggered,
 # what renderBook read from pageAwaitsLayout() before laying the chapter out.
 settle_start = re.search(r"(?m)^  if \(!section->isBuilding\(\) && section->pageCount > 0 &&$", epub).start()
 settle = "void EpubReaderActivity::settleLaidOut(bool turnPastLaidOut) {\n" + block(epub, settle_start) + "\n}"
-menu_start = epub.index("void EpubReaderActivity::openReaderMenu() {")
+menu_start = epub.index("void EpubReaderActivity::openReaderMenu(const bool onText) {")
 menu_body = epub.index("\n", menu_start) + 1
 menu_end = epub.index("  if (usesToolbarMenu())", menu_body)
 menu = "void EpubReaderActivity::cancelManualForReaderMenu() {\n" + epub[menu_body:menu_end] + "}"

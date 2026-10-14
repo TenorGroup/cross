@@ -52,8 +52,10 @@ struct EpubReaderChapterSelectionActivity {
   GfxRenderer& renderer;
   bool searchFailed = false, searching = false;
   int filterNumber = 0, count = 1;
+  std::string info;
   explicit EpubReaderChapterSelectionActivity(GfxRenderer& target) : renderer(target) {}
   int listCount() const { return count; }
+  bool infoOverBar() const;
   tenorchrome::X3ScreenLayout screenLayout() const;
   void drawX3Content() const;
 };
@@ -73,6 +75,7 @@ struct EpubReaderMenuActivity {
   explicit EpubReaderMenuActivity(GfxRenderer& target) : renderer(target) {}
   tenorchrome::X3ScreenLayout screenLayout() const;
   std::string progressText() const;
+  static std::string progressLine(int currentPage, int totalPages, int bookProgressPercent);
   bool infoOverBar() const;
   void drawX3Content() const;
   int tabCount() const;

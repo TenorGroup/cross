@@ -29,8 +29,9 @@ assert 'buildX3Bar(screen)' in method(source, 'ReaderToolbarUi::screenFn(')
 bar = method(source, 'ReaderToolbarUi::buildX3Bar(')
 assert bar.count('readermenu::x3TabIcon(') == 1 and 'icon_tenor_' not in bar, 'RED: toolbar must use shared reader icons'
 assert 'screenLayout().bodyRect' in method(source, 'ReaderToolbarUi::buildSheet(')
-for name in ('buildToolbar', 'buildPanel'):
-    assert 'usesX3Bar() ? 0 : kToolRowH' in method(source, f'ReaderToolbarUi::{name}(')
+assert 'usesX3Bar() ? 0 : kToolRowH' in method(source, 'ReaderToolbarUi::buildPanel(')
+# The X3 bar opens on a panel's list: the toolbar sheet (drag row, chapter line) has no X3 variant left.
+assert 'usesX3Bar' not in method(source, 'ReaderToolbarUi::buildToolbar(')
 subprocess.run([sys.executable, str(Path(__file__).with_name('run.py')),
                 '--work', str(args.work / 'home')], check=True)
 fixture = (args.work / 'home/layout.cpp').read_text()
@@ -55,21 +56,21 @@ constexpr int X3_TAB_COUNT = 5;
 class ReaderToolbarUi {
  public:
   static constexpr int kToolCount = 4;
-  static bool usesX3Bar(); static int toolCount(); static int textTool();
+  static bool usesX3Bar(); static int toolCount();
   struct Model { bool panel = false; int activeTool = 0; const char* tipText = nullptr; } model_;
   GfxRenderer* renderer_;
   tenorchrome::X3ScreenLayout screenLayout() const;
   fui::Rect toolRect(int index) const;
 };
 '''
-for name in ('usesX3Bar', 'toolCount', 'textTool', 'screenLayout', 'toolRect'):
+for name in ('usesX3Bar', 'toolCount', 'screenLayout', 'toolRect'):
     body = method(source, f'ReaderToolbarUi::{name}(')
     if args.mutate and name == 'screenLayout':
         body = body.replace('return tenorchrome::x3ScreenLayout(', 'auto layout = tenorchrome::x3ScreenLayout(')
         body = body[:-1] + ' ++layout.barRect.y; return layout; }'
     fixture += body + '\n'
 reader = (root / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
-opening = method(reader, 'EpubReaderActivity::openOverlay(')
+opening = method(reader, 'EpubReaderActivity::openOverlay(') + method(reader, 'EpubReaderActivity::prepareOverlayState(')
 assert 'panelIndex = ReaderToolbarUi::usesX3Bar() ? 0 :' in opening
 assert 'target == Overlay::Contents && !ReaderToolbarUi::usesX3Bar() && waitsForIndex()' in opening
 assert 'TEXT_SETTINGS' not in opening
@@ -117,7 +118,7 @@ int main() {
       }
     }
   }
-  assert(ReaderToolbarUi::toolCount() == 5 && ReaderToolbarUi::textTool() == 4);
+  assert(ReaderToolbarUi::toolCount() == 5);
   EpubReaderActivity reader;
   using Tab = readermenu::Tab;
   reader.moreItems = {{Tab::POSITION}, {Tab::READING}, {Tab::READING}, {Tab::TOOLS}, {Tab::TEXT}};
@@ -131,7 +132,7 @@ int main() {
   assert(reader.actionPanel());
   assert(reader.panelActionRow(-1) == 1 && reader.panelActionRow(0) == 3);
   shell::handwritten = true;
-  assert(!ReaderToolbarUi::usesX3Bar() && ReaderToolbarUi::toolCount() == 4 && ReaderToolbarUi::textTool() == 2);
+  assert(!ReaderToolbarUi::usesX3Bar() && ReaderToolbarUi::toolCount() == 4);
   assert(reader.panelActionRow(-1) == 5 && reader.panelActionRow(4) == 4);
   reader.overlay = EpubReaderActivity::Overlay::Contents;
   assert(!reader.actionPanel());

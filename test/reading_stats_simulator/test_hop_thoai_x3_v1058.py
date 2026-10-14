@@ -56,9 +56,9 @@ SCREENS += [(f'text-r{row}', POPUP, False, 0, ['CONFIRM'] + ['DOWN'] * 4 + ['CON
 SCREENS += [('home-hold', HOLD, True, 1, ['CONFIRM:1100']),
             ('home-confirm', CONFIRM, True, 1, ['CONFIRM:1100', 'DOWN', 'CONFIRM']),
             ('file-confirm', CONFIRM, True, 1, ['DOWN', 'CONFIRM', 'UP:900']),
-            # the bar opens on Favorites: the side Down steps to Place, whose panel holds Go to % and the bookmark row
-            ('percent-slider', SLIDER, False, 1, ['CONFIRM', 'DOWN', 'CONFIRM', 'RIGHT', 'CONFIRM']),
-            ('bookmark-toast', TOAST, False, 1, ['CONFIRM', 'DOWN', 'CONFIRM', 'RIGHT', 'RIGHT', 'CONFIRM'])]
+            # the bar opens on the Favorites list: the side Down steps to Place, whose list holds Go to % and the bookmark row
+            ('percent-slider', SLIDER, False, 1, ['CONFIRM', 'DOWN', 'RIGHT', 'CONFIRM']),
+            ('bookmark-toast', TOAST, False, 1, ['CONFIRM', 'DOWN', 'RIGHT', 'RIGHT', 'CONFIRM'])]
 GAP, FIRST = 1700, 2000
 
 

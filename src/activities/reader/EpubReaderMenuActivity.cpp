@@ -594,6 +594,11 @@ tenorchrome::X3ScreenLayout EpubReaderMenuActivity::screenLayout() const {
 }
 
 std::string EpubReaderMenuActivity::progressText() const {
+  return progressLine(currentPage, totalPages, bookProgressPercent);
+}
+
+std::string EpubReaderMenuActivity::progressLine(const int currentPage, const int totalPages,
+                                                 const int bookProgressPercent) {
   std::string text;
   if (totalPages > 0)
     text = std::string(tr(STR_CHAPTER_PREFIX)) + std::to_string(currentPage) + "/" + std::to_string(totalPages) +

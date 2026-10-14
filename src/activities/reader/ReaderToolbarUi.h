@@ -50,7 +50,6 @@ class ReaderToolbarUi : public UiAppHost {
   static constexpr int kToolCount = readermenu::TOOL_COUNT;
   static bool usesX3Bar();
   static int toolCount();
-  static int textTool();
 
   struct Model {
     bool panel = false;  // false = toolbar, true = a Contents/Text/More panel

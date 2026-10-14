@@ -84,10 +84,6 @@ bool ReaderToolbarUi::usesX3Bar() { return tenorchrome::x3ScreenLayoutEnabled() 
 
 int ReaderToolbarUi::toolCount() { return usesX3Bar() ? readermenu::X3_TAB_COUNT : kToolCount; }
 
-int ReaderToolbarUi::textTool() {
-  return usesX3Bar() ? static_cast<int>(readermenu::Tab::TEXT) : static_cast<int>(readermenu::Tool::TEXT);
-}
-
 tenorchrome::X3ScreenLayout ReaderToolbarUi::screenLayout() const {
   return tenorchrome::x3ScreenLayout(*renderer_, tenorchrome::tipHeight(*renderer_, model_.tipText, 4));
 }
@@ -371,7 +367,7 @@ void ReaderToolbarUi::buildToolbar(UiScreen& screen) {
   // track and its chapter buttons don't crowd the meta line).
   const int16_t metaH = screen.target().lineHeight(tokens.smallText.font);
   const int16_t contentH = static_cast<int16_t>(tokens.spaceMd + kScrubButton + tokens.spaceLg + metaH +
-                                                tokens.spaceSm + (usesX3Bar() ? 0 : kToolRowH) + tokens.spaceSm);
+                                                tokens.spaceSm + kToolRowH + tokens.spaceSm);
   fui::SheetProps sheetProps;
   sheetProps.anchor = fui::SheetEdge::Bottom;
   sheetProps.dismissAction = ACTION_DISMISS;
@@ -380,7 +376,6 @@ void ReaderToolbarUi::buildToolbar(UiScreen& screen) {
   // the same family.
   sheetProps.grabberMargin = tokens.spaceLg;
   sheetProps.grabberInset = static_cast<int16_t>(tokens.spaceLg + tokens.spaceMd);
-  if (usesX3Bar()) sheetProps = noGrabberBand(tokens, sheetProps);
   const int16_t grabberBand =
       static_cast<int16_t>(sheetProps.grabberMargin + sheetProps.grabberHeight + sheetProps.grabberInset);
   buildSheet(screen, sheetProps, static_cast<int16_t>(contentH + grabberBand));
@@ -437,7 +432,7 @@ void ReaderToolbarUi::buildToolbar(UiScreen& screen) {
     if (model_.pageInfo) screen.target().text(line, model_.pageInfo, infoStyle);
   }
 
-  if (!usesX3Bar()) buildToolRow(screen, fui::LayoutAnchor::Top, 0);
+  buildToolRow(screen, fui::LayoutAnchor::Top, 0);
 }
 
 // The row in use: its name in bold where the list left it blank, and a tick at the row end.

@@ -427,10 +427,13 @@ class EpubReaderActivity final : public ReaderActivity {
   // released the section.
   ChapterPosition chapterPosition() const;
   int bookPercentFor(const ChapterPosition& position) const;
-  void openReaderMenu();
+  // The X3 bar opens on a list (Favorites, or the Text one when onText); the other readers open the toolbar.
+  void openReaderMenu(bool onText = false);
   // Toolbar reader menu (see Overlay above).
   bool usesToolbarMenu() const;
   void openOverlay(Overlay target);
+  void prepareOverlayState(Overlay target);
+  bool frontKeysTurnChapter(int rows) const;
   void stopRadioForSheet();
   void closeOverlayToPage();
   void discardOverlayPage();

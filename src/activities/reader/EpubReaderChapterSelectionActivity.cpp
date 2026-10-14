@@ -8,12 +8,14 @@
 #include <Memory.h>
 
 #include <string>
+#include <utility>
 
 #include "MappedInputManager.h"
 #include "activities/util/ChapterNumberEntryActivity.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UIScale.h"
 #include "components/UITheme.h"
+#include "shells/Shell.h"
 #include "util/ChapterNumber.h"
 
 namespace fui = freeink::ui;
@@ -21,10 +23,12 @@ namespace fui = freeink::ui;
 EpubReaderChapterSelectionActivity::EpubReaderChapterSelectionActivity(GfxRenderer& renderer,
                                                                        MappedInputManager& mappedInput,
                                                                        const std::shared_ptr<Epub>& epub,
-                                                                       const int currentSpineIndex)
+                                                                       const int currentSpineIndex,
+                                                                       std::string info)
     : UiListActivity("EpubReaderChapterSelection", renderer, mappedInput),
       epub(epub),
-      currentSpineIndex(currentSpineIndex) {}
+      currentSpineIndex(currentSpineIndex),
+      info(std::move(info)) {}
 
 void EpubReaderChapterSelectionActivity::onEnter() {
   UiListActivity::onEnter();
@@ -326,13 +330,24 @@ void EpubReaderChapterSelectionActivity::drawFooter() {
   UiListActivity::drawFooter();
 }
 
+// The position line stands over the bar, above the hint, as the reader menu's does; tenor/ugly keeps its own page.
+bool EpubReaderChapterSelectionActivity::infoOverBar() const { return !info.empty() && !shell::uglyParts(); }
+
 tenorchrome::X3ScreenLayout EpubReaderChapterSelectionActivity::screenLayout() const {
-  return tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tr(STR_CHAPTER_NUMBER_HINT)));
+  return tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tr(STR_CHAPTER_NUMBER_HINT)),
+                                     infoOverBar() ? tenorchrome::tipHeight(renderer, info.c_str(), 2) : 0);
 }
 
 void EpubReaderChapterSelectionActivity::drawX3Content() const {
   const auto layout = screenLayout();
-  tenorchrome::drawTipInRect(renderer, tr(STR_CHAPTER_NUMBER_HINT), layout.tipRect);
+  auto tips = layout.tipRect;
+  if (infoOverBar()) {
+    const int infoHeight = tenorchrome::tipHeight(renderer, info.c_str(), 2);
+    tenorchrome::drawInfoInRect(renderer, info.c_str(), {tips.x, tips.y, tips.width, static_cast<int16_t>(infoHeight)}, 2);
+    tips.y = static_cast<int16_t>(tips.y + infoHeight);
+    tips.height = static_cast<int16_t>(tips.height - infoHeight);
+  }
+  tenorchrome::drawTipInRect(renderer, tr(STR_CHAPTER_NUMBER_HINT), tips);
   if (listCount() == 0)
     tenorchrome::drawInfoInRect(renderer,
                                 I18N.get(searchFailed   ? StrId::STR_ERROR_GENERAL_FAILURE
