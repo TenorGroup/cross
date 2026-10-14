@@ -120,6 +120,7 @@ namespace tenorchrome {
  void drawReaderSlots(const GfxRenderer&,const char*,int,int,float,bool,bool,int64_t,int64_t,const char* = nullptr,bool = true);
 }
 using namespace tenorchrome;
+bool drawJumpBackPill(const GfxRenderer&,int,int,int,bool){return false;}
 ''' + metric_body + '\nnamespace {\n' + battery_body + '}\n' + body + r'''
 void chapterRegression(bool tail){
  using S=CrossPointSettings;
