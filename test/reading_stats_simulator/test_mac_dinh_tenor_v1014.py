@@ -19,9 +19,11 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
 
+# The weight is stored shifted by 3 since the levels -3 to -1 exist (readerInk::ZERO), so level 1 is the byte 4.
+INK_LEVEL_1 = 3 + 1
 BO_TENOR = {
     'extraParagraphSpacing': 1, 'lineSpacing': 2, 'wordSpacing': 3, 'paragraphIndent': 2,
-    'readerInkWeight': 1, 'frontButtonFollowOrientation': 1,
+    'readerInkWeight': INK_LEVEL_1, 'frontButtonFollowOrientation': 1,
     'shortPwrBtn': 3, 'sleepScreen': 10, 'statusBarClock': 1, 'tiltMenuNavigation': 1,
     'tiltPageTurn': 1, 'tiltStrengthV': 0, 'tiltTabNavigation': 2,
 }

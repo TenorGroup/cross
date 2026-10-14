@@ -37,7 +37,7 @@ class PreferenceTest(unittest.TestCase):
  def roundtrip(self, steps):
   log=self.run_sim('800:DOWN;1300:DOWN;1800:CONFIRM;'+steps+';6200:QUIT')
   self.assertEqual(self.settings['sdFontFamilyName'],'Bokerlam')
-  self.assertEqual(self.settings['readerInkWeight'],1)
+  self.assertEqual(self.settings['readerInkWeight'],4)  # level 1 stored shifted by 3
   self.assertEqual(log.count('Loaded /.fonts/Bokerlam/weight-2/Bokerlam_16.cpfont'),2,log)
  def test_base_only_roundtrip(self):self.roundtrip('3000:LEFT;3500:CONFIRM;4200:RIGHT;4700:CONFIRM')
  def test_weighted_roundtrip(self):self.roundtrip('3000:RIGHT;3500:CONFIRM;4200:LEFT;4700:CONFIRM')
@@ -45,7 +45,7 @@ class PreferenceTest(unittest.TestCase):
  def test_corrupt_variant_does_not_retry_each_preview(self):
   (self.sd/'.fonts/Bokerlam/weight-2/Bokerlam_16.cpfont').write_bytes(b'broken')
   log=self.run_sim('800:DOWN;1300:DOWN;1800:CONFIRM;3000:CONFIRM;4200:CONFIRM;5500:QUIT')
-  self.assertEqual(self.settings['readerInkWeight'],1)
+  self.assertEqual(self.settings['readerInkWeight'],4)  # level 1 stored shifted by 3
   self.assertEqual(log.count('Loaded /.fonts/Bokerlam/Bokerlam_16.cpfont'),1,log)
   (self.sd/'.fonts/Bokerlam/weight-2/Bokerlam_16.cpfont').write_bytes((self.pack/'weight-2/Bokerlam_16.cpfont').read_bytes())
   log=self.run_sim('2500:QUIT')
