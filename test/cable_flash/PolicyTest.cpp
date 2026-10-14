@@ -73,8 +73,8 @@ TEST(CablePolicy, ReleasesWithoutTheChannelAreDropped) {
   EXPECT_TRUE(board_tag::dropsCable(x4c));
 }
 
-// The card is the way to any other firmware (CrossPoint, CrossInk, an older tenor/cross): it takes an image
-// without the channel, as every board does. Only the cable session keeps the rule.
+// The card path takes an image without the channel (firmware from elsewhere, an older tenor/cross), as every
+// board does. Only the cable session keeps the rule.
 TEST(CablePolicy, TheCardPathTakesAnImageWithoutTheChannel) {
   Storage.file = makeImage(k58Tag);
   EXPECT_EQ(firmware_flash::validateImageFile("/old.bin", kApp1.size), firmware_flash::Result::OK);
