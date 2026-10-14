@@ -50,7 +50,6 @@ class ReaderToolbarUi : public UiAppHost {
   static constexpr int kToolCount = readermenu::TOOL_COUNT;
   static bool usesX3Bar();
   static int toolCount();
-  static int textTool();
 
   struct Model {
     bool panel = false;  // false = toolbar, true = a Contents/Text/More panel
@@ -74,7 +73,7 @@ class ReaderToolbarUi : public UiAppHost {
     std::function<bool(int)> rowPinned;
     // Drawn in the list's place when it has no rows (an empty Favorites).
     const char* emptyText = nullptr;
-    const char* tipText = nullptr;
+    const char* emptyHint = nullptr;  // how to pin, in the sheet of a Favorites list with nothing pinned
     // A row that opens a list or another screen ends in the grey chevron, as in Settings.
     std::function<bool(int)> rowOpens;
     // How a row ends by what it does (readermenu::rowEnd): a switch, the up-down mark of a choice, the chevron of a

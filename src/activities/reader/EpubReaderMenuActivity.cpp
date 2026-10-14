@@ -533,9 +533,11 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
       x3 ? (infoOverBar() ? 0 : tenorchrome::tipHeight(renderer, progressLine.c_str())) : metrics.tabBarHeight));
   skinProgress_ = band;
   const int16_t pad = screen.theme().headerSidePadding;
-  if (x3)
+  if (x3) {
     drawX3Content();
-  else
+    if (activeTabId == MenuTab::FAVORITES && infoOverBar() && readermenu::favoritesHintShown(rowCount))
+      drawFavoritesHintCard();
+  } else
     screen.target().text(band.inset(fui::Insets{0, pad, 0, pad}), progressLine.c_str(), screen.theme().smallText);
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
@@ -589,11 +591,17 @@ bool EpubReaderMenuActivity::infoOverBar() const { return tenorchrome::x3ScreenL
 
 tenorchrome::X3ScreenLayout EpubReaderMenuActivity::screenLayout() const {
   return tenorchrome::x3ScreenLayout(
-      renderer, activeTabId == MenuTab::FAVORITES ? tenorchrome::tipHeight(renderer, tr(STR_FAVORITES_HINT), 4) : 0,
+      renderer,
+      activeTabId == MenuTab::FAVORITES && !infoOverBar() ? tenorchrome::tipHeight(renderer, tr(STR_FAVORITES_HINT), 4) : 0,
       infoOverBar() ? tenorchrome::tipHeight(renderer, progressText().c_str(), 2) : 0);
 }
 
 std::string EpubReaderMenuActivity::progressText() const {
+  return progressLine(currentPage, totalPages, bookProgressPercent);
+}
+
+std::string EpubReaderMenuActivity::progressLine(const int currentPage, const int totalPages,
+                                                 const int bookProgressPercent) {
   std::string text;
   if (totalPages > 0)
     text = std::string(tr(STR_CHAPTER_PREFIX)) + std::to_string(currentPage) + "/" + std::to_string(totalPages) +
@@ -603,6 +611,19 @@ std::string EpubReaderMenuActivity::progressText() const {
   return text;
 }
 
+// An empty Favorites list is a framed card, as a list with rows is, holding the hint on how to pin.
+void EpubReaderMenuActivity::drawFavoritesHintCard() const {
+  const char* hint = tr(STR_FAVORITES_HINT);
+  if (!tenorchrome::tipShown(hint)) return;
+  constexpr int kPad = 12;
+  const auto body = screenLayout().bodyRect;
+  const int textHeight = tenorchrome::tipHeight(renderer, hint, 4);
+  const int top = body.y + 16;
+  tenorchrome::drawPanel(renderer, top, textHeight + 2 * kPad);
+  tenorchrome::drawInfoInRect(renderer, hint,
+                              {body.x, static_cast<int16_t>(top + kPad), body.width, static_cast<int16_t>(textHeight)}, 4);
+}
+
 void EpubReaderMenuActivity::drawX3Content() const {
   const auto layout = screenLayout();
   const auto text = progressText();
@@ -610,9 +631,6 @@ void EpubReaderMenuActivity::drawX3Content() const {
     const int infoHeight = tenorchrome::tipHeight(renderer, text.c_str(), 2);
     auto tips = layout.tipRect;
     tenorchrome::drawInfoInRect(renderer, text.c_str(), {tips.x, tips.y, tips.width, static_cast<int16_t>(infoHeight)}, 2);
-    tips.y = static_cast<int16_t>(tips.y + infoHeight);
-    tips.height = static_cast<int16_t>(tips.height - infoHeight);
-    if (activeTabId == MenuTab::FAVORITES) tenorchrome::drawTipInRect(renderer, tr(STR_FAVORITES_HINT), tips, 4);
     return;
   }
   tenorchrome::drawInfoInRect(renderer, text.c_str(), layout.bodyRect);

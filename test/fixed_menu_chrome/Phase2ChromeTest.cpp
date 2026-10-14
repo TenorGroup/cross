@@ -89,6 +89,9 @@ int phase2ChromeTests() {
 
           EpubReaderChapterSelectionActivity chapter(renderer);
           checkPage(chapter, renderer, "EPUB chapters populated");
+          chapter.info = EpubReaderMenuActivity::progressLine(3, 12, 25);
+          checkPage(chapter, renderer, "EPUB chapters with the position line", {chapter.info});
+          chapter.info.clear();
           chapter.count = 0;
           checkPage(chapter, renderer, "EPUB chapters empty", {tr(STR_NO_CHAPTERS)});
           chapter.searching = true;

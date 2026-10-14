@@ -84,12 +84,8 @@ bool ReaderToolbarUi::usesX3Bar() { return tenorchrome::x3ScreenLayoutEnabled() 
 
 int ReaderToolbarUi::toolCount() { return usesX3Bar() ? readermenu::X3_TAB_COUNT : kToolCount; }
 
-int ReaderToolbarUi::textTool() {
-  return usesX3Bar() ? static_cast<int>(readermenu::Tab::TEXT) : static_cast<int>(readermenu::Tool::TEXT);
-}
-
 tenorchrome::X3ScreenLayout ReaderToolbarUi::screenLayout() const {
-  return tenorchrome::x3ScreenLayout(*renderer_, tenorchrome::tipHeight(*renderer_, model_.tipText, 4));
+  return tenorchrome::x3ScreenLayout(*renderer_);
 }
 
 fui::Rect ReaderToolbarUi::toolRect(const int index) const {
@@ -191,7 +187,6 @@ void ReaderToolbarUi::buildX3Bar(UiScreen& screen) {
                             active);
     screen.frame().hit(slot, ACTION_TOOL, static_cast<int16_t>(index), fui::InputTouch);
   }
-  tenorchrome::drawTipInRect(*renderer_, model_.tipText, layout.tipRect, 4);
 }
 
 void ReaderToolbarUi::begin() {
@@ -371,7 +366,7 @@ void ReaderToolbarUi::buildToolbar(UiScreen& screen) {
   // track and its chapter buttons don't crowd the meta line).
   const int16_t metaH = screen.target().lineHeight(tokens.smallText.font);
   const int16_t contentH = static_cast<int16_t>(tokens.spaceMd + kScrubButton + tokens.spaceLg + metaH +
-                                                tokens.spaceSm + (usesX3Bar() ? 0 : kToolRowH) + tokens.spaceSm);
+                                                tokens.spaceSm + kToolRowH + tokens.spaceSm);
   fui::SheetProps sheetProps;
   sheetProps.anchor = fui::SheetEdge::Bottom;
   sheetProps.dismissAction = ACTION_DISMISS;
@@ -380,7 +375,6 @@ void ReaderToolbarUi::buildToolbar(UiScreen& screen) {
   // the same family.
   sheetProps.grabberMargin = tokens.spaceLg;
   sheetProps.grabberInset = static_cast<int16_t>(tokens.spaceLg + tokens.spaceMd);
-  if (usesX3Bar()) sheetProps = noGrabberBand(tokens, sheetProps);
   const int16_t grabberBand =
       static_cast<int16_t>(sheetProps.grabberMargin + sheetProps.grabberHeight + sheetProps.grabberInset);
   buildSheet(screen, sheetProps, static_cast<int16_t>(contentH + grabberBand));
@@ -437,7 +431,7 @@ void ReaderToolbarUi::buildToolbar(UiScreen& screen) {
     if (model_.pageInfo) screen.target().text(line, model_.pageInfo, infoStyle);
   }
 
-  if (!usesX3Bar()) buildToolRow(screen, fui::LayoutAnchor::Top, 0);
+  buildToolRow(screen, fui::LayoutAnchor::Top, 0);
 }
 
 // The row in use: its name in bold where the list left it blank, and a tick at the row end.
@@ -609,6 +603,12 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
     hint.align = fui::TextAlign::Center;
     hint.maxLines = 3;
     screen.target().text(listRect.inset(fui::Insets{0, tokens.spaceLg, 0, tokens.spaceLg}), model_.emptyText, hint);
+  } else if (model_.emptyHint && renderer_ && uiTarget.paintingEnabled()) {
+    // The hint stands alone in the empty list, in the middle where the empty text would.
+    const int16_t height = static_cast<int16_t>(tenorchrome::tipHeight(*renderer_, model_.emptyHint, 4));
+    tenorchrome::drawInfoInRect(*renderer_, model_.emptyHint,
+                                {listRect.x, static_cast<int16_t>(listRect.y + (listRect.height - height) / 2),
+                                 listRect.width, height}, 4);
   }
 
   if (usesX3Bar() && count > 0 && renderer_ && uiTarget.paintingEnabled()) {

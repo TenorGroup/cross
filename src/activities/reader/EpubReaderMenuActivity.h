@@ -32,6 +32,8 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
 
   void render(RenderLock&&) override;
   bool handleHomeGesture() override;
+  // "Chapter: 3/12 pages  |  Book: 25%": the line the menu and the chapter list put over the bar.
+  static std::string progressLine(int currentPage, int totalPages, int bookProgressPercent);
 
  private:
   // Row storage for the active tab. menuItems is at most MAX_MENU_ITEMS, so a
@@ -64,6 +66,7 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   bool ownsX3Chrome() const override { return true; }
   tenorchrome::X3ScreenLayout screenLayout() const;
   bool infoOverBar() const;
+  void drawFavoritesHintCard() const;
   std::string progressText() const;
   void drawX3Content() const;
   void activateIndex(int index) override;

@@ -63,9 +63,9 @@ CHAPTER = """<?xml version="1.0" encoding="utf-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head><title>Chapter One</title></head><body>{body}</body></html>"""
 
-# Home opens the recent book (1500), Confirm opens the toolbar (3500), side Up goes round from Favorites to Text (5000),
-# Confirm opens the Text panel (6500).
-OPEN_TEXT = [(1500, 'CONFIRM'), (3500, 'CONFIRM'), (5000, 'UP'), (6500, 'CONFIRM')]
+# Home opens the recent book (1500), Confirm opens the menu on the Favorites list (3500), side Up goes round from
+# Favorites to the Text list (5000).
+OPEN_TEXT = [(1500, 'CONFIRM'), (3500, 'CONFIRM'), (5000, 'UP')]
 STEP = 1500  # ms between scripted presses after the panel is open
 
 
@@ -186,11 +186,10 @@ class FontLevelTest(unittest.TestCase):
                                              (t + 6 * STEP - 300, 'list2')], quit_after=2 * STEP, extra_families=EXTRA)
         # Run B: into the list, up to Noto Sans (the family is chosen with Confirm), back out, the panel closed.
         n = iter(range(1, 100))
-        b = [(at(), 'CONFIRM'), (at(), 'LEFT'), (at(), 'LEFT'), (at(), 'CONFIRM'), (at(), 'BACK'), (at(), 'BACK'),
-             (at(), 'BACK')]
+        b = [(at(), 'CONFIRM'), (at(), 'LEFT'), (at(), 'LEFT'), (at(), 'CONFIRM'), (at(), 'BACK'), (at(), 'BACK')]
         cls.chosen = run_sim(OPEN_TEXT + b, [(t + STEP - 300, 'rows'), (t + 2 * STEP - 300, 'list'),
                                               (t + 5 * STEP - 300, 'chosen'), (t + 6 * STEP - 300, 'back'),
-                                              (t + 9 * STEP, 'closed')], quit_after=2 * STEP, extra_families=EXTRA)
+                                              (t + 8 * STEP - 300, 'closed')], quit_after=2 * STEP, extra_families=EXTRA)
         for label, res in (('a', cls.pages), ('b', cls.chosen)):
             for name, img in res['shots'].items():
                 keep(f'font-{label}-{name}', img)
@@ -249,8 +248,8 @@ class SingleSaveTest(unittest.TestCase):
             (at(), 'RIGHT'), (at(), 'RIGHT'), (at(), 'CONFIRM'), (at(), 'LEFT'), (at(), 'LEFT'), (at(), 'CONFIRM'),
             *[(at(), 'RIGHT') for _ in range(4)], (at(), 'CONFIRM'), (at(), 'RIGHT'), (at(), 'CONFIRM'),
             *[(at(), 'LEFT') for _ in range(6)], (at(), 'CONFIRM'), (at(), 'LEFT'), (at(), 'CONFIRM'),
-            (at(), 'BACK'), (at(), 'BACK'), (at(), 'BACK')]
-        before = run_sim(presses[:-3], quit_after=STEP)
+            (at(), 'BACK'), (at(), 'BACK')]
+        before = run_sim(presses[:-2], quit_after=STEP)
         cls.before_writes = before["writes"]
         shutil.rmtree(before["tmp"], True)
         cls.res = run_sim(presses, quit_after=3 * STEP)
@@ -285,7 +284,7 @@ class NoGrayCloseSaveTest(unittest.TestCase):
         t = OPEN_TEXT[-1][0]
         presses = OPEN_TEXT + [(t + (k + 1) * STEP, key) for k, key in enumerate(TO_VERY_NARROW)]
         t += len(TO_VERY_NARROW) * STEP
-        presses += [(t + 2 * STEP, 'BACK'), (t + 3 * STEP, 'BACK')]
+        presses += [(t + 2 * STEP, 'BACK')]  # the list's Back closes the menu to the page
         res = run_sim(presses, antialias=0, quit_after=3 * STEP)
         shutil.rmtree(res['tmp'], True)
         self.assertEqual(res['settings'].get('lineSpacing'), 1)
@@ -330,7 +329,7 @@ class QuietRelayoutTest(unittest.TestCase):
             fast = [(t + 3 * STEP + 1350 * k + d, key) for k in range(4)
                     for d, key in ((0, 'CONFIRM'), (450, 'RIGHT'), (900, 'CONFIRM'))]
             quick = run_sim(rows + fast, antialias=antialias, quit_after=4 * STEP, refresh_ms=390)
-            closed = run_sim(rows + fast + [(t + 8 * STEP, 'BACK'), (t + 9 * STEP, 'BACK')], antialias=antialias,
+            closed = run_sim(rows + fast + [(t + 8 * STEP, 'BACK')], antialias=antialias,
                              quit_after=3 * STEP, refresh_ms=390)
             pick = rows + [(t + 3 * STEP, 'CONFIRM'), (t + 4 * STEP, 'RIGHT')]  # the list open, one down
             pick_base = run_sim(pick, antialias=antialias, quit_after=STEP, refresh_ms=390)
@@ -378,7 +377,7 @@ class QuietRelayoutTest(unittest.TestCase):
         rows = OPEN_TEXT + [(t + (k + 1) * STEP, key) for k, key in enumerate(TO_VERY_NARROW)]
         t += len(TO_VERY_NARROW) * STEP
         base = run_sim(rows, quit_after=3 * STEP)
-        closed = run_sim(rows + [(t + 3 * STEP, 'BACK'), (t + 4 * STEP, 'BACK')], quit_after=3 * STEP)
+        closed = run_sim(rows + [(t + 3 * STEP, 'BACK')], quit_after=3 * STEP)
         closing = pushes(closed['trace'])[len(pushes(base['trace'])):]
         for r in (base, closed):
             shutil.rmtree(r['tmp'], True)

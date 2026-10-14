@@ -44,6 +44,10 @@ enum class Action {
 inline constexpr int ACTION_COUNT = static_cast<int>(Action::BOOK_SEARCH) + 1;
 
 enum class Tab : uint8_t { FAVORITES, POSITION, READING, TOOLS, TEXT };
+
+// The hint on how to pin, unpin and reorder stands in the Favorites list while nothing is pinned, and is gone once a row
+// is. The one place that says it, for the list menu and the toolbar menu alike.
+constexpr bool favoritesHintShown(const int pinnedRows) { return pinnedRows <= 0; }
 inline constexpr int TAB_COUNT = 4;
 inline constexpr int X3_TAB_COUNT = 5;
 

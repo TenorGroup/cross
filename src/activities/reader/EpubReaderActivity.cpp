@@ -136,10 +136,6 @@ void traceSheetHeap(const char* stage, const GfxRenderer& renderer, const int ro
 // The places on the toolbar menu's bar of the tools the reader opens by name.
 constexpr int kContentsTool = static_cast<int>(readermenu::Tool::CONTENTS);
 constexpr int kTextTool = static_cast<int>(readermenu::Tool::TEXT);
-// Where the bar opens: the X3 bar on its first tab (Favorites), the other readers on Contents.
-int openingTool() {
-  return ReaderToolbarUi::usesX3Bar() ? static_cast<int>(readermenu::Tab::FAVORITES) : kContentsTool;
-}
 // Anh chup cac cai dat lam thay doi cach dan trang. So truoc va sau khi mo man Cai dat van ban
 // de biet co phai dan lai hay khong.
 struct AnhChupChu {
@@ -639,7 +635,7 @@ int EpubReaderActivity::bookPercentFor(const ChapterPosition& position) const {
   return static_cast<int>(std::clamp(fraction, 0.0f, 1.0f) * 100.0f + 0.5f);
 }
 
-void EpubReaderActivity::openReaderMenu() {
+void EpubReaderActivity::openReaderMenu(const bool onText) {
   pendingManualTurn = 0;
   // The zone icon of a screen opened from the menu leads to the page, not back to the menu.
   if (activityManager.returningToReaderPage()) {
@@ -656,12 +652,15 @@ void EpubReaderActivity::openReaderMenu() {
     // that screen, not the page: re-render the page and let renderBook() put
     // the toolbar on top. The in-reader fast path is openOverlay().
     if (overlay == Overlay::None) beginSheetRadio();
-    overlay = Overlay::Toolbar;
-    focusedTool = openingTool();
-    panelHoldJumped = false;
-    panelCursorShown = !mappedInput.hasTouch();
+    // The X3 bar has no toolbar step: the menu opens straight on a panel's list (the Text one when asked).
+    const bool x3Bar = ReaderToolbarUi::usesX3Bar();
+    const Overlay target = !x3Bar ? Overlay::Toolbar : onText ? Overlay::Text : Overlay::Favorites;
+    overlay = target;
+    focusedTool = !x3Bar ? kContentsTool : static_cast<int>(onText ? readermenu::Tab::TEXT : readermenu::Tab::FAVORITES);
+    textDepth = TextDepth::Rows;
     if (!toolbarUi) toolbarUi = std::make_unique<ReaderToolbarUi>(renderer);
     toolbarUi->begin();
+    prepareOverlayState(target);
     discardOverlayPage();
     requestUpdate();
     return;
@@ -2201,6 +2200,12 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
   switch (action) {
     case EpubReaderMenuActivity::MenuAction::SELECT_CHAPTER: {
       const int spineIdx = currentSpineIndex;
+      // The toolbar menu has no line of its own for where you stand; the list menu already shows it. Taken before the
+      // section goes.
+      const ChapterPosition position = chapterPosition();
+      std::string standing = usesToolbarMenu() ? EpubReaderMenuActivity::progressLine(
+                                                     position.displayPage(), position.totalPages, bookPercentFor(position))
+                                               : std::string();
       // Release the section while the chapter list is up (mirrors the
       // TEXT_SETTINGS path): picking a chapter resets it anyway, and its
       // tens-of-KB footprint is the difference between the chapter list
@@ -2218,7 +2223,7 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
         section.reset();
       }
       startActivityForResult(
-          std::make_unique<EpubReaderChapterSelectionActivity>(renderer, mappedInput, epub, spineIdx),
+          std::make_unique<EpubReaderChapterSelectionActivity>(renderer, mappedInput, epub, spineIdx, std::move(standing)),
           [this](const ActivityResult& result) {
             if (result.isCancelled) {
               openReaderMenu();
@@ -2295,10 +2300,7 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
                 requestUpdate();
               }
             }
-            if (returnToToolbar) {
-              openReaderMenu();
-              focusedTool = ReaderToolbarUi::textTool();
-            }
+            if (returnToToolbar) openReaderMenu(/*onText=*/true);
           });
       break;
     }
@@ -4841,6 +4843,11 @@ sheetradio::Plan EpubReaderActivity::beginSheetRadio() {
 
 void EpubReaderActivity::openOverlay(Overlay target) {
   if (target == Overlay::Contents && !ReaderToolbarUi::usesX3Bar() && waitsForIndex()) return;
+  if (target == Overlay::Toolbar && ReaderToolbarUi::usesX3Bar()) {
+    // The X3 bar opens on the list of its first tab.
+    target = Overlay::Favorites;
+    focusedTool = static_cast<int>(readermenu::Tab::FAVORITES);
+  }
   mappedInput.resetHomeButtonInput();
   const Overlay previous = overlay;
   if (previous == Overlay::None) {
@@ -4859,37 +4866,7 @@ void EpubReaderActivity::openOverlay(Overlay target) {
 #endif
   if (!toolbarUi) toolbarUi = std::make_unique<ReaderToolbarUi>(renderer);
   if (previous == Overlay::None) toolbarUi->begin();
-  // Buttons show a cursor from the start; touch boards only once a button moves it.
-  panelCursorShown = !mappedInput.hasTouch();
-  switch (target) {
-    case Overlay::Toolbar:
-      focusedTool = openingTool();
-      break;
-    case Overlay::Contents:
-      panelIndex = ReaderToolbarUi::usesX3Bar() ? 0 : std::max(0, epub->getTocIndexForSpineIndex(currentSpineIndex));
-      // Fresh viewport opening on the current chapter, cursor shown or not.
-      toolbarUi->nav().reset(panelIndex);
-      toolbarUi->nav().top = panelIndex;
-      break;
-    case Overlay::Text:
-      panelIndex = 0;
-      toolbarUi->nav().reset();
-      break;
-    case Overlay::More:
-    case Overlay::Reading:
-      panelIndex = 0;
-      buildMoreActions();
-      toolbarUi->nav().reset();
-      break;
-    case Overlay::Favorites:
-      panelIndex = 0;
-      toolbarUi->nav().reset();
-      break;
-    default:
-      break;
-  }
-  if (target != Overlay::Toolbar) loadPins();  // a hold on a Text or More row toggles these; Favorites lists them
-  panelHoldJumped = false;
+  prepareOverlayState(target);
 
   // The page is already on screen and still in the framebuffer, so paint the
   // chrome straight onto it and push one refresh. requestUpdate() would
@@ -4947,6 +4924,46 @@ void EpubReaderActivity::openOverlay(Overlay target) {
   }
 }
 
+// A list of fewer than 2 rows has no row for the front Left and Right to step to: on the X3 bar they turn the chapter.
+bool EpubReaderActivity::frontKeysTurnChapter(const int rows) const {
+  return ReaderToolbarUi::usesX3Bar() && rows < 2 && textDepth == TextDepth::Rows;
+}
+
+// What an overlay shows when it opens: the cursor, the list's viewport and the rows it lists.
+void EpubReaderActivity::prepareOverlayState(const Overlay target) {
+  // Buttons show a cursor from the start; touch boards only once a button moves it.
+  panelCursorShown = !mappedInput.hasTouch();
+  switch (target) {
+    case Overlay::Toolbar:
+      focusedTool = kContentsTool;
+      break;
+    case Overlay::Contents:
+      panelIndex = ReaderToolbarUi::usesX3Bar() ? 0 : std::max(0, epub->getTocIndexForSpineIndex(currentSpineIndex));
+      // Fresh viewport opening on the current chapter, cursor shown or not.
+      toolbarUi->nav().reset(panelIndex);
+      toolbarUi->nav().top = panelIndex;
+      break;
+    case Overlay::Text:
+      panelIndex = 0;
+      toolbarUi->nav().reset();
+      break;
+    case Overlay::More:
+    case Overlay::Reading:
+      panelIndex = 0;
+      buildMoreActions();
+      toolbarUi->nav().reset();
+      break;
+    case Overlay::Favorites:
+      panelIndex = 0;
+      toolbarUi->nav().reset();
+      break;
+    default:
+      break;
+  }
+  if (target != Overlay::Toolbar) loadPins();  // a hold on a Text or More row toggles these; Favorites lists them
+  panelHoldJumped = false;
+}
+
 // Close the overlay back to the reading page. Boards without the Xteink
 // grayscale-AA pass restore the page snapshot and push one FAST refresh -- no
 // re-render, no flash; Xteink boards re-render to restore the AA planes.
@@ -4984,7 +5001,7 @@ void EpubReaderActivity::renderOverlay() {
 #endif
 
   ReaderToolbarUi::Model model;
-  const auto drawMenuChrome = [this]() {
+  const auto drawMenuChrome = [&]() {
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
     if (!SETTINGS.globalStatusBarHidden()) {
       renderer.fillRect(0, 0, renderer.getScreenWidth(), tenorchrome::readerStripBottom(renderer), false);
@@ -5001,9 +5018,9 @@ void EpubReaderActivity::renderOverlay() {
       } else {
         renderer.fillRect(0, renderer.getScreenHeight() - footer, renderer.getScreenWidth(), footer, false);
       }
+      const bool chapterKeys = overlay == Overlay::Toolbar || frontKeysTurnChapter(model.itemCount);
       const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT),
-          overlay == Overlay::Toolbar ? tr(STR_DIR_LEFT) : tr(STR_DIR_UP),
-          overlay == Overlay::Toolbar ? tr(STR_DIR_RIGHT) : tr(STR_DIR_DOWN));
+          chapterKeys ? tr(STR_DIR_LEFT) : tr(STR_DIR_UP), chapterKeys ? tr(STR_DIR_RIGHT) : tr(STR_DIR_DOWN));
       GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
       renderer.setOrientation(orientation);
     }
@@ -5034,7 +5051,9 @@ void EpubReaderActivity::renderOverlay() {
   // convention as the panel lists), it only shows once a button has moved it.
   // Panels override below: there the pill marks the open panel on every board.
   model.activeTool = (overlay == Overlay::Toolbar && !panelCursorShown) ? -1 : focusedTool;
-  if (ReaderToolbarUi::usesX3Bar() && overlay == Overlay::Favorites) model.tipText = tr(STR_FAVORITES_HINT);
+  if (ReaderToolbarUi::usesX3Bar() && overlay == Overlay::Favorites &&
+      readermenu::favoritesHintShown(static_cast<int>(favoriteRows.size())) && tenorchrome::tipShown(tr(STR_FAVORITES_HINT)))
+    model.emptyHint = tr(STR_FAVORITES_HINT);
   // Strings the model points at live here until render() returns.
   std::string chapterTitle, pageInfo;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
@@ -5129,7 +5148,7 @@ void EpubReaderActivity::renderOverlay() {
     model.itemCount = static_cast<int>(favoriteRows.size());
     model.rowText = [this](int i) { return favoriteRowName(i); };
     model.rowValue = [this](int i) { return favoriteRowValue(i); };
-    model.emptyText = tr(STR_READER_FAVORITES_EMPTY);
+    if (!model.emptyHint) model.emptyText = tr(STR_READER_FAVORITES_EMPTY);  // the X3 hint says it, in the list
     model.rowOpens = [this](int i) {
       const uint8_t pin = i < static_cast<int>(favoriteRows.size()) ? favoriteRows[i] : 0;
       return (pin & readermenu::PIN_TEXT) ? !textRowToggles(textRowPlace(pin & ~readermenu::PIN_TEXT))
@@ -5291,28 +5310,24 @@ void EpubReaderActivity::handleOverlayInput() {
       closeOverlayToPage();
       return;
     }
-    // The X3 bar steps its tabs with the side buttons and turns the chapter with the front Left and Right; the
-    // other readers keep it the other way round.
-    const bool x3Bar = ReaderToolbarUi::usesX3Bar();
-    using Button = MappedInputManager::Button;
-    if (mappedInput.wasReleased(x3Bar ? Button::Up : Button::Left)) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
       focusedTool = (focusedTool + toolCount - 1) % toolCount;
       panelCursorShown = true;
       fastRedraw();
       return;
     }
-    if (mappedInput.wasReleased(x3Bar ? Button::Down : Button::Right)) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
       focusedTool = (focusedTool + 1) % toolCount;
       panelCursorShown = true;
       fastRedraw();
       return;
     }
-    if (mappedInput.wasReleased(Button::Confirm)) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
       openOverlay(toolOverlay(focusedTool));
       return;
     }
-    const bool prev = mappedInput.wasReleased(x3Bar ? Button::Left : Button::Up);
-    const bool next = mappedInput.wasReleased(x3Bar ? Button::Right : Button::Down);
+    const bool prev = mappedInput.wasReleased(MappedInputManager::Button::Up);
+    const bool next = mappedInput.wasReleased(MappedInputManager::Button::Down);
     if (prev || next) {
       gotoSpine(currentSpineIndex + (next ? 1 : -1));
     }
@@ -5391,6 +5406,10 @@ void EpubReaderActivity::handleOverlayInput() {
 #endif
     if (overlay == Overlay::Text && textDepth == TextDepth::Fonts) {
       leaveFontLevel();  // one level up: the Text rows
+      return;
+    }
+    if (ReaderToolbarUi::usesX3Bar()) {  // the X3 bar has no toolbar to step up to: Back closes the menu
+      closeOverlayToPage();
       return;
     }
     overlay = Overlay::Toolbar;
@@ -5584,6 +5603,13 @@ void EpubReaderActivity::handleOverlayInput() {
   }
   constexpr auto kRowBefore = MappedInputManager::Button::Left;
   constexpr auto kRowAfter = MappedInputManager::Button::Right;
+  if (frontKeysTurnChapter(count)) {
+    const bool back = mappedInput.wasReleased(kRowBefore);
+    if (back || mappedInput.wasReleased(kRowAfter)) {
+      gotoSpine(currentSpineIndex + (back ? -1 : 1));
+      return;
+    }
+  }
 #endif
 
   // The cursor buttons (X4 Pro: Up/Down and Left/Right; buttons: the front pair) step one row, holding
