@@ -378,7 +378,8 @@ class ReturnStackRuntimeTest(unittest.TestCase):
   assert(!reader.chapterTargetDiffers(0, ""));
   reader.section.reset();
   reader.nextPageNumber = 12;
-  assert(!reader.chapterTargetDiffers(0, "here"));
+  // No section: the anchor map is not read under the render lock, the jump counts as a move.
+  assert(reader.chapterTargetDiffers(0, "here"));
   assert(reader.chapterTargetDiffers(0, "elsewhere"));
 ''')
 

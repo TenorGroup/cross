@@ -6248,8 +6248,10 @@ bool EpubReaderActivity::chapterTargetDiffers(const int spineIndex, const std::s
   if (spineIndex != currentSpineIndex) return true;
   const int page = section ? section->currentPage : nextPageNumber;
   if (anchor.empty()) return page != 0;
-  const auto targetPage = section ? section->findAnchor(anchor)
-                                  : Section(epub, currentSpineIndex, renderer).getPageForAnchor(anchor);
+  // No section (a chapter list released it): count it as a move rather than open the chapter's
+  // anchor map from the card under the render lock. At worst Back returns to the same page once.
+  if (!section) return true;
+  const auto targetPage = section->findAnchor(anchor);
   return targetPage.has_value() && *targetPage != page;
 }
 
