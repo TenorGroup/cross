@@ -11,8 +11,9 @@ from test_thanh_day import run, ink, TABS_X
 import test_thanh_dong as td
 
 # Folder, the book folder, the contents book, a tap at the page's foot (the menu), More, a short scroll, "Go to %".
+# More has Search in book as its first row, so after the same scroll "Go to %" is at y 685.
 PERCENT = (f'3000:TAP:{TABS_X[1]},{td.BAR_Y};5000:TAP:240,68;7000:TAP:240,130;9500:TAP:240,775;11000:TAP:416,754;'
-           '12500:SWIPE:400,620,400,400,600;15000:TAP:240,620')
+           '12500:SWIPE:400,620,400,400,600;15000:TAP:240,685')
 
 
 def main():
