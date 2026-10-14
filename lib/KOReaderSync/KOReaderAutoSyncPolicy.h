@@ -83,6 +83,15 @@ inline bool isEpubPath(const std::string& path) {
   return true;
 }
 
+// A debt is dropped as "the book is gone" only when the card answers (it holds the sync folder) and the
+// book is not on it; a card that does not answer, or a book that is there but cannot be read, keeps the debt.
+enum class BookCheck : uint8_t { Gone, Unreadable, Ready };
+constexpr BookCheck checkBook(const bool cardAnswers, const bool bookThere, const bool hashed) {
+  if (!cardAnswers) return BookCheck::Unreadable;
+  if (!bookThere) return BookCheck::Gone;
+  return hashed ? BookCheck::Ready : BookCheck::Unreadable;
+}
+
 // What the server said about a book.
 enum class Fetch : uint8_t { Found, NotFound, Failed };
 

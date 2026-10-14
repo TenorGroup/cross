@@ -448,6 +448,16 @@ TEST(WakePullBook, OnlyAnEpubIsPulled) {
   EXPECT_FALSE(isEpubPath(""));
 }
 
+TEST(AutoSyncDebt, ADebtIsDroppedOnlyWhenTheCardAnswersAndTheBookIsNotThere) {
+  EXPECT_EQ(checkBook(true, false, false), BookCheck::Gone);
+  EXPECT_EQ(checkBook(true, true, true), BookCheck::Ready);
+  // A card that fails to answer says nothing about the book: the debt stays for the next sleep.
+  EXPECT_EQ(checkBook(false, false, false), BookCheck::Unreadable);
+  EXPECT_EQ(checkBook(false, true, true), BookCheck::Unreadable);
+  // The book is there but cannot be hashed (a read error): same.
+  EXPECT_EQ(checkBook(true, true, false), BookCheck::Unreadable);
+}
+
 // ---- remembered access point -----------------------------------------------------------------------------------
 
 namespace {

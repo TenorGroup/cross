@@ -283,9 +283,15 @@ enum class PushOutcome : uint8_t { Done, Keep, OutOfTime };
 PushOutcome pushOne(const SyncDebt& debt, GfxRenderer& renderer, const uint32_t started, SyncMarkList& marks,
                     bool& marksChanged) {
   if (!canStartRequest(millis() - started)) return PushOutcome::OutOfTime;
-  if (!Storage.exists(debt.path.c_str())) return PushOutcome::Done;  // the book is gone: nothing to push
-  const std::string hash = documentHash(debt.path);
-  if (hash.empty()) return PushOutcome::Done;
+  // "Gone" needs the card to answer (it holds this very folder); a read that fails keeps the debt.
+  const bool cardAnswers = Storage.ready() && Storage.exists("/.crosspoint");
+  const bool bookThere = cardAnswers && Storage.exists(debt.path.c_str());
+  const std::string hash = bookThere ? documentHash(debt.path) : std::string();
+  switch (checkBook(cardAnswers, bookThere, !hash.empty())) {
+    case BookCheck::Gone: return PushOutcome::Done;  // the book is gone: nothing to push
+    case BookCheck::Unreadable: return PushOutcome::Keep;
+    case BookCheck::Ready: break;
+  }
 
   KOReaderProgress remote{};
   const Fetch fetch = fetchRemote(hash, remote, started);
