@@ -86,6 +86,12 @@ class HomeActivity final : public UiTabListActivity {
   bool handleButtons() override;
   bool handleCustomInput() override;
   static constexpr freeink::ui::ActionId ACTION_OTHER_BOOK = ACTION_TAB_USER;
+  // Touch, Large cover: a tap on the edge of the book before (value -1) or after (value 1) the shown one makes it the
+  // shown book, as one swipe does. It opens nothing.
+  static constexpr freeink::ui::ActionId ACTION_STEP_BOOK = ACTION_TAB_USER + 1;
+  static void stepBookTrampoline(const freeink::ui::ActionEvent& event, void* user) {
+    static_cast<HomeActivity*>(user)->queueNavIntent(event.value > 0 ? NavIntent::StepNext : NavIntent::StepPrev);
+  }
   static void otherBookTrampoline(const freeink::ui::ActionEvent& event, void* user) {
     auto* self = static_cast<HomeActivity*>(user);
     // Touch: a hold on the line offers the actions of the book it names, anchored to the line.
@@ -329,7 +335,7 @@ class HomeActivity final : public UiTabListActivity {
   void clearHomeGray();
   bool homeGrayOnGlass = false;
   bool homeGraySelected = false;
-  struct InkSlot { HomeRecentRect rect; int book = -1; };
+  struct InkSlot { HomeRecentRect rect; int book = -1; bool peek = false; };
   std::array<InkSlot, 4> inkSlots{};
   int inkSlotCount = 0;
   // Idle work (X3): the sharp cover of a progressive JPEG on each tenor/ink slot shown, made while
@@ -356,7 +362,16 @@ class HomeActivity final : public UiTabListActivity {
   int paintKey() const;
   int largeNeighbour(int shown, bool left) const;
   void drawTouchRecent(const HomeRecentLayout& layout);
-  void drawTouchCover(const HomeRecentRect& rect, int book);
+  // True when the cover is final: its own picture, or the placeholder of a book with none. A ring left for a cover still
+  // to be made is not. `peek`: the sliver of a neighbour at the Large cover's edge, a placeholder there is the ring alone.
+  bool drawTouchCover(const HomeRecentRect& rect, int book, bool peek = false);
+  void drawHolderRing(int x, int y, int width, int height);
+  // X3: the Large cover and the Shelf frame is kept in a file on the card, not in RAM, as the Stats card is. The key says
+  // what the frame shows (layout, each cover's file, the text); a cover made later drops the files (dropFrameFiles).
+  bool frameOnCard() const;
+  uint32_t homeFrameKey(const HomeRecentLayout& layout, const std::string& quote);
+  static std::string frameFilePath(unsigned style, int shown);
+  void dropFrameFiles();
   void drawOtherBookRow(int shown, int ruleY, int rowY, const std::vector<std::string>& titleLines);
   void drawOtherBookArrows(int shown, int rowY);
   const char* habitSuggestion() const;
