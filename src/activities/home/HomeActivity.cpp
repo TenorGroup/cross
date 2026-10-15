@@ -307,9 +307,15 @@ void HomeActivity::captureNavigation(MenuNavigationState& state) const {
   state.booksOpened = RECENT_BOOKS.opened();
   const int row = ringPos() - 1;
   if (activeTabId == Tab::FAVORITES) state.selection = favoriteKey(row);
-  if (!tenorchrome::kTouchShell && activeTabId == Tab::FOLDER && row >= 0 && row < listCount() &&
-      !lastFolderAt(row))
-    state.selection = folderEntry(row);
+  if (!tenorchrome::kTouchShell && activeTabId == Tab::FOLDER && row >= 0 && row < listCount()) {
+    const std::string entry = folderEntry(row);
+    if (!lastFolderAt(row)) {
+      state.selection = entry;
+    } else {
+      const auto slash = entry.find('/');
+      state.selection = slash == std::string::npos ? entry : entry.substr(0, slash + 1);
+    }
+  }
   if (activeTabId == Tab::RECENT && row >= 0 && row < static_cast<int>(recentBooks.size()))
     state.selection = recentBooks[row].path;
   if (activeTabId == Tab::CAI_DAT) {
@@ -1329,8 +1335,7 @@ void HomeActivity::docGocTheNho() {
   const std::string last = mucQuaNhieu ? "/" : lastFolder();
   // A direct child already appears in the root list. The reopen row is useful
   // only when the saved folder is deeper than the root list can show.
-  lastFolderRow = last != "/" &&
-                  (tenorchrome::kTouchShell || last.find('/', 1) != std::string::npos);
+  lastFolderRow = !tenorchrome::kTouchShell && last != "/" && last.find('/', 1) != std::string::npos;
   if (lastFolderRow) mucTheNho.insert(mucTheNho.begin(), last.substr(1) + "/");
 }
 

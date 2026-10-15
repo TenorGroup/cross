@@ -1,0 +1,16 @@
+{
+  "source": "1300ba05",
+  "images": {
+    "X3-favorite.png": "c23595bfd5abc34a20e1f430e5d0142a23416bd39a921579f6f02999db460e61",
+    "X3-reopen.png": "2188ba015d485bd12bf131c3bf1994a3a4072f6adbf9f9474075861cc5febc48",
+    "X4C-favorite.png": "93fce6dfba5653c5e0d90033cca401c0df378e0641067110ee006330095e6eba",
+    "X4C-reopen.png": "73a06265cdf310d7104283baf9d86c03904166b24973d662c921dd5dc1a58594",
+    "X4Pro-favorite.png": "c7731ee00cd553017cdaae818ce835133da3f4b0e5313e8fda5dab866dbe5b10",
+    "X4Pro-reopen.png": "122c71db92b2b94f07ddafa52b1aa46059b18d49b3f876ba6913e443b3fb9687"
+  },
+  "binaries": {
+    "X3": "cfdf8205637dcfb0043c0b672fdc913ef15b944312668586de7d51670174101f",
+    "X4C": "30a884afcce193cfa407f3c46b88aae238d743dfddc1880025be151d45e1113b",
+    "X4Pro": "375845ed069509be461aa67f2db640a878a95c8838e397ac85f19ae6efaaad98"
+  }
+}

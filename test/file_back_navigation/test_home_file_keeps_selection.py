@@ -51,9 +51,9 @@ def main() -> int:
         ("06-up-four", "LEFT"),
         ("07-home-before", None),
         ("08-folder", "CONFIRM"),
-        ("09-home-after", "BACK:1200"),
+        ("09-home-after", "BACK"),
     ]
-    log, _ = sim.run(args.program, output, sd, steps, args.port, gap=2800, settle=1800)
+    log, shots = sim.run(args.program, output, sd, steps, args.port, gap=2800, settle=1800)
     frames = home_frames(log)
     before = frames.get("07-home-before")
     after = frames.get("09-home-after")
@@ -61,6 +61,9 @@ def main() -> int:
     if before is None or after is None:
         print("RED: scripted journey did not capture both Home File frames")
         return 1
+    from PIL import ImageChops
+    assert log.count("Entering activity: Home") == 2, "Short Back did not reach Home"
+    assert not ImageChops.difference(shots["07-home-before"], shots["09-home-after"]).getbbox(), "Short Back changed the root rows"
     expected = before
     if after != expected:
         print(f"RED: expected the direct child row and viewport to stay at {expected}")

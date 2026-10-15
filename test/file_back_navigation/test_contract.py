@@ -15,7 +15,7 @@ def main() -> int:
     required = [
         "const HomeMenuItem origin = activityManager.homeMenuOrigin();",
         "origin == HomeMenuItem::FILE_BROWSER || origin == HomeMenuItem::NONE",
-        "if (mode == Mode::Books && !tenorchrome::kTouchShell) {",
+        "if (mode == Mode::Books) {",
         "entryForVisibleRow(nav.selected) == dirName",
         "last.find('/', 1) != std::string::npos",
     ]

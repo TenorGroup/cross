@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""X4 Pro returns to the same child row after a folder round trip."""
+"""X4 Pro restores a child's saved middle-list position when re-entered."""
 
 import argparse
 import sys
@@ -19,23 +19,28 @@ def main() -> int:
     args = parser.parse_args()
 
     output = args.output.resolve()
-    files = {f"/books/folder-{index:02d}/book.txt": b"Test.\n" for index in range(18)}
-    files["/books/folder-12/child-dir/book.txt"] = b"Test.\n"
+    files = {f"/books/child/row-{index:02d}/book.txt": b"Test.\n" for index in range(18)}
     sd = sim.card(output, files=files, extra={"statusBarClock": 0, "clockShowInHeader": 0})
     steps = [
         ("00-home", None),
         ("01-file", "TAP:150,754"),
         ("02-books", "TAP:130,65"),
-        ("03-scroll", "SWIPE:240,650,240,350,500"),
-        ("04-folder", "TAP:130,390"),
+        ("03-child", "TAP:130,65"),
+        ("04-scroll", "SWIPE:240,650,240,350,500"),
         ("05-child-before", None),
-        ("06-enter-child", "TAP:130,65"),
-        ("07-parent-after", "TAP:46,754"),
+        ("06-enter-middle", "TAP:130,390"),
+        ("07-child-again", "TAP:46,754"),
+        ("08-parent", "TAP:46,754"),
+        ("09-reenter", "TAP:130,65"),
+        ("10-restored", None),
     ]
     log, shots = sim.run(args.program, output, sd, steps, args.port, gap=2800, settle=1800)
-    changed = sum(1 for value in ImageChops.difference(shots["05-child-before"], shots["07-parent-after"]).getdata() if value)
-    print(f"changed_pixels={changed}")
-    if changed:
+    round_trip = ImageChops.difference(shots["05-child-before"], shots["07-child-again"]).crop((0, 0, 465, 800))
+    reentry = ImageChops.difference(shots["05-child-before"], shots["10-restored"]).crop((0, 0, 465, 800))
+    round_trip_changed = sum(1 for value in round_trip.getdata() if value)
+    reentry_changed = sum(1 for value in reentry.getdata() if value)
+    print(f"round_trip_changed_pixels={round_trip_changed} reentry_changed_pixels={reentry_changed}")
+    if round_trip_changed or reentry_changed:
         print("RED: X4 Pro did not restore the selected child row")
         return 1
     if "Entering activity: FileBrowser" not in log:
