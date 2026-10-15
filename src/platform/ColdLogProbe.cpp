@@ -13,7 +13,7 @@ namespace {
 
 constexpr uint32_t MAGIC = 0x434C5231;  // CLR1
 // Keep the X3 probe inside its 8 KB RTC window.
-constexpr size_t CAPACITY = 16;
+constexpr size_t CAPACITY = 8;
 
 struct Record {
   uint32_t sequence;
@@ -34,7 +34,7 @@ struct Ring {
   Record records[CAPACITY];
 };
 
-static_assert(sizeof(Ring) == 400);
+static_assert(sizeof(Ring) == 208);
 RTC_NOINIT_ATTR Ring ring;
 
 bool valid() {
@@ -68,6 +68,8 @@ const char* name(const Event event) {
     case Event::PullStep: return "pull-step";
     case Event::StateRead: return "state-read";
     case Event::StateWrite: return "state-write";
+    case Event::PullNetwork: return "pull-network";
+    case Event::PullHeapRestart: return "pull-heap-restart";
   }
   return "unknown";
 }

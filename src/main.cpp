@@ -340,7 +340,9 @@ static void armSilentReboot(const uint32_t target) {
 
 // The notice left on the glass while the device restarts quietly.
 static void showRestartNotice() {
-  const char* text = shell::uglyParts() ? ugly::loadingNotice() : tr(STR_LOADING_POPUP);
+  const char* text = koautosync::pullIsArmed() ? tr(STR_AUTO_SYNCING)
+                     : shell::uglyParts()      ? ugly::loadingNotice()
+                                               : tr(STR_LOADING_POPUP);
   LOG_DBG("MAIN", "Restart notice: %s", text);
   GUI.drawPopup(renderer, text);
 }
@@ -362,8 +364,12 @@ static void silentRestartTo(const uint32_t target, const char* targetName) {
 #ifdef TENOR_PRESS_PROBE
   LOG_INF("FTX", "restart notice target=%s t=%lu", targetName, millis());
 #endif
-  showRestartNotice();
+  if (!koautosync::pullRestartReady()) showRestartNotice();
   delay(50);
+#ifndef SIMULATOR
+  // Flush the existing progress/state writes through the SD volume before reset.
+  if (koautosync::pullIsArmed() || koautosync::pullRestartReady()) Storage.prepareForDeepSleep();
+#endif
 #ifdef TENOR_PRESS_PROBE
   LOG_INF("FTX", "restart now t=%lu", millis());
 #endif
@@ -1039,6 +1045,11 @@ void setup() {
 
   // Output polarity is resolved per render by ActivityManager (night mode
   // inverts only the reading surfaces), so nothing to restore here.
+
+  // A long sleep that ends on Home owes its pull to the first epub opened from there (KOReaderAutoSync.h).
+  koautosync::noteStart(resume == BootResume::Silent,
+                        resume == BootResume::SplashlessWake && !wakeToBook && !recoveryFirmwareMode &&
+                            !rebootedFromPanic && !trialBoot && !updateBoot);
 
   if (recoveryFirmwareMode) {
     // Skip normal home/reader routing: jump straight into the SD firmware picker.

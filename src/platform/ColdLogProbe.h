@@ -21,6 +21,8 @@ enum class Event : uint8_t {
   PullStep = 14,
   StateRead = 15,
   StateWrite = 16,
+  PullNetwork = 17,
+  PullHeapRestart = 18,
 };
 
 #if defined(TENOR_PRESS_PROBE) && FREEINK_DEVICE_X3 && !defined(SIMULATOR)
