@@ -26,7 +26,8 @@ DEFAULT_PROGRAM = REPO / '.pio/build/simulator_x3_uc8279/program'
 # These scripts expose scenarios as PASS/FAIL lines instead of unittest methods.
 PROCEDURAL = {'test_boot_home.py': 3, 'test_file_favorites.py': 15,
               'test_fixed_menu_chrome.py': 2, 'test_menu_customization.py': 16,
-              'test_reader_back_recent.py': 3}
+              'test_reader_back_recent.py': 3, 'test_button_hints_v1059.py': 4,
+              'test_toolbar57_v1057.py': 54}
 
 
 def sha(path):
@@ -88,7 +89,14 @@ def child(path, program):
 
     subprocess.Popen = FrozenPopen
     sys.path.insert(0, str(HERE))
+    output = Path(os.environ.get('CROSSPOINT_TEST_ARTIFACTS', tempfile.mkdtemp(prefix='run-all-case-')))
+    output.mkdir(parents=True, exist_ok=True)
     sys.argv = [str(path)]
+    os.environ['TEST_PROGRAM'] = str(program)
+    if path.name == 'test_button_hints_v1059.py':
+        sys.argv += ['all', '--out', str(output)]
+    elif path.name == 'test_toolbar57_v1057.py':
+        sys.argv += ['--program', str(program), '--output', str(output)]
     if path.name == 'test_reading_stats.py':
         # This legacy script checks existence before spawning the simulator.
         sys.argv.extend(['--program', str(program)])
@@ -164,7 +172,8 @@ def main():
                 stream.write(f'\nHARNESS TIMEOUT after {args.timeout} seconds\n')
         body = log.read_text(errors='replace')
         ran = sum(int(n) for n in re.findall(r'Ran (\d+) tests?', body))
-        ran += len(re.findall(r'^(?:PASS|FAIL)\b', body, re.M)) if path.name in PROCEDURAL else 0
+        ran += len(re.findall(r'^(?:PASS|FAIL)(?! scenarios=)\b', body, re.M)) if path.name in PROCEDURAL else 0
+        ran += sum(int(n) for n in re.findall(r'^PASS scenarios=(\d+)$', body, re.M))
         skipped = bool(re.search(r'skipped[= ]', body))
         passed = code == 0 and ran == expected and not skipped and before == sha(path)
         return dict(file=path.name, sha256=before, expected_scenarios=expected, actual_scenarios=ran,

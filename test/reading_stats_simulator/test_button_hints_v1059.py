@@ -172,3 +172,4 @@ if __name__ == '__main__':
     for test in (switch, layout, reader, migration):
         if args.which in ('all', test.__name__):
             test(out)
+    print('PASS scenarios=4', flush=True)

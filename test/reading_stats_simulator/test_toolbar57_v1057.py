@@ -157,3 +157,4 @@ if __name__ == '__main__':
     (args.output / 'manifest.json').write_text(json.dumps({'program': str(args.program),
          'program_sha256': hashlib.sha256(program.read_bytes()).hexdigest(), 'results': results}, indent=2))
     print(f'GREEN: {len(results)} simulator journeys, {sum(len(result["shots"]) for result in results)} screenshots')
+    print(f'PASS scenarios={len(results)}')
