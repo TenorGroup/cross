@@ -1,5 +1,6 @@
 #pragma once
 
+#include <BlePageTurner.h>
 #include <GfxRenderer.h>
 
 #include <string>
@@ -9,7 +10,7 @@
 
 class MappedInputManager;
 
-// Bluetooth page turner: switch it on, scan, pair a remote, forget one, learn its two page keys.
+// Bluetooth page turner: switch it on, scan, pair a remote, forget one, and map page/chapter buttons.
 // The radio and the remote belong to lib/BlePageTurner; this screen only asks it.
 class BleSettingsActivity final : public UiListActivity {
  public:
@@ -25,10 +26,14 @@ class BleSettingsActivity final : public UiListActivity {
   void activateIndex(int index) override;
   const char* headerTitle() const override;
 
+  enum class View { Menu, Scan, Paired, Mapping };
+  View view = View::Menu;
+  void onBackButton() override;
+  void showView(View target);
   uint32_t signature() const;
   void refresh();
-  // Learn page keys: reads the linked remote's button edges and stores them in its table.
-  void startLearning();
+  // Button mapping reads the linked remote's button edges and stores them in its table.
+  void startLearning(int index);
   void stepLearning();
   void keepLearned();
 
@@ -38,10 +43,10 @@ class BleSettingsActivity final : public UiListActivity {
   std::string status;
   uint32_t shownSignature = 0;
   unsigned long lastPollMs = 0;
-  // 0: not learning; 1: waiting for the next-page button; 2: for the previous-page button.
-  uint8_t learnStage = 0;
+  bleturner::Action learnAction = bleturner::Action::None;
+  char learnAddr[18]{};
+  char mappingValues[4][24]{};
   uint32_t learnCode = 0;  // the pressed button, kept until its release
-  uint32_t nextCode = 0;   // the button just learned for the next page
   unsigned long learnSinceMs = 0;
   const char* learnNote = nullptr;
 };

@@ -164,6 +164,32 @@ TEST_F(TickTest, TurnedOffOrCardTakenStopsTheRadio) {
   EXPECT_FALSE(radio().running);
 }
 
+TEST_F(TickTest, ReaderToggleRestartsWithoutChangingDefaultMappings) {
+  config.enabled = 0;
+  Scene scene = fake::reading();
+  pass(scene);
+  EXPECT_FALSE(radio().running);
+
+  config.enabled = 1;
+  scene.pageShown = false;
+  pass(scene);
+  EXPECT_FALSE(radio().running);
+  scene.pageShown = true;
+  pass(scene);
+  ASSERT_TRUE(radio().running);
+
+  config.enabled = 0;
+  EXPECT_TRUE(bleturner::switchOff());
+  pass(scene);
+  EXPECT_FALSE(radio().running);
+  config.enabled = 1;
+  pass(scene);
+  EXPECT_TRUE(radio().running);
+  EXPECT_EQ(config.remoteCount, 0);
+  EXPECT_EQ(bleturner::pageActionFor(config, bleturner::kUsageRight, 0), Action::NextPage);
+  EXPECT_EQ(bleturner::pageActionFor(config, bleturner::kUsageLeft, 0), Action::PrevPage);
+}
+
 // Device (d2, 51033 ms): a page release restarted the radio a starved build had just stopped;
 // the start then held the main loop for 2.85 s.
 TEST_F(TickTest, BuildHoldWaitsForThePageNotAKey) {

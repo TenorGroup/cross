@@ -59,6 +59,30 @@ TEST(BleBindingTableTest, FullTableRefusesAndGarbageIsNotValid) {
   EXPECT_FALSE(valid(makeBinding(0x030100, false, Action::NextPage))) << "a zero value is a release, not a button";
 }
 
+TEST(BleBindingTableTest, MappingOneActionPreservesOtherButtonsAndRemotes) {
+  RemoteTable tables[kMaxRemotes]{};
+  uint8_t count = 0;
+  auto* first = editableTable(tables, count, "01:02:03:04:05:06", "Free3");
+  ASSERT_NE(first, nullptr);
+  ASSERT_TRUE(learn(*first, Action::NextPage, 0x030001, false));
+  ASSERT_TRUE(learn(*first, Action::PrevPage, 0x030002, false));
+  auto* second = editableTable(tables, count, "11:12:13:14:15:16", "Remote");
+  ASSERT_NE(second, nullptr);
+  ASSERT_TRUE(learn(*second, Action::NextPage, 0x030001, false));
+
+  ASSERT_TRUE(learn(*first, Action::NextChapter, 0x030004, false));
+  EXPECT_EQ(lookup(*first, 0x030001, false), Action::NextPage);
+  EXPECT_EQ(lookup(*first, 0x030002, false), Action::PrevPage);
+  EXPECT_EQ(lookup(*first, 0x030004, false), Action::NextChapter);
+  EXPECT_EQ(lookup(*first, 0x000008, false), Action::PrevChapter);
+
+  ASSERT_TRUE(learn(*first, Action::PrevChapter, 0x030001, false));
+  EXPECT_EQ(lookup(*first, 0x030001, false), Action::PrevChapter);
+  Binding binding;
+  EXPECT_FALSE(find(*first, Action::NextPage, binding));
+  EXPECT_EQ(lookup(*second, 0x030001, false), Action::NextPage);
+}
+
 TEST(BlePageActionTest, DefaultKeysTurnUntilADirectionIsLearned) {
   Config c;
   c.enabled = 1;
