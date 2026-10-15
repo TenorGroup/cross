@@ -19,6 +19,7 @@
 
 #include "KOReaderAutoSyncPolicy.h"
 #include "KOReaderCredentialStore.h"
+#include "../../src/platform/ColdLogProbe.h"
 
 int KOReaderSyncClient::lastHttpCode = 0;
 uint32_t KOReaderSyncClient::requestTimeoutMs = 0;
@@ -195,14 +196,36 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
   const std::string url =
       KOREADER_STORE.getBaseUrl() + "/syncs/progress/" + documentHash + "?position_kinds=locator,percentage";
   LOG_DBG("KOSync", "Getting progress (heap: %u)", (unsigned)ESP.getFreeHeap());
-  if (insufficientHeap()) return LOW_MEMORY;
+  const bool lowHeap = insufficientHeap();
+#ifdef TENOR_PRESS_PROBE
+  restartlog::trace(restartlog::TraceStage::HttpHeap, lowHeap ? 1 : 0, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
+  if (lowHeap) return LOW_MEMORY;
 
   freeink::SecureHttpClient http;
   freeink::http_url::Parts parsed;
-  if (!freeink::http_url::parse(url, parsed)) return NETWORK_ERROR;
-  if (parsed.tls && time(nullptr) < 1735689600 && !halClock.syncFromNTP()) return NETWORK_ERROR;
+  const bool urlOk = freeink::http_url::parse(url, parsed);
+#ifdef TENOR_PRESS_PROBE
+  restartlog::trace(restartlog::TraceStage::HttpUrl, urlOk ? 1 : 0, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
+  if (!urlOk) return NETWORK_ERROR;
+  if (parsed.tls && time(nullptr) < 1735689600) {
+    const bool ntpOk = halClock.syncFromNTP();
+#ifdef TENOR_PRESS_PROBE
+    restartlog::trace(restartlog::TraceStage::HttpNtp, ntpOk ? 1 : 0, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
+    if (!ntpOk) return NETWORK_ERROR;
+  } else {
+#ifdef TENOR_PRESS_PROBE
+    restartlog::trace(restartlog::TraceStage::HttpNtp, 2, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
+  }
   http.setCACert(network_trust::forUrl(url));
-  if (!http.begin(url)) {
+  const bool beginOk = http.begin(url);
+#ifdef TENOR_PRESS_PROBE
+  restartlog::trace(restartlog::TraceStage::HttpBegin, beginOk ? 1 : 0, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
+  if (!beginOk) {
     LOG_ERR("KOSync", "Bad URL");
     return NETWORK_ERROR;
   }
@@ -226,21 +249,38 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
 #endif
   lastHttpCode = httpCode;
 
+#ifdef TENOR_PRESS_PROBE
+  restartlog::trace(restartlog::TraceStage::HttpTransport, httpCode, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  restartlog::trace(restartlog::TraceStage::HttpReply, lastHttpCode, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
+
   LOG_DBG("KOSync", "Get progress response: %d", httpCode);
 
 #ifndef SIMULATOR
   if (hasDeadline && deadlineBody.noMemory()) {
+#ifdef TENOR_PRESS_PROBE
+    restartlog::trace(restartlog::TraceStage::HttpBody, 1, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
     http.end();
     return LOW_MEMORY;
   }
   if (hasDeadline && deadlineBody.tooLarge()) {
+#ifdef TENOR_PRESS_PROBE
+    restartlog::trace(restartlog::TraceStage::HttpBody, 2, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
     http.end();
     return JSON_ERROR;
   }
   if (httpCode <= 0 || (hasDeadline && (http.aborted() || !http.responseComplete()))) {
+#ifdef TENOR_PRESS_PROBE
+    restartlog::trace(restartlog::TraceStage::HttpBody, http.aborted() ? 3 : 4, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
     http.end();
     return NETWORK_ERROR;
   }
+#ifdef TENOR_PRESS_PROBE
+  restartlog::trace(restartlog::TraceStage::HttpBody, 0, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
 #endif
 
   // 204 = success with no stored progress for this document (Spring-style
@@ -266,9 +306,16 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
     http.end();
 
     if (error) {
+#ifdef TENOR_PRESS_PROBE
+      restartlog::trace(restartlog::TraceStage::HttpParse, 1, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
       LOG_ERR("KOSync", "JSON parse failed: %s", error.c_str());
       return JSON_ERROR;
     }
+
+#ifdef TENOR_PRESS_PROBE
+    restartlog::trace(restartlog::TraceStage::HttpParse, 0, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
 
     outProgress.document = documentHash;
     outProgress.progress = doc["progress"].as<std::string>();

@@ -95,7 +95,20 @@ TEST_F(BeforeOpenBehaviorTest, OwedOpenRestartsOnlyWhenThePathFitsTheRtcRecord) 
   }
 }
 
-TEST_F(BeforeOpenBehaviorTest, OwedOpenPullsDirectlyWhenReaderHeapIsReady) {
+TEST_F(BeforeOpenBehaviorTest, OwedOpenRestartsBeforePullWhenBleIsEnabledAndHeapReady) {
+  fakeDebt = PullDebt::Owed;
+  fakeReaderEligibility = Eligibility::Ready;
+  const std::string path = epubPathOfLength(175);
+
+  EXPECT_TRUE(beforeOpen(renderer, path));
+  EXPECT_EQ(fakeDebt, PullDebt::Armed);
+  EXPECT_EQ(pullCalls, 0);
+  EXPECT_FALSE(lastShowNotice);
+  EXPECT_EQ(keptPull.magic, PULL_ARMED_MAGIC);
+}
+
+TEST_F(BeforeOpenBehaviorTest, OwedOpenPullsDirectlyWhenBleIsOffAndHeapReady) {
+  SETTINGS.ble.enabled = false;
   fakeDebt = PullDebt::Owed;
   fakeReaderEligibility = Eligibility::Ready;
   const std::string path = epubPathOfLength(175);

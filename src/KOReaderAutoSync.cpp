@@ -173,7 +173,19 @@ bool radioIsFree() {
     const auto ble = bleturner::status();
     return ble.running || ble.starting || ble.stopping;
   };
+#ifdef TENOR_PRESS_PROBE
+  const auto before = bleturner::status();
+  restartlog::trace(restartlog::TraceStage::RadioBefore,
+                    (before.running ? 1 : 0) | (before.starting ? 2 : 0) | (before.stopping ? 4 : 0),
+                    ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
   if (up()) bleturner::beforeSleep(1000);
+#ifdef TENOR_PRESS_PROBE
+  const auto after = bleturner::status();
+  restartlog::trace(restartlog::TraceStage::RadioAfter,
+                    (after.running ? 1 : 0) | (after.starting ? 2 : 0) | (after.stopping ? 4 : 0),
+                    ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
   return !up();
 }
 
@@ -261,6 +273,10 @@ bool joinSavedNetwork(const uint32_t deadline) {
   WiFi.mode(WIFI_STA);
   WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
   WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
+#ifdef TENOR_PRESS_PROBE
+  restartlog::trace(restartlog::TraceStage::JoinStart, static_cast<int32_t>(order.size()), ESP.getFreeHeap(),
+                    ESP.getMaxAllocHeap());
+#endif
   for (const auto& cred : order) {
     if (msLeft(deadline) <= 0) break;
     const char* password = cred.password.empty() ? nullptr : cred.password.c_str();
@@ -269,7 +285,13 @@ bool joinSavedNetwork(const uint32_t deadline) {
       WiFi.disconnect(false, false);
       WiFi.begin(cred.ssid.c_str(), password, hint.channel, hint.bssid, true);
       const uint32_t fastUntil = std::min<uint32_t>(deadline, millis() + FAST_JOIN_MS);
-      if (waitConnected(fastUntil)) {
+      const bool fastConnected = waitConnected(fastUntil);
+#ifdef TENOR_PRESS_PROBE
+      restartlog::trace(restartlog::TraceStage::WifiHint,
+                        fastConnected ? 1 : (msLeft(fastUntil) <= 0 ? -2 : static_cast<int32_t>(WiFi.status())),
+                        ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
+      if (fastConnected) {
         WiFi.setSleep(false);
         LOG_INF("KAS", "join fast in %lu ms", static_cast<unsigned long>(millis() - began));
         return true;
@@ -285,8 +307,18 @@ bool joinSavedNetwork(const uint32_t deadline) {
     } else {
       WiFi.begin(cred.ssid.c_str());
     }
-    if (waitConnected(deadline)) {
+    const bool scanConnected = waitConnected(deadline);
+#ifdef TENOR_PRESS_PROBE
+    restartlog::trace(restartlog::TraceStage::WifiScan,
+                      scanConnected ? 1 : (msLeft(deadline) <= 0 ? -2 : static_cast<int32_t>(WiFi.status())),
+                      ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
+    if (scanConnected) {
       WiFi.setSleep(false);
+#ifdef TENOR_PRESS_PROBE
+      restartlog::trace(restartlog::TraceStage::WifiConnected, static_cast<int32_t>(WiFi.status()), ESP.getFreeHeap(),
+                        ESP.getMaxAllocHeap());
+#endif
       rememberHint(cred.ssid, hint);
       LOG_INF("KAS", "join scan in %lu ms", static_cast<unsigned long>(millis() - began));
       return true;
@@ -494,7 +526,13 @@ uint32_t sleepStamp() {
 namespace {
 
 PullResult pullNow(GfxRenderer& renderer, const std::string& path) {
+#ifdef TENOR_PRESS_PROBE
+  restartlog::trace(restartlog::TraceStage::Hash, 0, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
   const std::string hash = documentHash(path);
+#ifdef TENOR_PRESS_PROBE
+  restartlog::trace(restartlog::TraceStage::Hash, hash.empty() ? 1 : 2, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
   if (hash.empty()) return PullResult::Failed;
   const uint32_t networkAt = millis();
   usedPullNetwork = true;
@@ -524,7 +562,15 @@ PullResult pullNow(GfxRenderer& renderer, const std::string& path) {
   if (fetch != Fetch::Found) return fetch == Fetch::Failed ? PullResult::Failed : PullResult::Kept;
 
   auto epub = loadEpubForMapping(path);
-  if (!epub) return PullResult::Failed;
+  if (!epub) {
+#ifdef TENOR_PRESS_PROBE
+    restartlog::trace(restartlog::TraceStage::PullMap, 1, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
+    return PullResult::Failed;
+  }
+#ifdef TENOR_PRESS_PROBE
+  restartlog::trace(restartlog::TraceStage::PullMap, 2, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
   HalFile file;
   uint8_t data[10] = {};
   size_t got = 0;
@@ -533,7 +579,12 @@ PullResult pullNow(GfxRenderer& renderer, const std::string& path) {
     got = n > 0 ? static_cast<size_t>(n) : 0;
   }
   const auto place = parseProgressFile(data, got);
-  if (!place) return PullResult::Kept;  // never read in this layout: nothing to compare with
+  if (!place) {
+#ifdef TENOR_PRESS_PROBE
+    restartlog::trace(restartlog::TraceStage::PullMap, 3, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
+    return PullResult::Kept;  // never read in this layout: nothing to compare with
+  }
 
   CrossPointPosition local = {place->spineIndex, place->pageNumber, place->totalPages};
   local.hasResolvedSpineIndex = true;
@@ -561,11 +612,24 @@ PullResult pullNow(GfxRenderer& renderer, const std::string& path) {
   const PullAction action = pullAction(fetch, comparison, ours);
   LOG_INF("KAS", "wake pull decision cmp=%d ours=%d action=%d local=%.4f remote=%.4f", static_cast<int>(comparison),
           ours, static_cast<int>(action), static_cast<double>(localPercentage), static_cast<double>(remote.percentage));
-  if (action != PullAction::Apply) return PullResult::Kept;
+  if (action != PullAction::Apply) {
+#ifdef TENOR_PRESS_PROBE
+    restartlog::trace(restartlog::TraceStage::PullMap, 4, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
+    return PullResult::Kept;
+  }
 
   std::optional<uint32_t> offset;
   if (mapped.hasVisibleTextOffset) offset = mapped.visibleTextOffset;
-  if (!EpubReaderUtils::saveProgress(*epub, mapped.spineIndex, mapped.pageNumber, 0, offset)) return PullResult::Failed;
+  if (!EpubReaderUtils::saveProgress(*epub, mapped.spineIndex, mapped.pageNumber, 0, offset)) {
+#ifdef TENOR_PRESS_PROBE
+    restartlog::trace(restartlog::TraceStage::PullSave, 1, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
+    return PullResult::Failed;
+  }
+#ifdef TENOR_PRESS_PROBE
+  restartlog::trace(restartlog::TraceStage::PullSave, 2, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
   pullChange = {path, local.spineIndex, local.pageNumber, mapped.spineIndex, mapped.pageNumber,
                 local.visibleTextOffset, local.hasVisibleTextOffset};
   hasPullChange = true;
@@ -580,6 +644,9 @@ PullResult pullNow(GfxRenderer& renderer, const std::string& path) {
 // The part of a pull both entries share: the gate, the notice, the round and the measuring lines.
 PullResult pullGated(GfxRenderer& renderer, const std::string& path, const bool showNotice, const char* what,
                      const bool useStoredPath = false) {
+#ifdef TENOR_PRESS_PROBE
+  restartlog::traceReset();
+#endif
   const Eligibility eligible = gate();
   if (eligible != Eligibility::Ready) {
     if (eligible != Eligibility::Disabled) LOG_INF("KAS", "%s skipped: %s", what, why(eligible));
@@ -596,6 +663,7 @@ PullResult pullGated(GfxRenderer& renderer, const std::string& path, const bool 
   probeHeap("after_pull");  // the book is not open yet
   probeHeapPending = true;
   restartlog::mark(restartlog::Event::PullStep, millis() - started, static_cast<uint32_t>(result));
+  restartlog::dump();
 #endif
   PullResume savedPull{};
   const bool pathFitsRestart = keepPullPath(savedPull, path, PULL_DONE_MAGIC, useStoredPath);
@@ -700,7 +768,9 @@ bool beforeOpen(GfxRenderer& renderer, const std::string& path) {
 #ifdef TENOR_PRESS_PROBE
   if (wanted) probeHeap("home_before_pull");
 #endif
-  const bool restartNeeded = wanted && SETTINGS.ble.enabled && gate() == Eligibility::LowHeap;
+  // Home keeps the page turner's BLE allocation alive while it joins Wi-Fi. A clean
+  // restart gives the pull a fresh radio and heap before the book's first frame.
+  const bool restartNeeded = wanted && SETTINGS.ble.enabled;
 #else
   const bool restartNeeded = false;
 #endif
