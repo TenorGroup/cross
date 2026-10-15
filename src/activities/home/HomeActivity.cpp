@@ -1329,7 +1329,8 @@ void HomeActivity::docGocTheNho() {
   const std::string last = mucQuaNhieu ? "/" : lastFolder();
   // A direct child already appears in the root list. The reopen row is useful
   // only when the saved folder is deeper than the root list can show.
-  lastFolderRow = last != "/" && last.find('/', 1) != std::string::npos;
+  lastFolderRow = last != "/" &&
+                  (tenorchrome::kTouchShell || last.find('/', 1) != std::string::npos);
   if (lastFolderRow) mucTheNho.insert(mucTheNho.begin(), last.substr(1) + "/");
 }
 

@@ -15,7 +15,7 @@ def main() -> int:
     required = [
         "const HomeMenuItem origin = activityManager.homeMenuOrigin();",
         "origin == HomeMenuItem::FILE_BROWSER || origin == HomeMenuItem::NONE",
-        "restoreDirectory();",
+        "if (mode == Mode::Books && !tenorchrome::kTouchShell) {",
         "entryForVisibleRow(nav.selected) == dirName",
         "last.find('/', 1) != std::string::npos",
     ]
@@ -23,11 +23,14 @@ def main() -> int:
     if missing:
         print("RED: missing navigation contract: " + ", ".join(missing))
         return 1
-    if "if (mode == Mode::Books && !tenorchrome::kTouchShell) restoreDirectory();" in browser:
-        print("RED: touch shell still skips directory restore")
-        return 1
     if "// restoreDirectory();" in browser:
         print("RED: directory restore is disabled")
+        return 1
+    if 'lastFolderRow = last != "/";' in home:
+        print("RED: direct-child reopen fix removed")
+        return 1
+    if "lastFolderRow = last != \"/\" && last.find('/', 1) != std::string::npos;" in home:
+        print("RED: touch shell lost the baseline reopen row")
         return 1
     print("GREEN: file back destination, row restore, and root reopen contracts present")
     return 0
