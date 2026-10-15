@@ -475,7 +475,7 @@ int runButtonHints() {
   SETTINGS.fromJson(off.as<JsonVariantConst>());
   ok = expect(SETTINGS.tenorButtonHints == 0, "status bar Off before the switch keeps the hints hidden") && ok;
   ok = expect(SETTINGS.globalStatusBarMode == CrossPointSettings::GLOBAL_STATUS_BAR_OFF, "status bar Off stays Off") && ok;
-  ok = expect(saved()["tenorButtonHints"].as<int>() == 0 && saved()["buttonHintsVersion"].as<int>() == 1,
+  ok = expect(saved()["tenorButtonHints"].as<int>() == 0 && saved()["buttonHintsVersion"].as<int>() == 2,
               "the move is saved and stamped") && ok;
 
   JsonDocument small = readFixture("settings-v1.0.19.json");
@@ -498,6 +498,69 @@ int runButtonHints() {
   SETTINGS.fromJson(chosen.as<JsonVariantConst>());
   ok = expect(SETTINGS.tenorButtonHints == 1, "a stamped file without the key reloads the default") && ok;
   std::printf("settings_upgrade=button-hints:%s\n", ok ? "GREEN" : "RED");
+  return ok ? 0 : 1;
+}
+
+int runGlobalStatusBarMatrix() {
+  using S = CrossPointSettings;
+  bool ok = true;
+  const auto resetStatus = [] {
+    SETTINGS.globalStatusBarMode = S::GLOBAL_STATUS_BAR_SMALL;
+    SETTINGS.tenorButtonHints = 1;
+    SETTINGS.statusBarClock = S::STATUS_BAR_CLOCK_HIDE;
+  };
+  const uint8_t expected[3][2] = {{S::GLOBAL_STATUS_BAR_TOP_SMALL, S::GLOBAL_STATUS_BAR_BOTTOM_SMALL},
+                                  {S::GLOBAL_STATUS_BAR_HIDE, S::GLOBAL_STATUS_BAR_HIDE},
+                                  {S::GLOBAL_STATUS_BAR_TOP_LARGE, S::GLOBAL_STATUS_BAR_BOTTOM_LARGE}};
+  for (uint8_t global = 0; global < S::GLOBAL_STATUS_BAR_MODE_COUNT; ++global) {
+    for (uint8_t hints = 0; hints < 2; ++hints) {
+      SETTINGS.globalStatusBarMode = global;
+      SETTINGS.tenorButtonHints = hints;
+      ok &= expect(SETTINGS.globalStatusBarChoice() == expected[global][hints], "legacy pair maps to one choice");
+      for (uint8_t choice = 0; choice < S::GLOBAL_STATUS_BAR_CHOICE_COUNT; ++choice) {
+        SETTINGS.setGlobalStatusBarChoice(choice);
+        ok &= expect(SETTINGS.globalStatusBarChoice() == choice, "choice round trips");
+      }
+    }
+  }
+  SETTINGS.setGlobalStatusBarChoice(99);
+  ok &= expect(SETTINGS.globalStatusBarChoice() == S::GLOBAL_STATUS_BAR_HIDE, "invalid choice is safe");
+
+  JsonDocument missingKeys;
+  resetStatus();
+  missingKeys["tenorPresetVersion"] = S::TENOR_PRESET_VERSION;
+  SETTINGS.fromJson(missingKeys.as<JsonVariantConst>());
+  ok &= expect(SETTINGS.globalStatusBarMode == S::GLOBAL_STATUS_BAR_SMALL && SETTINGS.tenorButtonHints == 1,
+               "missing status keys keep defaults");
+
+  JsonDocument invalid;
+  resetStatus();
+  invalid["tenorPresetVersion"] = S::TENOR_PRESET_VERSION;
+  invalid["globalStatusBarMode"] = 99;
+  invalid["tenorButtonHints"] = 99;
+  SETTINGS.fromJson(invalid.as<JsonVariantConst>());
+  ok &= expect(SETTINGS.globalStatusBarMode == S::GLOBAL_STATUS_BAR_SMALL && SETTINGS.tenorButtonHints == 1,
+               "invalid legacy values keep safe defaults");
+
+  JsonDocument hidden59;
+  resetStatus();
+  hidden59["tenorPresetVersion"] = S::TENOR_PRESET_VERSION;
+  hidden59["globalStatusBarMode"] = S::GLOBAL_STATUS_BAR_OFF;
+  hidden59["buttonHintsVersion"] = 1;
+  hidden59["tenorButtonHints"] = 0;
+  SETTINGS.fromJson(hidden59.as<JsonVariantConst>());
+  ok &= expect(SETTINGS.globalStatusBarChoice() == S::GLOBAL_STATUS_BAR_HIDE, "v1.0.59 hidden pair stays hidden");
+
+  JsonDocument missingPreset;
+  resetStatus();
+  missingPreset["globalStatusBarMode"] = S::GLOBAL_STATUS_BAR_SMALL;
+  missingPreset["tenorButtonHints"] = 0;
+  missingPreset["buttonHintsVersion"] = 2;
+  missingPreset["statusBarClock"] = S::STATUS_BAR_CLOCK_LEFT;
+  SETTINGS.fromJson(missingPreset.as<JsonVariantConst>());
+  ok &= expect(SETTINGS.statusBarClock == S::STATUS_BAR_CLOCK_RIGHT,
+               "missing Tenor preset stamp applies the shipped clock default");
+  std::printf("settings_upgrade=global-status-matrix:%s\n", ok ? "GREEN" : "RED");
   return ok ? 0 : 1;
 }
 
@@ -539,5 +602,6 @@ int main(int argc, char** argv) {
   if (mode == "no-resident-catalog") return runNoResidentCatalog();
   if (mode == "tips") return runTips();
   if (mode == "button-hints") return runButtonHints();
+  if (mode == "global-status-matrix") return runGlobalStatusBarMatrix();
   return 2;
 }
