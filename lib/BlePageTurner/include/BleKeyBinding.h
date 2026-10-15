@@ -151,8 +151,7 @@ inline RemoteTable* editableTable(RemoteTable* tables, uint8_t& count, const cha
   RemoteTable& t = tables[count++];
   const RemoteTable* seed = defaultTableFor(name);
   t = seed != nullptr ? *seed : RemoteTable{};
-  strncpy(t.addr, addr, sizeof(t.addr) - 1);
-  t.addr[sizeof(t.addr) - 1] = '\0';
+  snprintf(t.addr, sizeof(t.addr), "%.*s", static_cast<int>(sizeof(t.addr) - 1), addr);
   return &t;
 }
 

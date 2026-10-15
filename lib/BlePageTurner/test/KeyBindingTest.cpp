@@ -61,6 +61,18 @@ TEST(BleBindingTableTest, FullTableRefusesAndGarbageIsNotValid) {
   EXPECT_FALSE(valid(makeBinding(0x030100, false, Action::NextPage))) << "a zero value is a release, not a button";
 }
 
+TEST(BleBindingTableTest, AddressCopyIsBoundedAndTerminated) {
+  for (const char* address : {"01", "01:02:03:04:05:06", "01:02:03:04:05:06extra"}) {
+    RemoteTable tables[kMaxRemotes]{};
+    uint8_t count = 0;
+    const auto* table = editableTable(tables, count, address, "Remote");
+    ASSERT_NE(table, nullptr);
+    EXPECT_EQ(table->addr[sizeof(table->addr) - 1], '\0');
+    EXPECT_STREQ(table->addr, strlen(address) < sizeof(table->addr) ? address : "01:02:03:04:05:06");
+    EXPECT_EQ(count, 1);
+  }
+}
+
 TEST(BleBindingTableTest, MappingOneActionPreservesOtherButtonsAndRemotes) {
   RemoteTable tables[kMaxRemotes]{};
   uint8_t count = 0;
