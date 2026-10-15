@@ -8,9 +8,12 @@ add_test(
 set(FILE_BACK_SIMULATOR_X3 "" CACHE FILEPATH "simulator_x3_uc8279 executable")
 set(FILE_BACK_SIMULATOR_X4PRO "" CACHE FILEPATH "simulator_x4pro executable")
 if(FILE_BACK_SIMULATOR_X3)
-  add_test(NAME FileBackNavigation.X3
+  add_test(NAME FileBackNavigation.X3Selection
            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_file_back_keeps_selection.py
                    ${FILE_BACK_SIMULATOR_X3} ${CMAKE_CURRENT_BINARY_DIR}/x3)
+  add_test(NAME FileBackNavigation.X3HomeDirectChild
+           COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_file_keeps_selection.py
+                   ${FILE_BACK_SIMULATOR_X3} ${CMAKE_CURRENT_BINARY_DIR}/x3-home)
 endif()
 if(FILE_BACK_SIMULATOR_X4PRO)
   add_test(NAME FileBackNavigation.X4Pro
