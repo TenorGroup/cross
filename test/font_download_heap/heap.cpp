@@ -99,7 +99,13 @@ struct StorageFixture {
   }
   void remove(const char*) {}
 } Storage;
-struct SdCardFontRegistry { static const char* findFamilyRoot(const char*) { return nullptr; } };
+struct SdCardFontRegistry { static inline const char* root = nullptr; static const char* findFamilyRoot(const char*) { return root; } };
+struct FontPackInstaller {
+  static inline uint32_t size = 100, crc = 1;
+  static bool matchesInstalled(const char* root, const char*, uint32_t bytes, uint32_t checksum) {
+    return root && bytes == size && checksum == crc;
+  }
+};
 struct FontInstaller {
   static constexpr size_t MAX_FONT_PATH_SIZE = 256;
   static bool isValidFamilyName(const char*) { return true; }
@@ -205,6 +211,16 @@ int main() {
     std::puts("TLS floors: 39999/20000 refused, 40000/19999 refused, 40000/20000 accepted");
   }
   assert(jsonAllocator.live == 0);
+  for (const uint32_t storedCrc : {1u, 2u, 0u}) {
+    FontDownloadActivity activity;
+    SdCardFontRegistry::root = "/fonts";
+    FontPackInstaller::crc = storedCrc;
+    assert(activity.fetchAndParseManifest());
+    for (const auto& family : activity.families_) {
+      assert(family.installed);
+      assert(family.hasUpdate == (storedCrc != 1));
+    }
+  }
   heapcap::stop();
   std::puts("GREEN: response released, rows released, reader released, UI fallback retained, original floors enforced");
 }

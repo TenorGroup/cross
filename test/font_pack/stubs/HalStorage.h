@@ -12,6 +12,7 @@ struct PowerCut : std::runtime_error { PowerCut() : std::runtime_error("power cu
 inline bool cutDuringStage = false;
 inline bool cutAfterBackup = false;
 inline bool failPromotion = false;
+inline bool failReceiptRename = false;
 inline bool failBackupCleanup = false;
 inline bool failPackCleanup = false;
 inline size_t failWriteOffset = static_cast<size_t>(-1);
@@ -97,6 +98,7 @@ struct HostStorage {
     std::error_code error; std::filesystem::remove_all(path(value), error); return !error;
   }
   bool rename(const char* from, const char* to) {
+    if (failReceiptRename && std::string(from).ends_with("/.pack-ready.tmp")) return false;
     if (failPromotion && std::string(from).ends_with("/.staging")) return false;
     std::error_code error; std::filesystem::rename(path(from), path(to), error);
     if (!error && cutAfterBackup && std::string(to).ends_with(".old")) throw PowerCut();

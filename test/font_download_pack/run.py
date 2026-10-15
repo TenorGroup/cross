@@ -39,6 +39,20 @@ if 'void FontDownloadActivity::waitForDownloadPaint(' in source:
     extracted += '\n' + body(source, 'void FontDownloadActivity::waitForDownloadPaint(')
 if 'bool FontDownloadActivity::prepareDownloadHeap(' in source:
     extracted += '\n' + body(source, 'bool FontDownloadActivity::prepareDownloadHeap(')
+pack_check = body(source, 'if (kind == fontdownload::ManifestFileKind::Pack)')
+extracted += '\nvoid FontDownloadActivity::refreshPack(ManifestFamily& family, const ManifestFile& file) {\n'
+extracted += 'const auto kind = fontdownload::ManifestFileKind::Pack; const char* familyRoot = "/fonts";\n'
+extracted += pack_check + '\n}\n'
+installer = (args.repo / 'src/FontPackInstaller.cpp').read_text()
+extracted += '\nconstexpr uint32_t RECEIPT_MAGIC = 0x31525046;\n'
+extracted += body(installer, 'bool readExact(') + '\n'
+if 'bool FontPackInstaller::matchesInstalled(' in installer:
+    extracted += body(installer, 'bool FontPackInstaller::matchesInstalled(')
+else:
+    extracted += 'bool FontPackInstaller::matchesInstalled(const char*, const char*, uint32_t, uint32_t) { return false; }'
+# Older sources use the same callback without the catalog arguments.
+extracted = extracted.replace('installDownloadedPack(const char* path)', 'installDownloadedPack(const char* path, uint32_t size, uint32_t crc)')
+extracted = extracted.replace('return installDownloadedPack(path);', 'return installDownloadedPack(path, file.size, file.crc32);')
 (args.out / 'production_activity.inc').write_text(extracted)
 test_dir = Path(__file__).resolve().parent
 command = [os.environ.get('CXX', 'c++'), '-std=c++20', '-UNDEBUG', str(test_dir / 'activity_fixture.cpp'),
@@ -56,6 +70,11 @@ class FontDownloadPack(unittest.TestCase):
         result = subprocess.run([str(args.out / 'activity-test'), name], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_receipt_match_skips_transfer(self): self.scenario('receipt-match')
+    def test_receipt_crc_change(self): self.scenario('receipt-crc')
+    def test_receipt_size_change(self): self.scenario('receipt-size')
+    def test_receipt_missing(self): self.scenario('receipt-missing')
+    def test_receipt_forwarded_to_installer(self): self.scenario('receipt-install')
     def test_success(self): self.scenario('success')
     def test_crc(self): self.scenario('crc')
     def test_space(self): self.scenario('space')

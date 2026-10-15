@@ -1,6 +1,7 @@
 #include "FontPackInstaller.h"
 
 #include <HalStorage.h>
+#include <HeapFloor.h>
 #include <Logging.h>
 #include <StreamingJsonParser.h>
 #include <mbedtls/sha256.h>
@@ -10,8 +11,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <memory>
-#include <new>
 
 #include "FontInstaller.h"
 #include "ReaderInkWeight.h"
@@ -21,6 +20,7 @@ namespace {
 using Result = FontPackInstaller::Result;
 constexpr uint32_t MAX_PACK_BYTES = 128 * 1024 * 1024;
 constexpr uint16_t MAX_ENTRIES = 128;
+constexpr uint32_t RECEIPT_MAGIC = 0x31525046;  // FPR1, followed by size and CRC32.
 constexpr char RECIPE[] = "reader-outline-v3-ramp";        // 6 levels, base and +1..+5
 constexpr char RECIPE_THIN[] = "reader-outline-v4-thin";   // 9 levels, the 3 thin ones added
 constexpr uint32_t MAX_LEVEL = 8;
@@ -387,16 +387,17 @@ bool FontPackInstaller::recover(const char* family) {
   BusyGuard guard;
   return recoverFamily(family);
 }
-FontPackInstaller::Result FontPackInstaller::install(const char* path) {
+FontPackInstaller::Result FontPackInstaller::install(const char* path, uint32_t verifiedSize, uint32_t verifiedCrc) {
   if (!path || std::strncmp(path, "/fonts/", 7) || !isPackFilename(path + 7)) return Result::INVALID_NAME;
   if (installing.test_and_set(std::memory_order_acquire)) return Result::BUSY;
   BusyGuard guard;
-  std::unique_ptr<Workspace> work(new (std::nothrow) Workspace);
+  auto work = heapfloor::make<Workspace>("font-pack");
   if (!work) return Result::IO_ERROR;
   copyText(work->family, sizeof(work->family), path + 7, std::strlen(path + 7) - 11);
   if (!recoverFamily(work->family)) return Result::IO_ERROR;
   HalFile archive;
   if (!Storage.openFileForRead("FONTPACK", path, archive)) return Result::IO_ERROR;
+  if (verifiedSize && archive.fileSize64() != verifiedSize) return Result::INVALID_PACK;
   auto result = walk(archive, *work, false);
   if (result != Result::OK || !manifest(archive, *work)) return Result::INVALID_PACK;
   uint64_t freeBytes = 0; uint32_t clusterBytes = 0;
@@ -415,10 +416,15 @@ FontPackInstaller::Result FontPackInstaller::install(const char* path) {
   result = walk(archive, *work, true);
   archive.close();
   if (result != Result::OK) { Storage.removeDir(work->staging); return result; }
-  std::snprintf(work->path, sizeof(work->path), "%s/.pack-ready", work->staging);
+  std::snprintf(work->path, sizeof(work->path), "%s/.pack-ready.tmp", work->staging);
   HalFile marker;
-  const uint8_t ready = 1;
-  if (!Storage.openFileForWrite("FONTPACK", work->path, marker) || marker.write(&ready, 1) != 1 || !marker.sync() || !marker.close()) return Result::IO_ERROR;
+  const uint32_t receipt[] = {RECEIPT_MAGIC, verifiedSize, verifiedCrc};
+  if (!Storage.openFileForWrite("FONTPACK", work->path, marker) ||
+      marker.write(reinterpret_cast<const uint8_t*>(receipt), sizeof(receipt)) != sizeof(receipt) ||
+      !marker.sync() || !marker.close()) return Result::IO_ERROR;
+  char readyPath[96];
+  std::snprintf(readyPath, sizeof(readyPath), "%s/.pack-ready", work->staging);
+  if (!Storage.rename(work->path, readyPath)) return Result::IO_ERROR;
   if (!Storage.rename(work->destination, work->backup)) return Result::IO_ERROR;
   std::snprintf(work->path, sizeof(work->path), "%s/.staging", work->backup);
   if (!Storage.rename(work->path, work->destination)) {
@@ -429,6 +435,21 @@ FontPackInstaller::Result FontPackInstaller::install(const char* path) {
   if (!Storage.remove(path)) LOG_ERR("FONTPACK", "Committed %s; package retained", work->family);
   LOG_INF("FONTPACK", "Installed %s entries=%u workspace=%u", work->family, work->info.count, static_cast<unsigned>(sizeof(Workspace)));
   return Result::OK;
+}
+bool FontPackInstaller::matchesInstalled(const char* root, const char* family, uint32_t size, uint32_t crc) {
+  if (!root || (std::strcmp(root, "/fonts") && std::strcmp(root, "/.fonts")) ||
+      !FontInstaller::isValidFamilyName(family) || !size) return false;
+  char path[96];
+  for (const char* suffix : {"", ".tmp", ".bak"}) {
+    std::snprintf(path, sizeof(path), "%s/%s/.pack-ready%s", root, family, suffix);
+    if (!Storage.exists(path)) continue;
+    HalFile file;
+    uint32_t receipt[3];
+    return Storage.openFileForRead("FONTPACK", path, file) && file.fileSize64() == sizeof(receipt) &&
+           readExact(file, receipt, sizeof(receipt)) && receipt[0] == RECEIPT_MAGIC &&
+           receipt[1] == size && receipt[2] == crc;
+  }
+  return false;
 }
 unsigned FontPackInstaller::scan() {
   HalFile directory;

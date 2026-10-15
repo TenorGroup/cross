@@ -53,7 +53,7 @@ class FontDownloadActivity final : public UiListActivity {
   bool skipLoopDelay() override { return true; }
 
  private:
-  bool installDownloadedPack(const char* path);
+  bool installDownloadedPack(const char* path, uint32_t size, uint32_t crc);
   int infoPage_ = 0;
   std::atomic<int> infoPages_{1};
   std::string x3InfoText() const;

@@ -225,7 +225,8 @@ class FontDownloadActivity {
   void downloadSelected(bool updates);
   void updateDownloadProgress(size_t downloaded, size_t total);
   void waitForDownloadPaint();
-  bool installDownloadedPack(const char* path);
+  bool installDownloadedPack(const char* path, uint32_t size, uint32_t crc);
+  void refreshPack(ManifestFamily& family, const ManifestFile& file);
   FontPackInstaller::Result installFixturePack(const char* path) {
     ++installs;
     installPowerCorrect &= HalPowerManager::locks > 0 && installingPack_ && state_ == DOWNLOADING;
@@ -263,6 +264,33 @@ int main(int argc, char** argv) {
   FontPackInstaller::installCallback = [&](const char* path) { return activity.installFixturePack(path); };
   HttpDownloader::input = &activity.mappedInput;
   HttpDownloader::payload.assign(100, 7);
+  if (scenario.starts_with("receipt-")) {
+    const auto crc = esp_rom_crc32_le(0, HttpDownloader::payload.data(), HttpDownloader::payload.size());
+    uint32_t receipt[] = {0x31525046, 100, crc};
+    if (scenario == "receipt-crc") receipt[2] ^= 1;
+    if (scenario == "receipt-size") ++receipt[1];
+    if (scenario != "receipt-missing") {
+      std::ofstream marker(cardRoot / "fonts/Example/.pack-ready", std::ios::binary);
+      marker.write(reinterpret_cast<const char*>(receipt), sizeof(receipt));
+    }
+    activity.files_.push_back({"Example.cpfontpack", "", 100, crc});
+    auto& family = activity.families_[0];
+    family.totalSize = 100;
+    activity.refreshPack(family, activity.files_[0]);
+    const bool expectedUpdate = scenario != "receipt-match" && scenario != "receipt-install";
+    if (scenario == "receipt-install") family.hasUpdate = true;
+    else if (family.hasUpdate != expectedUpdate) {
+      std::cerr << scenario << " wrong update flag=" << family.hasUpdate << '\n'; return 1;
+    }
+    activity.updateAll();
+    const bool shouldFetch = expectedUpdate || scenario == "receipt-install";
+    const bool passed = activity.batchDownloadedBytes_ == (shouldFetch ? 100u : 0u) &&
+                        HttpDownloader::calls == (shouldFetch ? 1 : 0) &&
+                        (!shouldFetch || (FontPackInstaller::installedSize == 100 && FontPackInstaller::installedCrc == crc));
+    std::cout << scenario << " bytes=" << activity.batchDownloadedBytes_ << " calls=" << HttpDownloader::calls << '\n';
+    std::filesystem::remove_all(cardRoot);
+    return passed ? 0 : 1;
+  }
   const bool legacy = scenario.starts_with("legacy") || scenario == "rangelegacy" || scenario == "rangelegacywrite";
   if (scenario.starts_with("range")) {
     HttpDownloader::payload.resize(scenario == "range70" ? 13740612 : 3 * 192 * 1024 + 123);

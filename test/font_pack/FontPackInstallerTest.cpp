@@ -430,3 +430,89 @@ TEST_F(FontPack, PackageCleanupFailureReportsCommittedFamily) {
   EXPECT_TRUE(Storage.exists("/fonts/Example.cpfontpack"));
   EXPECT_FALSE(Storage.exists("/fonts/Example/old.txt"));
 }
+
+TEST_F(FontPack, ReceiptTracksVerifiedCatalogAndExactRoot) {
+  const auto bytes = archive(entries());
+  package();
+  ASSERT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack", bytes.size(), crc(bytes)), FontPackInstaller::Result::OK);
+  EXPECT_TRUE(FontPackInstaller::matchesInstalled("/fonts", "Example", bytes.size(), crc(bytes)));
+  EXPECT_FALSE(FontPackInstaller::matchesInstalled("/fonts", "Example", bytes.size(), crc(bytes) ^ 1));
+  EXPECT_FALSE(FontPackInstaller::matchesInstalled("/fonts", "Example", bytes.size() + 1, crc(bytes)));
+  EXPECT_FALSE(FontPackInstaller::matchesInstalled("/.fonts", "Example", bytes.size(), crc(bytes)));
+  EXPECT_EQ(read("/fonts/Example/.pack-ready").size(), 12u);
+  EXPECT_FALSE(Storage.exists("/fonts/Example/.pack-ready.tmp"));
+}
+
+TEST_F(FontPack, ReceiptMissingNeedsOnlyOneVerifiedInstall) {
+  const auto bytes = archive(entries());
+  std::ofstream(cardRoot / "fonts/Example/.pack-ready", std::ios::binary).put(1);
+  EXPECT_FALSE(FontPackInstaller::matchesInstalled("/fonts", "Example", bytes.size(), crc(bytes)));
+  package();
+  ASSERT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack", bytes.size(), crc(bytes)), FontPackInstaller::Result::OK);
+  EXPECT_TRUE(FontPackInstaller::matchesInstalled("/fonts", "Example", bytes.size(), crc(bytes)));
+}
+
+TEST_F(FontPack, ReceiptStaysWithOldFamilyAcrossInterruptedInstall) {
+  const auto bytes = archive(entries());
+  for (unsigned fault = 0; fault < 5; ++fault) {
+    SCOPED_TRACE(fault);
+    const uint32_t oldReceipt[] = {0x31525046, 100, 3};
+    {
+      std::ofstream marker(cardRoot / "fonts/Example/.pack-ready", std::ios::binary);
+      marker.write(reinterpret_cast<const char*>(oldReceipt), sizeof(oldReceipt));
+    }
+    package();
+    cutDuringStage = fault == 0;
+    cutAfterBackup = fault == 1;
+    failPromotion = fault == 2;
+    failWriteOffset = fault == 3 ? 0 : static_cast<size_t>(-1);
+    failReceiptRename = fault == 4;
+    if (fault < 2) EXPECT_THROW(FontPackInstaller::install("/fonts/Example.cpfontpack", bytes.size(), crc(bytes)), PowerCut);
+    else EXPECT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack", bytes.size(), crc(bytes)), FontPackInstaller::Result::IO_ERROR);
+    cutDuringStage = cutAfterBackup = failPromotion = failReceiptRename = false;
+    failWriteOffset = static_cast<size_t>(-1);
+    ASSERT_TRUE(FontPackInstaller::recover("Example"));
+    EXPECT_TRUE(FontPackInstaller::matchesInstalled("/fonts", "Example", 100, 3));
+    EXPECT_FALSE(FontPackInstaller::matchesInstalled("/fonts", "Example", bytes.size(), crc(bytes)));
+    unchanged();
+  }
+}
+
+TEST_F(FontPack, ReceiptRejectsShortWrongAndUnverifiedRecords) {
+  const auto bytes = archive(entries());
+  package();
+  EXPECT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack", bytes.size() + 1, crc(bytes)), FontPackInstaller::Result::INVALID_PACK);
+  unchanged();
+  ASSERT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack"), FontPackInstaller::Result::OK);
+  EXPECT_FALSE(FontPackInstaller::matchesInstalled("/fonts", "Example", bytes.size(), crc(bytes)));
+  for (const std::string& value : {std::string(11, 'x'), std::string(12, 'x'), std::string(13, 'x')}) {
+    { std::ofstream marker(cardRoot / "fonts/Example/.pack-ready", std::ios::binary); marker << value; }
+    EXPECT_FALSE(FontPackInstaller::matchesInstalled("/fonts", "Example", bytes.size(), crc(bytes)));
+  }
+}
+
+TEST_F(FontPack, ReceiptFollowsHiddenFamilyAndCommittedBackupCleanup) {
+  std::filesystem::create_directories(cardRoot / ".fonts");
+  std::filesystem::rename(cardRoot / "fonts/Example", cardRoot / ".fonts/Example");
+  const auto bytes = archive(entries());
+  package(); failBackupCleanup = true;
+  ASSERT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack", bytes.size(), crc(bytes)), FontPackInstaller::Result::OK);
+  EXPECT_TRUE(FontPackInstaller::matchesInstalled("/.fonts", "Example", bytes.size(), crc(bytes)));
+  EXPECT_TRUE(Storage.exists("/.fonts/Example.old/old.txt"));
+  failBackupCleanup = false;
+  ASSERT_TRUE(FontPackInstaller::recover("Example"));
+  EXPECT_TRUE(FontPackInstaller::matchesInstalled("/.fonts", "Example", bytes.size(), crc(bytes)));
+}
+
+TEST_F(FontPack, ReceiptReadsTemporaryThenBackupOnlyWhenPrimaryIsAbsent) {
+  const auto bytes = archive(entries());
+  package();
+  ASSERT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack", bytes.size(), crc(bytes)), FontPackInstaller::Result::OK);
+  const auto marker = cardRoot / "fonts/Example/.pack-ready";
+  std::filesystem::rename(marker, marker.string() + ".tmp");
+  EXPECT_TRUE(FontPackInstaller::matchesInstalled("/fonts", "Example", bytes.size(), crc(bytes)));
+  std::filesystem::rename(marker.string() + ".tmp", marker.string() + ".bak");
+  EXPECT_TRUE(FontPackInstaller::matchesInstalled("/fonts", "Example", bytes.size(), crc(bytes)));
+  std::ofstream(marker).put(1);
+  EXPECT_FALSE(FontPackInstaller::matchesInstalled("/fonts", "Example", bytes.size(), crc(bytes)));
+}

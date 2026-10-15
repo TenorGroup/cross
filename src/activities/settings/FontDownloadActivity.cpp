@@ -51,7 +51,7 @@ void logFontDownloadHeap(const char* stage) {
 FontDownloadActivity::FontDownloadActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
     : UiListActivity("FontDownload", renderer, mappedInput), fontInstaller_(sdFontSystem.registry()) {}
 
-bool FontDownloadActivity::installDownloadedPack(const char* path) {
+bool FontDownloadActivity::installDownloadedPack(const char* path, uint32_t size, uint32_t crc) {
   const auto workspace = FontPackInstaller::workingSetBytes();
   LOG_INF("FONT", "Pack install start free=%u largest=%u min=%u workspace=%u", ESP.getFreeHeap(),
           ESP.getMaxAllocHeap(), ESP.getMinFreeHeap(), static_cast<unsigned>(workspace));
@@ -60,7 +60,7 @@ bool FontDownloadActivity::installDownloadedPack(const char* path) {
     errorMessage_ = failureReason_;
     return false;
   }
-  const auto result = FontPackInstaller::install(path);
+  const auto result = FontPackInstaller::install(path, size, crc);
   if (result != FontPackInstaller::Result::OK) {
     LOG_ERR("FONT", "Pack install failed path=%s result=%d", path, static_cast<int>(result));
     failureReason_ = result == FontPackInstaller::Result::INVALID_PACK ? tr(STR_FONT_PACK_INVALID)
@@ -548,7 +548,8 @@ bool FontDownloadActivity::fetchAndParseManifest() {
 
     // A directory with missing files is an incomplete installation; the size
     // checks below mark it for repair without retaining the whole SD registry.
-    family.installed = SdCardFontRegistry::findFamilyRoot(str(family.name)) != nullptr;
+    const char* familyRoot = SdCardFontRegistry::findFamilyRoot(str(family.name));
+    family.installed = familyRoot != nullptr;
 
     family.fileStart = fileEntryCount_;
     for (JsonObject fileObj : fObj["files"].as<JsonArray>()) {
@@ -589,12 +590,10 @@ bool FontDownloadActivity::fetchAndParseManifest() {
         return false;
       }
 
-      // Detect updates by comparing manifest file sizes with files on disk.
-      // Not a checksum, but a size mismatch reliably indicates a rebuild in
-      // practice. hasUpdate latches rather than stopping the scan, so the path
-      // preflight above still covers the remaining files.
+      // Packs use their verified archive receipt; individual fonts keep their size check.
       if (kind == fontdownload::ManifestFileKind::Pack) {
-        family.hasUpdate = family.installed;
+        family.hasUpdate = family.installed &&
+                           !FontPackInstaller::matchesInstalled(familyRoot, str(family.name), file.size, file.crc32);
       } else if (family.installed && !family.hasUpdate) {
         HalFile f;
         if (Storage.openFileForRead("FONT", path, f)) {
@@ -999,7 +998,7 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
               progressRenderGate_.requestDue(fileProgress_, fileTotal_, millis());
             }
             requestUpdateAndWait();
-            return installDownloadedPack(path);
+            return installDownloadedPack(path, file.size, file.crc32);
           });
     } else {
       if (!fontInstaller_.ensureFontDir(str(family.name), str(file.name))) {
