@@ -119,10 +119,10 @@ class ReworkUiTest(unittest.TestCase):
 
     def test_s1_activating_another_group_resets_previous_cursor(self):
         # After activating Reader/Text settings, Display returns to row 1.
-        # LEFT wraps to the last Display row, Night mode.
+        # The first LEFT reaches Home style on .61. The second LEFT reaches Night mode.
         script = ('1000:UP;2200:CONFIRM;'
                   '3000:RIGHT;3500:RIGHT;4200:DOWN;4700:DOWN;5300:CONFIRM;6700:BACK;'
-                  '8100:UP;8600:UP;9200:LEFT;9800:CONFIRM;11200:QUIT')
+                  '8100:UP;8600:UP;9200:LEFT;9500:LEFT;9800:CONFIRM;11200:QUIT')
         self.settings['screenInverted'] = 0
         (self.store / 'settings.json').write_text(json.dumps(truoc_tenor(self.settings)))
         log = self.run_sim(script)
