@@ -33,6 +33,7 @@ def run_case(body):
         if f'EpubReaderActivity::{name}(' in text:
             names.append(name)
     methods = '\n'.join(function(text, 'EpubReaderActivity', name) for name in names)
+    layout_key = re.search(r'uint32_t readerLayoutKey\(.*?\n}', text, re.S).group(0)
     start = text.index('  auto progressChangeResultHandler = [this]')
     end = text.index('\n  };', start) + len('\n  };')
     progress = ('void EpubReaderActivity::changeProgress(const ActivityResult& result) {\n' +
@@ -59,11 +60,29 @@ def run_case(body):
 #define LOG_ERR(...) ((void)0)
 #define TRACE_JUMP_BEGIN(...) ((void)0)
 int clampPercent(int percent) { return std::clamp(percent, 0, 100); }
-uint32_t readerLayoutKeyFor(const uint8_t fontSize, const uint16_t width = 100, const uint16_t height = 100) {
-  uint32_t hash = 2166136261u;
-  const uint32_t values[] = {1u, fontSize, width, height, 1u, 1u, 0u, 0u};
-  for (const uint32_t value : values) hash = (hash ^ value) * 16777619u;
-  return hash;
+struct ReaderRenderSpec {
+  int fontId = 0;
+  float lineCompression = 1.0f;
+  uint8_t extraParagraphSpacing = 0;
+  uint8_t paragraphIndent = 0;
+  int8_t letterSpacing = 0;
+  uint8_t wordSpacing = 0;
+  uint8_t paragraphAlignment = 0;
+  uint8_t layoutKeyPadding = 0;
+  uint16_t viewportWidth = 0;
+  uint16_t viewportHeight = 0;
+  bool hyphenationEnabled = false;
+  bool embeddedStyle = true;
+  uint8_t imageRendering = 0;
+  uint8_t dropCapMode = 1;
+};
+''' + layout_key + r'''
+ReaderRenderSpec readerRenderSpecFor(const uint8_t fontSize) {
+  ReaderRenderSpec spec;
+  spec.fontId = fontSize;
+  spec.viewportWidth = 100;
+  spec.viewportHeight = 100;
+  return spec;
 }
 std::map<std::string, std::vector<uint8_t>> files;
 struct HalFile {
@@ -186,12 +205,19 @@ struct EpubReaderActivity {
   SavedPosition savedPositions[MAX_FOOTNOTE_DEPTH] = {};
   int footnoteDepth = 0;
   uint8_t fontSize = 16;
-  uint32_t currentLayoutKey = readerLayoutKeyFor(fontSize);
+  uint32_t currentLayoutKey = 0;
   bool returnPushedForLoad = false;
   bool linkStackOnCard = false;
+  EpubReaderActivity() { renderBookLayout(); }
   void applyTextSetting(uint8_t size) {
     fontSize = size;
-    currentLayoutKey = readerLayoutKeyFor(fontSize);
+    renderBookLayout();
+  }
+  void renderBookLayout() {
+    currentLayoutKey = readerLayoutKey(readerRenderSpecFor(fontSize));
+    for (int i = 0; i < footnoteDepth; ++i) {
+      if (savedPositions[i].layoutKey == 0) savedPositions[i].layoutKey = currentLayoutKey;
+    }
   }
   void clearDeferredReposition() { cachedVisibleTextOffset.reset(); }
   void requestUpdate() {}
@@ -245,7 +271,7 @@ class ReturnStackRuntimeTest(unittest.TestCase):
   assert(reader.returnPageNumber() == 22);
   assert(reader.savedPositions[0].pageNumber == 14);
 
-  reader.currentLayoutKey = reader.savedPositions[0].layoutKey;
+  reader.renderBookLayout();
   reader.restoreSavedPosition();
   assert(reader.pendingOffsetJump == 1400 && reader.currentSpineIndex == 0);
   reader.section = std::make_unique<Section>();
@@ -274,7 +300,7 @@ class ReturnStackRuntimeTest(unittest.TestCase):
     def test_current_map_changes_the_label_without_changing_the_saved_page(self):
         self.check(r"""
   EpubReaderActivity reader;
-  reader.pushSavedPosition({0, 14, 1400, readerLayoutKeyFor(16)});
+  reader.pushSavedPosition({0, 14, 1400, readerLayoutKey(readerRenderSpecFor(16))});
   reader.applyTextSetting(18);
   reader.section->charsPerPage = 65;
   assert(reader.returnPageNumber() == 22);
@@ -284,7 +310,7 @@ class ReturnStackRuntimeTest(unittest.TestCase):
     def test_missing_or_unreached_map_never_uses_the_old_page(self):
         self.check(r"""
   EpubReaderActivity reader;
-  reader.pushSavedPosition({0, 14, 1400, readerLayoutKeyFor(16)});
+  reader.pushSavedPosition({0, 14, 1400, readerLayoutKey(readerRenderSpecFor(16))});
   reader.applyTextSetting(18);
   reader.section->building = true;
   reader.section->reached = 1000;
@@ -304,7 +330,7 @@ class ReturnStackRuntimeTest(unittest.TestCase):
     def test_legacy_stack_has_a_back_target_without_a_page_label(self):
         self.check(r"""
   EpubReaderActivity reader;
-  reader.pushSavedPosition({0, 14, UINT32_MAX, readerLayoutKeyFor(15)});
+  reader.pushSavedPosition({0, 14, UINT32_MAX, readerLayoutKey(readerRenderSpecFor(15))});
   assert(reader.hasReturnPosition() && reader.returnPageNumber() == -1);
   assert(reader.section->lookups == 0);
   reader.restoreSavedPosition();
@@ -397,6 +423,24 @@ class ReturnStackRuntimeTest(unittest.TestCase):
     reader.loadLinkStack();
     assert(reader.footnoteDepth == 0);
   }
+''')
+
+    def test_version_one_stack_keeps_its_saved_offset(self):
+        self.check(r'''
+  files["cache/links.bin"] = {1, 1, 0, 0, 12, 0, 176, 4, 0, 0};
+  EpubReaderActivity reader;
+  reader.loadLinkStack();
+  assert(reader.footnoteDepth == 1);
+  reader.restoreSavedPosition();
+  assert(reader.nextPageNumber == 12 && reader.pendingOffsetJump == 1200);
+''')
+
+    def test_reflow_without_a_current_key_does_not_show_the_old_page(self):
+        self.check(r'''
+  EpubReaderActivity reader;
+  reader.pushSavedPosition({0, 14, 1400, readerLayoutKey(readerRenderSpecFor(16))});
+  reader.currentLayoutKey = 0;
+  assert(reader.returnPageNumber() == -1);
 ''')
 
     def test_quote_and_percent_jumps_save_once_and_same_page_saves_nothing(self):

@@ -168,30 +168,10 @@ struct AnhChupChu {
   }
 };
 
-uint32_t mixReaderLayoutKey(const uint32_t hash, const uint32_t value) {
-  return (hash ^ value) * 16777619u;
-}
-
 uint32_t readerLayoutKey(const ReaderRenderSpec& spec) {
   // Keep this key in step with the fields Section writes into its cache header.
-  uint32_t hash = 2166136261u;
-  hash = mixReaderLayoutKey(hash, 1u);
-  hash = mixReaderLayoutKey(hash, static_cast<uint32_t>(spec.fontId));
-  uint32_t lineCompression = 0;
-  std::memcpy(&lineCompression, &spec.lineCompression, sizeof(lineCompression));
-  hash = mixReaderLayoutKey(hash, lineCompression);
-  hash = mixReaderLayoutKey(hash, spec.extraParagraphSpacing);
-  hash = mixReaderLayoutKey(hash, spec.paragraphIndent);
-  hash = mixReaderLayoutKey(hash, static_cast<uint8_t>(spec.letterSpacing));
-  hash = mixReaderLayoutKey(hash, spec.wordSpacing);
-  hash = mixReaderLayoutKey(hash, spec.paragraphAlignment);
-  hash = mixReaderLayoutKey(hash, spec.viewportWidth);
-  hash = mixReaderLayoutKey(hash, spec.viewportHeight);
-  hash = mixReaderLayoutKey(hash, spec.hyphenationEnabled ? 1u : 0u);
-  hash = mixReaderLayoutKey(hash, spec.embeddedStyle ? 1u : 0u);
-  hash = mixReaderLayoutKey(hash, spec.imageRendering);
-  hash = mixReaderLayoutKey(hash, spec.dropCapMode);
-  return hash;
+  const auto* words = reinterpret_cast<const uint32_t*>(&spec);
+  return words[0] ^ words[1] ^ words[2] ^ words[3] ^ words[4] ^ (words[5] & 0xFFFFu) ^ 1u;
 }
 // The X4 Pro and X4 Classic carry the X4's panel but sit outside isXteinkDevice()
 // (that helper also gates power management). Overlay refresh choices are per-panel:
@@ -2963,10 +2943,9 @@ void EpubReaderActivity::renderBook() {
   buildViewportHeight = viewportHeight;
 
   const ReaderRenderSpec renderSpec = SETTINGS.readerRenderSpec(viewportWidth, viewportHeight);
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
   currentLayoutKey = readerLayoutKey(renderSpec);
-  for (int i = 0; i < footnoteDepth; ++i) {
-    if (savedPositions[i].layoutKey == 0) savedPositions[i].layoutKey = currentLayoutKey;
-  }
+#endif
 
   if (xemTruoc && !section) {
     const bool samePlace = currentSpineIndex == cachedSpineIndex && pendingAnchor.empty() && !pendingPageJump &&
@@ -6470,13 +6449,21 @@ bool EpubReaderActivity::hasReturnPosition() const {
 int EpubReaderActivity::returnPageNumber() const {
   if (!hasReturnPosition()) return -1;
   const auto& position = savedPositions[footnoteDepth - 1];
-  if (position.layoutKey == 0 || currentLayoutKey == 0 || position.layoutKey == currentLayoutKey)
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  return position.pageNumber >= 0 ? position.pageNumber + 1 : -1;
+#else
+  // A zero saved key is a v1 links.bin entry: keep .61's page label until the first
+  // render computes the current key. A nonzero saved key with no current key means
+  // the reader is between layouts, so the old page number is unsafe to display.
+  if (position.layoutKey == 0 || position.layoutKey == currentLayoutKey)
     return position.pageNumber >= 0 ? position.pageNumber + 1 : -1;
-  if (!section || position.spineIndex != currentSpineIndex || position.textOffset == UINT32_MAX) return -1;
+  if (currentLayoutKey == 0 || !section || position.spineIndex != currentSpineIndex || position.textOffset == UINT32_MAX)
+    return -1;
   // Reflow replaces section. A running build must reach the offset before its map can name the page.
   if (section->isBuilding() && !section->buildReachedVisibleTextOffset(position.textOffset)) return -1;
   const auto page = section->getPageForVisibleTextOffset(position.textOffset);
   return page ? static_cast<int>(*page) + 1 : -1;
+#endif
 }
 
 // A jump the heap could not lay out leaves the reader on its saved page: the place the jump pushed is that page, and a
@@ -6507,8 +6494,13 @@ void EpubReaderActivity::pushPulledReturn() {
   const bool moved = pulled->fromSpineIndex != pulled->toSpineIndex || pulled->fromPage != pulled->toPage;
   const bool here = pulled->path == bookPath && pulled->toSpineIndex == currentSpineIndex &&
                     pulled->toPage == nextPageNumber;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  const SavedPosition back = {pulled->fromSpineIndex, pulled->fromPage,
+                              pulled->hasFromOffset ? pulled->fromOffset : UINT32_MAX};
+#else
   const SavedPosition back = {pulled->fromSpineIndex, pulled->fromPage,
                               pulled->hasFromOffset ? pulled->fromOffset : UINT32_MAX, currentLayoutKey};
+#endif
   koautosync::acknowledgeProgressPulled();
   if (moved && here) {
     pushSavedPosition(back);
@@ -6527,7 +6519,11 @@ void EpubReaderActivity::pushReturnPosition() {
     // The chapter list kept this offset before releasing its section.
     offset = cachedVisibleTextOffset;
   }
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  pushSavedPosition({currentSpineIndex, page, offset.value_or(UINT32_MAX)});
+#else
   pushSavedPosition({currentSpineIndex, page, offset.value_or(UINT32_MAX), currentLayoutKey});
+#endif
   returnPushedForLoad = true;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   jumpBarPending = true;
@@ -6586,16 +6582,15 @@ void EpubReaderActivity::saveLinkStack() const {
     stagedLinksBytes.push_back(static_cast<char>(footnoteDepth));
     for (int i = 0; i < footnoteDepth; i++) {
       const SavedPosition& pos = savedPositions[i];
-      stagedLinksBytes.push_back(static_cast<char>(pos.spineIndex & 0xFF));
-      stagedLinksBytes.push_back(static_cast<char>((pos.spineIndex >> 8) & 0xFF));
-      stagedLinksBytes.push_back(static_cast<char>(pos.pageNumber & 0xFF));
-      stagedLinksBytes.push_back(static_cast<char>((pos.pageNumber >> 8) & 0xFF));
-      for (int shift = 0; shift < 32; shift += 8) {
-        stagedLinksBytes.push_back(static_cast<char>((pos.textOffset >> shift) & 0xFF));
-      }
-      for (int shift = 0; shift < 32; shift += 8) {
-        stagedLinksBytes.push_back(static_cast<char>((pos.layoutKey >> shift) & 0xFF));
-      }
+      struct LinkStackEntry {
+        uint16_t spineIndex;
+        uint16_t pageNumber;
+        uint32_t textOffset;
+        uint32_t layoutKey;
+      } entry{static_cast<uint16_t>(pos.spineIndex), static_cast<uint16_t>(pos.pageNumber), pos.textOffset,
+              pos.layoutKey};
+      static_assert(sizeof(LinkStackEntry) == 12, "links.bin v2 entry");
+      stagedLinksBytes.append(reinterpret_cast<const char*>(&entry), sizeof(entry));
     }
   }
   // Sleep powers the card down next; any other exit leaves it for after the next screen's frame.
@@ -6625,31 +6620,53 @@ void EpubReaderActivity::loadLinkStack() {
     uint8_t data[2 + MAX_FOOTNOTE_DEPTH * 12];
     if (Storage.openFileForRead("ERS", path, f)) {
       const int size = f.read(data, sizeof(data));
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+      const bool oldFormat = false;
+#else
       const bool oldFormat = size > 0 && size == 1 + data[0] * 4;
-      const bool v1Format = size > 1 && data[0] == 1 && size == 2 + data[1] * 8;
-      const bool v2Format = size > 1 && data[0] == LINK_STACK_FILE_VERSION && size == 2 + data[1] * 12;
-      const int depth = oldFormat ? data[0] : (v1Format || v2Format) ? data[1] : 0;
+#endif
+      const uint8_t version = oldFormat ? 0 : (size > 1 ? data[0] : 0);
+      const bool versioned = version == 1 || version == LINK_STACK_FILE_VERSION;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+      const int depth = versioned ? data[1] : 0;
+      constexpr int headerSize = 2;
+      const int entrySize = versioned ? 4 * (version + 1) : 0;
+#else
+      const int depth = oldFormat ? data[0] : versioned ? data[1] : 0;
       const int headerSize = oldFormat ? 1 : 2;
-      const int entrySize = oldFormat ? 4 : v1Format ? 8 : v2Format ? 12 : 0;
-      if (depth >= 1 && depth <= MAX_FOOTNOTE_DEPTH && size == headerSize + depth * entrySize &&
+      const int entrySize = oldFormat ? 4 : versioned ? 4 * (version + 1) : 0;
+#endif
+      if (depth >= 1 && depth <= MAX_FOOTNOTE_DEPTH && (oldFormat || versioned) &&
+          size == headerSize + depth * entrySize &&
           static_cast<size_t>(size) == f.size()) {
         const int spineCount = epub->getSpineItemsCount();
         bool valid = true;
+        const auto read16 = [](const uint8_t* p) {
+          uint16_t value;
+          std::memcpy(&value, p, sizeof(value));
+          return value;
+        };
+        const auto read32 = [](const uint8_t* p) {
+          uint32_t value;
+          std::memcpy(&value, p, sizeof(value));
+          return value;
+        };
         for (int i = 0; i < depth; i++) {
           const uint8_t* p = data + headerSize + i * entrySize;
-          const uint32_t offset = oldFormat || v1Format ? UINT32_MAX
-              : static_cast<uint32_t>(p[4]) | (static_cast<uint32_t>(p[5]) << 8) |
-                    (static_cast<uint32_t>(p[6]) << 16) | (static_cast<uint32_t>(p[7]) << 24);
-          const uint32_t savedKey = v2Format
-              ? static_cast<uint32_t>(p[8]) | (static_cast<uint32_t>(p[9]) << 8) |
-                    (static_cast<uint32_t>(p[10]) << 16) | (static_cast<uint32_t>(p[11]) << 24)
-              : 0;
-          savedPositions[i] = {p[0] | (p[1] << 8), p[2] | (p[3] << 8), offset, savedKey};
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+          savedPositions[i] = {read16(p), read16(p + 2), read32(p + 4),
+                               version == LINK_STACK_FILE_VERSION ? read32(p + 8) : 0};
+#else
+          savedPositions[i] = {read16(p), read16(p + 2), oldFormat ? UINT32_MAX : read32(p + 4),
+                               version == LINK_STACK_FILE_VERSION ? read32(p + 8) : 0};
+#endif
           valid = valid && savedPositions[i].spineIndex < spineCount;
         }
         if (valid) {
           footnoteDepth = depth;
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
           LOG_DBG("ERS", "Loaded link stack, depth %d", depth);
+#endif
         }
       }
     }

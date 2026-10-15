@@ -23,6 +23,7 @@ struct ReaderRenderSpec {
   // the renderer resolves it per style at the point of use.
   uint8_t wordSpacing = 0;
   uint8_t paragraphAlignment = 0;
+  uint8_t layoutKeyPadding = 0;
   uint16_t viewportWidth = 0;
   uint16_t viewportHeight = 0;
   bool hyphenationEnabled = false;
