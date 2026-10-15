@@ -1327,7 +1327,9 @@ void HomeActivity::docGocTheNho() {
                  filebrowser::settingsSort());
   // First row: the last folder of File, a folder entry like the others (relative, trailing '/'). Not a pin.
   const std::string last = mucQuaNhieu ? "/" : lastFolder();
-  lastFolderRow = last != "/";
+  // A direct child already appears in the root list. The reopen row is useful
+  // only when the saved folder is deeper than the root list can show.
+  lastFolderRow = last != "/" && last.find('/', 1) != std::string::npos;
   if (lastFolderRow) mucTheNho.insert(mucTheNho.begin(), last.substr(1) + "/");
 }
 

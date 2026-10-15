@@ -425,7 +425,7 @@ void FileBrowserActivity::activateSelected() {
     nav.top = 0;
     if (mode == Mode::Books) {
       activityManager.menuNavigationMemory().enter(parent, "BrowserDir:" + basepath);
-      if (!tenorchrome::kTouchShell) restoreDirectory();
+      restoreDirectory();
     }
     lock.unlock();
     requestUpdate();
@@ -609,7 +609,10 @@ bool FileBrowserActivity::handleButtons() {
     if (mappedInput.getHeldTime() < GO_HOME_MS) {
       // The root of File is the File card of Home, so a folder right under it goes back there.
       if (mode == Mode::Books && basepath != "/" && basepath.find('/', 1) == std::string::npos) {
-        activityManager.goHome(HomeMenuItem::FILE_BROWSER);
+        const HomeMenuItem origin = activityManager.homeMenuOrigin();
+        const bool returnToFile = tenorchrome::kTouchShell || openedFromUglyFile ||
+                                  origin == HomeMenuItem::FILE_BROWSER || origin == HomeMenuItem::NONE;
+        activityManager.goHome(returnToFile ? HomeMenuItem::FILE_BROWSER : origin);
       } else if (basepath != "/") {
         const std::string oldPath = basepath;
 
@@ -632,7 +635,15 @@ bool FileBrowserActivity::handleButtons() {
           nav.follow(listCount());
           // Entering a child saved the parent's exact cursor and viewport. A
           // direct favorite may have no parent state, so keep the fallback above.
-          if (mode == Mode::Books && !tenorchrome::kTouchShell) restoreDirectory();
+          if (mode == Mode::Books) {
+            restoreDirectory();
+            const bool selectedEntryMatches = listCount() > kSearchRows && nav.selected >= kSearchRows &&
+                                              nav.selected < listCount() && entryForVisibleRow(nav.selected) == dirName;
+            if (!selectedEntryMatches) {
+              nav.selected = listCount() <= kSearchRows ? 0 : static_cast<int>(findEntry(dirName)) + kSearchRows;
+              nav.follow(listCount());
+            }
+          }
         }
 
         requestUpdate();
