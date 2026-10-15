@@ -2526,6 +2526,7 @@ void EpubReaderActivity::applyOrientation(const uint8_t orientation) {
   }
   ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
   appliedOrientation = orientation;
+  if (++layoutRevision == 0) layoutRevision = 1;
   section.reset();
   dropCatchUp();  // laid out for the old viewport; the next one starts under the new
 }
@@ -5663,6 +5664,7 @@ void EpubReaderActivity::paintOverlayPopup() {
 }
 
 void EpubReaderActivity::danLaiTrang() {
+  if (++layoutRevision == 0) layoutRevision = 1;
   readingPace = {};
   if (section) {
     rememberCurrentContentOffset();
@@ -6438,9 +6440,11 @@ bool EpubReaderActivity::hasReturnPosition() const {
 }
 
 int EpubReaderActivity::returnPageNumber() const {
-  if (!hasReturnPosition() || !section) return -1;
+  if (!hasReturnPosition()) return -1;
   const auto& position = savedPositions[footnoteDepth - 1];
-  if (position.spineIndex != currentSpineIndex || position.textOffset == UINT32_MAX) return -1;
+  if (position.layoutRevision == layoutRevision)
+    return position.pageNumber >= 0 ? position.pageNumber + 1 : -1;
+  if (!section || position.spineIndex != currentSpineIndex || position.textOffset == UINT32_MAX) return -1;
   // Reflow replaces section. A running build must reach the offset before its map can name the page.
   if (section->isBuilding() && !section->buildReachedVisibleTextOffset(position.textOffset)) return -1;
   const auto page = section->getPageForVisibleTextOffset(position.textOffset);
@@ -6476,7 +6480,7 @@ void EpubReaderActivity::pushPulledReturn() {
   const bool here = pulled->path == bookPath && pulled->toSpineIndex == currentSpineIndex &&
                     pulled->toPage == nextPageNumber;
   const SavedPosition back = {pulled->fromSpineIndex, pulled->fromPage,
-                              pulled->hasFromOffset ? pulled->fromOffset : UINT32_MAX};
+                              pulled->hasFromOffset ? pulled->fromOffset : UINT32_MAX, layoutRevision};
   koautosync::acknowledgeProgressPulled();
   if (moved && here) {
     pushSavedPosition(back);
@@ -6495,7 +6499,7 @@ void EpubReaderActivity::pushReturnPosition() {
     // The chapter list kept this offset before releasing its section.
     offset = cachedVisibleTextOffset;
   }
-  pushSavedPosition({currentSpineIndex, page, offset.value_or(UINT32_MAX)});
+  pushSavedPosition({currentSpineIndex, page, offset.value_or(UINT32_MAX), layoutRevision});
   returnPushedForLoad = true;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   jumpBarPending = true;
@@ -6509,7 +6513,7 @@ namespace {
 // function). Empty bytes: the file is only to be removed.
 std::string stagedLinksPath;
 std::string stagedLinksBytes;
-constexpr uint8_t LINK_STACK_FILE_VERSION = 1;
+constexpr uint8_t LINK_STACK_FILE_VERSION = 2;
 
 void writeStagedLinks() {
 #ifdef TENOR_PRESS_PROBE
@@ -6549,7 +6553,7 @@ void EpubReaderActivity::saveLinkStack() const {
   stagedLinksPath = epub->getCachePath() + "/links.bin";
   stagedLinksBytes.clear();
   if (footnoteDepth > 0) {
-    // [version, depth] then depth x (spine u16 LE, page u16 LE, text offset u32 LE).
+    // [version, depth] then depth x (spine u16 LE, page u16 LE, text offset u32 LE, layout revision u32 LE).
     stagedLinksBytes.push_back(static_cast<char>(LINK_STACK_FILE_VERSION));
     stagedLinksBytes.push_back(static_cast<char>(footnoteDepth));
     for (int i = 0; i < footnoteDepth; i++) {
@@ -6560,6 +6564,9 @@ void EpubReaderActivity::saveLinkStack() const {
       stagedLinksBytes.push_back(static_cast<char>((pos.pageNumber >> 8) & 0xFF));
       for (int shift = 0; shift < 32; shift += 8) {
         stagedLinksBytes.push_back(static_cast<char>((pos.textOffset >> shift) & 0xFF));
+      }
+      for (int shift = 0; shift < 32; shift += 8) {
+        stagedLinksBytes.push_back(static_cast<char>((pos.layoutRevision >> shift) & 0xFF));
       }
     }
   }
@@ -6587,23 +6594,29 @@ void EpubReaderActivity::loadLinkStack() {
   linkStackOnCard = true;
   {
     HalFile f;
-    uint8_t data[2 + MAX_FOOTNOTE_DEPTH * 8];
+    uint8_t data[2 + MAX_FOOTNOTE_DEPTH * 12];
     if (Storage.openFileForRead("ERS", path, f)) {
       const int size = f.read(data, sizeof(data));
       const bool oldFormat = size > 0 && size == 1 + data[0] * 4;
-      const int depth = oldFormat ? data[0] : size > 1 && data[0] == LINK_STACK_FILE_VERSION ? data[1] : 0;
+      const bool v1Format = size > 1 && data[0] == 1 && size == 2 + data[1] * 8;
+      const bool v2Format = size > 1 && data[0] == LINK_STACK_FILE_VERSION && size == 2 + data[1] * 12;
+      const int depth = oldFormat ? data[0] : (v1Format || v2Format) ? data[1] : 0;
       const int headerSize = oldFormat ? 1 : 2;
-      const int entrySize = oldFormat ? 4 : 8;
+      const int entrySize = oldFormat ? 4 : v1Format ? 8 : v2Format ? 12 : 0;
       if (depth >= 1 && depth <= MAX_FOOTNOTE_DEPTH && size == headerSize + depth * entrySize &&
           static_cast<size_t>(size) == f.size()) {
         const int spineCount = epub->getSpineItemsCount();
         bool valid = true;
         for (int i = 0; i < depth; i++) {
           const uint8_t* p = data + headerSize + i * entrySize;
-          const uint32_t offset = oldFormat ? UINT32_MAX
+          const uint32_t offset = oldFormat || v1Format ? UINT32_MAX
               : static_cast<uint32_t>(p[4]) | (static_cast<uint32_t>(p[5]) << 8) |
                     (static_cast<uint32_t>(p[6]) << 16) | (static_cast<uint32_t>(p[7]) << 24);
-          savedPositions[i] = {p[0] | (p[1] << 8), p[2] | (p[3] << 8), offset};
+          const uint32_t savedRevision = v2Format
+              ? static_cast<uint32_t>(p[8]) | (static_cast<uint32_t>(p[9]) << 8) |
+                    (static_cast<uint32_t>(p[10]) << 16) | (static_cast<uint32_t>(p[11]) << 24)
+              : layoutRevision;
+          savedPositions[i] = {p[0] | (p[1] << 8), p[2] | (p[3] << 8), offset, savedRevision};
           valid = valid && savedPositions[i].spineIndex < spineCount;
         }
         if (valid) {

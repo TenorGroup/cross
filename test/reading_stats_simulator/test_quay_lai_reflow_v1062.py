@@ -179,6 +179,7 @@ struct EpubReaderActivity {
   static constexpr int MAX_FOOTNOTE_DEPTH = 3;
   SavedPosition savedPositions[MAX_FOOTNOTE_DEPTH] = {};
   int footnoteDepth = 0;
+  uint32_t layoutRevision = 1;
   bool returnPushedForLoad = false;
   bool linkStackOnCard = false;
   void clearDeferredReposition() { cachedVisibleTextOffset.reset(); }
@@ -224,13 +225,16 @@ class ReturnStackRuntimeTest(unittest.TestCase):
   reader.section->currentPage = 14;
   reader.navigateToHref("c2.xhtml", true);
   assert(reader.savedPositions[0].textOffset == 1400);
-  assert(reader.returnPageNumber() == -1);
+  assert(reader.returnPageNumber() == 15);
   reader.section = std::make_unique<Section>();
   reader.section->charsPerPage = 65;
-  assert(reader.returnPageNumber() == -1);  // another chapter
+  assert(reader.returnPageNumber() == 15);  // another chapter, unchanged layout
   reader.currentSpineIndex = 0;
+  ++reader.layoutRevision;
   assert(reader.returnPageNumber() == 22);
   assert(reader.savedPositions[0].pageNumber == 14);
+
+  reader.layoutRevision = reader.savedPositions[0].layoutRevision;
   reader.restoreSavedPosition();
   assert(reader.pendingOffsetJump == 1400 && reader.currentSpineIndex == 0);
   reader.section = std::make_unique<Section>();
@@ -312,8 +316,8 @@ class ReturnStackRuntimeTest(unittest.TestCase):
   EpubReaderActivity reader;
   reader.navigateToHref("c2.xhtml", true);
   reader.saveLinkStack();
-  assert(files["cache/links.bin"].size() == 10);
-  assert(files["cache/links.bin"][0] == 1 && files["cache/links.bin"][1] == 1);
+  assert(files["cache/links.bin"].size() == 14);
+  assert(files["cache/links.bin"][0] == 2 && files["cache/links.bin"][1] == 1);
   EpubReaderActivity reopened;
   reopened.loadLinkStack();
   reopened.restoreSavedPosition();
@@ -451,7 +455,7 @@ class ReturnStackRuntimeTest(unittest.TestCase):
   EpubReaderActivity reader;
   assert(!reader.hasReturnPosition() && reader.returnPageNumber() == -1);
   reader.navigateToHref("c2.xhtml", true);
-  assert(reader.hasReturnPosition() && reader.returnPageNumber() == -1);
+  assert(reader.hasReturnPosition() && reader.returnPageNumber() == 13);
   reader.restoreSavedPosition();
   assert(!reader.hasReturnPosition() && reader.returnPageNumber() == -1);
 ''')
@@ -491,7 +495,7 @@ class ReturnStackRuntimeTest(unittest.TestCase):
   koautosync::hasPulledChange = true;
   reader.pushPulledReturn();
   assert(reader.footnoteDepth == 1 && reader.hasReturnPosition());
-  assert(reader.returnPageNumber() == -1);
+  assert(reader.returnPageNumber() == 13);
   assert(!koautosync::progressJustPulled());
   reader.restoreSavedPosition();
   assert(reader.currentSpineIndex == 0 && reader.nextPageNumber == 12 && reader.pendingOffsetJump == 1200);
