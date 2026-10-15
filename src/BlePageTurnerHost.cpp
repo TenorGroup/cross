@@ -13,6 +13,9 @@
 #include <HalPowerManager.h>
 #include <Logging.h>
 #include <BlePageTurner.h>
+#include "../lib/BlePageTurner/src/RadioPort.h"
+#include "KOReaderPullResume.h"
+#include "platform/ColdLogProbe.h"
 
 #include "FileTransferState.h"
 #include "activities/Activity.h"
@@ -103,4 +106,25 @@ void beginPageTurner(GfxRenderer& renderer, bleturner::Config& config, void (*sh
   bleturner::begin(bleHost, config);
 }
 
+bool preparePageTurnerAfterPull(const bool enabled, const bool usedNetwork, const bool succeeded) {
+  if (!enabled || !usedNetwork) return false;
+  const auto heap = bleHeap();
+  const auto& need = bleturner::activeProfile();
+  auto& memo = bleturner::port::restartMemo();
+  const bool restart = kosyncauto::restartAfterPull(enabled, usedNetwork, succeeded,
+      memo.magic == bleturner::kRestartSpentMagic, heap.freeBytes, heap.largestBlock,
+      need.startFreeBytes, need.minimumLargest);
+  if (restart) memo.magic = bleturner::kRestartSpentMagic;
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("KAS", "radio restart=%d free=%u largest=%u need_free=%u need_largest=%u", restart,
+          static_cast<unsigned>(heap.freeBytes), static_cast<unsigned>(heap.largestBlock),
+          static_cast<unsigned>(need.startFreeBytes), static_cast<unsigned>(need.minimumLargest));
+  if (restart) restartlog::mark(restartlog::Event::PullHeapRestart, heap.freeBytes, heap.largestBlock);
+#endif
+  return restart;
+}
+void markPageTurnerRestartSpent() { bleturner::port::restartMemo().magic = bleturner::kRestartSpentMagic; }
+#else
+bool preparePageTurnerAfterPull(bool, bool, bool) { return false; }
+void markPageTurnerRestartSpent() {}
 #endif

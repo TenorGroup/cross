@@ -38,6 +38,42 @@ constexpr uint32_t MIN_BLOCK_FOR_TLS = 20000;
 // sleep opens the book at once, as before.
 constexpr uint32_t PULL_MIN_SLEEP_SECONDS = 30 * 60;
 
+// The pull owed to the first book opened after a long sleep that ended on Home (founder, 15/10/2026). Held in
+// RTC memory so it survives the quiet restart: Home has run Wi-Fi-free but fragmented, so the book is opened by
+// restarting into it, and the pull runs on the heap of a fresh start, the one the wake pull has.
+// Owed: a long sleep ended on Home. Armed: the open of an epub from Home chose the restart; the start that follows
+// pulls once. Any other stored word reads as None, so RTC memory left over from a power loss owes nothing.
+enum class PullDebt : uint32_t { None = 0, Owed = 0x4B4F5744, Armed = 0x4B415244 };
+
+constexpr PullDebt pullDebtFromStored(const uint32_t word) {
+  return word == static_cast<uint32_t>(PullDebt::Owed)    ? PullDebt::Owed
+         : word == static_cast<uint32_t>(PullDebt::Armed) ? PullDebt::Armed
+                                                          : PullDebt::None;
+}
+
+// What a start leaves owed. A quiet restart keeps what was there (a Wi-Fi screen restarting to Home must not
+// forget it); every other start decides again, so the debt of an earlier wake never outlives the next sleep.
+// `wanted`: the switch is on and an account is saved.
+constexpr PullDebt debtAfterStart(const PullDebt before, const bool quietRestart, const bool wokeOnHome,
+                                  const bool sleptLong, const bool wanted) {
+  if (quietRestart) return before;
+  return wokeOnHome && sleptLong && wanted ? PullDebt::Owed : PullDebt::None;
+}
+
+// What opening a book does about the pull. RestartForPull: leave through the quiet restart into this book.
+// PullThenOpen: the restart happened, pull now and open. `wanted`: the gate without the radio and the heap
+// (those are read on the fresh heap, by the pull itself).
+enum class OpenStep : uint8_t { Open, RestartForPull, PullThenOpen };
+struct OpenPlan {
+  OpenStep step;
+  PullDebt debtAfter;
+};
+constexpr OpenPlan planOpen(const PullDebt debt, const bool epub, const bool wanted) {
+  if (!epub || debt == PullDebt::None) return {OpenStep::Open, debt};  // a text or XTC book leaves it owed
+  if (debt == PullDebt::Armed) return {wanted ? OpenStep::PullThenOpen : OpenStep::Open, PullDebt::None};
+  return wanted ? OpenPlan{OpenStep::RestartForPull, PullDebt::Armed} : OpenPlan{OpenStep::Open, PullDebt::None};
+}
+
 // A join that starts from the remembered channel and access point gets this long before it is given
 // up for a normal join (which scans). The measurement to set it from is in the lane notes: run the sleep
 // push with and without kosync-wifi.json and compare the "join ... ms" log lines.

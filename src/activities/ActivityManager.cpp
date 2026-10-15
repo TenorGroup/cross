@@ -15,6 +15,9 @@
 #include <cstring>
 
 #include "CrossPointSettings.h"
+#include "BlePageTurnerHost.h"
+#include "KOReaderAutoSync.h"
+#include "SilentRestart.h"
 #include "shells/ugly/UglyIconInk.h"
 #include "shells/ugly/UglyMarkSeed.h"
 #include "CrossPointState.h"
@@ -52,6 +55,25 @@ uint32_t ActivityManager::renderStackHighWaterMark() const {
 #endif
 
 namespace {
+// The restart that opens an epub from Home with the owed KOReader pull (koautosync::beforeOpen). It is an
+// activity so that Home leaves first, writes its deferred state and exits through the usual path.
+class PullRestartActivity final : public Activity {
+ public:
+  PullRestartActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string path)
+      : Activity("PullRestart", renderer, mappedInput), bookPath(std::move(path)) {}
+  void onEnter() override {
+    Activity::onEnter();
+    markPageTurnerRestartSpent();
+    silentRestartToReader();
+    // Only a build that does not really restart gets here (the simulator): open the book as the restart would.
+    koautosync::noteStart(true, false);
+    activityManager.goToReader(bookPath);
+  }
+
+ private:
+  std::string bookPath;
+};
+
 // Writes a closing screen left for later (deferWrite). Set and run on the main task only; the
 // render task says when a frame has been drawn since.
 void (*deferredWrites[4])() = {};
@@ -727,6 +749,10 @@ void ActivityManager::restoreNavigation() {
 }
 
 void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
+  if (!newActivity) {
+    LOG_ERR("ACT", "replace requested with null activity");
+    return;
+  }
   mappedInput.resetHomeButtonInput();
   if (currentActivity && newActivity && currentActivity->remembersNavigation() && !newActivity->isHomeActivity() &&
       newActivity->name != "Sleep") {
@@ -797,6 +823,19 @@ void ActivityManager::goToReader(std::string path, const bool allowFastInitialRe
       return;
     }
     replaceActivity(std::move(activity));
+    return;
+  }
+
+  // The first epub opened after a long sleep that ended on Home pulls the KOReader place first, through a quiet
+  // restart that gives the pull a fresh heap. Opened after that restart, the same call runs the pull.
+  if (koautosync::beforeOpen(renderer, path)) {
+    auto restart = makeUniqueNoThrow<PullRestartActivity>(renderer, mappedInput, std::move(path));
+    if (!restart) {
+      LOG_ERR("ACT", "OOM: KOReader pull restart activity");
+      koautosync::cancelPullRestart();
+      return;
+    }
+    replaceActivity(std::move(restart));
     return;
   }
 

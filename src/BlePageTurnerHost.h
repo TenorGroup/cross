@@ -14,3 +14,7 @@ enum class Action : uint8_t;
 // (ReaderMenu, SaveQuote) names, and restart into the open book.
 void beginPageTurner(GfxRenderer& renderer, bleturner::Config& config, void (*runShortcut)(bleturner::Action shortcut),
                      void (*restartIntoBook)());
+
+// Finish a Wi-Fi pull before making the reader, spending the shared restart allowance.
+bool preparePageTurnerAfterPull(bool enabled, bool usedNetwork, bool succeeded);
+void markPageTurnerRestartSpent();

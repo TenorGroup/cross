@@ -56,5 +56,21 @@ settings = open(f"{root}/src/activities/settings/KOReaderSettingsActivity.cpp", 
 branch = settings[settings.index("index == 6"):settings.index("index == 8")]
 if not re.search(r"setAutoSync\(!KOREADER_STORE\.getAutoSync\(\)\);\s*if \(!KOREADER_STORE\.getAutoSync\(\)\) koautosync::switchedOff\(\);", branch):
     problems.append("the Automatic sync row must call koautosync::switchedOff() when the switch goes off")
+manager = open(f"{root}/src/activities/ActivityManager.cpp", encoding="utf-8").read()
+replace = manager[manager.index("void ActivityManager::replaceActivity("):]
+guard = re.search(r"void ActivityManager::replaceActivity\([^)]*\) \{(.*?)\n\}", replace, re.S)
+if not guard or not re.match(r"\s*if \(!newActivity\)\s*\{.*?\}\s*mappedInput\.resetHomeButtonInput\(\);", guard.group(1), re.S):
+    problems.append("replaceActivity must reject a null activity before touching pending state")
+before_open = text[text.index("bool beforeOpen("):text.index("bool pullIsArmed(")]
+if "markPageTurnerRestartSpent" in before_open:
+    problems.append("the radio restart memo must not be spent before the restart activity is allocated")
+pull_restart = manager[manager.index("class PullRestartActivity"):manager.index("// Writes a closing screen")]
+if not re.search(r"onEnter\(\) override \{.*?markPageTurnerRestartSpent\(\);\s*silentRestartToReader\(\);", pull_restart, re.S):
+    problems.append("the radio restart memo must be spent inside the allocated restart activity")
+if not re.search(r"if \(!restart\) \{.*?cancelPullRestart\(\);", manager, re.S):
+    problems.append("failed restart activity allocation must cancel the armed pull")
+cancel = body("void cancelPullRestart(")
+if "pullRestartPending = false" not in cancel or "setPullDebt(PullDebt::Owed)" not in cancel:
+    problems.append("cancelling a failed restart allocation must clear the pending flag and restore the owed debt")
 print("DO: " + "; ".join(problems) if problems else "XANH")
 sys.exit(1 if problems else 0)

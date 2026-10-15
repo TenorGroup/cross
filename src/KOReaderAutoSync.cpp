@@ -21,6 +21,8 @@
 #include <vector>
 
 #include "KOReaderAutoSyncPolicy.h"
+#include "KOReaderPullResume.h"
+#include "BlePageTurnerHost.h"
 #include "KOReaderCredentialStore.h"
 #include "KOReaderDocumentId.h"
 #include "KOReaderSyncClient.h"
@@ -32,6 +34,8 @@
 #include "WifiCredentialStore.h"
 #include "activities/ActivityManager.h"
 #include "CrossPointState.h"
+#include "CrossPointSettings.h"
+#include "platform/ColdLogProbe.h"
 #include "activities/RenderLock.h"
 #include "activities/boot_sleep/SleepActivity.h"
 #include "activities/reader/EpubReaderUtils.h"
@@ -53,6 +57,14 @@ SyncMark pendingMark;
 bool hasPendingMark = false;
 PullChange pullChange;
 bool hasPullChange = false;
+// The pull owed to the first epub opened from Home (PullDebt); RTC memory keeps it across the quiet restart.
+RTC_NOINIT_ATTR uint32_t pullDebtWord;
+PullDebt pullDebt() { return pullDebtFromStored(pullDebtWord); }
+void setPullDebt(const PullDebt debt) { pullDebtWord = static_cast<uint32_t>(debt); }
+RTC_NOINIT_ATTR PullResume keptPull;
+bool pullRestartPending = false;
+bool restoredFrame = false;
+bool usedPullNetwork = false;
 
 #ifdef TENOR_PRESS_PROBE
 RTC_NOINIT_ATTR uint32_t probeMinSleepMagic;
@@ -145,7 +157,9 @@ bool radioIsFree() {
 
 // THE gate for both directions. The inputs are read in order and only while the earlier ones pass, so
 // with the switch off nothing is read from the card and no radio state is touched.
-Eligibility gate() {
+// `onHome`: the pull for a book opened from Home asks before the restart, where the heap is the fragmented
+// one and the page turner may be on; the radio and the heap are asked again by the pull on the fresh start.
+Eligibility gate(const bool onHome = false) {
   const bool enabled = KOREADER_STORE.getAutoSync();
   const bool account = enabled && KOREADER_STORE.hasCredentials();
   bool network = false;
@@ -153,9 +167,9 @@ Eligibility gate() {
     WIFI_STORE.loadFromFile();
     network = WIFI_STORE.getCredentialCount() > 0;
   }
-  const bool radio = network && radioIsFree();
-  HalMemory::HeapStats heap{};
-  if (radio) heap = HalMemory::getDefaultHeap();
+  const bool radio = network && (onHome || radioIsFree());
+  HalMemory::HeapStats heap{MIN_FREE_FOR_TLS, 0, 0, MIN_BLOCK_FOR_TLS};
+  if (radio && !onHome) heap = HalMemory::getDefaultHeap();
   return eligibility(enabled, account, network, heap.freeBytes, heap.largestBlockBytes, radio);
 }
 
@@ -265,6 +279,7 @@ bool joinSavedNetwork(const uint32_t deadline) {
 // by itself after the idle time.
 void leaveWifi(const bool restCpu) {
   KOReaderSyncClient::requestTimeoutMs = 0;
+  KOReaderSyncClient::requestDeadlineMs = 0;
   if (WiFi.getMode() != WIFI_MODE_NULL) {
     WiFi.disconnect(true, false);
     WiFi.mode(WIFI_OFF);
@@ -452,14 +467,33 @@ uint32_t sleepStamp() {
 
 namespace {
 
-PullResult pullNow(GfxRenderer& renderer, const std::string& path, const uint32_t started) {
+PullResult pullNow(GfxRenderer& renderer, const std::string& path) {
   const std::string hash = documentHash(path);
-  if (hash.empty() || !joinSavedNetwork(started + ROUND_BUDGET_MS - REQUEST_MS)) {
+  if (hash.empty()) return PullResult::Failed;
+  const uint32_t networkAt = millis();
+  usedPullNetwork = true;
+  KOReaderSyncClient::requestDeadlineMs = networkAt + PULL_NETWORK_MS;
+  if (!joinSavedNetwork(networkAt + PULL_NETWORK_MS - REQUEST_MS)) {
     leaveWifi(false);
+#ifdef TENOR_PRESS_PROBE
+    restartlog::mark(restartlog::Event::PullNetwork, millis() - networkAt, static_cast<uint32_t>(Fetch::Failed));
+#endif
     return PullResult::Failed;
   }
   KOReaderProgress remote{};
-  const Fetch fetch = canStartRequest(millis() - started) ? fetchRemote(hash, remote, started) : Fetch::Failed;
+  KOReaderSyncClient::requestTimeoutMs = pullRequestMs(millis() - networkAt);
+  const auto reply = KOReaderSyncClient::requestTimeoutMs ? KOReaderSyncClient::getProgress(hash, remote)
+                                                        : KOReaderSyncClient::NETWORK_ERROR;
+  const uint32_t networkMs = millis() - networkAt;
+  const Fetch fetch = pullNetworkExpired(networkMs) || reply != KOReaderSyncClient::OK
+                          ? (reply == KOReaderSyncClient::NOT_FOUND && !pullNetworkExpired(networkMs) ? Fetch::NotFound
+                                                                                                    : Fetch::Failed)
+                          : Fetch::Found;
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("KAS", "network ms=%lu result=%d http=%d", static_cast<unsigned long>(networkMs), static_cast<int>(reply),
+          KOReaderSyncClient::lastHttpCode);
+  restartlog::mark(restartlog::Event::PullNetwork, networkMs, static_cast<uint32_t>(fetch));
+#endif
   leaveWifi(false);  // the radio is off before the book opens (BLE needs it on the X3)
   if (fetch != Fetch::Found) return fetch == Fetch::Failed ? PullResult::Failed : PullResult::Kept;
 
@@ -517,33 +551,135 @@ PullResult pullNow(GfxRenderer& renderer, const std::string& path, const uint32_
   return PullResult::Applied;
 }
 
-}  // namespace
-
-PullResult pullOnWake(GfxRenderer& renderer, const std::string& path, const bool showNotice) {
-  if (!isEpubPath(path)) return PullResult::Skipped;  // a text or XTC book has no place to map onto
-  const time_t now = time(nullptr);
-  const bool slept = sleptLongEnough(APP_STATE.sleepStartedAt, now > 0 ? static_cast<uint32_t>(now) : 0,
-                                     halClock.hasValidTime(), minSleepSeconds());
-  if (!slept) {
-    if (KOREADER_STORE.getAutoSync()) LOG_INF("KAS", "wake pull skipped: short sleep or no trusted clock");
-    return PullResult::Skipped;
-  }
+// The part of a pull both entries share: the gate, the notice, the round and the measuring lines.
+PullResult pullGated(GfxRenderer& renderer, const std::string& path, const bool showNotice, const char* what) {
   const Eligibility eligible = gate();
   if (eligible != Eligibility::Ready) {
-    if (eligible != Eligibility::Disabled) LOG_INF("KAS", "wake pull skipped: %s", why(eligible));
+    if (eligible != Eligibility::Disabled) LOG_INF("KAS", "%s skipped: %s", what, why(eligible));
     return PullResult::Skipped;
   }
   const uint32_t started = millis();
   if (showNotice) SleepActivity::showSyncing(renderer);
-  const PullResult result = pullNow(renderer, path, started);
-  LOG_INF("KAS", "wake pull result=%d total=%lu ms", static_cast<int>(result),
+  usedPullNetwork = false;
+  const PullResult result = pullNow(renderer, path);
+  LOG_INF("KAS", "%s result=%d total=%lu ms", what, static_cast<int>(result),
           static_cast<unsigned long>(millis() - started));
 #ifdef TENOR_PRESS_PROBE
   probeHeap("after_pull");  // the book is not open yet
   probeHeapPending = true;
+  restartlog::mark(restartlog::Event::PullStep, millis() - started, static_cast<uint32_t>(result));
 #endif
+  const bool restart = preparePageTurnerAfterPull(SETTINGS.ble.enabled, usedPullNetwork,
+                                                 result == PullResult::Applied || result == PullResult::Kept);
+  if (restart && keepPullPath(keptPull, path, PULL_DONE_MAGIC)) {
+    keptPull.hasChange = hasPullChange;
+    if (hasPullChange) {
+      keptPull.fromSpine = pullChange.fromSpineIndex;
+      keptPull.fromPage = pullChange.fromPage;
+      keptPull.toSpine = pullChange.toSpineIndex;
+      keptPull.toPage = pullChange.toPage;
+      keptPull.fromOffset = pullChange.fromOffset;
+      keptPull.hasFromOffset = pullChange.hasFromOffset;
+    }
+    keptPull.hasMark = hasPendingMark && pendingMark.document.size() == 32;
+    if (keptPull.hasMark) {
+      keptPull.token = pendingMark.token;
+      keptPull.place = pendingMark.place;
+    }
+    pullRestartPending = true;
+  }
   return result;
 }
+
+// Has the machine slept long enough for a pull? Same rule for the wake pull and for the pull owed to Home.
+bool sleptLong() {
+  const time_t now = time(nullptr);
+  return sleptLongEnough(APP_STATE.sleepStartedAt, now > 0 ? static_cast<uint32_t>(now) : 0, halClock.hasValidTime(),
+                         minSleepSeconds());
+}
+
+}  // namespace
+
+PullResult pullOnWake(GfxRenderer& renderer, const std::string& path, const bool showNotice) {
+  if (!isEpubPath(path)) return PullResult::Skipped;  // a text or XTC book has no place to map onto
+  if (!sleptLong()) {
+    if (KOREADER_STORE.getAutoSync()) LOG_INF("KAS", "wake pull skipped: short sleep or no trusted clock");
+    return PullResult::Skipped;
+  }
+  return pullGated(renderer, path, showNotice, "wake pull");
+}
+
+void noteStart(const bool quietRestart, const bool wokeOnHome) {
+  const uint32_t keptMagic = takePullMagic(keptPull, quietRestart);
+  if (keptMagic) {
+    APP_STATE.openEpubPath = keptPull.path;
+    setPullDebt(keptMagic == PULL_ARMED_MAGIC ? PullDebt::Armed : PullDebt::None);
+    restoredFrame = true;
+    if (keptMagic == PULL_DONE_MAGIC) {
+      hasPullChange = keptPull.hasChange;
+      if (hasPullChange) {
+        pullChange = {keptPull.path, keptPull.fromSpine, keptPull.fromPage, keptPull.toSpine, keptPull.toPage,
+                      keptPull.fromOffset, keptPull.hasFromOffset != 0};
+      }
+      hasPendingMark = keptPull.hasMark;
+      if (hasPendingMark) {
+        pendingMark = {documentHash(keptPull.path), keptPull.token, keptPull.place};
+        activityManager.deferWrite(&flushMark);
+      }
+#ifdef TENOR_PRESS_PROBE
+      probeHeapPending = true;
+#endif
+    }
+  }
+  pullRestartPending = false;
+  const bool wanted = KOREADER_STORE.getAutoSync() && KOREADER_STORE.hasCredentials();
+  const bool slept = wokeOnHome && sleptLong();
+  const PullDebt before = pullDebt();
+  const PullDebt after = debtAfterStart(before, quietRestart, wokeOnHome, slept, wanted);
+  setPullDebt(after);
+  if (after == PullDebt::Owed && before != PullDebt::Owed) {
+    LOG_INF("KAS", "open pull owed: the first book opened from Home pulls");
+  } else if (wokeOnHome && wanted && !slept) {
+    LOG_INF("KAS", "open pull not owed: short sleep or no trusted clock");
+  }
+}
+
+bool beforeOpen(GfxRenderer& renderer, const std::string& path) {
+  if (pullRestartPending) return true;
+  if (restoredFrame) {
+    renderer.redriveNextRefresh();
+    restoredFrame = false;
+  }
+  const PullDebt debt = pullDebt();
+  if (debt == PullDebt::None) return false;  // the usual open: nothing is read, nothing is asked
+  const bool epub = isEpubPath(path);
+  const bool wanted = epub && gate(true) == Eligibility::Ready;
+  const OpenPlan plan = planOpen(debt, epub, wanted);
+  setPullDebt(plan.debtAfter);
+  if (epub && !wanted) LOG_INF("KAS", "open pull dropped: switch, account or saved network missing");
+  switch (plan.step) {
+    case OpenStep::Open:
+      return false;
+    case OpenStep::PullThenOpen:
+      if (pullGated(renderer, path, false, "open pull") == PullResult::Skipped) setPullDebt(PullDebt::Armed);
+      // The restart notice already says "Syncing".
+      return pullRestartPending;
+    case OpenStep::RestartForPull:
+      if (keepPullPath(keptPull, path, PULL_ARMED_MAGIC)) return true;
+      setPullDebt(PullDebt::None);
+      return false;
+  }
+  return false;
+}
+
+void cancelPullRestart() {
+  keptPull = {};
+  pullRestartPending = false;
+  setPullDebt(PullDebt::Owed);
+}
+
+bool pullIsArmed() { return pullDebt() == PullDebt::Armed; }
+bool pullRestartReady() { return pullRestartPending; }
 
 #ifdef TENOR_PRESS_PROBE
 void probeSetMinSleep(const uint32_t seconds) {

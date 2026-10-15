@@ -516,3 +516,97 @@ TEST(WifiHint, MalformedHintsAreRefusedSoTheJoinGoesTheNormalWay) {
   refused(R"({"ssid":"","ch":6,"bssid":"3c846a112233"})");
   refused(R"({"ssid":3,"ch":6,"bssid":"3c846a112233"})");
 }
+// ---- the pull owed to the first book opened from Home ----------------------------------------------------------
+
+namespace {
+// One wake and the opens that follow, the way KOReaderAutoSync.cpp drives the two functions.
+struct HomeSession {
+  PullDebt debt = PullDebt::None;
+  int restarts = 0;
+  int pulls = 0;
+
+  void start(const bool quiet, const bool onHome, const bool slept, const bool wanted = true) {
+    debt = debtAfterStart(debt, quiet, onHome, slept, wanted);
+  }
+  // A book opened from Home. true when the open went through the restart and pulled on its fresh start.
+  bool open(const bool epub, const bool wanted = true) {
+    OpenPlan plan = planOpen(debt, epub, wanted);
+    debt = plan.debtAfter;
+    if (plan.step != OpenStep::RestartForPull) return false;
+    ++restarts;
+    start(true, false, false);  // the quiet restart keeps what was armed
+    plan = planOpen(debt, epub, wanted);
+    debt = plan.debtAfter;
+    if (plan.step == OpenStep::PullThenOpen) ++pulls;
+    return plan.step == OpenStep::PullThenOpen;
+  }
+};
+}  // namespace
+
+TEST(AutoSyncOpenPull, LongSleepOnHomePullsOnTheFirstEpubOnly) {
+  HomeSession s;
+  s.start(false, true, true);
+  EXPECT_EQ(s.debt, PullDebt::Owed);
+  EXPECT_TRUE(s.open(true));
+  EXPECT_EQ(s.debt, PullDebt::None);
+  EXPECT_FALSE(s.open(true));  // the second book pulls nothing
+  EXPECT_EQ(s.restarts, 1);
+  EXPECT_EQ(s.pulls, 1);
+}
+
+TEST(AutoSyncOpenPull, ShortSleepSwitchOffOrABookWakeOwesNothing) {
+  HomeSession shortSleep;
+  shortSleep.start(false, true, false);
+  EXPECT_EQ(shortSleep.debt, PullDebt::None);
+  EXPECT_FALSE(shortSleep.open(true));
+
+  HomeSession off;  // switch off or no account
+  off.start(false, true, true, false);
+  EXPECT_EQ(off.debt, PullDebt::None);
+  EXPECT_FALSE(off.open(true));
+  EXPECT_EQ(off.restarts, 0);
+
+  HomeSession bookWake;  // the wake went into the book: the wake pull has its own path
+  bookWake.start(false, false, true);
+  EXPECT_EQ(bookWake.debt, PullDebt::None);
+}
+
+TEST(AutoSyncOpenPull, ATextBookLeavesItOwedForTheNextEpub) {
+  HomeSession s;
+  s.start(false, true, true);
+  EXPECT_FALSE(s.open(false));
+  EXPECT_EQ(s.debt, PullDebt::Owed);
+  EXPECT_EQ(s.restarts, 0);
+  EXPECT_TRUE(s.open(true));
+}
+
+TEST(AutoSyncOpenPull, TheSwitchGoingOffBeforeTheOpenForgetsTheDebt) {
+  HomeSession s;
+  s.start(false, true, true);
+  EXPECT_FALSE(s.open(true, false));
+  EXPECT_EQ(s.debt, PullDebt::None);
+  EXPECT_EQ(s.restarts, 0);
+  EXPECT_FALSE(s.open(true));
+}
+
+TEST(AutoSyncOpenPull, AQuietRestartToHomeKeepsTheDebtAndTheNextSleepDecidesAgain) {
+  HomeSession s;
+  s.start(false, true, true);
+  s.start(true, false, false);  // a Wi-Fi screen restarting to Home
+  EXPECT_EQ(s.debt, PullDebt::Owed);
+  s.start(false, true, false);  // the next wake after a short sleep
+  EXPECT_EQ(s.debt, PullDebt::None);
+  EXPECT_FALSE(s.open(true));
+}
+
+TEST(AutoSyncOpenPull, ArmedIsSpentByTheStartThatPullsAndLeftoverRtcOwesNothing) {
+  EXPECT_EQ(planOpen(PullDebt::Armed, true, true).step, OpenStep::PullThenOpen);
+  EXPECT_EQ(planOpen(PullDebt::Armed, true, true).debtAfter, PullDebt::None);
+  EXPECT_EQ(planOpen(PullDebt::Armed, true, false).step, OpenStep::Open);
+  EXPECT_EQ(pullDebtFromStored(0), PullDebt::None);
+  EXPECT_EQ(pullDebtFromStored(0xDEADBEEF), PullDebt::None);
+  EXPECT_EQ(pullDebtFromStored(static_cast<uint32_t>(PullDebt::Owed)), PullDebt::Owed);
+  EXPECT_EQ(pullDebtFromStored(static_cast<uint32_t>(PullDebt::Armed)), PullDebt::Armed);
+  // a power loss is a cold start: whatever RTC held, the start decides again
+  EXPECT_EQ(debtAfterStart(PullDebt::Armed, false, false, false, true), PullDebt::None);
+}

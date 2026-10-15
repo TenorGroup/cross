@@ -55,6 +55,25 @@ struct PullChange {
   uint32_t fromOffset = 0;  // the text offset the reader was at, when the saved place had one
   bool hasFromOffset = false;
 };
+// The pull for the first epub opened after a long sleep that ended on Home (a book opened from Home, Recent or
+// the file browser). Called once per start in setup(): `quietRestart` is a silent reboot, `wokeOnHome` a wake
+// that lands on Home. A long sleep with the switch on leaves the pull owed in RTC memory; any other start clears it.
+void noteStart(bool quietRestart, bool wokeOnHome);
+
+// Asked by every open of a book, before the reader is made. true: the open was handed to a quiet restart into
+// this book (the owed pull runs after it, on a fresh heap) and the caller must not open it. false: open it; when
+// the restart has just happened the pull has already run.
+bool beforeOpen(GfxRenderer& renderer, const std::string& path);
+
+// Roll back an armed open when its restart activity could not be allocated. The next epub open may retry
+// the quiet restart with the same one-shot debt, and no stale path or spent radio memo remains.
+void cancelPullRestart();
+
+// The restart that beforeOpen chose is on its way: its notice reads "Syncing" rather than "Loading".
+bool pullIsArmed();
+// The sync notice is already on the glass; keep it through the heap restart.
+bool pullRestartReady();
+
 #ifdef TENOR_PRESS_PROBE
 // Measuring build only. Lets a timed wake count as a long sleep: the 30 minute rule is read as `seconds`
 // from now on (0 puts the rule back), kept through deep sleep. Asked by the cable command KAS_MIN_SLEEP.

@@ -2,6 +2,7 @@
 # decisions, and the list of books owed a push. Production sources, no stubs.
 add_executable(KoreaderAutoSyncTest
   KoreaderAutoSyncTest.cpp
+  PullResumeTest.cpp
   ${REPO_ROOT}/lib/KOReaderSync/KOReaderSyncDebt.cpp
   ${REPO_ROOT}/lib/KOReaderSync/KOReaderSyncMark.cpp
   ${REPO_ROOT}/lib/KOReaderSync/KOReaderWifiHint.cpp
