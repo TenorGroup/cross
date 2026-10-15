@@ -110,4 +110,7 @@ class KOReaderSyncClient {
 
   /** Per-request timeout in ms for getProgress and updateProgress; 0 keeps the HTTP client's own default. */
   static uint32_t requestTimeoutMs;
+
+  /** Absolute millis deadline for getProgress; 0 keeps the ordinary buffered request path. */
+  static uint32_t requestDeadlineMs;
 };

@@ -2,6 +2,7 @@
 
 #include <ArduinoJson.h>
 #include <HalClock.h>
+#include <HeapFloor.h>
 #include <HalMemory.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -9,7 +10,11 @@
 #include <SecureHttpClient.h>
 #include <base64.h>
 
+#include <array>
+#include <cstdint>
+#include <cstring>
 #include <ctime>
+#include <memory>
 #include <string>
 
 #include "KOReaderAutoSyncPolicy.h"
@@ -17,6 +22,7 @@
 
 int KOReaderSyncClient::lastHttpCode = 0;
 uint32_t KOReaderSyncClient::requestTimeoutMs = 0;
+uint32_t KOReaderSyncClient::requestDeadlineMs = 0;
 
 namespace {
 // Device identifier for CrossPoint reader
@@ -29,6 +35,54 @@ constexpr char DEVICE_ID[] = "crosspoint-reader";
 // guarantee that a handshake will fit.
 constexpr uint32_t MIN_FREE_FOR_TLS = kosyncauto::MIN_FREE_FOR_TLS;
 constexpr uint32_t MIN_BLOCK_FOR_TLS = kosyncauto::MIN_BLOCK_FOR_TLS;
+
+constexpr size_t MAX_PROGRESS_BODY = 16384;
+
+bool deadlineReached(const uint32_t deadline) {
+  return deadline != 0 && static_cast<int32_t>(millis() - deadline) >= 0;
+}
+
+class ProgressBody {
+ public:
+  bool append(const uint8_t* data, const size_t len) {
+    if (len > MAX_PROGRESS_BODY - size_) {
+      tooLarge_ = true;
+      return false;
+    }
+    const size_t needed = size_ + len;
+    if (needed > capacity()) {
+      size_t nextCapacity = heapfloor::kBigBytes;
+      while (nextCapacity < needed && nextCapacity < MAX_PROGRESS_BODY) nextCapacity *= 2;
+      auto next = heapfloor::array<uint8_t[]>(nextCapacity, "kosync-progress");
+      if (!next) {
+        noMemory_ = true;
+        return false;
+      }
+      if (size_) memcpy(next.get(), bytes(), size_);
+      large_ = std::move(next);
+      largeCapacity_ = nextCapacity;
+    }
+    if (len) memcpy(writableBytes() + size_, data, len);
+    size_ = needed;
+    return true;
+  }
+
+  const uint8_t* bytes() const { return large_ ? large_.get() : small_.data(); }
+  size_t size() const { return size_; }
+  bool noMemory() const { return noMemory_; }
+  bool tooLarge() const { return tooLarge_; }
+
+ private:
+  size_t capacity() const { return large_ ? largeCapacity_ : small_.size(); }
+  uint8_t* writableBytes() { return large_ ? large_.get() : small_.data(); }
+
+  std::array<uint8_t, 1024> small_{};
+  std::unique_ptr<uint8_t[]> large_;
+  size_t largeCapacity_ = 0;
+  size_t size_ = 0;
+  bool noMemory_ = false;
+  bool tooLarge_ = false;
+};
 
 // Apply the shared KOSync auth headers after begin(). x-auth-* is the native
 // KOSync scheme; Basic auth is added for Calibre-Web-Automated compatibility.
@@ -154,15 +208,40 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
   }
   applyAuthHeaders(http);
   if (requestTimeoutMs) http.setTimeout(requestTimeoutMs);
+  ProgressBody deadlineBody;
+  const bool hasDeadline = requestDeadlineMs != 0;
+#ifdef SIMULATOR
+  // The simulator's Arduino HTTP adapter only exposes the buffered GET. It has no socket callback or
+  // abort state, so leave the real-device deadline path out of this host-only transport shim.
+  (void)deadlineBody;
+  (void)hasDeadline;
   const int httpCode = http.GET();
+#else
+  const int httpCode = hasDeadline
+                           ? http.GET([&deadlineBody](const uint8_t* data, const size_t len) {
+                               return deadlineBody.append(data, len);
+                             },
+                             [] { return deadlineReached(KOReaderSyncClient::requestDeadlineMs); })
+                           : http.GET();
+#endif
   lastHttpCode = httpCode;
 
   LOG_DBG("KOSync", "Get progress response: %d", httpCode);
 
-  if (httpCode <= 0) {
+#ifndef SIMULATOR
+  if (hasDeadline && deadlineBody.noMemory()) {
+    http.end();
+    return LOW_MEMORY;
+  }
+  if (hasDeadline && deadlineBody.tooLarge()) {
+    http.end();
+    return JSON_ERROR;
+  }
+  if (httpCode <= 0 || (hasDeadline && (http.aborted() || !http.responseComplete()))) {
     http.end();
     return NETWORK_ERROR;
   }
+#endif
 
   // 204 = success with no stored progress for this document (Spring-style
   // KOSync implementations; the reference server answers 200 with an empty
@@ -175,7 +254,12 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
 
   if (httpCode >= 200 && httpCode < 300) {
     JsonDocument doc;
+#ifdef SIMULATOR
     const DeserializationError error = deserializeJson(doc, http.getString().c_str());
+#else
+    const DeserializationError error = hasDeadline ? deserializeJson(doc, deadlineBody.bytes(), deadlineBody.size())
+                                                   : deserializeJson(doc, http.getString().c_str());
+#endif
     http.end();
 
     if (error) {
