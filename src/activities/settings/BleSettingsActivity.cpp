@@ -18,11 +18,14 @@ namespace {
 enum class MenuAction : int16_t { Enable, Scan, Paired, Mapping };
 constexpr bleturner::Action MAP_ACTIONS[] = {bleturner::Action::NextPage,    bleturner::Action::PrevPage,
                                              bleturner::Action::NextChapter, bleturner::Action::PrevChapter,
-                                             bleturner::Action::Confirm,     bleturner::Action::Back};
-constexpr StrId MAP_LABELS[] = {StrId::STR_NEXT_PAGE,       StrId::STR_PREV_PAGE, StrId::STR_BT_NEXT_CHAPTER,
-                                StrId::STR_BT_PREV_CHAPTER, StrId::STR_CONFIRM,   StrId::STR_BACK};
+                                             bleturner::Action::Confirm,     bleturner::Action::Back,
+                                             bleturner::Action::ReaderMenu,  bleturner::Action::SaveQuote};
+constexpr StrId MAP_LABELS[] = {StrId::STR_NEXT_PAGE,       StrId::STR_PREV_PAGE,    StrId::STR_BT_NEXT_CHAPTER,
+                                StrId::STR_BT_PREV_CHAPTER, StrId::STR_CONFIRM,      StrId::STR_BACK,
+                                StrId::STR_READER_MENU,     StrId::STR_SAVE_CLIPPING};
 static_assert(std::size(MAP_ACTIONS) == std::size(MAP_LABELS));
 constexpr uint32_t SCAN_MS = 15000;
+constexpr unsigned long CLEAR_HOLD_MS = 700;
 }  // namespace
 
 void BleSettingsActivity::onEnter() {
@@ -34,6 +37,10 @@ void BleSettingsActivity::onEnter() {
 }
 
 void BleSettingsActivity::loop() {
+  // Holding Confirm on an action clears it (touch: a long press on the row, onRowLongPress).
+  if (view == View::Mapping && mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, CLEAR_HOLD_MS)) {
+    clearMapping(nav.selected);
+  }
   UiListActivity::loop();
   if (millis() - lastPollMs < 250) return;
   lastPollMs = millis();
@@ -166,6 +173,10 @@ void BleSettingsActivity::refresh() {
         bleturner::Binding binding;
         if (table && bleturner::find(*table, MAP_ACTIONS[i], binding)) {
           bleturner::formatCode(mappingValues[i], sizeof(mappingValues[i]), binding);
+          if (binding & bleturner::kHoldBit) {
+            const size_t used = strlen(mappingValues[i]);
+            snprintf(mappingValues[i] + used, sizeof(mappingValues[i]) - used, " %s", tr(STR_BT_HOLD));
+          }
           row.value = mappingValues[i];
         } else {
           row.value = tr(STR_NOT_SET);
@@ -264,19 +275,21 @@ void BleSettingsActivity::stepLearning() {
   while (learnAction == action && bleturner::pollEvent(ev)) {
     if (ev.pressed) {
       learnCode = ev.code;
+      learnPressMs = ev.atMs;
       learnSinceMs = millis();
     } else if (learnCode != 0 && ev.code == learnCode) {
       if (ev.wasRest) {
         learnCode = 0;  // the remote idling on a non-zero byte, not a button
       } else {
-        keepLearned();
+        // A button held past the reader's hold threshold is mapped as a hold, apart from its tap.
+        keepLearned(ev.atMs - learnPressMs >= bleturner::kHoldMs);
       }
     }
   }
   if (learnAction == action) {
     // A remote that never reports the release: the press alone is the answer.
     if (learnCode != 0 && millis() - learnSinceMs >= bleturner::kReleaseWaitMs) {
-      keepLearned();
+      keepLearned(false);
     } else if (learnCode == 0 && millis() - learnSinceMs >= bleturner::kWaitMs) {
       learnAction = bleturner::Action::None;
       learnNote = tr(STR_BT_NO_KEY);
@@ -288,7 +301,7 @@ void BleSettingsActivity::stepLearning() {
   }
 }
 
-void BleSettingsActivity::keepLearned() {
+void BleSettingsActivity::keepLearned(const bool hold) {
   // Preserve the remote's other bindings when changing the selected action.
   const auto peer = bleturner::linked();
   if (!bleturner::status().connected || strcmp(peer.addr, learnAddr) != 0) {
@@ -298,7 +311,7 @@ void BleSettingsActivity::keepLearned() {
   }
   bleturner::RemoteTable* table =
       bleturner::editableTable(SETTINGS.ble.remotes, SETTINGS.ble.remoteCount, peer.addr, peer.name);
-  if (table == nullptr || !bleturner::learn(*table, learnAction, learnCode, false)) {
+  if (table == nullptr || !bleturner::learn(*table, learnAction, learnCode, hold)) {
     learnAction = bleturner::Action::None;
     learnNote = tr(STR_BT_KEYS_NOT_SAVED);
     return;
@@ -308,6 +321,28 @@ void BleSettingsActivity::keepLearned() {
   learnSinceMs = millis();
   learnAction = bleturner::Action::None;
   learnNote = tr(STR_BT_MAPPING_SAVED);
+}
+
+void BleSettingsActivity::onRowLongPress(const int index) {
+  if (view == View::Mapping) clearMapping(index);
+}
+
+void BleSettingsActivity::clearMapping(const int index) {
+  if (index < 0 || index >= static_cast<int>(std::size(MAP_ACTIONS)) || learnAction != bleturner::Action::None) return;
+  const auto action = MAP_ACTIONS[index];
+  // The linked remote's slot for this action goes; a built-in default is copied out first, so it
+  // does not come back. The page rows also drop the usage code learned before per-remote tables.
+  if (bleturner::status().connected) {
+    const auto peer = bleturner::linked();
+    auto* table = bleturner::editableTable(SETTINGS.ble.remotes, SETTINGS.ble.remoteCount, peer.addr, peer.name);
+    if (table != nullptr) bleturner::clearAction(*table, action);
+  }
+  if (action == bleturner::Action::NextPage) SETTINGS.ble.nextKeyUsage = bleturner::kUsageNone;
+  if (action == bleturner::Action::PrevPage) SETTINGS.ble.prevKeyUsage = bleturner::kUsageNone;
+  SETTINGS.saveToFile();
+  learnNote = tr(STR_BT_MAPPING_CLEARED);
+  refresh();
+  requestUpdate();
 }
 
 void BleSettingsActivity::buildScreen(UiScreen& screen) {
@@ -328,7 +363,7 @@ void BleSettingsActivity::buildScreen(UiScreen& screen) {
   props.rowProviderCtx = this;
   props.count = static_cast<uint16_t>(rows.size());
   props.action = ACTION_ROW;
-  props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
+  props.inputMask = fui::InputTouch | fui::InputLongPress;  // physical buttons stay in loop()
   syncListViewport(screen, props);
   screen.list(props);
 }

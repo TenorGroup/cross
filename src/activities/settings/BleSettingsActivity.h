@@ -15,7 +15,7 @@ class MappedInputManager;
 class BleSettingsActivity final : public UiListActivity {
  public:
   explicit BleSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-      : UiListActivity("BleSettings", renderer, mappedInput) {}
+      : UiListActivity("BleSettings", renderer, mappedInput, true) {}
 
   void onEnter() override;
   void loop() override;
@@ -35,7 +35,9 @@ class BleSettingsActivity final : public UiListActivity {
   // Button mapping reads the linked remote's button edges and stores them in its table.
   void startLearning(int index);
   void stepLearning();
-  void keepLearned();
+  void keepLearned(bool hold);
+  void onRowLongPress(int index) override;
+  void clearMapping(int index);
 
   // Written on the main loop under the render lock, read by buildScreen on the render task.
   std::vector<freeink::ui::ListItem> rows;
@@ -45,8 +47,9 @@ class BleSettingsActivity final : public UiListActivity {
   unsigned long lastPollMs = 0;
   bleturner::Action learnAction = bleturner::Action::None;
   char learnAddr[18]{};
-  char mappingValues[6][24]{};
-  uint32_t learnCode = 0;  // the pressed button, kept until its release
+  char mappingValues[8][24]{};
+  uint32_t learnCode = 0;     // the pressed button, kept until its release
+  uint32_t learnPressMs = 0;  // when it went down (the remote's clock), to tell a hold from a tap
   unsigned long learnSinceMs = 0;
   const char* learnNote = nullptr;
 };
