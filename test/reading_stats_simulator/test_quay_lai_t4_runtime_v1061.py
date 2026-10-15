@@ -138,8 +138,12 @@ struct ProgressMapper {
 };
 struct Section {
   int currentPage = 12, pageCount = 40;
+  bool building = false;
+  uint32_t reached = 0;
   Section() = default;
   Section(const std::shared_ptr<Epub>&, int, int) {}
+  bool isBuilding() const { return building; }
+  bool buildReachedVisibleTextOffset(uint32_t offset) const { return building && offset <= reached; }
   std::optional<uint32_t> getVisibleTextOffsetForPage(uint16_t page) const {
     return page < pageCount ? std::optional<uint32_t>(page * 100) : std::nullopt;
   }
@@ -384,7 +388,7 @@ class ReturnStackRuntimeTest(unittest.TestCase):
   EpubReaderActivity reader;
   assert(!reader.hasReturnPosition() && reader.returnPageNumber() == -1);
   reader.navigateToHref("c2.xhtml", true);
-  assert(reader.hasReturnPosition() && reader.returnPageNumber() == 13);
+  assert(reader.hasReturnPosition() && reader.returnPageNumber() == -1);
   reader.restoreSavedPosition();
   assert(!reader.hasReturnPosition() && reader.returnPageNumber() == -1);
 ''')
@@ -424,7 +428,7 @@ class ReturnStackRuntimeTest(unittest.TestCase):
   koautosync::hasPulledChange = true;
   reader.pushPulledReturn();
   assert(reader.footnoteDepth == 1 && reader.hasReturnPosition());
-  assert(reader.returnPageNumber() == 13);
+  assert(reader.returnPageNumber() == -1);
   assert(!koautosync::progressJustPulled());
   reader.restoreSavedPosition();
   assert(reader.currentSpineIndex == 0 && reader.nextPageNumber == 12 && reader.pendingOffsetJump == 1200);

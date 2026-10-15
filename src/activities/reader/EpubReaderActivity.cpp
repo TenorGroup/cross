@@ -3784,7 +3784,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   if (jumpBarPending && onTheBook) {
     jumpBarPending = false;
     dropJumpBar();
-    if (!pageHasImages && returnPageNumber() > 0) {
+    if (!pageHasImages && hasReturnPosition()) {
       jumpBar.arm(currentSpineIndex, shownPage);
       tenorchrome::noteJumpBar(returnPageNumber(), jumpBar.digit);
     }
@@ -6438,7 +6438,13 @@ bool EpubReaderActivity::hasReturnPosition() const {
 }
 
 int EpubReaderActivity::returnPageNumber() const {
-  return hasReturnPosition() ? savedPositions[footnoteDepth - 1].pageNumber + 1 : -1;
+  if (!hasReturnPosition() || !section) return -1;
+  const auto& position = savedPositions[footnoteDepth - 1];
+  if (position.spineIndex != currentSpineIndex || position.textOffset == UINT32_MAX) return -1;
+  // Reflow replaces section. A running build must reach the offset before its map can name the page.
+  if (section->isBuilding() && !section->buildReachedVisibleTextOffset(position.textOffset)) return -1;
+  const auto page = section->getPageForVisibleTextOffset(position.textOffset);
+  return page ? static_cast<int>(*page) + 1 : -1;
 }
 
 // A jump the heap could not lay out leaves the reader on its saved page: the place the jump pushed is that page, and a

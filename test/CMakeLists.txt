@@ -42,6 +42,8 @@ include(GoogleTest)
 
 add_test(NAME ReaderReturnPositionT4
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reading_stats_simulator/test_quay_lai_t4_runtime_v1061.py)
+add_test(NAME ReaderReturnReflowV1062
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reading_stats_simulator/test_quay_lai_reflow_v1062.py)
 
 add_test(NAME KoreaderFavoritesRows
   COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/koreader_favorites/check.py ${REPO_ROOT})

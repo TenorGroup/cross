@@ -356,7 +356,7 @@ struct JumpBarNote {
 } jumpBar;
 bool jumpBarActive() {
   const char* name = activityManager.currentName();
-  return jumpBar.page > 0 && jumpBar.generation == activityManager.activityGeneration() && name &&
+  return jumpBar.page != 0 && jumpBar.generation == activityManager.activityGeneration() && name &&
          strcmp(name, "EpubReader") == 0;
 }
 // The seconds ring: at the bar's right end, JUMP_COUNT px so that the window refreshing it (y rounded out to 8 px)
@@ -638,6 +638,10 @@ void tenorchrome::clearFootBand(const GfxRenderer& r, const int air) {
 namespace {
 // The way back's bar after the "<": the page pill (the screen-name pill of every bar, read only) and the seconds ring.
 void drawJumpBarFace(const GfxRenderer& r, const tenorchrome::TouchBarRect& bar, const bool pen) {
+  if (jumpBar.page < 0) {
+    tenorchrome::drawJumpBarCount(r);
+    return;
+  }
   char label[24];
   snprintf(label, sizeof(label), "%s %d", tr(STR_JUMP_BACK_PAGE), jumpBar.page);
   constexpr int PAD_LEFT = 18, PAD_RIGHT = 22, font = UI_12_FONT_ID;
@@ -1135,7 +1139,7 @@ ReaderBattery drawReaderBattery(const GfxRenderer& r, const int textY, const int
 #if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
 // The X4 Pro shows the way back as the dynamic bar for a few seconds (noteJumpBar); the strip's pill is the X3's.
 namespace {
-// The way back after a jump: the page the reader returns to (1-based), 0 when there is none.
+// The way back after a jump: 1-based page, -1 when its map is absent, 0 for no return target.
 int jumpBackPage = 0;
 ugly::MarkState jumpBackMark;
 
@@ -1144,25 +1148,28 @@ ugly::MarkState jumpBackMark;
 // starts (textY), 22 px tall, the dynamic bar's pill ring. Too narrow a room tries "< N", then draws nothing and returns
 // false, and the title is drawn as before. `x` is the cell's left edge, `room` its width.
 bool drawJumpBackPill(const GfxRenderer& r, const int x, const int textY, const int room, const bool rough) {
-  if (jumpBackPage <= 0) return false;
+  if (jumpBackPage == 0) return false;
   constexpr int HEIGHT = 22, PAD = 9, GAP = 6, SPAN = 5;
   const int chevron = tenorchrome::moreChevronLength(SPAN);
   // The pen's circle runs about 24 px wide of its box on each side: it starts clear of what stands to the left.
   const int lead = rough ? 24 : 0, overshoot = rough ? 16 : 0;
   for (const bool numberOnly : {false, true}) {
-    char label[24];
-    if (numberOnly) snprintf(label, sizeof(label), "%d", jumpBackPage);
-    else snprintf(label, sizeof(label), "%s %d", tr(STR_JUMP_BACK_PAGE), jumpBackPage);
-    int box[4];
-    if (rough) {
+    if (jumpBackPage < 0 && numberOnly) break;
+    char label[24] = {};
+    if (jumpBackPage > 0) {
+      if (numberOnly) snprintf(label, sizeof(label), "%d", jumpBackPage);
+      else snprintf(label, sizeof(label), "%s %d", tr(STR_JUMP_BACK_PAGE), jumpBackPage);
+    }
+    int box[4] = {};
+    if (jumpBackPage > 0 && rough) {
       const auto bounds = ugly::textBounds(r, ugly::Size::S22, label);
       box[0] = bounds.x0, box[1] = bounds.y0, box[2] = bounds.x1, box[3] = bounds.y1;
-    } else {
+    } else if (jumpBackPage > 0) {
       const auto bounds = r.getTextInkBounds(SMALL_FONT_ID, label, EpdFontFamily::REGULAR);
       std::copy(std::begin(bounds), std::end(bounds), box);
     }
     const int textWidth = box[2] - box[0];
-    const int width = PAD + chevron + GAP + textWidth + PAD;
+    const int width = PAD + chevron + (jumpBackPage > 0 ? GAP + textWidth : 0) + PAD;
     if (lead + width + overshoot > room) continue;
     const int left = x + lead, top = textY, chevronX = left + PAD, centerY = top + HEIGHT / 2;
     if (rough) {
@@ -1171,11 +1178,13 @@ bool drawJumpBackPill(const GfxRenderer& r, const int x, const int textY, const 
       const int cx = chevronX + chevron / 2;
       ugly::line(r, cx + 3, centerY - SPAN, cx - 3, centerY, 821, 2);
       ugly::line(r, cx - 3, centerY, cx + 3, centerY + SPAN, 822, 2);
-      ugly::text(r, ugly::Size::S22, chevronX + chevron + GAP - box[0], textY + 18, label);
+      if (jumpBackPage > 0)
+        ugly::text(r, ugly::Size::S22, chevronX + chevron + GAP - box[0], textY + 18, label);
     } else {
       tenorchrome::drawPillRing(r, left, top, width, HEIGHT, 2, true);
       tenorchrome::drawMoreChevron(r, chevronX, top + (HEIGHT - (2 * SPAN + 1)) / 2, tenorchrome::ChevronDir::Left, SPAN);
-      r.drawText(SMALL_FONT_ID, chevronX + chevron + GAP - box[0], top + (HEIGHT - (box[3] - box[1])) / 2 - box[1], label);
+      if (jumpBackPage > 0)
+        r.drawText(SMALL_FONT_ID, chevronX + chevron + GAP - box[0], top + (HEIGHT - (box[3] - box[1])) / 2 - box[1], label);
     }
 #ifdef SIMULATOR
     LOG_INF("JUMPBACK", "page=%d label=%s x=%d y=%d w=%d h=%d rough=%d", jumpBackPage, label, left, top, width, HEIGHT,
