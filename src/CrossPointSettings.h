@@ -19,6 +19,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Out of line on purpose: inline, the member-by-member initialization was copied into
   // each function that inlined getInstance(), about 4 KB of flash.
   CrossPointSettings();
+  static uint8_t defaultReaderMenuStyle();
 
   friend class PersistableStore<CrossPointSettings>;
 
@@ -544,7 +545,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // 0 Off, 1 Default, 2 Large. Older files stored a boolean under
   // focusReadingEnabled and are migrated on read.
   uint8_t dropCapMode = readerSpacing::DROP_CAP_DEFAULT;
-  uint8_t readerMenuStyle = READER_MENU_LIST;
+  uint8_t readerMenuStyle = defaultReaderMenuStyle();
   // SD card font family name (empty = use built-in fontFamily).
   // Bokerlam is the reader font this firmware ships as its default choice. It lives on the
   // card, not in flash, so a card without /.fonts/Bokerlam falls back on its own:

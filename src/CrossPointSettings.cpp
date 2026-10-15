@@ -53,6 +53,14 @@ void CrossPointSettings::validateFrontButtonMapping(CrossPointSettings& settings
 
 CrossPointSettings::CrossPointSettings() { applyTenorPreset(); }
 
+uint8_t CrossPointSettings::defaultReaderMenuStyle() {
+#if FREEINK_DEVICE_X4CLASSIC
+  return READER_MENU_TOOLBAR;
+#else
+  return READER_MENU_LIST;
+#endif
+}
+
 uint8_t CrossPointSettings::defaultOf(uint8_t CrossPointSettings::* field) {
   // A fresh instance holds the defaults; it lives on the heap for the moment it takes to read one.
   const std::unique_ptr<CrossPointSettings> fresh(new (std::nothrow) CrossPointSettings());

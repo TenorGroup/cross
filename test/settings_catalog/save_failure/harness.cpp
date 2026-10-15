@@ -30,6 +30,13 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
 // The settings constructor is defined in src/CrossPointSettings.cpp, outside this slice;
 // it only lays the tenor/cross setup over the member initializers, as this one does.
 CrossPointSettings::CrossPointSettings() { applyTenorPreset(); }
+uint8_t CrossPointSettings::defaultReaderMenuStyle() {
+#if FREEINK_DEVICE_X4CLASSIC
+  return READER_MENU_TOOLBAR;
+#else
+  return READER_MENU_LIST;
+#endif
+}
 bool PersistableStoreBase::writeDocToFile(const char*, const JsonDocument& doc) {
   ++writes;
   if (persistOk) savedShellTuple = {doc["uiShell"].as<uint8_t>(), doc["sleepScreen"].as<uint8_t>(),

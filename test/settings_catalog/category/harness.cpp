@@ -17,6 +17,13 @@
 // The settings constructor is defined in src/CrossPointSettings.cpp, outside this slice;
 // it only lays the tenor/cross setup over the member initializers, as this one does.
 CrossPointSettings::CrossPointSettings() { applyTenorPreset(); }
+uint8_t CrossPointSettings::defaultReaderMenuStyle() {
+#if FREEINK_DEVICE_X4CLASSIC
+  return READER_MENU_TOOLBAR;
+#else
+  return READER_MENU_LIST;
+#endif
+}
 
 static bool measuring = false;
 static size_t allocs = 0, bytes = 0, largest = 0;

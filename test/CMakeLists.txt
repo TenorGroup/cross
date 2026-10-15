@@ -232,6 +232,7 @@ add_subdirectory(txt_zip_io)
 add_subdirectory(clock_ntp_behavior)
 
 add_subdirectory(x4_sleep_clock)
+add_subdirectory(x4c_reader_menu_default)
 add_subdirectory(gauge_capacity)
 add_subdirectory(battery_display_smoothing)
 
