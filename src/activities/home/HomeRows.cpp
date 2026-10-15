@@ -26,8 +26,15 @@ std::vector<RecentBook> recent(const size_t limit) {
 
 Favorites favorites() {
   Favorites out;
+  std::vector<std::string> seenCanonicalKeys;
+  seenCanonicalKeys.reserve(menucustom::state().pinCount);
   for (int i = 0; i < menucustom::state().pinCount; ++i) {
     const std::string key = menucustom::state().pins[i].data();
+    if (!filefavorites::isFileKey(key)) {
+      const std::string canonical = menucustom::canonicalPinKey(key.c_str());
+      if (std::find(seenCanonicalKeys.begin(), seenCanonicalKeys.end(), canonical) != seenCanonicalKeys.end()) continue;
+      seenCanonicalKeys.push_back(canonical);
+    }
     if (filefavorites::isFileKey(key)) {
       const auto path = filefavorites::pathFor(key);
       out.keys.push_back(key);

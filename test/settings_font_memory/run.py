@@ -41,7 +41,7 @@ base = (r / 'src/activities/Activity.h').read_text()
 descriptor = header[header.index('enum class SettingType'):header.index('class SettingsActivity final')]
 (out / 'activities/settings/SettingsActivity.h').write_text(
     '#pragma once\n#include <functional>\n#include <span>\n#include <string>\n#include <vector>\n'
-    '#include <I18n.h>\n#include "CrossPointSettings.h"\n'
+    '#include <I18n.h>\n#include "CrossPointSettings.h"\n#include "MenuCustomization.h"\n'
     '#include "activities/settings/SettingsTabs.h"\n'
     '#include "components/SettingsChoiceStyle.h"\n'
     'namespace tenorchrome {\n'

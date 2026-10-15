@@ -23,6 +23,7 @@ namespace menucustom {
 struct Pin { std::string key; const char* data() const { return key.c_str(); } };
 struct State { int pinCount = 3; Pin pins[3] = {{"folder/root"}, {"bookid/book"}, {"folder/missing"}}; };
 State& state() { static State data; return data; }
+const char* canonicalPinKey(const char* key) { return key; }
 }
 namespace filefavorites {
 bool isFileKey(const std::string&) { return true; }

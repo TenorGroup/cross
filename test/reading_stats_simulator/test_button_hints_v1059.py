@@ -176,7 +176,17 @@ def migration(out):
     again, saved = run_card(out / 'migrate-off', {2500: 'home'})
     assert saved['tenorButtonHints'] == 0, 'turning the bar back on keeps the hints off'
     assert ink_rows(again['home'], 0, W, 0, STRIP) and not ink_rows(again['home'], 0, W, H - 16, H), 'top strip'
-    print('GREEN migration: status bar Off -> hints off, bar back on -> top strip', flush=True)
+    for mode in (0, 1, 2):
+        for hints in (0, 1):
+            card_name = f'migrate-pair-{mode}-{hints}'
+            _, pair = run(out, card_name, '', {2500: 'home'},
+                          {'globalStatusBarMode': mode, 'tenorButtonHints': hints,
+                           'buttonHintsVersion': None, 'tenorPresetVersion': None})
+            expected_hints = 0 if mode == 1 else hints
+            assert pair['globalStatusBarMode'] == mode, (card_name, pair)
+            assert pair['tenorButtonHints'] == expected_hints, (card_name, pair)
+            assert pair['buttonHintsVersion'] == 1 and pair['tenorPresetVersion'] == 1, (card_name, pair)
+    print('GREEN migration pairs: absent tenorPresetVersion keeps all status mode and hint combinations', flush=True)
 
 
 if __name__ == '__main__':

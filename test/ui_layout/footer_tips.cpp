@@ -257,6 +257,12 @@ int main() {
     TenorTheme{}.drawButtonHints(off, "symbol", "symbol", "symbol", "symbol");
     check(off.ys.size() == 1, "status off must keep tips and omit button-label text");
     SETTINGS.hidden = false;
+    SETTINGS.tenorButtonHints = false;
+    check(tenorchrome::statusOnTop() && !tenorchrome::buttonHintsShown(),
+          "top status choice moves the status strip and hides button hints");
+    SETTINGS.tenorButtonHints = true;
+    check(!tenorchrome::statusOnTop() && tenorchrome::buttonHintsShown(),
+          "bottom status choice keeps the button hint strip");
     std::printf("tier=%d caption=%d fallback reserve=%d\n", tier, text.getLineHeight(1), UITheme::getInstance().getMetrics().buttonHintsHeight);
 
     const char* firstForcedLine = "Ở mọi thẻ, giữ tick để ghim hoặc gỡ.";

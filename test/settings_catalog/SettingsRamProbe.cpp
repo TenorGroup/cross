@@ -85,7 +85,25 @@ int main(int argc,char**argv){
   std::printf("dynamic_values_after_catalog_destroyed=GREEN font=%s size=%s\n",fontValue.c_str(),sizeValue.c_str());return 0;
  }
  if(mode=="favorites") {
-  mem::start();{auto id=menufavorites::label("settings/uiTextSize");if(id!=StrId::STR_UI_TEXT_SIZE)return 3;auto value=menufavorites::value("settings/uiTextSize",&registry);if(value.empty())return 7;mem::report("one_favorite_direct",1,0);}
+  mem::start();
+  auto& pins=menucustom::state();
+  pins.pinCount=5;
+  strcpy(pins.pins[0].data(),"settings/globalStatusBarMode");
+  strcpy(pins.pins[1].data(),"settings/tenorButtonHints");
+  strcpy(pins.pins[2].data(),"settings/hideGlobalStatusBar");
+  strcpy(pins.pins[3].data(),"settings/globalStatusBarChoice");
+  strcpy(pins.pins[4].data(),"settings/globalStatusBarMode");
+  const auto oldLabel=menufavorites::label("settings/globalStatusBarMode");
+  const auto oldValue=menufavorites::value("settings/globalStatusBarMode",&registry);
+  if(oldLabel!=StrId::STR_GLOBAL_STATUS_BAR_CHOICE || oldValue.empty())return 3;
+  auto id=menufavorites::label("settings/uiTextSize");
+  if(id!=StrId::STR_UI_TEXT_SIZE)return 4;
+  auto value=menufavorites::value("settings/uiTextSize",&registry);
+  if(value.empty())return 7;
+  std::vector<std::string> keys,values,labels;
+  runHomeFavorites(registry,keys,values,labels);
+  mem::report("merged_status_bar_favorites",labels.size(),labels.capacity());
+  if(keys.size()!=1 || labels.size()!=1 || values.size()!=1 || labels[0].empty() || values[0].empty())return 8;
   std::printf("released_live=%zu\n",mem::live);bool ok=mem::largest<base.size()*sizeof(SettingInfo);std::printf("no_full_catalog_allocation=%s\n",ok?"GREEN":"RED");return ok?0:1;
  }
  if(mode=="category"){

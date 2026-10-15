@@ -33,6 +33,7 @@
 #include "InfoUpdateActivity.h"
 #include "KOReaderSettingsActivity.h"
 #include "KeyboardLayoutsActivity.h"
+#include "MenuCustomization.h"
 #include "activities/util/KeyboardLayoutSet.h"
 #include "LanguageSelectActivity.h"
 #include "MappedInputManager.h"
@@ -155,7 +156,7 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
 
   const auto& catalog = getBaseSettingsList();
   std::array<size_t, settingstabs::TAB_COUNT> rowCounts{};
-  const bool x3StatusLayout = !BoardConfig::hasTouch();
+  const bool x3StatusLayout = menucustom::mergedGlobalStatusBarPinRoute();
   for (const auto& setting : catalog) {
     const int tab = deviceSettingsTab(setting);
     if (tab >= 0 && listedAsRow(setting)) ++rowCounts[tab];
@@ -1267,7 +1268,7 @@ int SettingsActivity::focusFavorite(const std::string& key) {
   // Existing action pins keep their key after the Tenor-only child is removed.
   const std::string target =
       (key == "action/2") ? "settings/statusBarClock"
-      : (!BoardConfig::hasTouch() &&
+      : (menucustom::mergedGlobalStatusBarPinRoute() &&
          (key == "settings/globalStatusBarMode" || key == "settings/tenorButtonHints" ||
           key == "settings/hideGlobalStatusBar"))
           ? "settings/globalStatusBarChoice"

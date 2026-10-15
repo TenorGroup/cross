@@ -6,6 +6,10 @@
 #include <string>
 #include <vector>
 
+#if __has_include(<BoardConfig.h>)
+#include <BoardConfig.h>
+#endif
+
 #include "activities/settings/SettingsTabs.h"
 
 namespace menucustom {
@@ -13,13 +17,19 @@ constexpr int GROUPS = 4;
 constexpr int MAX_TABS = 9;
 constexpr int MAX_PINS = 32;
 constexpr int KEY_SIZE = 64;
-inline bool mergedGlobalStatusBarPinRoute() {
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+inline constexpr bool mergedGlobalStatusBarPinRoute() {
   return false;
+}
+#else
+inline bool mergedGlobalStatusBarPinRoute() {
+#if __has_include(<BoardConfig.h>)
+  return !BoardConfig::hasTouch();
 #else
   return true;
 #endif
 }
+#endif
 // Keep saved v1 pin keys intact while matching their current setting routes.
 // Shared by pin membership, duplicate detection and the favorites launcher.
 inline const char* canonicalPinKey(const char* key) {

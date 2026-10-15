@@ -114,6 +114,26 @@ int main(int argc, char** argv) {
   ok &= check(static_cast<int>(settingstabs::Tab::OTHER)==6,"old tab IDs preserved");
   SettingsActivity activity;
   activity.rebuildSettingsLists();
+  const bool mergedStatusBar = menucustom::mergedGlobalStatusBarPinRoute();
+  ok &= check(std::strcmp(menucustom::canonicalPinKey("settings/hideGlobalStatusBar"),
+                          mergedStatusBar ? "settings/globalStatusBarChoice" : "settings/globalStatusBarMode") == 0,
+              "legacy hidden status bar pin follows the board route");
+  if (mergedStatusBar) {
+    for (const char* key : {"settings/globalStatusBarMode", "settings/tenorButtonHints", "settings/hideGlobalStatusBar"})
+      ok &= check(activity.focusFavorite(key) >= 0 && activity.focusFavorite(key) == activity.focusFavorite("settings/globalStatusBarChoice"),
+                  "merged status bar legacy pin focuses the visible row");
+  } else {
+    ok &= check(std::strcmp(menucustom::canonicalPinKey("settings/globalStatusBarMode"),
+                            "settings/globalStatusBarMode") == 0 &&
+                    std::strcmp(menucustom::canonicalPinKey("settings/tenorButtonHints"),
+                                "settings/tenorButtonHints") == 0,
+                "touch status bar pins keep separate routes");
+    ok &= check(activity.focusFavorite("settings/globalStatusBarMode") >= 0,
+                "touch status bar mode pin focuses its own row");
+    const int hintsFocus = activity.focusFavorite("settings/tenorButtonHints");
+    ok &= check(BoardConfig::isX4Pro() ? hintsFocus < 0 : hintsFocus >= 0,
+                "touch status bar hint pin follows the board catalog");
+  }
   const auto& catalog=getBaseSettingsList();
   std::map<std::string,int> occurrences, routes;
   JsonDocument result;

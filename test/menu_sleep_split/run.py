@@ -42,7 +42,7 @@ source = (r / paths[4]).read_text()
 (out / 'activities/settings').mkdir(parents=True, exist_ok=True)
 (out / 'activities/settings/SettingsActivity.h').write_text(
     '#pragma once\n#include <functional>\n#include <span>\n#include <string>\n#include <vector>\n#include <I18n.h>\n'
-    '#include "CrossPointSettings.h"\n#include "activities/settings/SettingsTabs.h"\n' +
+    '#include "CrossPointSettings.h"\n#include "MenuCustomization.h"\n#include "activities/settings/SettingsTabs.h"\n' +
     '#include "components/SettingsChoiceStyle.h"\n'
     'namespace tenorchrome {\n'
     '#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO\n'
@@ -95,7 +95,7 @@ results = []
 for profile in ['c3', 'pro', 'persistence']:
     defines = ['-DFREEINK_DEVICE_X4PRO=1'] if profile == 'pro' else ['-DFREEINK_DEVICE_X3=1', '-DFREEINK_DEVICE_X4=1']
     if profile == 'persistence':
-        cmd = [common[0], '-I'+str(here/'stubs'), *common[1:], str(here/'persistence.cpp')]
+        cmd = [common[0], '-I'+str(here/'stubs'), *common[1:], '-DFREEINK_DEVICE_X3=1', str(here/'persistence.cpp')]
     else:
         cmd = common + defines + [str(here/'harness.cpp'), str(r/'src/ReaderFontSizes.cpp'),
                str(r/'src/activities/settings/SettingsTabs.cpp'), str(i18n/'I18n.cpp'), str(i18n/'I18nStrings.cpp')]

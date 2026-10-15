@@ -71,7 +71,8 @@ for name in ('getTextInkTop', 'getTextInkBottom'):
 declarations = '\n'.join(re.findall(r'^(?:bool|int|void) (?:smallFooterSymbolsTopY|compactFooterTips|tipY|tipTopY|tipLineCount|tipHeight|uglyTipTop|drawTip|moreBelowChevronTopY|drawMoreBelowChevron)\([^;]+;', header, re.M))
 declarations += '\n' + '\n'.join(re.findall(r'(?:enum class ChevronDir[^;]+;|constexpr int MORE_CHEVRON_[^;]+;|'
                                              r'constexpr int moreChevronLength[^}]+}|void drawMoreChevron\([^;]+;)', header))
-# The touch shell's gate: the button reader's value, and the tip filter as written.
+    # The touch shell's gate. The fixture exposes the same GlobalStatusBarSpec contract
+    # as CrossPointSettings, so both helpers consume that single computed value.
 if 'kTouchShell' in header:
     declarations += '\nbool x3ScreenLayoutEnabled();\n'
     for name in ('struct X3ScreenRect', 'struct X3ScreenLayout'):
@@ -87,10 +88,9 @@ if 'kTouchShell' in header:
     declarations += '\nconstexpr bool kTouchShell = false;\n' + function(header, 'inline bool tipShown(')
     if 'touchBarTop' in header:
         declarations += '\ninline int touchBarTop(int screenHeight) { return screenHeight; }'
-    # Button hints on: the status stays at the foot (the hints-off strip: test_button_hints_v1059.py).
     declarations += '\nconstexpr int TOUCH_STRIP_HEIGHT = 32;'
-    declarations += '\ninline bool buttonHintsShown() { return !SETTINGS.globalStatusBarHidden(); }'
-    declarations += '\ninline bool statusOnTop() { return false; }\n'
+    declarations += '\ninline bool buttonHintsShown() { const auto spec = SETTINGS.globalStatusBarSpec(); return spec.visible && !spec.top; }'
+    declarations += '\ninline bool statusOnTop() { const auto spec = SETTINGS.globalStatusBarSpec(); return spec.visible && spec.top; }\n'
 fixture = Path(__file__).with_name('footer_tips.cpp').read_text()
 fixture = '#include <array>\n' + fixture.replace('struct GfxRenderer {', '''struct GfxRenderer {
   mutable std::array<int, 4> clip = {0, 0, 480, 800};

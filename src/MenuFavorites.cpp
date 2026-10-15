@@ -96,6 +96,8 @@ StrId label(const std::string& key) { return label(key, getBaseSettingsList()); 
 StrId label(const std::string& key, const std::vector<SettingInfo>& settings) {
   const char* canonical = menucustom::canonicalPinKey(key.c_str());
   if (canonical != key.c_str()) return label(canonical, settings);
+  if (key == "settings/globalStatusBarChoice" && menucustom::mergedGlobalStatusBarPinRoute())
+    return buildGlobalStatusBarChoiceSetting().nameId;
   if (key.rfind("settings/", 0) == 0) {
     for (const auto& info : settings) {
       if (settingHiddenOnThisBoard(info) || !info.key || key.compare(9, std::string::npos, info.key) != 0) continue;
@@ -121,6 +123,8 @@ StrId label(const std::string& key, const std::vector<SettingInfo>& settings) {
 std::string value(const std::string& key, const std::vector<SettingInfo>& settings) {
   const char* canonical = menucustom::canonicalPinKey(key.c_str());
   if (canonical != key.c_str()) return value(canonical, settings);
+  if (key == "settings/globalStatusBarChoice" && menucustom::mergedGlobalStatusBarPinRoute())
+    return SettingsActivity::settingValueText(buildGlobalStatusBarChoiceSetting());
   const auto* item = find(key);
   if (key == "status/statusBarClock" || key == "settings/statusBarClock" || key == "action/2") {
     for (const auto& info : settings) {

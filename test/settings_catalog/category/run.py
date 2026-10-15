@@ -104,7 +104,7 @@ for mode in modes:
                         header.index('class SettingsActivity final')]
     (output / 'activities/settings/SettingsActivity.h').write_text(
         '#pragma once\n#include <functional>\n#include <span>\n#include <string>\n#include <vector>\n'
-        '#include <I18n.h>\n#include "CrossPointSettings.h"\n'
+        '#include <I18n.h>\n#include "CrossPointSettings.h"\n#include "MenuCustomization.h"\n'
         '#include "activities/settings/SettingsTabs.h"\n'
         '#include "components/SettingsChoiceStyle.h"\n'
         'namespace tenorchrome {\n'
