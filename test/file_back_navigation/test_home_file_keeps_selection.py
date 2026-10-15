@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Returning to Home File keeps the chosen root row and viewport.
+"""Returning to Home File keeps a direct child on its real root row.
 
-The last-folder row is inserted on return. The selected root entry and the
-viewport top must both move by one so the same rows stay in the same places.
+A folder directly under the root already has a real row, so Home does not add
+a duplicate reopen row when the browser returns.
 """
 
 import argparse
@@ -61,11 +61,11 @@ def main() -> int:
     if before is None or after is None:
         print("RED: scripted journey did not capture both Home File frames")
         return 1
-    expected = (before[0] + 1, before[1] + 1)
+    expected = before
     if after != expected:
-        print(f"RED: expected selected row and top {expected} after inserting Mo lai")
+        print(f"RED: expected the direct child row and viewport to stay at {expected}")
         return 1
-    print("GREEN: Home File kept the selected root row and viewport")
+    print("GREEN: Home File kept the direct child row and viewport")
     return 0
 
 
