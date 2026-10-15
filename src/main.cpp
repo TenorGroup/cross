@@ -286,9 +286,16 @@ bool deliver(const bleturner::Action action) {
       return activityManager.remoteTurn(true, true);
     case bleturner::Action::PrevChapter:
       return activityManager.remoteTurn(false, true);
-    default:
-      return false;  // the reader menu and quote shortcuts have no remote binding here
+    case bleturner::Action::Confirm:
+      return activityManager.remoteClick(RemoteButton::Confirm);
+    case bleturner::Action::Back:
+      return activityManager.remoteClick(RemoteButton::Back);
+    case bleturner::Action::None:
+    case bleturner::Action::ReaderMenu:
+    case bleturner::Action::SaveQuote:
+      return false;
   }
+  return false;
 }
 
 bool yieldForRadio() { return true; }        // the reader keeps no parser alive between pages
@@ -753,9 +760,9 @@ void loop() {
   // Bluetooth page turner, before the USB drive's early return: a card handed to USB stops the radio
   // before anything else.
   bleturner::Scene scene{};
-  scene.where = activityManager.isForegroundReader() ? bleturner::Where::Reader : bleturner::Where::Elsewhere;
+  scene.where = activityManager.isRemoteReaderContext() ? bleturner::Where::Reader : bleturner::Where::Elsewhere;
   scene.visit = activityManager.visit();
-  scene.pageShown = activityManager.isForegroundReaderShown();
+  scene.pageShown = activityManager.isRemoteReaderContext();
   scene.storageBusy = activityManager.requiresExclusiveStorageLoop();
   scene.wifiOn = WiFi.getMode() != WIFI_MODE_NULL;
   // A page key or touch in the book starts a radio that stopped for idleness again.

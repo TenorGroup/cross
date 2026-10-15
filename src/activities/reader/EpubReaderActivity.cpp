@@ -2610,8 +2610,6 @@ void EpubReaderActivity::renderOverlay() {
   // The toolbar's tool pill is the button-navigation cursor: tap-first (same
   // convention as the panel lists), it only shows once a button has moved it.
   // Panels override below: there the pill marks the open panel on every board.
-  model.bluetoothAvailable = bleturner::status().compiledIn;
-  model.bluetoothEnabled = SETTINGS.ble.enabled != 0;
   model.activeTool = (overlay == Overlay::Toolbar && !panelCursorShown) ? -1 : focusedTool;
   // Strings the model points at live here until render() returns.
   std::string chapterTitle, pageInfo;
@@ -2728,12 +2726,6 @@ void EpubReaderActivity::handleOverlayInput() {
   // Touch first: FreeInkUI routes the frame against the tap targets the last
   // render registered and hands back the action it mapped to.
   const auto routed = toolbarUi->route(mappedInput);
-  const int toolCount = ReaderToolbarUi::BLUETOOTH_TOOL + (bleturner::status().compiledIn ? 1 : 0);
-  if (routed.event == ReaderToolbarUi::Event::Tool && routed.value == ReaderToolbarUi::BLUETOOTH_TOOL) {
-    EpubReaderMenuActivity::toggleBluetooth();
-    fastRedraw();
-    return;
-  }
 
   // --- Toolbar ---
   if (overlay == Overlay::Toolbar) {
@@ -2766,24 +2758,19 @@ void EpubReaderActivity::handleOverlayInput() {
       return;
     }
     if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
-      focusedTool = (focusedTool + toolCount - 1) % toolCount;
+      focusedTool = (focusedTool + 2) % 3;
       panelCursorShown = true;
       fastRedraw();
       return;
     }
     if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
-      focusedTool = (focusedTool + 1) % toolCount;
+      focusedTool = (focusedTool + 1) % 3;
       panelCursorShown = true;
       fastRedraw();
       return;
     }
     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-      if (focusedTool == ReaderToolbarUi::BLUETOOTH_TOOL) {
-        EpubReaderMenuActivity::toggleBluetooth();
-        fastRedraw();
-      } else {
-        openOverlay(toolOverlay(focusedTool));
-      }
+      openOverlay(toolOverlay(focusedTool));
       return;
     }
     const bool prev = mappedInput.wasReleased(MappedInputManager::Button::Up);

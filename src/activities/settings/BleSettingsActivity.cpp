@@ -5,6 +5,7 @@
 #include <I18n.h>
 
 #include <cstring>
+#include <iterator>
 
 #include "CrossPointSettings.h"
 #include "I18nKeys.h"
@@ -15,10 +16,12 @@ namespace fui = freeink::ui;
 
 namespace {
 enum class MenuAction : int16_t { Enable, Scan, Paired, Mapping };
-constexpr bleturner::Action MAP_ACTIONS[] = {bleturner::Action::NextPage, bleturner::Action::PrevPage,
-                                             bleturner::Action::NextChapter, bleturner::Action::PrevChapter};
-constexpr StrId MAP_LABELS[] = {StrId::STR_NEXT_PAGE, StrId::STR_PREV_PAGE, StrId::STR_BT_NEXT_CHAPTER,
-                                StrId::STR_BT_PREV_CHAPTER};
+constexpr bleturner::Action MAP_ACTIONS[] = {bleturner::Action::NextPage,    bleturner::Action::PrevPage,
+                                             bleturner::Action::NextChapter, bleturner::Action::PrevChapter,
+                                             bleturner::Action::Confirm,     bleturner::Action::Back};
+constexpr StrId MAP_LABELS[] = {StrId::STR_NEXT_PAGE,       StrId::STR_PREV_PAGE, StrId::STR_BT_NEXT_CHAPTER,
+                                StrId::STR_BT_PREV_CHAPTER, StrId::STR_CONFIRM,   StrId::STR_BACK};
+static_assert(std::size(MAP_ACTIONS) == std::size(MAP_LABELS));
 constexpr uint32_t SCAN_MS = 15000;
 }  // namespace
 
@@ -158,7 +161,7 @@ void BleSettingsActivity::refresh() {
     case View::Mapping: {
       const auto peer = bleturner::linked();
       const auto* table = bleturner::tableFor(SETTINGS.ble.remotes, SETTINGS.ble.remoteCount, peer.addr, peer.name);
-      for (uint8_t i = 0; i < 4; ++i) {
+      for (uint8_t i = 0; i < std::size(MAP_ACTIONS); ++i) {
         auto& row = add(I18N.get(MAP_LABELS[i]), i, st.connected && learnAction == bleturner::Action::None);
         bleturner::Binding binding;
         if (table && bleturner::find(*table, MAP_ACTIONS[i], binding)) {
@@ -235,7 +238,7 @@ void BleSettingsActivity::activateIndex(const int index) {
 }
 
 void BleSettingsActivity::startLearning(const int index) {
-  if (index < 0 || index >= 4 || !bleturner::status().connected) return;
+  if (index < 0 || index >= static_cast<int>(std::size(MAP_ACTIONS)) || !bleturner::status().connected) return;
   bleturner::Event ev;
   while (bleturner::pollEvent(ev)) {
   }  // presses from before the row was chosen are not the answer

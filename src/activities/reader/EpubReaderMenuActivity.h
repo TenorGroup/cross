@@ -48,6 +48,7 @@ class EpubReaderMenuActivity final : public UiListActivity {
 
   void render(RenderLock&&) override;
   bool handleHomeGesture() override;
+  bool acceptsRemoteInput() const override { return routingReady(); }
 
  private:
   // Row storage: menuItems is at most MAX_MENU_ITEMS, so a

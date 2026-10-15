@@ -45,7 +45,7 @@ class BleSettingsActivity final : public UiListActivity {
   unsigned long lastPollMs = 0;
   bleturner::Action learnAction = bleturner::Action::None;
   char learnAddr[18]{};
-  char mappingValues[4][24]{};
+  char mappingValues[6][24]{};
   uint32_t learnCode = 0;  // the pressed button, kept until its release
   unsigned long learnSinceMs = 0;
   const char* learnNote = nullptr;

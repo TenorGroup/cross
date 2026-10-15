@@ -112,7 +112,8 @@ class ActivityManager {
   // Bluetooth page turner (lib/BlePageTurner): the book in front, whether it has painted a page, and
   // a page or chapter turn from a remote. False when no book in front took the turn.
   bool isForegroundReader() const;
-  bool isForegroundReaderShown() const;
+  bool isRemoteReaderContext() const;
+  bool remoteClick(RemoteButton button);
   uint32_t visit() const { return screenVisit; }
   bool remoteTurn(bool forward, bool chapter);
   bool handleForcedRefresh();

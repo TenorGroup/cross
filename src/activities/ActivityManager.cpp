@@ -396,14 +396,21 @@ bool ActivityManager::isForegroundReader() const {
   return pendingAction == PendingAction::None && currentActivity && currentActivity->isReaderActivity();
 }
 
-bool ActivityManager::isForegroundReaderShown() const {
-  return isForegroundReader() &&
-         static_cast<const ReaderActivity*>(currentActivity.get())->pageRendered.load(std::memory_order_acquire);
+bool ActivityManager::isRemoteReaderContext() const {
+  return pendingAction == PendingAction::None && currentActivity && currentActivity->acceptsRemoteInput();
+}
+
+bool ActivityManager::remoteClick(const RemoteButton button) {
+  if (!isRemoteReaderContext() || RenderLock::peek() || requestedUpdate.load()) return false;
+  return mappedInput.injectRemoteClick(button);
 }
 
 bool ActivityManager::remoteTurn(const bool forward, const bool chapter) {
-  if (!isForegroundReader()) return false;
-  auto* reader = static_cast<ReaderActivity*>(currentActivity.get());
+  if (!isRemoteReaderContext() || mappedInput.hasRemoteClick()) return false;
+  auto* reader = isForegroundReader() ? static_cast<ReaderActivity*>(currentActivity.get()) : nullptr;
+  if (!reader || reader->inputOverPage()) {
+    return !chapter && remoteClick(forward ? RemoteButton::Next : RemoteButton::Previous);
+  }
   if (!remoteTurnAccepted(reader->pageRendered.load(std::memory_order_acquire), RenderLock::peek(),
                           reader->inputOverPage())) {
     return false;

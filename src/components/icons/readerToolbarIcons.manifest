@@ -8,5 +8,3 @@ reader-text = type
 reader-more = ellipsis
 reader-back = chevron-left
 reader-next = chevron-right
-reader-bluetooth = bluetooth
-reader-bluetooth-off = bluetooth-off

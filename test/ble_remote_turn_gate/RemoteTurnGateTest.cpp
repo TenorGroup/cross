@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "activities/reader/RemoteTurnGate.h"
+#include "util/RemoteButtonInput.h"
 
 TEST(RemoteTurnGate, TurnsTheShownPage) { EXPECT_TRUE(remoteTurnAccepted(true, false, false)); }
 
@@ -13,4 +14,16 @@ TEST(RemoteTurnGate, WaitsForTheFirstPage) { EXPECT_FALSE(remoteTurnAccepted(fal
 TEST(RemoteTurnGate, LeavesTheBookAloneUnderAToolbarOrMenu) {
   EXPECT_FALSE(remoteTurnAccepted(true, false, true));
   EXPECT_FALSE(remoteTurnAccepted(true, true, true));
+}
+
+TEST(RemoteButtonInput, RejectsSecondClickUntilReset) {
+  RemoteButtonInput input;
+  EXPECT_FALSE(input.click(RemoteButton::None));
+  EXPECT_TRUE(input.click(RemoteButton::Confirm));
+  EXPECT_FALSE(input.click(RemoteButton::Back));
+  EXPECT_EQ(input.button, RemoteButton::Confirm);
+  input.reset();
+  EXPECT_EQ(input.button, RemoteButton::None);
+  EXPECT_TRUE(input.click(RemoteButton::Back));
+  EXPECT_EQ(input.button, RemoteButton::Back);
 }

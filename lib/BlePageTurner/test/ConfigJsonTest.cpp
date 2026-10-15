@@ -149,8 +149,26 @@ TEST(BleConfigJsonTest, ReaderShortcutActionsRoundTripAndOldSlotsStay) {
   ASSERT_EQ(c.remotes[0].count, 3);
   EXPECT_EQ(c.remotes[0].bindings[1], menuTap);
   EXPECT_EQ(c.remotes[0].bindings[2], quoteHold);
-  EXPECT_FALSE(valid(makeBinding(0x030001, false, static_cast<Action>(7))))
+  EXPECT_FALSE(valid(makeBinding(0x030001, false, static_cast<Action>(9))))
       << "an action past the list still reads as garbage";
+}
+
+TEST(BleConfigJsonTest, ConfirmAndBackRoundTripWithoutChangingPageBindings) {
+  Config config;
+  auto* table = editableTable(config.remotes, config.remoteCount, "AA:BB:CC:DD:EE:08", "Remote");
+  ASSERT_NE(table, nullptr);
+  ASSERT_TRUE(learn(*table, Action::NextPage, 0x030001, false));
+  ASSERT_TRUE(learn(*table, Action::Confirm, 0x030002, false));
+  ASSERT_TRUE(learn(*table, Action::Back, 0x030004, false));
+  JsonDocument doc;
+  writeJson(config, doc);
+  Config loaded;
+  readJson(loaded, doc.as<JsonVariantConst>());
+  ASSERT_EQ(loaded.remoteCount, 1);
+  ASSERT_EQ(loaded.remotes[0].count, 3);
+  EXPECT_EQ(lookup(loaded.remotes[0], 0x030001, false), Action::NextPage);
+  EXPECT_EQ(lookup(loaded.remotes[0], 0x030002, false), Action::Confirm);
+  EXPECT_EQ(lookup(loaded.remotes[0], 0x030004, false), Action::Back);
 }
 
 }  // namespace

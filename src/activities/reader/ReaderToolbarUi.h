@@ -13,7 +13,7 @@ class MappedInputManager;
 // Menu Style -> Toolbar), painted over the page that is already on screen:
 //
 //  - Toolbar: a bottom sheet holding a chapter scrub row (< capsule >) and a
-//    Contents / Text / More / Bluetooth tile row; the page above it stays untouched.
+//    Contents / Text / More tile row; the page above it stays untouched.
 //  - Panel: a taller bottom sheet with a title, a paged row list (name left,
 //    value right) and the same tile row as a switcher.
 //
@@ -24,7 +24,6 @@ class MappedInputManager;
 // clears the screen: the page stays visible around the chrome.
 class ReaderToolbarUi : public UiAppHost {
  public:
-  static constexpr int BLUETOOTH_TOOL = 3;
   enum class Event { None = 0, Dismiss = 1, Tool = 2, PrevChapter = 3, NextChapter = 4, Scrub = 5, Row = 6 };
 
   struct Model {
@@ -41,9 +40,7 @@ class ReaderToolbarUi : public UiAppHost {
     std::function<std::string(int)> rowValue;
     void (*rowCheckbox)(void* ctx, int index, freeink::ui::ListItem& item) = nullptr;
     void* rowCheckboxContext = nullptr;
-    bool bluetoothAvailable = false;
-    bool bluetoothEnabled = false;
-    // Tile row: the tool in focus (toolbar) / the open panel (panel).
+    // Tile row: the tool in focus (toolbar) / the open panel (panel). 0..2.
     int activeTool = 0;
     // Button boards keep the theme's denser list row height (as every other
     // list does there); touch boards use FreeInkUI's finger-sized rows.

@@ -32,7 +32,7 @@ constexpr int16_t kScrubGap = 12;     // air between the buttons and the track
 // pill. The whole slot is the tap target; the row height sets its size.
 constexpr int16_t kToolRowH = 80;
 constexpr int16_t kToolPillInset = 10;
-constexpr int kToolCount = ReaderToolbarUi::BLUETOOTH_TOOL + 1;
+constexpr int kToolCount = 3;
 // Bottom sheet height for the panels. ListNav fits whole rows in the remaining
 // list area; any spare pixels stay between the list and the switcher.
 constexpr int kPanelHeightPercent = 62;
@@ -97,27 +97,25 @@ void ReaderToolbarUi::screenFn(UiScreen& screen, void* user) {
   }
 }
 
-// The tool row uses equal slots, with an icon centred in each,
+// The Contents / Text / More row: three equal slots, an icon centred in each,
 // the active one inside an outline pill (the theme's control radius). Each
 // slot is registered as one tap target, so the row stays light (no filled
 // tiles, no labels -- the glyphs carry the meaning).
 void ReaderToolbarUi::buildToolRow(UiScreen& screen, const fui::LayoutAnchor anchor, const int16_t sideInset) {
   const auto& tokens = screen.theme();
-  const fui::BitmapRef icons[kToolCount] = {
-      fui::bitmapFromIcon(icon_reader_contents_24), fui::bitmapFromIcon(icon_reader_text_24),
-      fui::bitmapFromIcon(icon_reader_more_24),
-      fui::bitmapFromIcon(model_.bluetoothEnabled ? icon_reader_bluetooth_24 : icon_reader_bluetooth_off_24)};
-  const int toolCount = model_.bluetoothAvailable ? kToolCount : BLUETOOTH_TOOL;
+  const fui::BitmapRef icons[kToolCount] = {fui::bitmapFromIcon(icon_reader_contents_24),
+                                            fui::bitmapFromIcon(icon_reader_text_24),
+                                            fui::bitmapFromIcon(icon_reader_more_24)};
   // sideInset absorbs the difference between the two hosts' content bands
   // (the toolbar's is spaceLg-inset, the panel's is full width): the slots
   // must land on the same x either way, or the icons jump when a tap swaps
   // the toolbar for a panel.
   const fui::Rect row = screen.take(anchor, kToolRowH).inset(fui::Insets{0, sideInset, 0, sideInset});
-  const int16_t slotW = static_cast<int16_t>(row.width / toolCount);
+  const int16_t slotW = static_cast<int16_t>(row.width / kToolCount);
   // Theme radius as-is (the frontlight panel pattern); the fill clamps to
   // the shape's own height so round themes cannot overshoot.
   const uint8_t pillRadius = tokens.controlRadius;
-  for (int i = 0; i < toolCount; ++i) {
+  for (int i = 0; i < kToolCount; ++i) {
     const fui::Rect slot{static_cast<int16_t>(row.x + slotW * i), row.y, slotW, row.height};
     if (i == model_.activeTool) {
       screen.target().stroke(slot.inset(fui::Insets{4, kToolPillInset, 4, kToolPillInset}),

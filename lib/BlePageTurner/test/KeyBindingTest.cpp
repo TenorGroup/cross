@@ -17,6 +17,8 @@ TEST(BleActionNumbersTest, ActionValuesNeverChange) {
   EXPECT_EQ(static_cast<int>(Action::PrevChapter), 4);
   EXPECT_EQ(static_cast<int>(Action::ReaderMenu), 5);
   EXPECT_EQ(static_cast<int>(Action::SaveQuote), 6);
+  EXPECT_EQ(static_cast<int>(Action::Confirm), 7);
+  EXPECT_EQ(static_cast<int>(Action::Back), 8);
   EXPECT_EQ(makeBinding(0x030102, false, Action::NextChapter), 0x30030102u);
   EXPECT_EQ(makeBinding(0x030008, true, Action::PrevChapter), 0x41030008u);
 }
@@ -54,7 +56,7 @@ TEST(BleBindingTableTest, FullTableRefusesAndGarbageIsNotValid) {
 
   EXPECT_TRUE(valid(makeBinding(0x030102, true, Action::PrevChapter)));
   EXPECT_FALSE(valid(makeBinding(0x030102, false, Action::None)));
-  EXPECT_FALSE(valid(0x70030102u)) << "action out of range";
+  EXPECT_FALSE(valid(0x90030102u)) << "action out of range";
   EXPECT_FALSE(valid(0x18030102u)) << "unknown bit";
   EXPECT_FALSE(valid(makeBinding(0x030100, false, Action::NextPage))) << "a zero value is a release, not a button";
 }
