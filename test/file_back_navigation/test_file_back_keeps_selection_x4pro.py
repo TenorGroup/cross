@@ -20,19 +20,20 @@ def main() -> int:
 
     output = args.output.resolve()
     files = {f"/books/folder-{index:02d}/book.txt": b"Test.\n" for index in range(18)}
-    files["/books/folder-00/child-dir/book.txt"] = b"Test.\n"
+    files["/books/folder-12/child-dir/book.txt"] = b"Test.\n"
     sd = sim.card(output, files=files, extra={"statusBarClock": 0, "clockShowInHeader": 0})
     steps = [
         ("00-home", None),
         ("01-file", "TAP:150,754"),
         ("02-books", "TAP:130,65"),
-        ("03-folder", "TAP:130,65"),
-        ("04-child-before", None),
-        ("05-enter-child", "TAP:130,65"),
-        ("06-parent-after", "TAP:46,754"),
+        ("03-scroll", "SWIPE:240,650,240,350,500"),
+        ("04-folder", "TAP:130,390"),
+        ("05-child-before", None),
+        ("06-enter-child", "TAP:130,65"),
+        ("07-parent-after", "TAP:46,754"),
     ]
     log, shots = sim.run(args.program, output, sd, steps, args.port, gap=2800, settle=1800)
-    changed = sum(1 for value in ImageChops.difference(shots["04-child-before"], shots["06-parent-after"]).getdata() if value)
+    changed = sum(1 for value in ImageChops.difference(shots["05-child-before"], shots["07-parent-after"]).getdata() if value)
     print(f"changed_pixels={changed}")
     if changed:
         print("RED: X4 Pro did not restore the selected child row")
