@@ -8,3 +8,9 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME PathPill.Layout
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run.py"
           --work "${CMAKE_CURRENT_BINARY_DIR}/harness")
+add_test(NAME PathPill.NarrowButtonRing
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/ring_geometry.py"
+          --work "${CMAKE_CURRENT_BINARY_DIR}/button-ring")
+add_test(NAME PathPill.TouchRingUnchanged
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/ring_geometry.py"
+          --touch --work "${CMAKE_CURRENT_BINARY_DIR}/touch-ring")

@@ -275,6 +275,15 @@ void HomeActivity::restoreNavigation(const MenuNavigationState& state) {
   if (activeTabId == Tab::FAVORITES) {
     const auto found = std::find(favoriteKeys.begin(), favoriteKeys.end(), state.selection);
     if (found != favoriteKeys.end()) activeNav().selected = static_cast<int>(found - favoriteKeys.begin()) + 1;
+  } else if (!tenorchrome::kTouchShell && activeTabId == Tab::FOLDER) {
+    const int previous = activeNav().selected;
+    for (int row = 0; row < listCount(); ++row) {
+      if (!lastFolderAt(row) && folderEntry(row) == state.selection) {
+        activeNav().selected = row + 1;
+        activeNav().top = std::max(0, activeNav().top + activeNav().selected - previous);
+        break;
+      }
+    }
   } else if (activeTabId == Tab::RECENT) {
     // A book opened since the cursor was kept is the first card now, and the card Home shows.
     const auto found = state.booksOpened != RECENT_BOOKS.opened()
@@ -298,6 +307,9 @@ void HomeActivity::captureNavigation(MenuNavigationState& state) const {
   state.booksOpened = RECENT_BOOKS.opened();
   const int row = ringPos() - 1;
   if (activeTabId == Tab::FAVORITES) state.selection = favoriteKey(row);
+  if (!tenorchrome::kTouchShell && activeTabId == Tab::FOLDER && row >= 0 && row < listCount() &&
+      !lastFolderAt(row))
+    state.selection = folderEntry(row);
   if (activeTabId == Tab::RECENT && row >= 0 && row < static_cast<int>(recentBooks.size()))
     state.selection = recentBooks[row].path;
   if (activeTabId == Tab::CAI_DAT) {

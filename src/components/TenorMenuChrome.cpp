@@ -104,6 +104,10 @@ void tenorchrome::drawRoundRing(const GfxRenderer& g, const int x, const int y, 
 // Ring of `thick` px just inside a round-ended bar; grey = every other pixel, (x + y) even.
 void tenorchrome::drawPillRing(const GfxRenderer& g, const int x, const int y, const int w, const int h, const int thick,
                   const bool grey) {
+  if (!kTouchShell && w < h) {
+    drawRoundRing(g, x, y, w, h, w / 2, thick, grey);
+    return;
+  }
   const int r = h / 2;
   const auto plot = [&](const int px, const int py) {
     if (!grey || ((px + py) & 1) == 0) g.drawPixel(px, py, true);

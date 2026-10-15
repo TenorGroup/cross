@@ -263,7 +263,8 @@ if not args.tip_only:
     definitions.append(footer)
     definitions.append(function(base, 'BaseTheme::drawHintLabel('))
     definitions.append(function(chrome, 'bool inPill('))
-    for name in ('drawBarIcon', 'drawPillRing'):
+    definitions.append(function(chrome, 'bool inRound('))
+    for name in ('drawBarIcon', 'drawRoundRing', 'drawPillRing'):
         declarations.append(re.search(r'void ' + name + r'\([^;]+;', header).group())
         definitions.append(function(chrome, f'tenorchrome::{name}('))
     declarations.append(function(header, 'struct PathPillLayout') + ';')

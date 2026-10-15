@@ -43,6 +43,7 @@ constexpr int BAR_END_INSET = 8;
 constexpr int X3_BAR_MARGIN = 16;
 bool x3ScreenLayoutEnabled() { return !kTouchShell; }
 void drawPillRing(const GfxRenderer&, int, int, int, int, int, bool);
+void drawRoundRing(const GfxRenderer&, int, int, int, int, int, int, bool);
 void drawBarFrame(const GfxRenderer&, int, int, int, int);
 void drawBarIcon(const GfxRenderer&, const uint8_t*, int, int, int, int, bool);
 void drawBarTab(const GfxRenderer&, int, int, int, const uint8_t*, int, int, bool);

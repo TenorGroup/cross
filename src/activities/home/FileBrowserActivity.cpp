@@ -425,7 +425,7 @@ void FileBrowserActivity::activateSelected() {
     nav.top = 0;
     if (mode == Mode::Books) {
       activityManager.menuNavigationMemory().enter(parent, "BrowserDir:" + basepath);
-      restoreDirectory();
+      if (!tenorchrome::kTouchShell) restoreDirectory();
     }
     lock.unlock();
     requestUpdate();
@@ -607,9 +607,8 @@ bool FileBrowserActivity::handleButtons() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     // Short press: go up one directory, or go home if at root
     if (mappedInput.getHeldTime() < GO_HOME_MS) {
-      // Touch: the root of File is the File card of Home, so a folder right under it goes back there.
-      if ((tenorchrome::kTouchShell || openedFromUglyFile) && mode == Mode::Books && basepath != "/" &&
-          basepath.find('/', 1) == std::string::npos) {
+      // The root of File is the File card of Home, so a folder right under it goes back there.
+      if (mode == Mode::Books && basepath != "/" && basepath.find('/', 1) == std::string::npos) {
         activityManager.goHome(HomeMenuItem::FILE_BROWSER);
       } else if (basepath != "/") {
         const std::string oldPath = basepath;
@@ -631,6 +630,9 @@ bool FileBrowserActivity::handleButtons() {
           nav.selected = static_cast<int>(findEntry(dirName)) + kSearchRows;
           nav.top = 0;
           nav.follow(listCount());
+          // Entering a child saved the parent's exact cursor and viewport. A
+          // direct favorite may have no parent state, so keep the fallback above.
+          if (mode == Mode::Books && !tenorchrome::kTouchShell) restoreDirectory();
         }
 
         requestUpdate();
