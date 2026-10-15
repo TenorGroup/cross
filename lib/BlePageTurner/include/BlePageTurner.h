@@ -33,10 +33,10 @@ struct Heap {
 };
 
 // The saved settings. ConfigJson reads and writes them under the keys blePageTurnerEnabled,
-// blePeerAddr, blePeerName, blePrevKeyUsage, bleNextKeyUsage and bleRemotes.
+// blePick, blePeerAddr, blePeerName, blePrevKeyUsage, bleNextKeyUsage and bleRemotes.
 struct Config {
   uint8_t enabled = 0;
-  // The remote the user chose: reconnected to without a new scan.
+  uint8_t pick = 1;  // 1: the first remote to come up; 0: the chosen remote first
   char peerAddr[18] = "";
   char peerName[32] = "";
   // HID usage learned for each direction from the decoded key path; 0 = not learned.
@@ -128,7 +128,9 @@ struct Host {
   void (*heapMap)(const char* tag);
 };
 
-enum class Where : uint8_t { Elsewhere, Reader, PairingScreen };
+// Home is the first screen after boot with its first frame up; only a build with the S3 profile
+// (RadioPolicy.h) lets the radio start there.
+enum class Where : uint8_t { Elsewhere, Reader, PairingScreen, Home };
 
 // Host -> module, once per main-loop pass.
 struct Scene {
@@ -144,13 +146,24 @@ struct Scene {
 };
 
 void begin(const Host& host, Config& config);
+void requestConnect();
 // Returns true when a remote press acted this pass (the host counts it as user activity).
 bool tick(const Scene& scene);
 // False: the radio is still stopping (or a start is in flight); call again next pass before
 // changing screens. endTimeoutMs: how long the SDK may wait for the stack to stop this call.
-bool beforeScreenChange(uint32_t endTimeoutMs = 0);
+// nextIsReader: the screen about to come is a book. A radio that came up at Home (S3 profile) is kept for
+// it, so the book finds the stack already in and the heap Home had.
+bool beforeScreenChange(uint32_t endTimeoutMs = 0, bool nextIsReader = false);
+// Stops the radio now, waiting up to timeoutMs: a start in flight is cancelled or let finish, then
+// the stack stops. False: it did not stop in time. Main loop. A host that covers the page with a
+// sheet calls it first, and reports the book as Elsewhere while the sheet is up.
+bool stopNow(uint32_t timeoutMs);
 // Stops the radio before sleep, waiting up to timeoutMs. False: it did not stop in time.
 bool beforeSleep(uint32_t timeoutMs);
+// The render task is about to paint the book (its render lock held): a start in flight is let finish
+// first, at most 3 s, so the stack and the page never take the heap at once. A start still waiting
+// for the render lock gives up its turn instead. Any task but the start's.
+void settleStart();
 // A chapter build ran out of heap. Released: the radio stopped until afterPaint(), build
 // again. StillUp: it was asked to stop and did not within 3 s. NotHeld: the radio is not
 // the module's to give (off, idle, or a start still settling).
@@ -181,7 +194,7 @@ Why why();
 // moment a book is entered until a remote links; Failed when the radio was refused for this
 // visit or ran kLinkNoteFailMs without a link, until the next page turn; None otherwise.
 // nextLinkNote (RadioPolicy.h) decides; tick() and acknowledgeLinkNote() apply it.
-enum class LinkNote : uint8_t { None, Connecting, Failed };
+enum class LinkNote : uint8_t { None, Connecting, Failed, Connected, LowMemory };
 // The note for the book in front. Any task.
 LinkNote linkNote();
 // A page turn was applied in the book: a Failed note gives the title back. Main loop.

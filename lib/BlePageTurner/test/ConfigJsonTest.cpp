@@ -10,6 +10,38 @@
 namespace bleturner {
 namespace {
 
+TEST(BleConfigJsonTest, PickRoundTripsBothPolicies) {
+  for (const uint8_t pick : {uint8_t{0}, uint8_t{1}}) {
+    Config original;
+    original.pick = pick;
+    JsonDocument file;
+    writeJson(original, file);
+    EXPECT_EQ(file["blePick"].as<uint8_t>(), pick);
+    Config loaded;
+    loaded.pick = 1 - pick;
+    readJson(loaded, file.as<JsonVariantConst>());
+    EXPECT_EQ(loaded.pick, pick);
+  }
+}
+
+TEST(BleConfigJsonTest, MissingOrInvalidPickResetsToFirst) {
+  for (const char* json : {"{}", "{\"blePick\":7}", "{\"blePick\":-1}", "{\"blePick\":257}", "{\"blePick\":\"1\"}",
+                           "{\"blePick\":true}", "{\"blePick\":1.5}"}) {
+    JsonDocument file;
+    ASSERT_FALSE(deserializeJson(file, json));
+    Config loaded;
+    loaded.pick = 0;
+    readJson(loaded, file.as<JsonVariantConst>());
+    EXPECT_EQ(loaded.pick, 1) << json;
+  }
+  JsonDocument chosen;
+  ASSERT_FALSE(deserializeJson(chosen, "{\"blePick\":0}"));
+  Config kept;
+  readJson(kept, chosen.as<JsonVariantConst>());
+  EXPECT_EQ(kept.pick, 0) << "a saved priority choice is kept";
+  EXPECT_EQ(Config{}.pick, 1) << "a new install picks the first remote to come up";
+}
+
 constexpr uint32_t kNextChapterTap = makeBinding(0x030102, false, Action::NextChapter);
 constexpr uint32_t kPrevChapterHold = makeBinding(0x030008, true, Action::PrevChapter);
 
@@ -38,7 +70,7 @@ TEST(BleConfigJsonTest, ADeviceFileLoadsAsItIsAndWritesBackTheSameKeys) {
   EXPECT_EQ(out["blePrevKeyUsage"].as<int>(), 1);
   EXPECT_EQ(out["bleNextKeyUsage"].as<int>(), 2);
   EXPECT_TRUE(out["bleRemotes"].isNull()) << "no table, no key";
-  EXPECT_EQ(out.size(), 5u);
+  EXPECT_EQ(out.size(), 6u);
 }
 
 TEST(BleConfigJsonTest, AFileFromBeforeThePageTurnerKeepsTheDefaultsAndAsksForASave) {

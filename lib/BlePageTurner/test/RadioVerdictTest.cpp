@@ -14,7 +14,7 @@ RadioInputs reading(const Phase phase) {
   in.enabled = true;
   in.where = Where::Reader;
   in.pageShown = true;
-  in.heap = {kMinimumFreeBytes, kMinimumLargestBlockBytes};
+  in.heap = {kStartFreeBytes, kMinimumLargestBlockBytes};
   return in;
 }
 
@@ -73,10 +73,18 @@ TEST(RadioVerdictTest, Table) {
        with(Phase::BeforeStart, [](RadioInputs& i) { i.heap = {kMinimumFreeBytes - 1, kMinimumLargestBlockBytes}; }),
        Why::HeapLow},
       {"start: block one byte short",
-       with(Phase::BeforeStart, [](RadioInputs& i) { i.heap = {kMinimumFreeBytes, kMinimumLargestBlockBytes - 1}; }),
+       with(Phase::BeforeStart, [](RadioInputs& i) { i.heap = {kStartFreeBytes, kMinimumLargestBlockBytes - 1}; }),
        Why::HeapInPieces},
       // X3, 27/09/2026: refused every 5 s for good, in the book and on Home alike.
       {"start: X3 heap in pieces", with(Phase::BeforeStart, [](RadioInputs& i) { i.heap = {87308, 23540}; }),
+       Why::HeapInPieces},
+      // The stack's ~50 KB would leave no 32 KiB block: refused before it comes up, counted as the
+      // rollback after the start counted it.
+      {"start: too little to leave the reader's block",
+       with(Phase::BeforeStart, [](RadioInputs& i) { i.heap = {kStartFreeBytes - 1, kMinimumLargestBlockBytes}; }),
+       Why::HeapInPieces},
+      // X3, 07/10/2026: started at these numbers, 22,676 free after the stack, then abort().
+      {"start: X3 crash heap", with(Phase::BeforeStart, [](RadioInputs& i) { i.heap = {73656, 47092}; }),
        Why::HeapInPieces},
       {"start: short in total is not in pieces",
        with(Phase::BeforeStart,
@@ -117,10 +125,15 @@ TEST(RadioVerdictTest, Table) {
       {"running: heap never stops it", with(Phase::Running, [](RadioInputs& i) { i.heap = {0, 0}; }), Why::Ok},
       {"running: outside the book it stays", with(Phase::Running, [](RadioInputs& i) { i.where = Where::Elsewhere; }),
        Why::Ok},
-      {"running: idle just under the limit", with(Phase::Running, [](RadioInputs& i) { i.idleMs = kIdleOffMs - 1; }),
+      {"running: idle just under the limit", with(Phase::Running, [](RadioInputs& i) { i.idleMs = 29999; }), Why::Ok},
+      {"running: idle at the limit", with(Phase::Running, [](RadioInputs& i) { i.idleMs = 30000; }), Why::IdleNoLink},
+      {"running: connection activity passes the idle limit",
+       with(Phase::Running,
+            [](RadioInputs& i) {
+              i.connectionBusy = true;
+              i.idleMs = kIdleOffMs * 3;
+            }),
        Why::Ok},
-      {"running: idle at the limit", with(Phase::Running, [](RadioInputs& i) { i.idleMs = kIdleOffMs; }),
-       Why::IdleNoLink},
       {"running: idle long past", with(Phase::Running, [](RadioInputs& i) { i.idleMs = kIdleOffMs * 3; }),
        Why::IdleNoLink},
       {"running: a linked remote is never idle",
@@ -140,7 +153,20 @@ TEST(RadioVerdictTest, Table) {
 TEST(RadioVerdictTest, Thresholds) {
   EXPECT_EQ(kMinimumFreeBytes, 65536u);
   EXPECT_EQ(kMinimumLargestBlockBytes, 32768u);
-  EXPECT_EQ(kIdleOffMs, 5u * 60u * 1000u);
+  EXPECT_EQ(kStartFreeBytes, 81920u);
+  // The smallest stack in the X3 logs (106,140 free before, 55,496 after): a start the check refuses
+  // could not have kept the reader's block.
+  EXPECT_LT(kStartFreeBytes - 50644u, kMinimumLargestBlockBytes);
+  EXPECT_EQ(kIdleOffMs, 30u * 1000u);
+}
+
+TEST(RadioVerdictTest, IdleRearmNeedsBookEntryOrConnectRequest) {
+  EXPECT_FALSE(radioRearmWanted(true, false, false, false));
+  EXPECT_FALSE(radioRearmWanted(true, false, false, true));
+  EXPECT_TRUE(radioRearmWanted(true, true, false, false));
+  EXPECT_TRUE(radioRearmWanted(true, false, true, false));
+  EXPECT_TRUE(radioRearmWanted(false, false, false, true));
+  EXPECT_FALSE(radioRearmWanted(false, false, false, false));
 }
 
 }  // namespace

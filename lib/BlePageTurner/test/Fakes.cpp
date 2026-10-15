@@ -103,6 +103,9 @@ bool running() { return theRadio.running; }
 bool stopping() { return theRadio.stopping; }
 bool connected() { return theRadio.connected; }
 bool connecting() { return theRadio.connecting; }
+ConnectionActivity connectionActivity() {
+  return {theRadio.connecting || theRadio.candidatePending, theRadio.advertisements};
+}
 bool scanning() { return theRadio.scanning; }
 void poll() {
   ++theRadio.polls;
@@ -120,8 +123,9 @@ bool popKey(KeyPress& out) {
   theRadio.keys.erase(theRadio.keys.begin());
   return true;
 }
-bool armReconnect(const char* addr) {
+bool armBondedReconnect(uint8_t policy, const char* addr) {
   ++theRadio.armCalls;
+  theRadio.armedPick = policy;
   theRadio.armedAddr = addr;
   theRadio.events.emplace_back("arm");
   return theRadio.armResult;
@@ -138,8 +142,8 @@ bool connect(const char* addr) {
 void disconnect() { theRadio.connected = false; }
 void forget(const char* addr) { theRadio.forgotten.emplace_back(addr); }
 bool takeConnectFailure(char*, size_t) { return false; }
-uint8_t bondCount() { return 0; }
-Peer bond(uint8_t) { return {"", ""}; }
+uint8_t bondCount() { return static_cast<uint8_t>(theRadio.bonds.size()); }
+Peer bond(const uint8_t index) { return {theRadio.bonds[index].c_str(), ""}; }
 uint8_t foundCount() { return 0; }
 Peer found(uint8_t) { return {"", ""}; }
 bool spawnStart() {

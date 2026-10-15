@@ -45,6 +45,8 @@ bool running() { return hid().isRunning(); }
 bool stopping() { return hid().isStopping(); }
 bool connected() { return hid().isConnected(); }
 bool connecting() { return hid().isConnecting(); }
+// The SDK reports no advertisement count: a connection attempt in flight is the only activity.
+ConnectionActivity connectionActivity() { return {hid().isConnecting(), 0}; }
 bool scanning() { return hid().isScanning(); }
 void poll() { hid().poll(); }
 
@@ -71,7 +73,11 @@ bool popKey(KeyPress& out) {
   return true;
 }
 
-bool armReconnect(const char* addr) { return hid().armSelectedPeerReconnect(addr); }
+// The SDK reconnects one selected remote, so the pick policy cannot ask for "the first bonded
+// remote to come up": the chosen remote is armed, and nothing when none is chosen.
+bool armBondedReconnect(uint8_t, const char* priorityAddr) {
+  return priorityAddr != nullptr && priorityAddr[0] != '\0' && hid().armSelectedPeerReconnect(priorityAddr);
+}
 Peer linked() { return peerOf(hid().connectedAddr(), hid().connectedName()); }
 
 void scan(const uint32_t durationMs) {

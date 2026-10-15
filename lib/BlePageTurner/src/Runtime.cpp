@@ -45,6 +45,10 @@ std::atomic<bool> readerStartDeferred{false};
 std::atomic<bool> radioIdleStopped{false};
 std::atomic<bool> rearmRequested{false};
 std::atomic<bool> heldForBuild{false};
+bool connectRequested = false;
+std::atomic<Why> startRefusal{Why::Ok};
+// The start in flight was asked for at Home (S3 profile): its heap rules differ. Set by the starter.
+std::atomic<bool> startFromHome{false};
 // Written by the start (one at a time), read by the main loop once no start is in flight.
 Tracker heapTracker{port::restartMemo()};
 
@@ -54,12 +58,15 @@ struct Visit {
   // Each visit asks for the radio once, so a refusal does not churn allocations.
   bool attempted = false;
   bool reconnectArmed = false;
+  bool manualConnect = false;
   uint32_t retryAtMs = 0;
   uint8_t retries = 0;
 };
 Visit visit;
 uint32_t lastCleanupMs = 0;
 uint32_t idleSinceMs = 0;
+bool idleClockRunning = false;
+uint32_t idleAdvertisements = 0;
 // The linked remote's button table (learned, or the built-in default for its kind) and the
 // tap/hold decision still waiting.
 Router router;
@@ -93,6 +100,7 @@ RadioInputs inputsFor(const Phase phase, const Scene& s) {
   in.storageBusy = s.storageBusy;
   in.heldForBuild = heldForBuild.load(std::memory_order_relaxed);
   in.idleStopped = radioIdleStopped.load(std::memory_order_relaxed);
+  in.hasBond = config->peerAddr[0] != '\0';
   in.linked = true;
   return in;
 }
@@ -100,6 +108,7 @@ RadioInputs inputsFor(const Phase phase, const Scene& s) {
 RadioInputs heapInputs(const Phase phase, const Heap heap, const bool storageBusy) {
   RadioInputs in{};
   in.phase = phase;
+  in.where = startFromHome.load(std::memory_order_relaxed) ? Where::Home : Where::Elsewhere;
   in.storageBusy = storageBusy;
   in.heap = heap;
   return in;
@@ -107,7 +116,7 @@ RadioInputs heapInputs(const Phase phase, const Heap heap, const bool storageBus
 
 void logSkipped(const char* reason, const Heap& heap) {
   say(true, "HID begin skipped (%s): free=%zu largest=%zu required_free=%zu required_largest=%zu\n", reason,
-      heap.freeBytes, heap.largestBlock, kMinimumFreeBytes, kMinimumLargestBlockBytes);
+      heap.freeBytes, heap.largestBlock, activeProfile().startFreeBytes, activeProfile().minimumLargest);
   static uint8_t mapsLeft = 2;
   if (mapsLeft > 0 && host->heapMap != nullptr) {
     mapsLeft--;
@@ -135,6 +144,7 @@ bool beginOwned() {
 
   const Heap heap = host->heap();
   const Why checked = radioVerdict(heapInputs(Phase::BeforeStart, heap, false));
+  startRefusal.store(checked, std::memory_order_relaxed);
   if (checked != Why::Ok) {
     logSkipped("insufficient-internal-heap", heap);
     heapTracker.refused(checked);
@@ -158,9 +168,10 @@ bool beginOwned() {
 
   const Heap after = host->heap();
   const Why started = radioVerdict(heapInputs(Phase::JustStarted, after, host->fileTransferActive()));
+  startRefusal.store(started, std::memory_order_relaxed);
   if (started == Why::HeapInPieces) {
     say(true, "HID begin rolled back (post-init-headroom): free=%zu largest=%zu required_largest=%zu\n",
-        after.freeBytes, after.largestBlock, kMinimumLargestBlockBytes);
+        after.freeBytes, after.largestBlock, activeProfile().minimumLargest);
     heapTracker.refused(started);
   } else if (started != Why::Ok) {
     heapTracker.inconclusive();
@@ -186,6 +197,7 @@ void finishAttempt(const bool started, const bool reportReaderFailure) {
 }
 
 bool startSync() {
+  startFromHome.store(false, std::memory_order_relaxed);
   radioIdleStopped.store(false, std::memory_order_relaxed);
   readerStartDeferred.store(false, std::memory_order_relaxed);
   bool expected = false;
@@ -207,38 +219,37 @@ bool act(const Action a) {
   return taken || a == Action::ReaderMenu || a == Action::SaveQuote;
 }
 
-// A linked remote whose presses the book takes: the chosen one, or any when none is chosen.
-// When the chosen remote could not be armed, the stack may link another bonded remote.
-bool chosenLinked() {
-  if (!port::connected()) return false;
-  return config->peerAddr[0] == '\0' || strncmp(port::linked().addr, config->peerAddr, sizeof(config->peerAddr)) == 0;
+// The book in front with the radio up: arm bonded reconnect, drain both queues.
+void drainRemote() {
+  port::RawEdge edge;
+  port::KeyPress key;
+  while (port::popRaw(edge)) {
+  }
+  while (port::popKey(key)) {
+  }
 }
 
-// The book in front with the radio up: arm the chosen remote, drain both queues.
+// Once per visit: the SDK finds a bonded remote again only after this.
+void armReconnectOnce() {
+  if (visit.reconnectArmed || port::stopping()) return;
+  visit.reconnectArmed = true;
+  if (!port::armBondedReconnect(config->pick, config->peerAddr)) {
+    say(false, "Bonded reader reconnect was not armed\n");
+  }
+}
+
 bool serveReader() {
   bool acted = false;
   readerStartDeferred.store(false, std::memory_order_relaxed);
-  if (!visit.reconnectArmed && !port::stopping()) {
-    visit.reconnectArmed = true;
-    if (config->peerAddr[0] != '\0' && !port::armReconnect(config->peerAddr)) {
-      say(false, "Selected reader peer was not armed\n");
-    }
-  }
+  armReconnectOnce();
   port::poll();
   // A remote with a table goes by RAW edges: each edge checks at most 8 slots of the linked
   // remote's table, and a button the table does not name falls back to the key mapping.
   // Without a table the raw ring is only drained and the key path below decides.
   port::RawEdge raw;
   port::KeyPress key;
-  const bool linked = chosenLinked();
+  const bool linked = port::connected();
   router.follow(linked);
-  if (port::connected() && !linked) {
-    unsigned dropped = 0;
-    while (port::popRaw(raw)) ++dropped;
-    while (port::popKey(key)) ++dropped;
-    if (dropped > 0) say(false, "%u presses from %s dropped: not the chosen remote\n", dropped, port::linked().addr);
-    return false;
-  }
   if (router.linked && !router.chosen) {
     // Edges queued while the book was not in front (the remote stays linked on Home) do not
     // belong to this page: an old press must not skip a chapter when the book opens.
@@ -285,12 +296,17 @@ void stepLinkNote(const bool entered, const bool acknowledged) {
   in.reading = lastScene.where == Where::Reader;
   in.enabled = config->enabled != 0;
   in.idleStopped = radioIdleStopped.load(std::memory_order_relaxed);
-  in.linked = chosenLinked();
+  in.linked = port::connected();
   in.refused = visit.attempted && readerStartDeferred.load(std::memory_order_relaxed) &&
                !attemptInFlight.load(std::memory_order_acquire);
   in.runningMs = noteRadioUp ? port::nowMs() - noteRadioUpSinceMs : 0;
   in.acknowledged = acknowledged;
-  linkNoteNow.store(nextLinkNote(linkNoteNow.load(std::memory_order_relaxed), in), std::memory_order_relaxed);
+  LinkNote note = nextLinkNote(linkNoteNow.load(std::memory_order_relaxed), in);
+  if (visit.manualConnect && in.refused && note == LinkNote::Failed) {
+    const Why refused = startRefusal.load(std::memory_order_relaxed);
+    if (refused == Why::HeapLow || refused == Why::HeapInPieces) note = LinkNote::LowMemory;
+  }
+  linkNoteNow.store(note, std::memory_order_relaxed);
 }
 
 }  // namespace
@@ -354,11 +370,16 @@ void resetForTests() {
   radioIdleStopped.store(false);
   rearmRequested.store(false);
   heldForBuild.store(false);
+  connectRequested = false;
+  startRefusal.store(Why::Ok);
+  startFromHome.store(false);
   heapTracker.fragmentedInRow = 0;
   heapTracker.wanted.store(false);
   visit = Visit{};
   lastCleanupMs = 0;
   idleSinceMs = 0;
+  idleClockRunning = false;
+  idleAdvertisements = 0;
   router = Router();
   lastScene = Scene{};
   pairing = Pairing{};
@@ -375,6 +396,8 @@ void begin(const Host& h, Config& c) {
   config = &c;
 }
 
+void requestConnect() { connectRequested = true; }
+
 bool tick(const Scene& s) {
   bool acted = false;
   // A book visit starts: the book comes in front, or another visit of it does.
@@ -388,35 +411,57 @@ bool tick(const Scene& s) {
   // The card is taken (USB drive, file transfer): before anything else, radio off.
   if (s.storageBusy) {
     idleSinceMs = 0;
+    idleClockRunning = false;
     detail::suspend(0);
   }
 
   const bool reader = s.where == Where::Reader;
-  if (!reader || !config->enabled || s.visit != visit.id) {
+  // S3 profile: Home may start the radio too, once its first frame is up and a remote is chosen.
+  const bool home = s.where == Where::Home && activeProfile().homeStartLargest != 0;
+  if (!(reader || home) || !config->enabled || s.visit != visit.id) {
     // A build hold belongs to one book visit; the next visit may start the radio again.
     if (s.visit != visit.id) heldForBuild.store(false, std::memory_order_relaxed);
     visit.attempted = false;
     visit.reconnectArmed = false;
+    visit.manualConnect = false;
     router = Router();  // the settings screen may have changed the tables meanwhile
     visit.retryAtMs = 0;
     visit.retries = 0;
+    // The time to link counts from this visit, not from when a radio left up by the last one started.
+    idleSinceMs = 0;
+    idleClockRunning = false;
   }
   visit.id = s.visit;
-  // A page key or touch in the book grants one fresh start after the idle stop. A radio the
-  // book stopped for a starved build waits for the book's own request (afterPaint).
-  if (reader && config->enabled && radioIdleStopped.load(std::memory_order_relaxed) &&
-      ((s.localKey && !heldForBuild.load(std::memory_order_relaxed)) ||
-       rearmRequested.exchange(false, std::memory_order_relaxed))) {
+  const bool requested = connectRequested;
+  const bool buildPainted = rearmRequested.exchange(false, std::memory_order_relaxed);
+  if (reader && config->enabled &&
+      radioRearmWanted(radioIdleStopped.load(std::memory_order_relaxed), entered, requested, buildPainted)) {
     radioIdleStopped.store(false, std::memory_order_relaxed);
-    visit.attempted = false;
-    visit.reconnectArmed = false;
-    say(false, "Reader input rearmed idle radio\n");
+    if (!attemptInFlight.load(std::memory_order_acquire) && !port::running()) {
+      visit.attempted = false;
+      visit.reconnectArmed = false;
+      visit.retryAtMs = 0;
+      visit.retries = 0;
+      readerStartDeferred.store(false, std::memory_order_relaxed);
+    }
   }
-
+  if (requested) {
+    connectRequested = false;
+    if (reader && config->enabled) {
+      if (port::connected()) {
+        linkNoteNow.store(LinkNote::Connected, std::memory_order_relaxed);
+      } else {
+        visit.manualConnect = true;
+        noteRadioUpSinceMs = port::nowMs();
+        linkNoteNow.store(LinkNote::Connecting, std::memory_order_relaxed);
+      }
+    }
+  }
   RadioInputs in = inputsFor(Phase::Running, s);
   const Why must = radioVerdict(in);
   if (must == Why::Off || must == Why::StorageBusy) {
     idleSinceMs = 0;
+    idleClockRunning = false;
     detail::suspend(0);
   } else {
     if (reader && visit.attempted && readerStartDeferred.load(std::memory_order_relaxed) && !port::running() &&
@@ -441,6 +486,7 @@ bool tick(const Scene& s) {
         (port::running() || host->yieldForRadio())) {
       visit.attempted = true;
       if (!port::running()) {
+        startFromHome.store(home, std::memory_order_relaxed);
         const bool started = detail::startAsync();
         if (!started) readerStartDeferred.store(true, std::memory_order_relaxed);
         if (started) {
@@ -453,19 +499,35 @@ bool tick(const Scene& s) {
     // Nothing connected for long: radio down. Otherwise it keeps the CPU at full speed and a
     // device lying still eats its battery.
     if (!attemptInFlight.load(std::memory_order_acquire) && port::running()) {
-      in.linked = chosenLinked();
-      if (in.linked || idleSinceMs == 0) idleSinceMs = port::nowMs();
+      in.linked = port::connected();
+      const auto activity = port::connectionActivity();
+      const uint32_t now = port::nowMs();
+      in.connectionBusy = activity.busy;
+      if (in.linked || activity.busy || !idleClockRunning || activity.advertisements != idleAdvertisements) {
+        idleSinceMs = now;
+      }
+      idleClockRunning = !in.linked && !activity.busy;
+      idleAdvertisements = activity.advertisements;
       in.phase = Phase::Running;
-      in.idleMs = port::nowMs() - idleSinceMs;
+      in.idleMs = now - idleSinceMs;
       if (radioVerdict(in) == Why::IdleNoLink) {
         say(false, "Radio idle for %u ms with nothing connected; stopping\n", kIdleOffMs);
         detail::stopForIdle();
         idleSinceMs = 0;
+        idleClockRunning = false;
       }
     } else {
       idleSinceMs = 0;
+      idleClockRunning = false;
     }
     if (reader && !attemptInFlight.load(std::memory_order_acquire) && port::running()) acted = serveReader();
+    // At Home nothing takes a remote's presses; drop them rather than carry them into the next book.
+    // The remote links here too, so the book finds it up.
+    if (home && !attemptInFlight.load(std::memory_order_acquire) && port::running()) {
+      armReconnectOnce();
+      port::poll();
+      drainRemote();
+    }
   }
 
   const bool up = reader && port::running() && !attemptInFlight.load(std::memory_order_acquire);
@@ -475,12 +537,12 @@ bool tick(const Scene& s) {
     noteRadioUp = true;
     noteRadioUpSinceMs = port::nowMs();
   }
-  stepLinkNote(entered, false);
+  stepLinkNote(entered && !requested, false);
 
   // A heap in pieces keeps the radio off until a restart. Restart into the book only from a
   // shown page with no radio start in flight, no sleep, no card or Wi-Fi session.
-  if (detail::heapRestartWanted() && config->enabled && visit.attempted && reader && s.pageShown && !s.sleeping &&
-      !s.storageBusy && !busy() && !s.wifiOn) {
+  if (detail::heapRestartWanted() && !visit.manualConnect && config->enabled && visit.attempted && reader &&
+      s.pageShown && !s.sleeping && !s.storageBusy && !busy() && !s.wifiOn) {
     const Heap heap = host->heap();
     say(false, "Heap fragmented for radio: free=%u largest=%u; silent restart to reader\n",
         static_cast<unsigned>(heap.freeBytes), static_cast<unsigned>(heap.largestBlock));
@@ -490,9 +552,17 @@ bool tick(const Scene& s) {
   return acted;
 }
 
-bool beforeScreenChange(const uint32_t endTimeoutMs) { return detail::suspend(endTimeoutMs); }
+bool beforeScreenChange(const uint32_t endTimeoutMs, const bool nextIsReader) {
+  // Up since Home (S3 profile) and the next screen is a book: the stack stays, so the book does not have to
+  // find 46 KB of internal RAM in the heap its own pages left.
+  if (nextIsReader && activeProfile().homeStartLargest != 0 && config->enabled && port::running() &&
+      !port::stopping() && !attemptInFlight.load(std::memory_order_acquire)) {
+    return true;
+  }
+  return detail::suspend(endTimeoutMs);
+}
 
-bool beforeSleep(const uint32_t timeoutMs) {
+bool stopNow(const uint32_t timeoutMs) {
   const uint32_t started = port::nowMs();
   while (!detail::suspend(0)) {
     if (port::nowMs() - started >= timeoutMs) return false;
@@ -501,28 +571,38 @@ bool beforeSleep(const uint32_t timeoutMs) {
   return true;
 }
 
-BuildRelease beforeChapterBuild() {
-  if (!config->enabled || radioIdleStopped.load(std::memory_order_relaxed)) return BuildRelease::NotHeld;
+bool beforeSleep(const uint32_t timeoutMs) { return stopNow(timeoutMs); }
+
+void settleStart() {
   // Never stop a start that is still in flight: its task owns the NimBLE discovery, and a
   // cancel here leaves its callbacks pointing at a task that no longer exists. Wait for it to
-  // settle; a start still waiting for the render lock (held by this very build) gives up.
+  // settle; a start still waiting for the render lock (held by the caller) gives up.
+  if (!attemptInFlight.load(std::memory_order_acquire)) return;
   const uint32_t started = port::nowMs();
   buildWaiting.store(true, std::memory_order_release);
   while (attemptInFlight.load(std::memory_order_acquire) && port::nowMs() - started < kBuildReleaseTimeoutMs) {
-    port::sleepMs(20);
+    port::sleepMs(5);
   }
   buildWaiting.store(false, std::memory_order_release);
+}
+
+BuildRelease beforeChapterBuild() {
+  if (!config->enabled || radioIdleStopped.load(std::memory_order_relaxed) ||
+      heldForBuild.load(std::memory_order_relaxed))
+    return BuildRelease::NotHeld;
+  settleStart();
   if (attemptInFlight.load(std::memory_order_acquire)) return BuildRelease::NotHeld;
   heldForBuild.store(true, std::memory_order_relaxed);
+  readerStartDeferred.store(false, std::memory_order_relaxed);
   const Heap heap = host->heap();
   say(false, "Section build starved of heap; stopping the radio until the page is shown free=%u largest=%u\n",
       static_cast<unsigned>(heap.freeBytes), static_cast<unsigned>(heap.largestBlock));
   // The stop has its own timeout: a start that settled late must not leave it none.
   const uint32_t stopStarted = port::nowMs();
-  bool stopped = detail::stopForIdle();
+  bool stopped = detail::suspend(0);
   while (!stopped && port::nowMs() - stopStarted < kBuildReleaseTimeoutMs) {
     port::sleepMs(20);
-    stopped = detail::stopForIdle();
+    stopped = detail::suspend(0);
   }
   // A radio still up keeps its heap: another try at the build would starve again.
   if (!stopped) say(true, "Radio did not stop for the section build\n");
@@ -530,8 +610,9 @@ BuildRelease beforeChapterBuild() {
 }
 
 void afterPaint() {
-  heldForBuild.store(false, std::memory_order_relaxed);
-  rearmRequested.store(true, std::memory_order_relaxed);
+  if (heldForBuild.exchange(false, std::memory_order_relaxed)) {
+    rearmRequested.store(true, std::memory_order_relaxed);
+  }
 }
 
 bool holdsHeap() {
@@ -589,7 +670,7 @@ void scan(const uint32_t durationMs) { port::scan(durationMs); }
 
 bool pair(const char* addr, const char* name) {
   // Only a candidate until it links: a pairing that fails must not replace a bonded choice with
-  // an address the stack cannot reconnect (the reader takes presses from the chosen remote only).
+  // an address the stack cannot reconnect.
   pairing = Pairing{};
   if (!config->enabled || !switchOn() || !port::connect(addr)) return false;
   strncpy(pairing.addr, addr, sizeof(pairing.addr) - 1);

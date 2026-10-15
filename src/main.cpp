@@ -765,11 +765,6 @@ void loop() {
   scene.pageShown = activityManager.isRemoteReaderContext();
   scene.storageBusy = activityManager.requiresExclusiveStorageLoop();
   scene.wifiOn = WiFi.getMode() != WIFI_MODE_NULL;
-  // A page key or touch in the book starts a radio that stopped for idleness again.
-  scene.localKey = mappedInputManager.wasReleased(MappedInputManager::Button::PageBack) ||
-                   mappedInputManager.wasReleased(MappedInputManager::Button::PageForward) ||
-                   mappedInputManager.wasReleased(MappedInputManager::Button::Left) ||
-                   mappedInputManager.wasReleased(MappedInputManager::Button::Right) || gpio.wasTouchActivity();
   const bool remoteActed = bleturner::tick(scene);
 
   if (activityManager.requiresExclusiveStorageLoop()) {
