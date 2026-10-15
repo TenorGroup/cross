@@ -288,12 +288,12 @@ class EpubReaderActivity final : public ReaderActivity {
     int spineIndex;
     int pageNumber;
     uint32_t textOffset = UINT32_MAX;
-    uint32_t layoutRevision = 0;
+    uint32_t layoutKey = 0;
   };
   static constexpr int MAX_FOOTNOTE_DEPTH = 3;
   SavedPosition savedPositions[MAX_FOOTNOTE_DEPTH] = {};
   int footnoteDepth = 0;
-  uint32_t layoutRevision = 1;
+  uint32_t currentLayoutKey = 0;
   // A jump pushed the place Back returns to and the paint that shows its target has not finished: when the heap cannot lay
   // that page out the reader stays where it was, and the place the jump pushed goes with it (dropFailedJumpReturn).
   bool returnPushedForLoad = false;

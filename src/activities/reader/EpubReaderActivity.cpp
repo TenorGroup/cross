@@ -167,6 +167,32 @@ struct AnhChupChu {
            statusTop == o.statusTop && statusBottom == o.statusBottom;
   }
 };
+
+uint32_t mixReaderLayoutKey(const uint32_t hash, const uint32_t value) {
+  return (hash ^ value) * 16777619u;
+}
+
+uint32_t readerLayoutKey(const ReaderRenderSpec& spec) {
+  // Keep this key in step with the fields Section writes into its cache header.
+  uint32_t hash = 2166136261u;
+  hash = mixReaderLayoutKey(hash, 1u);
+  hash = mixReaderLayoutKey(hash, static_cast<uint32_t>(spec.fontId));
+  uint32_t lineCompression = 0;
+  std::memcpy(&lineCompression, &spec.lineCompression, sizeof(lineCompression));
+  hash = mixReaderLayoutKey(hash, lineCompression);
+  hash = mixReaderLayoutKey(hash, spec.extraParagraphSpacing);
+  hash = mixReaderLayoutKey(hash, spec.paragraphIndent);
+  hash = mixReaderLayoutKey(hash, static_cast<uint8_t>(spec.letterSpacing));
+  hash = mixReaderLayoutKey(hash, spec.wordSpacing);
+  hash = mixReaderLayoutKey(hash, spec.paragraphAlignment);
+  hash = mixReaderLayoutKey(hash, spec.viewportWidth);
+  hash = mixReaderLayoutKey(hash, spec.viewportHeight);
+  hash = mixReaderLayoutKey(hash, spec.hyphenationEnabled ? 1u : 0u);
+  hash = mixReaderLayoutKey(hash, spec.embeddedStyle ? 1u : 0u);
+  hash = mixReaderLayoutKey(hash, spec.imageRendering);
+  hash = mixReaderLayoutKey(hash, spec.dropCapMode);
+  return hash;
+}
 // The X4 Pro and X4 Classic carry the X4's panel but sit outside isXteinkDevice()
 // (that helper also gates power management). Overlay refresh choices are per-panel:
 // this family runs the grayscale anti-aliasing pass, so chrome painted over a
@@ -2526,7 +2552,6 @@ void EpubReaderActivity::applyOrientation(const uint8_t orientation) {
   }
   ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
   appliedOrientation = orientation;
-  if (++layoutRevision == 0) layoutRevision = 1;
   section.reset();
   dropCatchUp();  // laid out for the old viewport; the next one starts under the new
 }
@@ -2938,6 +2963,10 @@ void EpubReaderActivity::renderBook() {
   buildViewportHeight = viewportHeight;
 
   const ReaderRenderSpec renderSpec = SETTINGS.readerRenderSpec(viewportWidth, viewportHeight);
+  currentLayoutKey = readerLayoutKey(renderSpec);
+  for (int i = 0; i < footnoteDepth; ++i) {
+    if (savedPositions[i].layoutKey == 0) savedPositions[i].layoutKey = currentLayoutKey;
+  }
 
   if (xemTruoc && !section) {
     const bool samePlace = currentSpineIndex == cachedSpineIndex && pendingAnchor.empty() && !pendingPageJump &&
@@ -5664,7 +5693,6 @@ void EpubReaderActivity::paintOverlayPopup() {
 }
 
 void EpubReaderActivity::danLaiTrang() {
-  if (++layoutRevision == 0) layoutRevision = 1;
   readingPace = {};
   if (section) {
     rememberCurrentContentOffset();
@@ -6442,7 +6470,7 @@ bool EpubReaderActivity::hasReturnPosition() const {
 int EpubReaderActivity::returnPageNumber() const {
   if (!hasReturnPosition()) return -1;
   const auto& position = savedPositions[footnoteDepth - 1];
-  if (position.layoutRevision == layoutRevision)
+  if (position.layoutKey == 0 || currentLayoutKey == 0 || position.layoutKey == currentLayoutKey)
     return position.pageNumber >= 0 ? position.pageNumber + 1 : -1;
   if (!section || position.spineIndex != currentSpineIndex || position.textOffset == UINT32_MAX) return -1;
   // Reflow replaces section. A running build must reach the offset before its map can name the page.
@@ -6480,7 +6508,7 @@ void EpubReaderActivity::pushPulledReturn() {
   const bool here = pulled->path == bookPath && pulled->toSpineIndex == currentSpineIndex &&
                     pulled->toPage == nextPageNumber;
   const SavedPosition back = {pulled->fromSpineIndex, pulled->fromPage,
-                              pulled->hasFromOffset ? pulled->fromOffset : UINT32_MAX, layoutRevision};
+                              pulled->hasFromOffset ? pulled->fromOffset : UINT32_MAX, currentLayoutKey};
   koautosync::acknowledgeProgressPulled();
   if (moved && here) {
     pushSavedPosition(back);
@@ -6499,7 +6527,7 @@ void EpubReaderActivity::pushReturnPosition() {
     // The chapter list kept this offset before releasing its section.
     offset = cachedVisibleTextOffset;
   }
-  pushSavedPosition({currentSpineIndex, page, offset.value_or(UINT32_MAX), layoutRevision});
+  pushSavedPosition({currentSpineIndex, page, offset.value_or(UINT32_MAX), currentLayoutKey});
   returnPushedForLoad = true;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   jumpBarPending = true;
@@ -6553,7 +6581,7 @@ void EpubReaderActivity::saveLinkStack() const {
   stagedLinksPath = epub->getCachePath() + "/links.bin";
   stagedLinksBytes.clear();
   if (footnoteDepth > 0) {
-    // [version, depth] then depth x (spine u16 LE, page u16 LE, text offset u32 LE, layout revision u32 LE).
+    // [version, depth] then depth x (spine u16 LE, page u16 LE, text offset u32 LE, layout key u32 LE).
     stagedLinksBytes.push_back(static_cast<char>(LINK_STACK_FILE_VERSION));
     stagedLinksBytes.push_back(static_cast<char>(footnoteDepth));
     for (int i = 0; i < footnoteDepth; i++) {
@@ -6566,7 +6594,7 @@ void EpubReaderActivity::saveLinkStack() const {
         stagedLinksBytes.push_back(static_cast<char>((pos.textOffset >> shift) & 0xFF));
       }
       for (int shift = 0; shift < 32; shift += 8) {
-        stagedLinksBytes.push_back(static_cast<char>((pos.layoutRevision >> shift) & 0xFF));
+        stagedLinksBytes.push_back(static_cast<char>((pos.layoutKey >> shift) & 0xFF));
       }
     }
   }
@@ -6612,11 +6640,11 @@ void EpubReaderActivity::loadLinkStack() {
           const uint32_t offset = oldFormat || v1Format ? UINT32_MAX
               : static_cast<uint32_t>(p[4]) | (static_cast<uint32_t>(p[5]) << 8) |
                     (static_cast<uint32_t>(p[6]) << 16) | (static_cast<uint32_t>(p[7]) << 24);
-          const uint32_t savedRevision = v2Format
+          const uint32_t savedKey = v2Format
               ? static_cast<uint32_t>(p[8]) | (static_cast<uint32_t>(p[9]) << 8) |
                     (static_cast<uint32_t>(p[10]) << 16) | (static_cast<uint32_t>(p[11]) << 24)
-              : layoutRevision;
-          savedPositions[i] = {p[0] | (p[1] << 8), p[2] | (p[3] << 8), offset, savedRevision};
+              : 0;
+          savedPositions[i] = {p[0] | (p[1] << 8), p[2] | (p[3] << 8), offset, savedKey};
           valid = valid && savedPositions[i].spineIndex < spineCount;
         }
         if (valid) {

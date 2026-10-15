@@ -175,7 +175,10 @@ struct EpubReaderActivity {
   static constexpr int MAX_FOOTNOTE_DEPTH = 3;
   SavedPosition savedPositions[MAX_FOOTNOTE_DEPTH] = {};
   int footnoteDepth = 0;
-  uint32_t layoutRevision = 1;
+  // The reader stores the stable render-spec key beside each return position.
+  // Keep the legacy harness at the unchanged-layout value so its page-stack
+  // checks exercise the v2 file format without inventing a second layout.
+  uint32_t currentLayoutKey = 0;
   bool returnPushedForLoad = false;
   bool linkStackOnCard = false;
   void clearDeferredReposition() { cachedVisibleTextOffset.reset(); }

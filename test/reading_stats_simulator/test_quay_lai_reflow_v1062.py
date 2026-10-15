@@ -59,6 +59,12 @@ def run_case(body):
 #define LOG_ERR(...) ((void)0)
 #define TRACE_JUMP_BEGIN(...) ((void)0)
 int clampPercent(int percent) { return std::clamp(percent, 0, 100); }
+uint32_t readerLayoutKeyFor(const uint8_t fontSize, const uint16_t width = 100, const uint16_t height = 100) {
+  uint32_t hash = 2166136261u;
+  const uint32_t values[] = {1u, fontSize, width, height, 1u, 1u, 0u, 0u};
+  for (const uint32_t value : values) hash = (hash ^ value) * 16777619u;
+  return hash;
+}
 std::map<std::string, std::vector<uint8_t>> files;
 struct HalFile {
   std::string path;
@@ -179,9 +185,14 @@ struct EpubReaderActivity {
   static constexpr int MAX_FOOTNOTE_DEPTH = 3;
   SavedPosition savedPositions[MAX_FOOTNOTE_DEPTH] = {};
   int footnoteDepth = 0;
-  uint32_t layoutRevision = 1;
+  uint8_t fontSize = 16;
+  uint32_t currentLayoutKey = readerLayoutKeyFor(fontSize);
   bool returnPushedForLoad = false;
   bool linkStackOnCard = false;
+  void applyTextSetting(uint8_t size) {
+    fontSize = size;
+    currentLayoutKey = readerLayoutKeyFor(fontSize);
+  }
   void clearDeferredReposition() { cachedVisibleTextOffset.reset(); }
   void requestUpdate() {}
   void navigateToHref(const std::string&, bool);
@@ -230,11 +241,11 @@ class ReturnStackRuntimeTest(unittest.TestCase):
   reader.section->charsPerPage = 65;
   assert(reader.returnPageNumber() == 15);  // another chapter, unchanged layout
   reader.currentSpineIndex = 0;
-  ++reader.layoutRevision;
+  reader.applyTextSetting(18);  // the reader text-size control changes the layout key
   assert(reader.returnPageNumber() == 22);
   assert(reader.savedPositions[0].pageNumber == 14);
 
-  reader.layoutRevision = reader.savedPositions[0].layoutRevision;
+  reader.currentLayoutKey = reader.savedPositions[0].layoutKey;
   reader.restoreSavedPosition();
   assert(reader.pendingOffsetJump == 1400 && reader.currentSpineIndex == 0);
   reader.section = std::make_unique<Section>();
@@ -242,10 +253,29 @@ class ReturnStackRuntimeTest(unittest.TestCase):
   assert(reader.section->getPageForVisibleTextOffset(*reader.pendingOffsetJump) == 21);
 """)
 
+    def test_saved_key_survives_reopen_and_reflows_after_external_text_setting_change(self):
+        self.check(r'''
+  EpubReaderActivity reader;
+  reader.section->currentPage = 14;
+  reader.navigateToHref("c2.xhtml", true);
+  reader.saveLinkStack();
+  assert(files["cache/links.bin"].size() == 14);
+
+  EpubReaderActivity reopened;
+  reopened.loadLinkStack();
+  assert(reopened.returnPageNumber() == 15);
+  reopened.currentSpineIndex = 0;
+  reopened.section->charsPerPage = 65;
+  reopened.applyTextSetting(18);  // Settings changed while the book was closed.
+  assert(reopened.returnPageNumber() == 22);
+  assert(reopened.savedPositions[0].pageNumber == 14);
+''')
+
     def test_current_map_changes_the_label_without_changing_the_saved_page(self):
         self.check(r"""
   EpubReaderActivity reader;
-  reader.pushSavedPosition({0, 14, 1400});
+  reader.pushSavedPosition({0, 14, 1400, readerLayoutKeyFor(16)});
+  reader.applyTextSetting(18);
   reader.section->charsPerPage = 65;
   assert(reader.returnPageNumber() == 22);
   assert(reader.savedPositions[0].pageNumber == 14);
@@ -254,7 +284,8 @@ class ReturnStackRuntimeTest(unittest.TestCase):
     def test_missing_or_unreached_map_never_uses_the_old_page(self):
         self.check(r"""
   EpubReaderActivity reader;
-  reader.pushSavedPosition({0, 14, 1400});
+  reader.pushSavedPosition({0, 14, 1400, readerLayoutKeyFor(16)});
+  reader.applyTextSetting(18);
   reader.section->building = true;
   reader.section->reached = 1000;
   assert(reader.returnPageNumber() == -1);
@@ -273,7 +304,7 @@ class ReturnStackRuntimeTest(unittest.TestCase):
     def test_legacy_stack_has_a_back_target_without_a_page_label(self):
         self.check(r"""
   EpubReaderActivity reader;
-  reader.pushSavedPosition({0, 14, UINT32_MAX});
+  reader.pushSavedPosition({0, 14, UINT32_MAX, readerLayoutKeyFor(15)});
   assert(reader.hasReturnPosition() && reader.returnPageNumber() == -1);
   assert(reader.section->lookups == 0);
   reader.restoreSavedPosition();
