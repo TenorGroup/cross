@@ -760,9 +760,14 @@ void loop() {
   // Bluetooth page turner, before the USB drive's early return: a card handed to USB stops the radio
   // before anything else.
   bleturner::Scene scene{};
-  scene.where = activityManager.isRemoteReaderContext() ? bleturner::Where::Reader : bleturner::Where::Elsewhere;
+  // Home counts only for builds whose radio may start there (the S3 profile, RadioPolicy.h).
+  const bool homeShown = activityManager.isForegroundHomeShown();
+  const bool remoteContext = activityManager.isRemoteReaderContext();
+  scene.where = remoteContext ? bleturner::Where::Reader
+                : homeShown   ? bleturner::Where::Home
+                              : bleturner::Where::Elsewhere;
   scene.visit = activityManager.visit();
-  scene.pageShown = activityManager.isRemoteReaderContext();
+  scene.pageShown = homeShown || remoteContext;
   scene.storageBusy = activityManager.requiresExclusiveStorageLoop();
   scene.wifiOn = WiFi.getMode() != WIFI_MODE_NULL;
   const bool remoteActed = bleturner::tick(scene);

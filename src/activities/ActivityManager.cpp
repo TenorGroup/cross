@@ -78,6 +78,7 @@ void ActivityManager::renderTaskLoop() {
       // The sleep screen forces normal polarity itself (SleepActivity).
       display.setInverted(SETTINGS.screenInverted != 0);
       currentActivity->render(std::move(lock));
+      paintedVisit.store(screenVisit, std::memory_order_release);
     }
     // Notify any task blocked in requestUpdateAndWait() that the render is done.
     TaskHandle_t waiter = nullptr;
@@ -140,7 +141,10 @@ void ActivityManager::loop() {
   while (pendingAction != PendingAction::None) {
     // The page turner's radio gives its heap back before the next screen allocates. Its teardown
     // can span loop passes and runs outside the render lock.
-    if (pendingAction != PendingAction::ReplaceForSleep && !bleturner::beforeScreenChange()) return;
+    if (pendingAction != PendingAction::ReplaceForSleep &&
+        !bleturner::beforeScreenChange(0, pendingActivity && pendingActivity->isReaderActivity())) {
+      return;
+    }
     ++screenVisit;
     if (pendingAction == PendingAction::Pop) {
       RenderLock lock;
@@ -403,6 +407,11 @@ bool ActivityManager::isRemoteReaderContext() const {
 bool ActivityManager::remoteClick(const RemoteButton button) {
   if (!isRemoteReaderContext() || RenderLock::peek() || requestedUpdate.load()) return false;
   return mappedInput.injectRemoteClick(button);
+}
+
+bool ActivityManager::isForegroundHomeShown() const {
+  return pendingAction == PendingAction::None && currentActivity && currentActivity->name == "Home" &&
+         paintedVisit.load(std::memory_order_acquire) == screenVisit;
 }
 
 bool ActivityManager::remoteTurn(const bool forward, const bool chapter) {

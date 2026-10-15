@@ -68,6 +68,8 @@ class ActivityManager {
 
   // Counts screen changes, so the Bluetooth page turner can tell one visit of a book from the next.
   uint32_t screenVisit = 0;
+  // The screen visit whose frame the render task painted last.
+  std::atomic<uint32_t> paintedVisit{0};
 
  public:
   explicit ActivityManager(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -114,6 +116,8 @@ class ActivityManager {
   bool isForegroundReader() const;
   bool isRemoteReaderContext() const;
   bool remoteClick(RemoteButton button);
+  // Home is in front and has painted a frame of its own (not one left from the screen before).
+  bool isForegroundHomeShown() const;
   uint32_t visit() const { return screenVisit; }
   bool remoteTurn(bool forward, bool chapter);
   bool handleForcedRefresh();
