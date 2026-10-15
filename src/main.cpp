@@ -290,9 +290,11 @@ bool deliver(const bleturner::Action action) {
       return activityManager.remoteClick(RemoteButton::Confirm);
     case bleturner::Action::Back:
       return activityManager.remoteClick(RemoteButton::Back);
-    case bleturner::Action::None:
     case bleturner::Action::ReaderMenu:
+      return activityManager.remoteShortcut(true);
     case bleturner::Action::SaveQuote:
+      return activityManager.remoteShortcut(false);
+    case bleturner::Action::None:
       return false;
   }
   return false;

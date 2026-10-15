@@ -78,7 +78,9 @@ void EpubReaderMenuActivity::toggleBluetooth() {
   SETTINGS.ble.enabled = SETTINGS.ble.enabled ? 0 : 1;
   if (!SETTINGS.ble.enabled) bleturner::switchOff();
   SETTINGS.saveToFile();
-  // Enabling waits for the main-loop lifecycle's reader heap gates.
+  // Enabling waits for the main-loop lifecycle's reader heap gates, then says in the status bar
+  // whether a remote linked.
+  if (SETTINGS.ble.enabled) bleturner::requestConnect();
 }
 
 void EpubReaderMenuActivity::closeCancelled() {
