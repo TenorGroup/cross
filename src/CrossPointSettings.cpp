@@ -86,7 +86,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["readerInkWeightVersion"] = readerInk::SCHEMA_VERSION;
   doc["tenorPresetVersion"] = TENOR_PRESET_VERSION;
   doc["tapZonesVersion"] = 1;
-  doc["buttonHintsVersion"] = 1;
+  doc["buttonHintsVersion"] = 2;
   const CrossPointSettings& s = *this;
 
   // Duyet THANG bang tinh, khong chep ra vector rieng: duong nay chay moi lan

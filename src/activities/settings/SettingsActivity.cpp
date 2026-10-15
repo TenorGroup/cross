@@ -159,6 +159,12 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
     const int tab = deviceSettingsTab(setting);
     if (tab >= 0 && listedAsRow(setting)) ++rowCounts[tab];
   }
+  const bool x3StatusLayout = BoardConfig::ACTIVE.board == BoardConfig::Board::XteinkX3 ||
+                              BoardConfig::ACTIVE.board == BoardConfig::Board::XteinkX3Uc8279;
+  if (x3StatusLayout) {
+    rowCounts[static_cast<int>(settingstabs::Tab::SCREEN)] -= 2;
+    ++rowCounts[static_cast<int>(settingstabs::Tab::SCREEN)];
+  }
   for (const auto& row : DONG_HANH_DONG)
     if (!infoupdate::holds(row.viec)) ++rowCounts[static_cast<int>(settingstabs::nhaCua(row.viec))];
   if (!BoardConfig::hasTouch()) ++rowCounts[static_cast<int>(settingstabs::Tab::CONTROLS)];
@@ -173,6 +179,14 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
   for (const auto& setting : catalog) {
     const int tab = deviceSettingsTab(setting);
     if (tab < 0) continue;
+    const bool x3StatusLayout = BoardConfig::ACTIVE.board == BoardConfig::Board::XteinkX3 ||
+                                BoardConfig::ACTIVE.board == BoardConfig::Board::XteinkX3Uc8279;
+    if (x3StatusLayout && (setting.valuePtr == &CrossPointSettings::globalStatusBarMode ||
+                           setting.valuePtr == &CrossPointSettings::tenorButtonHints)) {
+      if (setting.valuePtr == &CrossPointSettings::globalStatusBarMode)
+        displaySettings.push_back(buildGlobalStatusBarChoiceSetting());
+      continue;
+    }
     if (setting.valuePtr == &CrossPointSettings::statusBarClock) {
       const auto afterLabels = std::find_if(displaySettings.begin(), displaySettings.end(), [](const SettingInfo& row) {
         return row.valuePtr == &CrossPointSettings::tenorButtonSymbols;

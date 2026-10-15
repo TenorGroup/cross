@@ -239,6 +239,15 @@ inline SettingInfo buildTenorClockPlacementSetting(const SettingInfo& registered
   return setting;
 }
 
+inline SettingInfo buildGlobalStatusBarChoiceSetting() {
+  return SettingInfo::DynamicEnum(
+      StrId::STR_HIDE_GLOBAL_STATUS_BAR,
+      {StrId::STR_STATUS_BAR_HIDE_ALL, StrId::STR_STATUS_BAR_TOP_SMALL, StrId::STR_STATUS_BAR_TOP_LARGE,
+       StrId::STR_STATUS_BAR_BOTTOM_SMALL, StrId::STR_STATUS_BAR_BOTTOM_LARGE},
+      [] { return SETTINGS.globalStatusBarChoice(); },
+      [](const uint8_t value) { SETTINGS.setGlobalStatusBarChoice(value); }, nullptr, StrId::STR_CAT_DISPLAY);
+}
+
 // Shared settings list used by both the device settings UI and the web settings API.
 // Each entry has a key (for JSON API) and category (for grouping).
 // ACTION-type entries and entries without a key are device-only.

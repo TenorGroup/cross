@@ -1556,8 +1556,9 @@ bool tenorchrome::buttonHintsShown() {
 }
 
 bool tenorchrome::statusOnTop() {
-  return x3ScreenLayoutEnabled() && !shell::uglyParts() && !SETTINGS.globalStatusBarHidden() && !buttonHintsShown() &&
-         !activityManager.isReaderActivity();
+  const bool statusVisible = !SETTINGS.globalStatusBarHidden();
+  const bool statusTop = statusVisible && SETTINGS.tenorButtonHints == 0;
+  return x3ScreenLayoutEnabled() && !shell::uglyParts() && statusTop && !activityManager.isReaderActivity();
 }
 
 tenorchrome::X3ScreenLayout tenorchrome::x3ScreenLayout(const GfxRenderer& renderer, const int requestedTipHeight,
@@ -1568,7 +1569,8 @@ tenorchrome::X3ScreenLayout tenorchrome::x3ScreenLayout(const GfxRenderer& rende
   int barBottom = height - 16;
   const bool top = statusOnTop();
   const int bodyTop = top ? TOUCH_STRIP_HEIGHT + 16 : 16;
-  if (!SETTINGS.globalStatusBarHidden() && !top) {
+  const bool statusVisible = !SETTINGS.globalStatusBarHidden();
+  if (statusVisible && !top) {
     const bool large = SETTINGS.globalStatusBarLarge();
     const int statusFont = large ? UI_12_FONT_ID : SMALL_FONT_ID;
     bandTop = std::min(large ? statusIconTopY(height, true) : smallFooterSymbolsTopY(renderer),

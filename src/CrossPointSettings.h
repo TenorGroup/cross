@@ -281,6 +281,19 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     GLOBAL_STATUS_BAR_LARGE = 2,  // Lon
     GLOBAL_STATUS_BAR_MODE_COUNT
   };
+  enum GLOBAL_STATUS_BAR_CHOICE : uint8_t {
+    GLOBAL_STATUS_BAR_HIDE = 0,
+    GLOBAL_STATUS_BAR_TOP_SMALL = 1,
+    GLOBAL_STATUS_BAR_TOP_LARGE = 2,
+    GLOBAL_STATUS_BAR_BOTTOM_SMALL = 3,
+    GLOBAL_STATUS_BAR_BOTTOM_LARGE = 4,
+    GLOBAL_STATUS_BAR_CHOICE_COUNT
+  };
+  struct GlobalStatusBarSpec {
+    bool visible = true;
+    bool top = false;
+    bool large = false;
+  };
   // Thanh trang thai trong trinh doc: sau muc, doc lap voi lua chon ngoai trinh doc.
   enum READER_STATUS_BAR_MODE {
     READER_STATUS_BAR_OFF = 0,               // Tat
@@ -312,8 +325,48 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Hai co cua v1.0.2 chi con de doc file cu roi quy doi trong fromJson.
   uint8_t hideReaderStatusBar = 0;
   uint8_t hideGlobalStatusBar = 0;
-  bool globalStatusBarHidden() const { return globalStatusBarMode == GLOBAL_STATUS_BAR_OFF; }
-  bool globalStatusBarLarge() const { return globalStatusBarMode == GLOBAL_STATUS_BAR_LARGE; }
+  GlobalStatusBarSpec globalStatusBarSpec() const {
+    GlobalStatusBarSpec spec;
+    if (globalStatusBarMode >= GLOBAL_STATUS_BAR_MODE_COUNT) return spec;
+    spec.visible = globalStatusBarMode != GLOBAL_STATUS_BAR_OFF;
+    spec.top = spec.visible && tenorButtonHints == 0;
+    spec.large = spec.visible && globalStatusBarMode == GLOBAL_STATUS_BAR_LARGE;
+    return spec;
+  }
+  uint8_t globalStatusBarChoice() const {
+    const auto spec = globalStatusBarSpec();
+    if (!spec.visible) return GLOBAL_STATUS_BAR_HIDE;
+    if (spec.large) return spec.top ? GLOBAL_STATUS_BAR_TOP_LARGE : GLOBAL_STATUS_BAR_BOTTOM_LARGE;
+    return spec.top ? GLOBAL_STATUS_BAR_TOP_SMALL : GLOBAL_STATUS_BAR_BOTTOM_SMALL;
+  }
+  void setGlobalStatusBarChoice(const uint8_t choice) {
+    switch (choice) {
+      case GLOBAL_STATUS_BAR_HIDE:
+        globalStatusBarMode = GLOBAL_STATUS_BAR_OFF;
+        return;
+      case GLOBAL_STATUS_BAR_TOP_SMALL:
+        globalStatusBarMode = GLOBAL_STATUS_BAR_SMALL;
+        tenorButtonHints = 0;
+        return;
+      case GLOBAL_STATUS_BAR_TOP_LARGE:
+        globalStatusBarMode = GLOBAL_STATUS_BAR_LARGE;
+        tenorButtonHints = 0;
+        return;
+      case GLOBAL_STATUS_BAR_BOTTOM_SMALL:
+        globalStatusBarMode = GLOBAL_STATUS_BAR_SMALL;
+        tenorButtonHints = 1;
+        return;
+      case GLOBAL_STATUS_BAR_BOTTOM_LARGE:
+        globalStatusBarMode = GLOBAL_STATUS_BAR_LARGE;
+        tenorButtonHints = 1;
+        return;
+      default:
+        globalStatusBarMode = GLOBAL_STATUS_BAR_OFF;
+        return;
+    }
+  }
+  bool globalStatusBarHidden() const { return !globalStatusBarSpec().visible; }
+  bool globalStatusBarLarge() const { return globalStatusBarSpec().large; }
   bool readerStatusBarHidden() const { return readerStatusBarMode == READER_STATUS_BAR_OFF; }
   // Hide Battery %: the one place that says whether the number beside the battery is drawn.
   bool batteryPercentShown(const bool inReader) const {
