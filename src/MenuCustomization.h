@@ -13,11 +13,22 @@ constexpr int GROUPS = 4;
 constexpr int MAX_TABS = 9;
 constexpr int MAX_PINS = 32;
 constexpr int KEY_SIZE = 64;
+inline bool mergedGlobalStatusBarPinRoute() {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  return false;
+#else
+  return true;
+#endif
+}
 // Keep saved v1 pin keys intact while matching their current setting routes.
 // Shared by pin membership, duplicate detection and the favorites launcher.
 inline const char* canonicalPinKey(const char* key) {
   if (!key) return "";
   if (strcmp(key, "text/focusReadingEnabled") == 0) return "text/dropCapMode";
+  if (mergedGlobalStatusBarPinRoute() &&
+      (strcmp(key, "settings/globalStatusBarMode") == 0 || strcmp(key, "settings/tenorButtonHints") == 0 ||
+       strcmp(key, "settings/hideGlobalStatusBar") == 0))
+    return "settings/globalStatusBarChoice";
   if (strcmp(key, "settings/hideGlobalStatusBar") == 0) return "settings/globalStatusBarMode";
   if (strcmp(key, "settings/hideReaderStatusBar") == 0) return "settings/readerStatusBarMode";
   return key;

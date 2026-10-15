@@ -155,12 +155,11 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
 
   const auto& catalog = getBaseSettingsList();
   std::array<size_t, settingstabs::TAB_COUNT> rowCounts{};
+  const bool x3StatusLayout = !BoardConfig::hasTouch();
   for (const auto& setting : catalog) {
     const int tab = deviceSettingsTab(setting);
     if (tab >= 0 && listedAsRow(setting)) ++rowCounts[tab];
   }
-  const bool x3StatusLayout = BoardConfig::ACTIVE.board == BoardConfig::Board::XteinkX3 ||
-                              BoardConfig::ACTIVE.board == BoardConfig::Board::XteinkX3Uc8279;
   if (x3StatusLayout) {
     rowCounts[static_cast<int>(settingstabs::Tab::SCREEN)] -= 2;
     ++rowCounts[static_cast<int>(settingstabs::Tab::SCREEN)];
@@ -179,8 +178,6 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
   for (const auto& setting : catalog) {
     const int tab = deviceSettingsTab(setting);
     if (tab < 0) continue;
-    const bool x3StatusLayout = BoardConfig::ACTIVE.board == BoardConfig::Board::XteinkX3 ||
-                                BoardConfig::ACTIVE.board == BoardConfig::Board::XteinkX3Uc8279;
     if (x3StatusLayout && (setting.valuePtr == &CrossPointSettings::globalStatusBarMode ||
                            setting.valuePtr == &CrossPointSettings::tenorButtonHints)) {
       if (setting.valuePtr == &CrossPointSettings::globalStatusBarMode)
@@ -1268,7 +1265,14 @@ std::string SettingsActivity::favoriteKey(const int row) const {
 }
 int SettingsActivity::focusFavorite(const std::string& key) {
   // Existing action pins keep their key after the Tenor-only child is removed.
-  const std::string target = key == "action/2" ? "settings/statusBarClock" : key;
+  const std::string target =
+      (key == "action/2") ? "settings/statusBarClock"
+      : (!BoardConfig::hasTouch() &&
+         (key == "settings/globalStatusBarMode" || key == "settings/tenorButtonHints" ||
+          key == "settings/hideGlobalStatusBar"))
+          ? "settings/globalStatusBarChoice"
+      : (key == "settings/hideGlobalStatusBar") ? "settings/globalStatusBarMode"
+          : key;
   for (int tab = 0; tab < categoryCount; ++tab) {
     const auto& items = danhSachCuaThe(static_cast<settingstabs::Tab>(tab));
     for (size_t row = 0; row < items.size(); ++row) {

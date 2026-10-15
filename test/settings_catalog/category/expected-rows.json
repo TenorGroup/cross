@@ -2,7 +2,7 @@
   "x3-0-0-0": [
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
-      "STR_HIDE_GLOBAL_STATUS_BAR:0:",
+      "STR_GLOBAL_STATUS_BAR_CHOICE:0:globalStatusBarChoice",
       "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
@@ -88,7 +88,7 @@
   "x3-0-0-1": [
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
-      "STR_HIDE_GLOBAL_STATUS_BAR:0:",
+      "STR_GLOBAL_STATUS_BAR_CHOICE:0:globalStatusBarChoice",
       "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
@@ -175,7 +175,7 @@
   "x3-0-1-0": [
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
-      "STR_HIDE_GLOBAL_STATUS_BAR:0:",
+      "STR_GLOBAL_STATUS_BAR_CHOICE:0:globalStatusBarChoice",
       "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
@@ -262,7 +262,7 @@
   "x3-0-1-1": [
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
-      "STR_HIDE_GLOBAL_STATUS_BAR:0:",
+      "STR_GLOBAL_STATUS_BAR_CHOICE:0:globalStatusBarChoice",
       "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
@@ -350,7 +350,7 @@
   "x3-1-0-0": [
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
-      "STR_HIDE_GLOBAL_STATUS_BAR:0:",
+      "STR_GLOBAL_STATUS_BAR_CHOICE:0:globalStatusBarChoice",
       "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
@@ -436,7 +436,7 @@
   "x3-1-0-1": [
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
-      "STR_HIDE_GLOBAL_STATUS_BAR:0:",
+      "STR_GLOBAL_STATUS_BAR_CHOICE:0:globalStatusBarChoice",
       "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
@@ -523,7 +523,7 @@
   "x3-1-1-0": [
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
-      "STR_HIDE_GLOBAL_STATUS_BAR:0:",
+      "STR_GLOBAL_STATUS_BAR_CHOICE:0:globalStatusBarChoice",
       "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
@@ -610,7 +610,7 @@
   "x3-1-1-1": [
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
-      "STR_HIDE_GLOBAL_STATUS_BAR:0:",
+      "STR_GLOBAL_STATUS_BAR_CHOICE:0:globalStatusBarChoice",
       "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
@@ -698,8 +698,7 @@
   "x4-0-0-0": [
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
-      "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
-      "STR_BUTTON_HINTS:0:tenorButtonHints",
+      "STR_GLOBAL_STATUS_BAR_CHOICE:0:globalStatusBarChoice",
       "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
@@ -769,8 +768,7 @@
   "x4-0-0-1": [
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
-      "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
-      "STR_BUTTON_HINTS:0:tenorButtonHints",
+      "STR_GLOBAL_STATUS_BAR_CHOICE:0:globalStatusBarChoice",
       "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
@@ -841,8 +839,7 @@
   "x4-0-1-0": [
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
-      "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
-      "STR_BUTTON_HINTS:0:tenorButtonHints",
+      "STR_GLOBAL_STATUS_BAR_CHOICE:0:globalStatusBarChoice",
       "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
@@ -913,8 +910,7 @@
   "x4-0-1-1": [
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
-      "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
-      "STR_BUTTON_HINTS:0:tenorButtonHints",
+      "STR_GLOBAL_STATUS_BAR_CHOICE:0:globalStatusBarChoice",
       "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
@@ -986,8 +982,7 @@
   "x4-1-0-0": [
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
-      "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
-      "STR_BUTTON_HINTS:0:tenorButtonHints",
+      "STR_GLOBAL_STATUS_BAR_CHOICE:0:globalStatusBarChoice",
       "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
@@ -1057,8 +1052,7 @@
   "x4-1-0-1": [
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
-      "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
-      "STR_BUTTON_HINTS:0:tenorButtonHints",
+      "STR_GLOBAL_STATUS_BAR_CHOICE:0:globalStatusBarChoice",
       "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
@@ -1129,8 +1123,7 @@
   "x4-1-1-0": [
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
-      "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
-      "STR_BUTTON_HINTS:0:tenorButtonHints",
+      "STR_GLOBAL_STATUS_BAR_CHOICE:0:globalStatusBarChoice",
       "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
@@ -1201,8 +1194,7 @@
   "x4-1-1-1": [
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
-      "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
-      "STR_BUTTON_HINTS:0:tenorButtonHints",
+      "STR_GLOBAL_STATUS_BAR_CHOICE:0:globalStatusBarChoice",
       "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",

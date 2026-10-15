@@ -81,12 +81,29 @@ def ink_box(im, box):
 
 
 def switch(out):
-    # Home Settings opens on Display: UI size, General status bar, then Button hints.
-    _, saved = run(out, 'switch', '1000:UP;1600:CONFIRM;2600:RIGHT;3200:RIGHT;3800:CONFIRM;4600:BACK',
+    # Home Settings opens on Display: UI size, then the merged Status bar row.
+    # The old bottom-small choice is index 3. Two UP presses select top-small (index 1).
+    _, saved = run(out, 'switch', '1000:UP;1600:CONFIRM;2600:RIGHT;3200:CONFIRM;3800:UP;4400:UP;5000:CONFIRM;5600:BACK',
                    {4400: 'row'}, {})
-    assert saved.get('tenorButtonHints') == 0, ('Button hints row toggles tenorButtonHints', saved.get('tenorButtonHints'))
-    assert saved['tipsEnabled'] == 1 and saved['globalStatusBarMode'] == 0, 'only the Button hints row changes'
-    print('GREEN switch: Display row 3 toggles tenorButtonHints 1 -> 0', flush=True)
+    assert saved.get('tenorButtonHints') == 0, ('Status bar popup selects top-small', saved.get('tenorButtonHints'))
+    assert saved['tipsEnabled'] == 1 and saved['globalStatusBarMode'] == 0, 'only the Status bar row changes'
+    print('GREEN switch: Status bar popup selects top-small and stores tenorButtonHints=0', flush=True)
+
+
+def choices(out):
+    expected = {0: (1, 0), 1: (0, 0), 2: (2, 0), 3: (0, 1), 4: (2, 1)}
+    moves = {0: ('UP', 'UP', 'UP'), 1: ('UP', 'UP'), 2: ('UP',), 3: (), 4: ('DOWN',)}
+    for choice, pair in expected.items():
+        events = ['1000:UP', '1600:CONFIRM', '2200:RIGHT', '2800:CONFIRM']
+        at = 3400
+        for key in moves[choice]:
+            events.append(f'{at}:{key}')
+            at += 600
+        events.extend((f'{at}:CONFIRM', f'{at + 600}:BACK'))
+        _, saved = run(out, f'choice-{choice}', ';'.join(events), {at + 300: f'choice-{choice}'}, {})
+        assert (saved.get('globalStatusBarMode'), saved.get('tenorButtonHints')) == pair, (choice, saved)
+        assert saved.get('buttonHintsVersion') == 1, (choice, saved)
+    print('GREEN choices: all 5 Status bar popup values save and reload', flush=True)
 
 
 def layout(out):
@@ -150,7 +167,7 @@ def reader(out):
 def migration(out):
     # A card from before the switch with General status bar Off: the hints stay hidden after the upgrade, and turning
     # the bar back on (Small) shows the clock and the battery in the top strip, the hints still off.
-    old = {'globalStatusBarMode': 1, 'buttonHintsVersion': None}
+    old = {'globalStatusBarMode': 1, 'buttonHintsVersion': None, 'tenorPresetVersion': None}
     _, saved = run(out, 'migrate-off', '', {2500: 'home'}, old)
     assert saved.get('tenorButtonHints') == 0 and saved.get('buttonHintsVersion') == 1, ('Off moves once', saved)
     assert saved['globalStatusBarMode'] == 1, 'status bar Off stays Off'
@@ -164,12 +181,12 @@ def migration(out):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('which', nargs='?', default='all', choices=('switch', 'layout', 'reader', 'migration', 'all'))
+    parser.add_argument('which', nargs='?', default='all', choices=('switch', 'choices', 'layout', 'reader', 'migration', 'all'))
     parser.add_argument('--out', type=Path)
     args = parser.parse_args()
     out = args.out or Path(tempfile.mkdtemp(prefix='button-hints-'))
     out.mkdir(parents=True, exist_ok=True)
-    for test in (switch, layout, reader, migration):
+    for test in (switch, choices, layout, reader, migration):
         if args.which in ('all', test.__name__):
             test(out)
     print('PASS scenarios=4', flush=True)

@@ -475,7 +475,7 @@ int runButtonHints() {
   SETTINGS.fromJson(off.as<JsonVariantConst>());
   ok = expect(SETTINGS.tenorButtonHints == 0, "status bar Off before the switch keeps the hints hidden") && ok;
   ok = expect(SETTINGS.globalStatusBarMode == CrossPointSettings::GLOBAL_STATUS_BAR_OFF, "status bar Off stays Off") && ok;
-  ok = expect(saved()["tenorButtonHints"].as<int>() == 0 && saved()["buttonHintsVersion"].as<int>() == 2,
+  ok = expect(saved()["tenorButtonHints"].as<int>() == 0 && saved()["buttonHintsVersion"].as<int>() == 1,
               "the move is saved and stamped") && ok;
 
   JsonDocument small = readFixture("settings-v1.0.19.json");
@@ -555,11 +555,13 @@ int runGlobalStatusBarMatrix() {
   resetStatus();
   missingPreset["globalStatusBarMode"] = S::GLOBAL_STATUS_BAR_SMALL;
   missingPreset["tenorButtonHints"] = 0;
-  missingPreset["buttonHintsVersion"] = 2;
+  missingPreset["buttonHintsVersion"] = 1;
   missingPreset["statusBarClock"] = S::STATUS_BAR_CLOCK_LEFT;
   SETTINGS.fromJson(missingPreset.as<JsonVariantConst>());
   ok &= expect(SETTINGS.statusBarClock == S::STATUS_BAR_CLOCK_RIGHT,
                "missing Tenor preset stamp applies the shipped clock default");
+  ok &= expect(SETTINGS.globalStatusBarMode == S::GLOBAL_STATUS_BAR_SMALL && SETTINGS.tenorButtonHints == 0,
+               "missing Tenor preset stamp preserves the global status pair");
   std::printf("settings_upgrade=global-status-matrix:%s\n", ok ? "GREEN" : "RED");
   return ok ? 0 : 1;
 }

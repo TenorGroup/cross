@@ -18,9 +18,17 @@ constexpr int SMALL_FONT_ID = 1;
 namespace BidiUtils { enum class BidiBaseDir { AUTO }; }
 struct Settings {
   int uiTextSize = 0;
-  bool hidden = false, large = false, tenorButtonSymbols = true;
+  bool hidden = false, large = false, tenorButtonHints = true, tenorButtonSymbols = true;
+  struct GlobalStatusBarSpec {
+    bool visible = true;
+    bool top = false;
+    bool large = false;
+  };
   bool globalStatusBarHidden() const { return hidden; }
   bool globalStatusBarLarge() const { return large; }
+  GlobalStatusBarSpec globalStatusBarSpec() const {
+    return {!hidden, !hidden && !tenorButtonHints, !hidden && large};
+  }
   int clockFormat = 0;
 } SETTINGS;
 // The hand-drawn key bar of tenor/ugly asks the clock; this harness measures tenor/cross only.

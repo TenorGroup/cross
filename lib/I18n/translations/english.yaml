@@ -743,6 +743,7 @@ STR_FAVORITES_EMPTY: "No favorites yet."
 
 STR_STATUS_BAR_SMALL: "Default"
 STR_STATUS_BAR_LARGE: "Large"
+STR_GLOBAL_STATUS_BAR_CHOICE: "Status bar"
 STR_STATUS_BAR_HIDE_ALL: "Hide all"
 STR_STATUS_BAR_TOP_SMALL: "Clock and battery at top"
 STR_STATUS_BAR_TOP_LARGE: "Large clock and battery at top"

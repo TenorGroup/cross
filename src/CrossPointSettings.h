@@ -343,6 +343,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     switch (choice) {
       case GLOBAL_STATUS_BAR_HIDE:
         globalStatusBarMode = GLOBAL_STATUS_BAR_OFF;
+        tenorButtonHints = 0;
         return;
       case GLOBAL_STATUS_BAR_TOP_SMALL:
         globalStatusBarMode = GLOBAL_STATUS_BAR_SMALL;

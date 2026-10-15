@@ -743,6 +743,7 @@ STR_FAVORITES_EMPTY: "Chưa có mục yêu thích."
 
 STR_STATUS_BAR_SMALL: "Mặc định"
 STR_STATUS_BAR_LARGE: "Lớn"
+STR_GLOBAL_STATUS_BAR_CHOICE: "Thanh trạng thái"
 STR_STATUS_BAR_HIDE_ALL: "Ẩn hết"
 STR_STATUS_BAR_TOP_SMALL: "Giờ và pin ở trên"
 STR_STATUS_BAR_TOP_LARGE: "Giờ và pin lớn ở trên"

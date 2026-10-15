@@ -838,10 +838,10 @@ TEST(MenuFavoritesCompatibility, LegacyTextPinFindsCurrentRouteAndLabel) {
 
 TEST(MenuFavoritesCompatibility, LegacyStatusPinsShowCurrentLabels) {
   const std::vector<SettingInfo> settings = {
-      SettingInfo::Enum(StrId::STR_HIDE_GLOBAL_STATUS_BAR, &CrossPointSettings::globalStatusBarMode, {}, "globalStatusBarMode"),
+      buildGlobalStatusBarChoiceSetting(),
       SettingInfo::Enum(StrId::STR_HIDE_READER_STATUS_BAR, &CrossPointSettings::readerStatusBarMode, {}, "readerStatusBarMode"),
   };
-  EXPECT_EQ(menufavorites::label("settings/hideGlobalStatusBar", settings), StrId::STR_HIDE_GLOBAL_STATUS_BAR);
+  EXPECT_EQ(menufavorites::label("settings/hideGlobalStatusBar", settings), StrId::STR_GLOBAL_STATUS_BAR_CHOICE);
   EXPECT_EQ(menufavorites::label("settings/hideReaderStatusBar", settings), StrId::STR_HIDE_READER_STATUS_BAR);
 }
 
