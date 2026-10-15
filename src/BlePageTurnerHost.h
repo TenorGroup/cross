@@ -15,6 +15,6 @@ enum class Action : uint8_t;
 void beginPageTurner(GfxRenderer& renderer, bleturner::Config& config, void (*runShortcut)(bleturner::Action shortcut),
                      void (*restartIntoBook)());
 
-// Finish a Wi-Fi pull before making the reader, spending the shared restart allowance.
+// Finish a Wi-Fi pull before making the reader and decide whether the X3 needs the shared heap restart.
 bool preparePageTurnerAfterPull(bool enabled, bool usedNetwork, bool succeeded);
 void markPageTurnerRestartSpent();

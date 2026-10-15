@@ -5,47 +5,76 @@
 #include <string>
 
 #include "KOReaderPullResume.h"
+#include "RadioPolicy.h"
 
 using namespace kosyncauto;
 
 namespace {
-constexpr size_t kRadioStartFreeBytes = 81920;
-constexpr size_t kRadioLargestBlockBytes = 32768;
+constexpr size_t kRadioStartFreeBytes = bleturner::kX3Profile.startFreeBytes;
+constexpr size_t kRadioLargestBlockBytes = bleturner::kX3Profile.minimumLargest;
+
+bleturner::RadioInputs readerBeforeStart(const size_t freeBytes, const size_t largest) {
+  bleturner::RadioInputs in{};
+  in.phase = bleturner::Phase::BeforeStart;
+  in.where = bleturner::Where::Reader;
+  in.heap = {freeBytes, largest};
+  return in;
+}
 }  // namespace
 
+static_assert(kPullReaderReserveBytes == 20480);
+static_assert(PULL_JOIN_MS == 9500);
+
+TEST(PullResumeRestart, UsesThePageTurnerReaderVerdictAtTheX3Boundary) {
+  EXPECT_EQ(bleturner::radioVerdict(readerBeforeStart(kRadioStartFreeBytes, kRadioLargestBlockBytes),
+                                    bleturner::kX3Profile),
+            bleturner::Why::Ok);
+  EXPECT_EQ(bleturner::radioVerdict(readerBeforeStart(kRadioStartFreeBytes - 1, kRadioLargestBlockBytes),
+                                    bleturner::kX3Profile),
+            bleturner::Why::HeapInPieces);
+  EXPECT_EQ(bleturner::radioVerdict(readerBeforeStart(kRadioStartFreeBytes, kRadioLargestBlockBytes - 1),
+                                    bleturner::kX3Profile),
+            bleturner::Why::HeapInPieces);
+  EXPECT_EQ(bleturner::radioVerdict(readerBeforeStart(bleturner::kMinimumFreeBytes - 1,
+                                                      kRadioLargestBlockBytes - 1),
+                                    bleturner::kX3Profile),
+            bleturner::Why::HeapLow);
+}
+
 TEST(PullResumeRestart, ExactRadioHeapBoundaryNeedsNoRestart) {
-  EXPECT_FALSE(restartAfterPull(true, true, true, false, kRadioStartFreeBytes,
-                                kRadioLargestBlockBytes, kRadioStartFreeBytes,
-                                kRadioLargestBlockBytes));
-  EXPECT_TRUE(restartAfterPull(true, true, true, false, kRadioStartFreeBytes - 1,
-                               kRadioLargestBlockBytes, kRadioStartFreeBytes,
-                               kRadioLargestBlockBytes));
-  EXPECT_TRUE(restartAfterPull(true, true, true, false, kRadioStartFreeBytes,
-                               kRadioLargestBlockBytes - 1, kRadioStartFreeBytes,
-                               kRadioLargestBlockBytes));
+  EXPECT_FALSE(restartAfterPull(true, true, true, false,
+                                kRadioStartFreeBytes + kPullReaderReserveBytes,
+                                kRadioLargestBlockBytes + kPullReaderReserveBytes));
+  EXPECT_TRUE(restartAfterPull(true, true, true, false,
+                               kRadioStartFreeBytes + kPullReaderReserveBytes - 1,
+                               kRadioLargestBlockBytes + kPullReaderReserveBytes));
+  EXPECT_TRUE(restartAfterPull(true, true, true, false,
+                               kRadioStartFreeBytes + kPullReaderReserveBytes,
+                               kRadioLargestBlockBytes + kPullReaderReserveBytes - 1));
 }
 
 TEST(PullResumeRestart, DisabledUnusedFailedOrSpentPullNeverRestarts) {
   constexpr size_t lowFree = kRadioStartFreeBytes - 1;
   constexpr size_t lowLargest = kRadioLargestBlockBytes - 1;
-  EXPECT_FALSE(restartAfterPull(false, true, true, false, lowFree, lowLargest,
-                                kRadioStartFreeBytes, kRadioLargestBlockBytes));
-  EXPECT_FALSE(restartAfterPull(true, false, true, false, lowFree, lowLargest,
-                                kRadioStartFreeBytes, kRadioLargestBlockBytes));
-  EXPECT_FALSE(restartAfterPull(true, true, false, false, lowFree, lowLargest,
-                                kRadioStartFreeBytes, kRadioLargestBlockBytes));
-  EXPECT_FALSE(restartAfterPull(true, true, true, true, lowFree, lowLargest,
-                                kRadioStartFreeBytes, kRadioLargestBlockBytes));
+  EXPECT_FALSE(restartAfterPull(false, true, true, false, lowFree, lowLargest));
+  EXPECT_FALSE(restartAfterPull(true, false, true, false, lowFree, lowLargest));
+  EXPECT_FALSE(restartAfterPull(true, true, false, false, lowFree, lowLargest));
+  EXPECT_FALSE(restartAfterPull(true, true, true, true, lowFree, lowLargest));
 }
 
 TEST(PullResumeRestart, LowHeapPolicyRequestsOneRestartUntilMarkedSpent) {
   bool spent = false;
   EXPECT_TRUE(restartAfterPull(true, true, true, spent, kRadioStartFreeBytes,
-                               kRadioLargestBlockBytes - 1, kRadioStartFreeBytes,
-                               kRadioLargestBlockBytes));
+                               kRadioLargestBlockBytes - 1));
   spent = true;
-  EXPECT_FALSE(restartAfterPull(true, true, true, spent, 0, 0,
-                                kRadioStartFreeBytes, kRadioLargestBlockBytes));
+  EXPECT_FALSE(restartAfterPull(true, true, true, spent, 0, 0));
+}
+
+TEST(PullResumeRestart, MeasuredAfterPullHeapReservesTheReaderBeforeTheBleVerdict) {
+  EXPECT_TRUE(restartAfterPull(true, true, true, false, 80704, 38900));
+  EXPECT_TRUE(restartAfterPull(true, true, true, false, 67492, 21492));
+  EXPECT_TRUE(restartAfterPull(true, true, true, false, 90000, 38900));
+  EXPECT_FALSE(restartAfterPull(true, true, true, false, bleturner::kMinimumFreeBytes - 1, 60000));
 }
 
 TEST(PullResumeRecord, PositionAndMarkSurviveAnRtcCopy) {
@@ -109,22 +138,54 @@ TEST(PullResumeRecord, CorruptOrUnterminatedRecordsAreRejected) {
 
 TEST(PullResumeRecord, PathCopyUsesTheWholeSafeRangeAndClearsFailures) {
   PullResume resume{};
-  const std::string longest = "/" + std::string(sizeof(resume.path) - 2, 'p');
+  const auto pathOfLength = [](const size_t length) {
+    return "/" + std::string(length - 1, 'p');
+  };
+  const std::string longest = pathOfLength(175);
   ASSERT_TRUE(keepPullPath(resume, longest, PULL_ARMED_MAGIC));
   EXPECT_EQ(std::strlen(resume.path), longest.size());
   EXPECT_TRUE(validPullResume(resume));
 
   resume.hasMark = true;
-  EXPECT_FALSE(keepPullPath(resume, std::string(sizeof(resume.path), 'p'), PULL_ARMED_MAGIC));
+  EXPECT_FALSE(keepPullPath(resume, pathOfLength(176), PULL_ARMED_MAGIC));
   EXPECT_EQ(resume.magic, 0u);
   EXPECT_EQ(resume.path[0], '\0');
   EXPECT_FALSE(resume.hasMark);
 
   resume.magic = PULL_DONE_MAGIC;
   resume.path[0] = 'x';
-  EXPECT_FALSE(keepPullPath(resume, "", PULL_ARMED_MAGIC));
+  EXPECT_FALSE(keepPullPath(resume, pathOfLength(255), PULL_ARMED_MAGIC));
   EXPECT_EQ(resume.magic, 0u);
   EXPECT_EQ(resume.path[0], '\0');
+}
+
+TEST(PullResumeRecord, LongWakePathUsesTheAppStatePathAcrossRestart) {
+  const auto pathOfLength = [](const size_t length) {
+    return "/" + std::string(length - 6, 'p') + ".epub";
+  };
+  for (const size_t length : {size_t{176}, size_t{255}}) {
+    PullResume resume{};
+    ASSERT_TRUE(keepPullPath(resume, pathOfLength(length), PULL_DONE_MAGIC, true)) << length;
+    EXPECT_TRUE(validPullResume(resume)) << length;
+    EXPECT_EQ(resume.magic, PULL_DONE_MAGIC) << length;
+    EXPECT_STREQ(resume.path, "/") << length;
+    EXPECT_EQ(resume.useStoredPath, 1) << length;
+  }
+}
+
+TEST(PullResumeRestart, PathMustBeSavedBeforeTheHeapRestartDecision) {
+  const auto pathOfLength = [](const size_t length) { return "/" + std::string(length - 1, 'p'); };
+  for (const size_t length : {size_t{175}, size_t{176}, size_t{255}}) {
+    PullResume saved{};
+    const bool pathSaved = keepPullPath(saved, pathOfLength(length), PULL_DONE_MAGIC);
+    const bool restart = pathSaved &&
+                         restartAfterPull(true, true, true, false,
+                                          kRadioStartFreeBytes + kPullReaderReserveBytes,
+                                          kRadioLargestBlockBytes + kPullReaderReserveBytes - 1);
+    EXPECT_EQ(pathSaved, length == 175) << "path length " << length;
+    EXPECT_EQ(restart, length == 175) << "path length " << length;
+    EXPECT_EQ(saved.magic, length == 175 ? PULL_DONE_MAGIC : 0u) << "path length " << length;
+  }
 }
 
 TEST(PullResumeRecord, DoneMarkerCannotBeConsumedAgain) {

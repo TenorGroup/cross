@@ -3,6 +3,7 @@
 #include "HeapMapProbe.h"
 
 #include <GfxRenderer.h>
+#include <BoardConfig.h>
 
 #include <optional>
 
@@ -107,21 +108,27 @@ void beginPageTurner(GfxRenderer& renderer, bleturner::Config& config, void (*sh
 }
 
 bool preparePageTurnerAfterPull(const bool enabled, const bool usedNetwork, const bool succeeded) {
-  if (!enabled || !usedNetwork) return false;
+  // The pre-page restart is an X3 heap repair. X4 Pro uses SDMMC on this path and
+  // has no measured proof that the storage handoff is safe.
+#if !FREEINK_DEVICE_X3
+  return false;
+#else
+  if (!enabled || !usedNetwork || !succeeded || BoardConfig::isX4Pro()) return false;
   const auto heap = bleHeap();
-  const auto& need = bleturner::activeProfile();
-  auto& memo = bleturner::port::restartMemo();
-  const bool restart = kosyncauto::restartAfterPull(enabled, usedNetwork, succeeded,
-      memo.magic == bleturner::kRestartSpentMagic, heap.freeBytes, heap.largestBlock,
-      need.startFreeBytes, need.minimumLargest);
-  if (restart) memo.magic = bleturner::kRestartSpentMagic;
+  const auto& memo = bleturner::port::restartMemo();
+  const bool spent = memo.magic == bleturner::kRestartSpentMagic;
+  const bool restart = kosyncauto::restartAfterPull(enabled, usedNetwork, succeeded, spent,
+                                                   heap.freeBytes, heap.largestBlock);
 #ifdef TENOR_PRESS_PROBE
+  const auto& need = bleturner::kX3Profile;
   LOG_INF("KAS", "radio restart=%d free=%u largest=%u need_free=%u need_largest=%u", restart,
           static_cast<unsigned>(heap.freeBytes), static_cast<unsigned>(heap.largestBlock),
-          static_cast<unsigned>(need.startFreeBytes), static_cast<unsigned>(need.minimumLargest));
+          static_cast<unsigned>(need.startFreeBytes + kosyncauto::kPullReaderReserveBytes),
+          static_cast<unsigned>(need.minimumLargest + kosyncauto::kPullReaderReserveBytes));
   if (restart) restartlog::mark(restartlog::Event::PullHeapRestart, heap.freeBytes, heap.largestBlock);
 #endif
   return restart;
+#endif
 }
 void markPageTurnerRestartSpent() { bleturner::port::restartMemo().magic = bleturner::kRestartSpentMagic; }
 #else

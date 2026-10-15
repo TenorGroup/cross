@@ -610,3 +610,21 @@ TEST(AutoSyncOpenPull, ArmedIsSpentByTheStartThatPullsAndLeftoverRtcOwesNothing)
   // a power loss is a cold start: whatever RTC held, the start decides again
   EXPECT_EQ(debtAfterStart(PullDebt::Armed, false, false, false, true), PullDebt::None);
 }
+
+TEST(AutoSyncOpenPull, OwedPlanConsumesDebtBeforeASkippedNetworkPull) {
+  const OpenPlan restart = planOpen(PullDebt::Owed, true, true);
+  EXPECT_EQ(restart.step, OpenStep::RestartForPull);
+  EXPECT_EQ(restart.debtAfter, PullDebt::Armed);
+  const OpenPlan plan = planOpen(restart.debtAfter, true, true);
+  EXPECT_EQ(plan.step, OpenStep::PullThenOpen);
+  EXPECT_EQ(plan.debtAfter, PullDebt::None);
+  // A skipped network round leaves the already-consumed plan at None. The next open is ordinary.
+  EXPECT_EQ(planOpen(plan.debtAfter, true, true).step, OpenStep::Open);
+  EXPECT_EQ(planOpen(plan.debtAfter, true, true).debtAfter, PullDebt::None);
+}
+
+TEST(AutoSyncOpenPull, OwedPlanPullsWithoutHeapRestartWhenBleIsOff) {
+  const OpenPlan plan = planOpen(PullDebt::Owed, true, true, false);
+  EXPECT_EQ(plan.step, OpenStep::PullThenOpen);
+  EXPECT_EQ(plan.debtAfter, PullDebt::None);
+}

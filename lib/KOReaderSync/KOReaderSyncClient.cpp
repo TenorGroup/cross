@@ -255,10 +255,13 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
   if (httpCode >= 200 && httpCode < 300) {
     JsonDocument doc;
 #ifdef SIMULATOR
-    const DeserializationError error = deserializeJson(doc, http.getString().c_str());
+    const auto body = http.getString();
+    const DeserializationError error = deserializeJson(doc, body.c_str(), body.length());
 #else
-    const DeserializationError error = hasDeadline ? deserializeJson(doc, deadlineBody.bytes(), deadlineBody.size())
-                                                   : deserializeJson(doc, http.getString().c_str());
+    const std::string& body = http.getString();
+    const DeserializationError error =
+        hasDeadline ? deserializeJson(doc, reinterpret_cast<const char*>(deadlineBody.bytes()), deadlineBody.size())
+                    : deserializeJson(doc, body.c_str(), body.size());
 #endif
     http.end();
 

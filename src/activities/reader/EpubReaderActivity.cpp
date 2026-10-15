@@ -1316,9 +1316,7 @@ void EpubReaderActivity::loop() {
     HEAP_MARK("cover_ref");
   }
 
-#ifdef TENOR_PRESS_PROBE
-  if (!openCommitPending) koautosync::probeAfterFirstFrame();
-#endif
+  if (!openCommitPending) koautosync::afterFirstFrame();
 
   // The first frame is up: the stack lives in RAM now, so the file read at the open goes. An
   // unclean shutdown then cannot bring a stale stack back; the exit writes it again.

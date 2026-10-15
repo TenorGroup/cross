@@ -12,6 +12,7 @@
 
 namespace shell { bool isUgly() { return false; } }
 namespace ugly { void setIconFrameSeed(uint32_t) {} }
+namespace koautosync { bool pullRestartReady() { return false; } }
 uint32_t millis() { return 0; }
 
 // The production paint request, waited paint and render task, the flush at the end of

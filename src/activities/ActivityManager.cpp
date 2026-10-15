@@ -63,7 +63,9 @@ class PullRestartActivity final : public Activity {
       : Activity("PullRestart", renderer, mappedInput), bookPath(std::move(path)) {}
   void onEnter() override {
     Activity::onEnter();
-    markPageTurnerRestartSpent();
+    // The first Home restart only prepares the pull. Spend the shared BLE
+    // restart allowance after the pull has been saved for the next boot.
+    if (koautosync::pullRestartReady()) markPageTurnerRestartSpent();
     silentRestartToReader();
     // Only a build that does not really restart gets here (the simulator): open the book as the restart would.
     koautosync::noteStart(true, false);
@@ -317,7 +319,7 @@ void ActivityManager::renderTaskLoop() {
     // Acquire the lock before reading currentActivity to avoid a TOCTOU race
     // where the main task deletes the activity between the null-check and render().
     RenderLock lock;
-    if (currentActivity && !sleepTransition) {
+    if (currentActivity && !sleepTransition && !koautosync::pullRestartReady()) {
       // A refresh still running from before (the wake notice) reads the framebuffer to the end:
       // nothing draws over it until it is done. Without a notice there is nothing to wait for.
       if (SleepActivity::takeWakeNoticeRunning()) renderer.waitRefreshComplete();
@@ -749,10 +751,6 @@ void ActivityManager::restoreNavigation() {
 }
 
 void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
-  if (!newActivity) {
-    LOG_ERR("ACT", "replace requested with null activity");
-    return;
-  }
   mappedInput.resetHomeButtonInput();
   if (currentActivity && newActivity && currentActivity->remembersNavigation() && !newActivity->isHomeActivity() &&
       newActivity->name != "Sleep") {
@@ -826,8 +824,7 @@ void ActivityManager::goToReader(std::string path, const bool allowFastInitialRe
     return;
   }
 
-  // The first epub opened after a long sleep that ended on Home pulls the KOReader place first, through a quiet
-  // restart that gives the pull a fresh heap. Opened after that restart, the same call runs the pull.
+  // The first epub opened after a long sleep on Home pulls before opening, with a quiet restart if heap needs it.
   if (koautosync::beforeOpen(renderer, path)) {
     auto restart = makeUniqueNoThrow<PullRestartActivity>(renderer, mappedInput, std::move(path));
     if (!restart) {

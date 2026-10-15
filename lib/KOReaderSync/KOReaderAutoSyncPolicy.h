@@ -39,8 +39,7 @@ constexpr uint32_t MIN_BLOCK_FOR_TLS = 20000;
 constexpr uint32_t PULL_MIN_SLEEP_SECONDS = 30 * 60;
 
 // The pull owed to the first book opened after a long sleep that ended on Home (founder, 15/10/2026). Held in
-// RTC memory so it survives the quiet restart: Home has run Wi-Fi-free but fragmented, so the book is opened by
-// restarting into it, and the pull runs on the heap of a fresh start, the one the wake pull has.
+// RTC memory so it survives a quiet restart when Home has too little heap for TLS.
 // Owed: a long sleep ended on Home. Armed: the open of an epub from Home chose the restart; the start that follows
 // pulls once. Any other stored word reads as None, so RTC memory left over from a power loss owes nothing.
 enum class PullDebt : uint32_t { None = 0, Owed = 0x4B4F5744, Armed = 0x4B415244 };
@@ -61,17 +60,20 @@ constexpr PullDebt debtAfterStart(const PullDebt before, const bool quietRestart
 }
 
 // What opening a book does about the pull. RestartForPull: leave through the quiet restart into this book.
-// PullThenOpen: the restart happened, pull now and open. `wanted`: the gate without the radio and the heap
-// (those are read on the fresh heap, by the pull itself).
+// PullThenOpen: pull now and open. `wanted`: the gate without the radio and the heap
+// (the pull checks them again). `restartNeeded` is true only when the X3 needs fresh heap for TLS.
 enum class OpenStep : uint8_t { Open, RestartForPull, PullThenOpen };
 struct OpenPlan {
   OpenStep step;
   PullDebt debtAfter;
 };
-constexpr OpenPlan planOpen(const PullDebt debt, const bool epub, const bool wanted) {
+constexpr OpenPlan planOpen(const PullDebt debt, const bool epub, const bool wanted,
+                            const bool restartNeeded = true) {
   if (!epub || debt == PullDebt::None) return {OpenStep::Open, debt};  // a text or XTC book leaves it owed
   if (debt == PullDebt::Armed) return {wanted ? OpenStep::PullThenOpen : OpenStep::Open, PullDebt::None};
-  return wanted ? OpenPlan{OpenStep::RestartForPull, PullDebt::Armed} : OpenPlan{OpenStep::Open, PullDebt::None};
+  if (!wanted) return {OpenStep::Open, PullDebt::None};
+  return restartNeeded ? OpenPlan{OpenStep::RestartForPull, PullDebt::Armed}
+                        : OpenPlan{OpenStep::PullThenOpen, PullDebt::None};
 }
 
 // A join that starts from the remembered channel and access point gets this long before it is given

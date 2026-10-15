@@ -368,7 +368,9 @@ static void silentRestartTo(const uint32_t target, const char* targetName) {
   delay(50);
 #ifndef SIMULATOR
   // Flush the existing progress/state writes through the SD volume before reset.
+#if FREEINK_DEVICE_X3
   if (koautosync::pullIsArmed() || koautosync::pullRestartReady()) Storage.prepareForDeepSleep();
+#endif
 #endif
 #ifdef TENOR_PRESS_PROBE
   LOG_INF("FTX", "restart now t=%lu", millis());

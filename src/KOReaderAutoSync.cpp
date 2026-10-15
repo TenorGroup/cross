@@ -54,17 +54,25 @@ constexpr size_t MARK_FILE_MAX_BYTES = 2048;  // 8 marks of about 70 bytes
 SyncDebt pendingNote;
 bool hasPendingNote = false;
 SyncMark pendingMark;
+std::string pendingMarkPath;
 bool hasPendingMark = false;
+bool markAfterFramePending = false;
 PullChange pullChange;
 bool hasPullChange = false;
 // The pull owed to the first epub opened from Home (PullDebt); RTC memory keeps it across the quiet restart.
 RTC_NOINIT_ATTR uint32_t pullDebtWord;
 PullDebt pullDebt() { return pullDebtFromStored(pullDebtWord); }
 void setPullDebt(const PullDebt debt) { pullDebtWord = static_cast<uint32_t>(debt); }
+#if FREEINK_DEVICE_X3
 RTC_NOINIT_ATTR PullResume keptPull;
+#else
+PullResume keptPull;
+#endif
 bool pullRestartPending = false;
 bool restoredFrame = false;
 bool usedPullNetwork = false;
+
+std::string documentHash(const std::string& path);
 
 #ifdef TENOR_PRESS_PROBE
 RTC_NOINIT_ATTR uint32_t probeMinSleepMagic;
@@ -134,13 +142,27 @@ bool saveMarks(const SyncMarkList& list) {
   return PersistableStoreBase::writeDocToFile(MARK_FILE, doc);
 }
 
-// Writes the mark the wake pull left in memory, after the book's first frame (deferred write) or at
+// Writes the mark the wake pull left in memory, after the book's first frame or at
 // sleep. A card that cannot be read keeps it for the next try.
 void flushMark() {
   if (!hasPendingMark) return;
+  if (pendingMark.document.empty()) {
+    const std::string hash = documentHash(pendingMarkPath);
+    if (hash.size() != 32) {
+      LOG_ERR("KAS", "Could not queue an invalid document mark");
+      return;
+    }
+    pendingMark.document = hash;
+    pendingMarkPath.clear();
+  }
+  if (pendingMark.document.size() != 32) {
+    LOG_ERR("KAS", "Could not queue an invalid document mark");
+    return;
+  }
   SyncMarkList list;
   if (!loadMarks(list)) return;
   hasPendingMark = false;
+  pendingMarkPath.clear();
   list.put(std::move(pendingMark));
   if (!saveMarks(list)) LOG_ERR("KAS", "Could not write %s", MARK_FILE);
 }
@@ -410,6 +432,10 @@ void noteLeftBook(const std::string& path, const CrossPointPosition& position, c
 
 void switchedOff() {
   hasPendingNote = false;
+  hasPendingMark = false;
+  markAfterFramePending = false;
+  pendingMark = {};
+  pendingMarkPath.clear();
   Storage.remove(DEBT_FILE);
 }
 
@@ -473,7 +499,7 @@ PullResult pullNow(GfxRenderer& renderer, const std::string& path) {
   const uint32_t networkAt = millis();
   usedPullNetwork = true;
   KOReaderSyncClient::requestDeadlineMs = networkAt + PULL_NETWORK_MS;
-  if (!joinSavedNetwork(networkAt + PULL_NETWORK_MS - REQUEST_MS)) {
+  if (!joinSavedNetwork(networkAt + PULL_JOIN_MS)) {
     leaveWifi(false);
 #ifdef TENOR_PRESS_PROBE
     restartlog::mark(restartlog::Event::PullNetwork, millis() - networkAt, static_cast<uint32_t>(Fetch::Failed));
@@ -520,7 +546,6 @@ PullResult pullNow(GfxRenderer& renderer, const std::string& path) {
 
   CrossPointPosition mapped;
   {
-    RenderLock lock;
     renderer.waitRefreshComplete();  // the "Syncing" popup's refresh reads the framebuffer to its end
     GfxRenderer::FrameBufferLoan loan(renderer);
     mapped = ProgressMapper::fromRemoteProgress(epub, remote, renderer, local.spineIndex, local.totalPages);
@@ -546,18 +571,21 @@ PullResult pullNow(GfxRenderer& renderer, const std::string& path) {
   hasPullChange = true;
   // The record taken is this machine's last synced one; written after the book's first frame.
   pendingMark = {hash, recordToken(remote.progress, remote.percentage), placeKey(mapped.spineIndex, mapped.pageNumber)};
+  pendingMarkPath.clear();
   hasPendingMark = true;
-  activityManager.deferWrite(&flushMark);
+  markAfterFramePending = true;
   return PullResult::Applied;
 }
 
 // The part of a pull both entries share: the gate, the notice, the round and the measuring lines.
-PullResult pullGated(GfxRenderer& renderer, const std::string& path, const bool showNotice, const char* what) {
+PullResult pullGated(GfxRenderer& renderer, const std::string& path, const bool showNotice, const char* what,
+                     const bool useStoredPath = false) {
   const Eligibility eligible = gate();
   if (eligible != Eligibility::Ready) {
     if (eligible != Eligibility::Disabled) LOG_INF("KAS", "%s skipped: %s", what, why(eligible));
     return PullResult::Skipped;
   }
+  RenderLock lock;
   const uint32_t started = millis();
   if (showNotice) SleepActivity::showSyncing(renderer);
   usedPullNetwork = false;
@@ -569,9 +597,12 @@ PullResult pullGated(GfxRenderer& renderer, const std::string& path, const bool 
   probeHeapPending = true;
   restartlog::mark(restartlog::Event::PullStep, millis() - started, static_cast<uint32_t>(result));
 #endif
-  const bool restart = preparePageTurnerAfterPull(SETTINGS.ble.enabled, usedPullNetwork,
-                                                 result == PullResult::Applied || result == PullResult::Kept);
-  if (restart && keepPullPath(keptPull, path, PULL_DONE_MAGIC)) {
+  PullResume savedPull{};
+  const bool pathFitsRestart = keepPullPath(savedPull, path, PULL_DONE_MAGIC, useStoredPath);
+  const bool restart = pathFitsRestart && preparePageTurnerAfterPull(
+      SETTINGS.ble.enabled, usedPullNetwork, result == PullResult::Applied || result == PullResult::Kept);
+  if (restart) {
+    keptPull = savedPull;
     keptPull.hasChange = hasPullChange;
     if (hasPullChange) {
       keptPull.fromSpine = pullChange.fromSpineIndex;
@@ -606,25 +637,30 @@ PullResult pullOnWake(GfxRenderer& renderer, const std::string& path, const bool
     if (KOREADER_STORE.getAutoSync()) LOG_INF("KAS", "wake pull skipped: short sleep or no trusted clock");
     return PullResult::Skipped;
   }
-  return pullGated(renderer, path, showNotice, "wake pull");
+  return pullGated(renderer, path, showNotice, "wake pull", path == APP_STATE.openEpubPath);
 }
 
 void noteStart(const bool quietRestart, const bool wokeOnHome) {
   const uint32_t keptMagic = takePullMagic(keptPull, quietRestart);
   if (keptMagic) {
-    APP_STATE.openEpubPath = keptPull.path;
+    if (!keptPull.useStoredPath) APP_STATE.openEpubPath = keptPull.path;
     setPullDebt(keptMagic == PULL_ARMED_MAGIC ? PullDebt::Armed : PullDebt::None);
     restoredFrame = true;
     if (keptMagic == PULL_DONE_MAGIC) {
       hasPullChange = keptPull.hasChange;
       if (hasPullChange) {
-        pullChange = {keptPull.path, keptPull.fromSpine, keptPull.fromPage, keptPull.toSpine, keptPull.toPage,
+        pullChange = {APP_STATE.openEpubPath, keptPull.fromSpine, keptPull.fromPage, keptPull.toSpine, keptPull.toPage,
                       keptPull.fromOffset, keptPull.hasFromOffset != 0};
       }
       hasPendingMark = keptPull.hasMark;
+      markAfterFramePending = hasPendingMark;
       if (hasPendingMark) {
-        pendingMark = {documentHash(keptPull.path), keptPull.token, keptPull.place};
-        activityManager.deferWrite(&flushMark);
+        // Hashing can read the card; wait until the restored book's first frame.
+        pendingMark = {std::string(), keptPull.token, keptPull.place};
+        pendingMarkPath = APP_STATE.openEpubPath;
+      } else {
+        pendingMark = {};
+        pendingMarkPath.clear();
       }
 #ifdef TENOR_PRESS_PROBE
       probeHeapPending = true;
@@ -654,15 +690,28 @@ bool beforeOpen(GfxRenderer& renderer, const std::string& path) {
   if (debt == PullDebt::None) return false;  // the usual open: nothing is read, nothing is asked
   const bool epub = isEpubPath(path);
   const bool wanted = epub && gate(true) == Eligibility::Ready;
-  const OpenPlan plan = planOpen(debt, epub, wanted);
+#if FREEINK_DEVICE_X3
+  // shortcut: Home restart paths fit 175 bytes; use a larger retained store when RTC has room.
+  if (wanted && debt == PullDebt::Owed && path.size() >= sizeof(keptPull.path)) {
+    LOG_INF("KAS", "open pull skipped: path exceeds restart buffer");
+    setPullDebt(PullDebt::None);
+    return false;
+  }
+#ifdef TENOR_PRESS_PROBE
+  if (wanted) probeHeap("home_before_pull");
+#endif
+  const bool restartNeeded = wanted && SETTINGS.ble.enabled && gate() == Eligibility::LowHeap;
+#else
+  const bool restartNeeded = false;
+#endif
+  const OpenPlan plan = planOpen(debt, epub, wanted, restartNeeded);
   setPullDebt(plan.debtAfter);
   if (epub && !wanted) LOG_INF("KAS", "open pull dropped: switch, account or saved network missing");
   switch (plan.step) {
     case OpenStep::Open:
       return false;
     case OpenStep::PullThenOpen:
-      if (pullGated(renderer, path, false, "open pull") == PullResult::Skipped) setPullDebt(PullDebt::Armed);
-      // The restart notice already says "Syncing".
+      pullGated(renderer, path, debt == PullDebt::Owed, "open pull");
       return pullRestartPending;
     case OpenStep::RestartForPull:
       if (keepPullPath(keptPull, path, PULL_ARMED_MAGIC)) return true;
@@ -686,13 +735,22 @@ void probeSetMinSleep(const uint32_t seconds) {
   probeMinSleepSeconds = seconds;
   probeMinSleepMagic = seconds > 0 ? PROBE_MIN_SLEEP_MAGIC : 0;
 }
-
-void probeAfterFirstFrame() {
-  if (!probeHeapPending) return;
-  probeHeapPending = false;
-  probeHeap("first_frame");
-}
 #endif
+
+void afterFirstFrame() {
+#ifdef TENOR_PRESS_PROBE
+  if (probeHeapPending) {
+    probeHeapPending = false;
+    probeHeap("first_frame");
+  }
+#endif
+  if (!hasPendingMark || !markAfterFramePending) return;
+  RenderLock lock(RenderLock::TryTake{});
+  if (lock.acquired()) {
+    markAfterFramePending = false;
+    flushMark();  // A failed read waits for the existing sleep retry.
+  }
+}
 
 const PullChange* progressJustPulled() { return hasPullChange ? &pullChange : nullptr; }
 
