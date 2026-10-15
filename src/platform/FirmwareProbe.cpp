@@ -19,6 +19,7 @@
 #include "RollbackProbe.h"
 #include "network/FirmwareFlasher.h"
 #include "network/OtaBootSwitch.h"
+#include "ColdLogProbe.h"
 
 // Survives the panic reset, lost with power: a test can never outlive a power cut.
 RTC_NOINIT_ATTR static rollback_probe::CrashCounter crashCounter;
@@ -194,6 +195,7 @@ void sdFlash(const String& path) {
   }
   printOtaState();  // the new entry reads NEW until the bootloader takes it up
   logSerial.printf("SD_FLASH:restarting\n");
+  restartlog::mark(restartlog::Event::FirmwareRestart);
   delay(500);
   ESP.restart();
 }
@@ -211,6 +213,7 @@ void rollbackTest(const long crashes) {
   logSerial.printf("ROLLBACK_TEST:armed crashes=%lu slot=%s, restarting\n",
                    static_cast<unsigned long>(crashCounter.left), running->label);
   printOtaState();
+  restartlog::mark(restartlog::Event::RecoveryRestart, static_cast<uint32_t>(crashCounter.left));
   delay(500);
   ESP.restart();
 }

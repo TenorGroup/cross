@@ -29,6 +29,9 @@
 #include "InlineSymbols.h"
 #include "GlyphBitmap.h"
 #include "BitmapRow.h"
+#ifdef TENOR_PRESS_PROBE
+#include "../../src/platform/ColdLogProbe.h"
+#endif
 
 namespace {
 constexpr int trackingBetween(const uint32_t leftCp, const uint32_t rightCp, const int8_t tracking) {
@@ -300,6 +303,9 @@ void GfxRenderer::FrameBufferLoan::end() {
     // Only reachable if the framebuffer never existed, which begin() already
     // asserts against; kept as a backstop since running blind helps nobody.
     LOG_ERR("GFX", "Framebuffer restore failed - restarting");
+#ifdef TENOR_PRESS_PROBE
+    restartlog::mark(restartlog::Event::FramebufferRestart);
+#endif
     ESP.restart();
   }
 }

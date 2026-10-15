@@ -11,6 +11,7 @@
 
 #include "FileTransferState.h"
 #include "MappedInputManager.h"
+#include "platform/ColdLogProbe.h"
 #include "activities/home/FileBrowserActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
@@ -289,6 +290,9 @@ void SdFirmwareUpdateActivity::performUpdate() {
   }
   requestUpdateAndWait();
   delay(1500);
+#ifdef TENOR_PRESS_PROBE
+  restartlog::mark(restartlog::Event::FirmwareRestart);
+#endif
   ESP.restart();
 }
 
@@ -351,6 +355,9 @@ void SdFirmwareUpdateActivity::performCableUpdate() {
   }
   requestUpdateAndWait();
   delay(1500);
+#ifdef TENOR_PRESS_PROBE
+  restartlog::mark(restartlog::Event::FirmwareRestart);
+#endif
   ESP.restart();
 }
 #endif

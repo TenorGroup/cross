@@ -100,6 +100,7 @@
 #include "platform/CableFlashLink.h"
 #endif
 #include "platform/ColdLog.h"
+#include "platform/ColdLogProbe.h"
 #include "platform/PutFile.h"
 #include "platform/FirmwareProbe.h"
 #include "platform/UsbSerialJtagHandoff.h"
@@ -349,6 +350,9 @@ static void showRestartNotice() {
 static void silentRestartTo(const uint32_t target, const char* targetName) {
   if (deepSleepInProgress) return;  // sleeping supersedes the heap-defrag reboot
   armSilentReboot(target);
+#ifdef TENOR_PRESS_PROBE
+  restartlog::mark(restartlog::Event::SilentRestart, target, silentRebootPayload);
+#endif
   LOG_DBG("MAIN", "Silent restart (target=%s)", targetName);
   // E-ink retains the previous frame until the target's first paint lands
   // (~2-3s). Without an overlay, users don't see the reboot and fire input
@@ -362,6 +366,9 @@ static void silentRestartTo(const uint32_t target, const char* targetName) {
   delay(50);
 #ifdef TENOR_PRESS_PROBE
   LOG_INF("FTX", "restart now t=%lu", millis());
+#endif
+#ifdef TENOR_PRESS_PROBE
+  restartlog::mark(restartlog::Event::RestartNow, silentRebootTarget, silentRebootPayload);
 #endif
   ESP.restart();
 }
@@ -400,6 +407,9 @@ static void runRemoteShortcut(const bleturner::Action shortcut) {
 }
 // The close waits out a paint and writes the reading place and every deferred write first.
 static void restartIntoOpenBook() {
+#ifdef TENOR_PRESS_PROBE
+  restartlog::mark(restartlog::Event::BleHeapRestart, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
   activityManager.closeForRestart();
   silentRestartToReader();
   // Only a board that keeps its rails (touch) gets here without a restart: reopen the book.
@@ -410,10 +420,16 @@ static void restartIntoOpenBook() {
 void restartToHomeAfterStorageHandoff() {
   if (deepSleepInProgress) return;  // sleeping supersedes the storage handoff reboot
   armSilentReboot(SILENT_REBOOT_TARGET_HOME);
+#ifdef TENOR_PRESS_PROBE
+  restartlog::mark(restartlog::Event::StorageRestart, SILENT_REBOOT_TARGET_HOME, silentRebootPayload);
+#endif
   LOG_DBG("MAIN", "Restart after storage handoff (target=home)");
   showRestartNotice();
   delay(50);
   handoffUsbOtgToSerialJtag();
+#ifdef TENOR_PRESS_PROBE
+  restartlog::mark(restartlog::Event::RestartNow, silentRebootTarget, silentRebootPayload);
+#endif
   ESP.restart();
 }
 
@@ -481,6 +497,9 @@ static bool loadSleepFrameBuffer() {
 void saveAppState() { APP_STATE.saveToFile(); }
 
 static void sleepUntilPowerButton() {
+#ifdef TENOR_PRESS_PROBE
+  restartlog::mark(restartlog::Event::SleepEnter);
+#endif
 #ifndef SIMULATOR
   const bool preserveClock = halClock.hasValidTime();
   if (gpio.deviceIsX4()) {
@@ -497,6 +516,9 @@ static bool autoSleepBlockedUntilInput = false;
 // Enter deep sleep mode
 void enterDeepSleep(bool fromTimeout = false) {
   const uint32_t sleepStarted = millis();
+#ifdef TENOR_PRESS_PROBE
+  restartlog::mark(restartlog::Event::DeepSleepBegin, fromTimeout ? 1U : 0U);
+#endif
   HalPowerManager::Lock powerLock;  // Ensure we are at normal CPU frequency for sleep preparation
   APP_STATE.lastSleepFromReader = activityManager.isReaderActivity();
 
@@ -558,6 +580,9 @@ void enterDeepSleep(bool fromTimeout = false) {
 #endif
   Storage.prepareForDeepSleep();
   LOG_INF("SLP", "Timing ready-to-sleep=%lu ms", static_cast<unsigned long>(millis() - sleepStarted));
+#ifdef TENOR_PRESS_PROBE
+  restartlog::mark(restartlog::Event::DeepSleepReady, static_cast<uint32_t>(millis() - sleepStarted));
+#endif
   LOG_DBG("MAIN", "Entering deep sleep");
 #ifdef TENOR_PRESS_PROBE
   if (probeWakeMagic == PROBE_WAKE_MAGIC && probeWakeSeconds > 0) {
@@ -689,6 +714,9 @@ void setup() {
       isSilentReboot && silentRebootHomeMenu <= static_cast<uint32_t>(HomeMenuItem::FAVORITES_TAB)
           ? static_cast<HomeMenuItem>(silentRebootHomeMenu)
           : HomeMenuItem::NONE;
+#ifdef TENOR_PRESS_PROBE
+  restartlog::boot(isSilentReboot, snapshotTarget, silentRebootPayload);
+#endif
   silentRebootMagic = 0;
   silentRebootTarget = 0;
   silentRebootHomeMenu = 0;
@@ -1890,6 +1918,14 @@ void loop() {
         logSerial.printf("KEEP_HEAP:%d\n", probeKeepHeap ? 1 : 0);
       } else if (cmd == "LOGDUMP") {
         probeLogDump();
+      } else if (cmd == "COLDLOG") {
+        restartlog::dump();
+      } else if (cmd.startsWith("COLD_RESTART ")) {
+        const uint32_t payload = strtoul(cmd.c_str() + 13, nullptr, 16);
+        armSilentReboot(SILENT_REBOOT_TARGET_HOME);
+        silentRebootPayload = payload;
+        restartlog::mark(restartlog::Event::PayloadProbe, silentRebootTarget, silentRebootPayload);
+        ESP.restart();
 #if LOG_SERIAL_HAS_TX_TIMEOUT
       } else if (cmd.startsWith("TXTIMEOUT ")) {
         // CMD:TXTIMEOUT <ms>: the serial write timeout until the next restart, for the long dumps

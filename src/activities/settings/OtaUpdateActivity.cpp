@@ -11,6 +11,7 @@
 #include <cstring>
 
 #include "MappedInputManager.h"
+#include "platform/ColdLogProbe.h"
 #include "FileTransferState.h"
 #include "SettingsList.h"
 #include "SdCardFontSystem.h"
@@ -567,6 +568,9 @@ void OtaUpdateActivity::loop() {
   }
 
   if (state == SHUTTING_DOWN) {
+#ifdef TENOR_PRESS_PROBE
+    restartlog::mark(restartlog::Event::OtaRestart);
+#endif
     ESP.restart();
   }
 }
