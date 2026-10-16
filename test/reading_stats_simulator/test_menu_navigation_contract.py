@@ -107,7 +107,9 @@ class MenuNavigationContractTest(unittest.TestCase):
     def test_renamed_legacy_pins_open_current_settings_without_rewriting_pin_keys(self):
         cases = [
             ('text/focusReadingEnabled', 'dropCapMode', 0, 1, 'TextSettings', ['RIGHT', 'CONFIRM']),
-            ('settings/hideGlobalStatusBar', 'globalStatusBarMode', 0, 1, 'Settings', ['RIGHT', 'CONFIRM']),
+            # The legacy pin opens the merged Status bar popup on its current choice (Bottom small:
+            # mode 0, hints 1). Right moves to Bottom large, which stores mode 2 and keeps hints 1.
+            ('settings/hideGlobalStatusBar', 'globalStatusBarMode', 0, 2, 'Settings', ['RIGHT', 'CONFIRM']),
             ('settings/hideReaderStatusBar', 'readerStatusBarMode', 2, 3, 'Settings', ['RIGHT', 'CONFIRM']),
         ]
         for pin, field, initial, expected, activity, choice in cases:
@@ -119,6 +121,8 @@ class MenuNavigationContractTest(unittest.TestCase):
                 self.assertIn('Entering activity: ' + activity, log)
                 self.assertEqual(saved[field], expected, log)
                 self.assertIs(type(saved[field]), int)
+                if field == 'globalStatusBarMode':
+                    self.assertEqual(saved['tenorButtonHints'], 1, log)
                 persisted = json.loads((self.store / 'menu-customization.json').read_text())
                 self.assertEqual(persisted['version'], 1)
                 self.assertEqual(persisted['pins'], [pin])

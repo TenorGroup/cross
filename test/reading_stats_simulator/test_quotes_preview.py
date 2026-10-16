@@ -242,8 +242,10 @@ class QuotesPreviewTest(unittest.TestCase):
                 shutil.copy2(self.sd / f'{name}.bmp', target / f'{name}.bmp')
 
     def protected(self):
+        # file-browser.json is where the File browser remembers its last folder. Opening a folder to
+        # reach the book writes it by design (v1.0.62), and it holds no reading data, so it stays out.
         return {str(p.relative_to(self.store)):hashlib.sha256(p.read_bytes()).hexdigest()
-                for p in self.store.rglob('*') if p.is_file() and
+                for p in self.store.rglob('*') if p.is_file() and p.name != 'file-browser.json' and
                 (p.suffix=='.json' or 'progress' in p.name or 'bookmark' in p.name)}
 
     def dua_vao_thu_muc(self, ten):

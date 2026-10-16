@@ -130,12 +130,17 @@ class ReworkUiTest(unittest.TestCase):
         self.assertEqual(self.saved()['tenorSideArrows'], 1, log)
 
     def test_h6_folder_opens_child_then_back_reaches_root(self):
-        # Folder rows open their directory; one Back returns to root inside FileBrowser.
-        # A second Back exits FileBrowser. This covers access formerly reached by header hold.
+        # A folder directly under the root opens from the File card. Back from it returns straight to
+        # the File card of Home (the browser has no root screen to stop at). A second Back from Home
+        # opens the latest book.
         log = self.run_sim('1000:DOWN;1800:CONFIRM;2600:BACK;3400:BACK;4800:QUIT')
         self.assertEqual(log.count('Entering activity: FileBrowser'), 1, log)
         self.assertEqual(log.count('Exiting activity: FileBrowser'), 1, log)
-        self.assertNotIn('Entering activity: EpubReader', log)
+        back_home = log.index('Exiting activity: FileBrowser')
+        self.assertIn('Restored Home tab=1', log[back_home:], 'first Back did not land on the File card')
+        self.assertEqual(log.count('Entering activity: EpubReader'), 1, log)
+        self.assertLess(back_home, log.index('Entering activity: EpubReader'), 'the book opened before the first Back')
+        self.assertIn('Loaded ePub: /books/sach.epub', log)
 
     def test_h6_folder_only_contains_files_and_folders(self):
         # With one books/ folder, RIGHT wraps to that same row; Confirm opens it.

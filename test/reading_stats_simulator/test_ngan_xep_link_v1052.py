@@ -182,7 +182,7 @@ class NganXepLinkTest(unittest.TestCase):
         preview = log[opens[0]:opens[1]]
         self.assertNotIn('links.bin', preview, 'the preview touched the stack:\n' + preview[-2000:])
         self.assertEqual(spines(log[opens[1]:])[:2], [1, 0], 'Back after the preview did not follow the link back')
-        self.assertEqual(before[0], 1)
+        self.assertEqual(before[0], 2, 'links.bin keeps the current format version (LINK_STACK_FILE_VERSION)')
 
     def test_reading_without_a_link_leaves_no_file(self):
         log = self.run_sim(['1000:CONFIRM', '5000:RIGHT', '8000:BACK', '12000:QUIT'])
