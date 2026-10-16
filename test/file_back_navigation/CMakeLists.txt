@@ -9,6 +9,7 @@ add_test(
 set(FILE_BACK_SIMULATOR_X3 "" CACHE FILEPATH "simulator_x3_uc8279 executable")
 set(FILE_BACK_SIMULATOR_X4C "" CACHE FILEPATH "simulator_x4c_n6 executable")
 set(FILE_BACK_SIMULATOR_X4PRO "" CACHE FILEPATH "simulator_x4pro executable")
+set(FILE_BACK_BASELINE_X4PRO "" CACHE FILEPATH "simulator_x4pro executable built from v1.0.61 (4dcccd04)")
 function(add_file_journeys machine binary)
   foreach(case favorite reopen sibling direct)
     add_test(NAME FileBackNavigation.${machine}.${case}
@@ -38,7 +39,10 @@ if(FILE_BACK_SIMULATOR_X4PRO)
            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/journeys.py
                    ${FILE_BACK_SIMULATOR_X4PRO} ${CMAKE_CURRENT_BINARY_DIR}/X4Pro-reopen reopen
                    --machine X4Pro)
-  add_test(NAME FileBackNavigation.X4ProMidList
-           COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_file_back_keeps_selection_x4pro.py
-                   ${FILE_BACK_SIMULATOR_X4PRO} ${CMAKE_CURRENT_BINARY_DIR}/x4pro-mid-list)
+  if(FILE_BACK_BASELINE_X4PRO)
+    add_test(NAME FileBackNavigation.X4ProMidList
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_file_back_keeps_selection_x4pro.py
+                     ${FILE_BACK_SIMULATOR_X4PRO} ${CMAKE_CURRENT_BINARY_DIR}/x4pro-mid-list
+                     --baseline ${FILE_BACK_BASELINE_X4PRO})
+  endif()
 endif()

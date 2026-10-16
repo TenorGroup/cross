@@ -11,14 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ui_paths_sim"))
 import sim
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("program")
-    parser.add_argument("output", type=Path)
-    parser.add_argument("--port", type=int, default=31925)
-    args = parser.parse_args()
-
-    output = args.output.resolve()
+def journey(program, output, port):
     files = {f"/books/child/row-{index:02d}/book.txt": b"Test.\n" for index in range(18)}
     sd = sim.card(output, files=files, extra={"statusBarClock": 0, "clockShowInHeader": 0})
     steps = [
@@ -34,19 +27,32 @@ def main() -> int:
         ("09-reenter", "TAP:130,65"),
         ("10-restored", None),
     ]
-    log, shots = sim.run(args.program, output, sd, steps, args.port, gap=2800, settle=1800)
-    round_trip = ImageChops.difference(shots["05-child-before"], shots["07-child-again"]).crop((0, 0, 465, 800))
-    reentry = ImageChops.difference(shots["05-child-before"], shots["10-restored"]).crop((0, 0, 465, 800))
-    round_trip_changed = sum(1 for value in round_trip.getdata() if value)
-    reentry_changed = sum(1 for value in reentry.getdata() if value)
-    print(f"round_trip_changed_pixels={round_trip_changed} reentry_changed_pixels={reentry_changed}")
-    if round_trip_changed or reentry_changed:
-        print("RED: X4 Pro did not restore the selected child row")
+    return sim.run(program, output, sd, steps, port, gap=2800, settle=1800)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("program")
+    parser.add_argument("output", type=Path)
+    parser.add_argument("--baseline", type=Path, required=True)
+    parser.add_argument("--port", type=int, default=31925)
+    args = parser.parse_args()
+
+    output = args.output.resolve()
+    log, shots = journey(args.program, output / "candidate", args.port)
+    _, base_shots = journey(args.baseline.resolve(), output / "baseline", args.port + 1)
+    changed = sum(
+        sum(1 for value in ImageChops.difference(base_shots[name], shots[name]).getdata() if value)
+        for name in ("05-child-before", "07-child-again", "10-restored")
+    )
+    print(f"baseline_changed_pixels={changed}")
+    if changed:
+        print("RED: X4 Pro file back differs from the v1.0.61 baseline")
         return 1
     if "Entering activity: FileBrowser" not in log:
         print("RED: X4 Pro did not complete the child round trip")
         return 1
-    print("GREEN: X4 Pro restored the selected child row")
+    print("GREEN: X4 Pro file back matches the v1.0.61 baseline")
     return 0
 
 

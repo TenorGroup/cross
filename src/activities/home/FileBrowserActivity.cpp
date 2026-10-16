@@ -635,7 +635,7 @@ bool FileBrowserActivity::handleButtons() {
           nav.follow(listCount());
           // Entering a child saved the parent's exact cursor and viewport. A
           // direct favorite may have no parent state, so keep the fallback above.
-          if (mode == Mode::Books) {
+          if (mode == Mode::Books && !tenorchrome::kTouchShell) {
             restoreDirectory();
             const bool selectedEntryMatches = listCount() > kSearchRows && nav.selected >= kSearchRows &&
                                               nav.selected < listCount() && entryForVisibleRow(nav.selected) == dirName;
