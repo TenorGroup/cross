@@ -276,8 +276,10 @@ std::atomic<bool> ladderInUse{false};
 }  // namespace
 
 void HalGPIO::startBackgroundSampling() {
-  if (sampleTimer || inputMgr.hasTouch() ||
-      BoardConfig::ACTIVE.inputStyle != BoardConfig::InputStyle::XteinkAdcLadder) {
+  const auto style = BoardConfig::ACTIVE.inputStyle;
+  const bool touchPanel = inputMgr.hasTouch() || BoardConfig::ACTIVE.touch.controller != BoardConfig::TouchController::None;
+  if (sampleTimer || !samplesInBackground(style == BoardConfig::InputStyle::XteinkAdcLadder,
+                                          style == BoardConfig::InputStyle::DigitalButtons, touchPanel)) {
     return;
   }
   // Ticks missed while the flash cache is off (OTA, settings save) are dropped, not replayed

@@ -12,6 +12,14 @@ struct ButtonSample {
   unsigned long atMs = 0;
 };
 
+// Which boards hand their buttons to the sample timer: the ADC ladder (X3, X4) and plain GPIO
+// keys with no touch panel (X4 Classic). A touch board keeps polling on the main loop. Without
+// the timer a tap that opens and closes while the loop waits on a display frame (390-700 ms) is
+// never read.
+constexpr bool samplesInBackground(const bool adcLadder, const bool gpioKeys, const bool hasTouchPanel) {
+  return !hasTouchPanel && (adcLadder || gpioKeys);
+}
+
 // Button edges collected by the sample timer between two main-loop frames, oldest first.
 // Plain data: the owner serialises add() and take().
 //

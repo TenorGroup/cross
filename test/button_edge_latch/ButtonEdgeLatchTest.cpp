@@ -210,3 +210,13 @@ TEST(HalGpioSampling, TheTimerIsKeptOnlyOnceItRuns) {
   EXPECT_NE(body.find("esp_timer_delete(timer)", start), std::string::npos) << "a failed start leaks its timer";
   EXPECT_GT(body.find("sampleTimer = timer"), start) << "the handle is kept before the timer runs";
 }
+
+// X4 Classic reads plain GPIO keys on the main loop; the loop waits on every display frame, so a
+// quick tap in that wait was never seen (5 of 20 taps typing in the Wi-Fi keyboard). Every board
+// without a touch panel hands its keys to the sample timer. A touch board keeps polling.
+TEST(ButtonSampling, EveryButtonBoardWithoutTouchUsesTheTimer) {
+  EXPECT_TRUE(samplesInBackground(true, false, false));   // X3, X4: ADC ladder
+  EXPECT_TRUE(samplesInBackground(false, true, false));   // X4 Classic: GPIO keys
+  EXPECT_FALSE(samplesInBackground(false, true, true));   // X4 Pro: GPIO keys plus touch panel
+  EXPECT_FALSE(samplesInBackground(false, false, false)); // any other input style
+}

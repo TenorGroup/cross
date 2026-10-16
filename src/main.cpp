@@ -88,6 +88,9 @@
 #define CROSSPOINT_BLE_HID_HOST 0
 #endif
 #include "activities/settings/ClockSyncActivity.h"
+#ifdef TENOR_PRESS_PROBE
+#include "activities/util/KeyboardEntryActivity.h"
+#endif
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "activities/settings/SettingsActivity.h"
 #include "activities/settings/StatusBarSettingsActivity.h"
@@ -2180,6 +2183,11 @@ void loop() {
         activityManager.pushActivity(makeUniqueNoThrow<QuotesActivity>(renderer, mappedInputManager));
       } else if (cmd == "CLOCK_SYNC") {
         activityManager.pushActivity(makeUniqueNoThrow<ClockSyncActivity>(renderer, mappedInputManager));
+#ifdef TENOR_PRESS_PROBE
+      } else if (cmd == "KEYBOARD_TEST") {
+        activityManager.pushActivity(makeUniqueNoThrow<KeyboardEntryActivity>(renderer, mappedInputManager, "KB", "", 64,
+                                                                              InputType::Password, true));
+#endif
       } else if (cmd == "SETTINGS_READER") {
         activityManager.pushActivity(makeUniqueNoThrow<SettingsActivity>(
             renderer, mappedInputManager, static_cast<int>(settingstabs::Tab::READER), true));

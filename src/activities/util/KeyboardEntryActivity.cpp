@@ -9,6 +9,9 @@
 
 #include <algorithm>
 #include <cstring>
+#ifdef TENOR_PRESS_PROBE
+#include <Logging.h>
+#endif
 
 #include "KeyboardLayoutSet.h"
 #include "MappedInputManager.h"
@@ -387,6 +390,9 @@ void KeyboardEntryActivity::insertUtf8(const char* out) {
   if (cursorPos > text.length()) cursorPos = text.length();
   text.insert(cursorPos, out, n);
   cursorPos += n;
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("KB", "insert len=%u t=%lu", static_cast<unsigned>(text.length()), millis());
+#endif
 }
 
 bool KeyboardEntryActivity::backspaceUtf8() {
