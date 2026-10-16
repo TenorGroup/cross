@@ -73,17 +73,6 @@ TEST(BleBindingTableTest, AddressCopyIsBoundedAndTerminated) {
   }
 }
 
-TEST(BleBindingTableTest, KeypageTurnsBothWaysOutOfTheBox) {
-  // "BOOX Keypage" as logged on the X3: the upper button notifies "02 00 00", the lower
-  // "01 00 00", both on report 3.
-  const RemoteTable* t = tableFor(nullptr, 0, "AA:BB:CC:DD:EE:FF", "BOOX Keypage");
-  ASSERT_TRUE(routes(t));
-  EXPECT_EQ(lookup(*t, 0x030002, false), Action::NextPage);
-  EXPECT_EQ(lookup(*t, 0x030001, false), Action::PrevPage);
-  EXPECT_EQ(tableFor(nullptr, 0, "AA:BB:CC:DD:EE:FF", "Free3-R"), &kThreeButtonDefault);
-  EXPECT_EQ(tableFor(nullptr, 0, "AA:BB:CC:DD:EE:FF", "Other"), nullptr);
-}
-
 TEST(BleBindingTableTest, KeypageTakesBothCodeSetsOutOfTheBox) {
   // The same "BOOX Keypage" logged on the X3 on 06/10/2026 sent "04 00 00" from the upper
   // button and "08 00 00" from the lower one, report 3. The default takes both sets.
@@ -118,8 +107,10 @@ TEST(BleBindingTableTest, KeypageTakesBothCodeSetsOutOfTheBox) {
   EXPECT_EQ(lookup(*edit, 0x030008, false), Action::PrevPage);
 
   // The other built-in default and unknown remotes are untouched.
-  EXPECT_EQ(kThreeButtonDefault.count, 2);
-  EXPECT_EQ(lookup(kThreeButtonDefault, 0x030004, false), Action::None);
+  const auto* free3 = defaultTableFor("Free3-R");
+  ASSERT_NE(free3, nullptr);
+  EXPECT_EQ(free3->count, 2);
+  EXPECT_EQ(lookup(*free3, 0x030004, false), Action::None);
   EXPECT_EQ(tableFor(nullptr, 0, "AA:BB:CC:DD:EE:FF", "Other"), nullptr);
 }
 

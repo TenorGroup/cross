@@ -16,7 +16,7 @@ namespace fs = std::filesystem;
 
 const std::set<std::string> kOwn = {"BlePageTurner.h", "BlePageTurnerJson.h", "BleKeyBinding.h",
                                     "RadioPolicy.h",   "RadioPort.h",         "Runtime.h"};
-const std::set<std::string> kStd = {"atomic", "cstdarg", "cstddef", "cstdint", "cstdio", "cstring"};
+const std::set<std::string> kStd = {"array", "atomic", "cstdarg", "cstddef", "cstdint", "cstdio", "cstring"};
 const std::set<std::string> kSdkRadioOnly = {"BleKeyboardHost.h", "esp_attr.h", "esp_timer.h", "freertos/FreeRTOS.h",
                                              "freertos/task.h"};
 
@@ -37,6 +37,7 @@ TEST(BlePageTurnerSourceContractTest, IncludesStayInsideTheAllowList) {
         const std::string name = m[1];
         const std::string file = entry.path().filename().string();
         if (kOwn.count(name) || kStd.count(name)) continue;
+        if (name == "BleRemoteProfiles.h" && file == "BleKeyBinding.h") continue;
         if (name == "ArduinoJson.h" && file == "BlePageTurnerJson.h") continue;
         if (kSdkRadioOnly.count(name) && file == "SdkRadio.cpp") continue;
         outside += file + ": " + name + "\n";

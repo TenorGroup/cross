@@ -1,11 +1,8 @@
-# The page turner's own tests. They run alone, on a copy of lib/BlePageTurner and nothing else:
-#
-#   cmake -S lib/BlePageTurner/test -B build/bt && cmake --build build/bt && ctest --test-dir build/bt
-#
-# or inside a host's suite with add_subdirectory. They need no radio, no SDK and no host:
-# the radio is test/FakeRadio.cpp (the same RadioPort.h the SDK wrapper implements) and the host
-# is a set of fake functions. Offline builds point FetchContent at local copies:
-#   -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=<googletest>  -DFETCHCONTENT_SOURCE_DIR_ARDUINOJSON=<ArduinoJson>
+# Can configure this directory directly or use the firmware host suite. Both use
+# the pinned SDK profile header; runtime tests replace the radio with Fakes.cpp.
+# cmake -S lib/BlePageTurner/test -B build/bt && cmake --build build/bt && ctest --test-dir build/bt
+# Offline builds can set -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=<googletest>
+# and -DFETCHCONTENT_SOURCE_DIR_ARDUINOJSON=<ArduinoJson>.
 cmake_minimum_required(VERSION 3.16)
 project(ble_page_turner_tests CXX)
 
@@ -29,7 +26,10 @@ include(GoogleTest)
 get_filename_component(BLETURNER_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 
 add_library(bleturner_test_flags INTERFACE)
-target_include_directories(bleturner_test_flags INTERFACE ${BLETURNER_ROOT}/include ${BLETURNER_ROOT}/src)
+target_include_directories(bleturner_test_flags INTERFACE
+  ${BLETURNER_ROOT}/include ${BLETURNER_ROOT}/src
+  ${BLETURNER_ROOT}/../../freeink-sdk/libs/network/BleKeyboardHost/include
+)
 target_compile_options(bleturner_test_flags INTERFACE -Wall -Wextra -Werror)
 
 # ArduinoJson at the version the firmware pins (platformio.ini: bblanchon/ArduinoJson @ 7.4.2). A

@@ -1,5 +1,8 @@
 #pragma once
 
+#include <BleRemoteProfiles.h>
+
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -10,8 +13,8 @@
 // three-button remote and cuts 16-bit usages to 8 bits. Each remote (by BLE address) has one table of at
 // most 8 slots, saved in settings.json and applied again on reconnect.
 //
-// Pure logic, no SDK or settings dependency: the module's runtime, the host's settings
-// screen and the tests call these same functions, so each rule is stated once.
+// Binding policy is shared by the runtime, settings screen and tests. Device-specific
+// report profiles come from the SDK; reader actions and saved overrides stay here.
 namespace bleturner {
 
 // One wait for a button lasts at most 15 seconds, as the screen tells the user.
@@ -108,32 +111,27 @@ inline void formatCode(char* out, const size_t n, const Binding b) {
   }
 }
 
-// --- Built-in default ----------------------------------------------------------
-// The three-button remote named "Free3": button 3 sends "00 02 00" on a tap (byte 1)
-// and "08 00 00" when held (byte 0). Default: tap = next chapter, hold = previous
-// chapter. The two page buttons are NOT here: they keep the old usage mapping exactly
-// as before, so what the user bound them to is not overridden. This is data only; the
-// lookup knows nothing about this remote.
-constexpr RemoteTable kThreeButtonDefault = {"",
-                                             2,
-                                             {makeBinding(0x000102, false, Action::NextChapter) | kAnyReportBit,
-                                              makeBinding(0x000008, false, Action::PrevChapter) | kAnyReportBit}};
-
-// The two-button remote named "BOOX Keypage", report 3 (measured on the X3). The same
-// remote has sent two code sets: upper "02 00 00" / lower "01 00 00", and on 06/10/2026
-// upper "04 00 00" / lower "08 00 00" (consumer keys 0xB6 / 0xB5). Its decoded usages turn
-// no page, so both sets are named here: upper = next page, lower = previous page.
-constexpr RemoteTable kKeypageDefault = {
-    "",
-    4,
-    {makeBinding(0x030002, false, Action::NextPage), makeBinding(0x030001, false, Action::PrevPage),
-     makeBinding(0x030004, false, Action::NextPage), makeBinding(0x030008, false, Action::PrevPage)}};
-
+// Translate SDK logical keys into reader actions without changing saved raw codes.
 inline const RemoteTable* defaultTableFor(const char* name) {
-  if (name == nullptr) return nullptr;
-  if (strncmp(name, "Free3", 5) == 0) return &kThreeButtonDefault;
-  if (strncmp(name, "BOOX Keypage", 12) == 0) return &kKeypageDefault;
-  return nullptr;
+  static constexpr auto tables = [] {
+    std::array<RemoteTable, std::size(freeink::kRemoteButtonProfiles)> result{};
+    // RemoteKey order: Right, Left, PageDown, PageUp.
+    constexpr Action actions[] = {Action::NextPage, Action::PrevPage, Action::NextChapter, Action::PrevChapter};
+    static_assert(std::size(actions) == static_cast<size_t>(freeink::RemoteKey::Count));
+    static_assert(std::size(freeink::kRemoteButtonProfiles[0].buttons) <= kMaxBindings);
+    for (size_t i = 0; i < result.size(); ++i) {
+      const auto& profile = freeink::kRemoteButtonProfiles[i];
+      result[i].count = profile.count;
+      for (uint8_t j = 0; j < profile.count; ++j) {
+        const auto& button = profile.buttons[j];
+        result[i].bindings[j] = makeBinding(button.code, false, actions[static_cast<uint8_t>(button.key)]) |
+                                (button.anyReport ? kAnyReportBit : 0u);
+      }
+    }
+    return result;
+  }();
+  const int index = freeink::remoteButtonProfileIndex(name);
+  return index < 0 ? nullptr : &tables[index];
 }
 
 // Table of the connected remote: the saved one for its address, else the default for
