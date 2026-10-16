@@ -170,8 +170,31 @@ struct AnhChupChu {
 
 uint32_t readerLayoutKey(const ReaderRenderSpec& spec) {
   // Keep this key in step with the fields Section writes into its cache header.
-  const auto* words = reinterpret_cast<const uint32_t*>(&spec);
-  return words[0] ^ words[1] ^ words[2] ^ words[3] ^ words[4] ^ (words[5] & 0xFFFFu) ^ 1u;
+  uint32_t hash = 2166136261u;
+  const auto mixField = [&hash](const auto& value) {
+    uint8_t bytes[sizeof(value)];
+    std::memcpy(bytes, &value, sizeof(value));
+    for (const uint8_t byte : bytes) {
+      hash ^= byte;
+      hash *= 16777619u;
+    }
+  };
+  mixField(SECTION_FILE_VERSION);
+  mixField(spec.fontId);
+  mixField(spec.lineCompression);
+  mixField(spec.extraParagraphSpacing);
+  mixField(spec.paragraphIndent);
+  mixField(spec.letterSpacing);
+  mixField(spec.wordSpacing);
+  mixField(spec.paragraphAlignment);
+  mixField(spec.layoutKeyPadding);
+  mixField(spec.viewportWidth);
+  mixField(spec.viewportHeight);
+  mixField(spec.hyphenationEnabled);
+  mixField(spec.embeddedStyle);
+  mixField(spec.imageRendering);
+  mixField(spec.dropCapMode);
+  return hash;
 }
 // The X4 Pro and X4 Classic carry the X4's panel but sit outside isXteinkDevice()
 // (that helper also gates power management). Overlay refresh choices are per-panel:

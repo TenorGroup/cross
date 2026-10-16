@@ -76,6 +76,7 @@ struct ReaderRenderSpec {
   uint8_t imageRendering = 0;
   uint8_t dropCapMode = 1;
 };
+constexpr uint8_t SECTION_FILE_VERSION = 56;
 ''' + layout_key + r'''
 ReaderRenderSpec readerRenderSpecFor(const uint8_t fontSize) {
   ReaderRenderSpec spec;
@@ -441,6 +442,51 @@ class ReturnStackRuntimeTest(unittest.TestCase):
   reader.pushSavedPosition({0, 14, 1400, readerLayoutKey(readerRenderSpecFor(16))});
   reader.currentLayoutKey = 0;
   assert(reader.returnPageNumber() == -1);
+''')
+
+    def test_layout_key_changes_for_every_render_field(self):
+        self.check(r'''
+  ReaderRenderSpec base;
+  base.fontId = 11;
+  base.lineCompression = 0.95f;
+  base.extraParagraphSpacing = 2;
+  base.paragraphIndent = 3;
+  base.letterSpacing = -1;
+  base.wordSpacing = 4;
+  base.paragraphAlignment = 1;
+  base.viewportWidth = 400;
+  base.viewportHeight = 700;
+  base.hyphenationEnabled = true;
+  base.embeddedStyle = false;
+  base.imageRendering = 2;
+  base.dropCapMode = 3;
+  const uint32_t baseKey = readerLayoutKey(base);
+  ReaderRenderSpec changed = base;
+  changed.fontId = 12; assert(readerLayoutKey(changed) != baseKey); changed = base;
+  // Two fields in different 32-bit words flipping the same bit cancelled out under the old word XOR.
+  changed.fontId = 10; changed.extraParagraphSpacing = 3; assert(readerLayoutKey(changed) != baseKey); changed = base;
+  changed.lineCompression = 1.05f; assert(readerLayoutKey(changed) != baseKey); changed = base;
+  changed.extraParagraphSpacing = 3; changed.paragraphAlignment = 2;
+  assert(readerLayoutKey(changed) != baseKey); changed = base;
+  changed.paragraphIndent = 4; assert(readerLayoutKey(changed) != baseKey); changed = base;
+  changed.letterSpacing = 1; assert(readerLayoutKey(changed) != baseKey); changed = base;
+  changed.wordSpacing = 5; assert(readerLayoutKey(changed) != baseKey); changed = base;
+  changed.paragraphAlignment = 2; assert(readerLayoutKey(changed) != baseKey); changed = base;
+  changed.layoutKeyPadding = 1; assert(readerLayoutKey(changed) != baseKey); changed = base;
+  changed.viewportWidth = 401; assert(readerLayoutKey(changed) != baseKey); changed = base;
+  changed.viewportHeight = 701; assert(readerLayoutKey(changed) != baseKey); changed = base;
+  changed.hyphenationEnabled = false; assert(readerLayoutKey(changed) != baseKey); changed = base;
+  changed.embeddedStyle = true; assert(readerLayoutKey(changed) != baseKey); changed = base;
+  changed.imageRendering = 1; assert(readerLayoutKey(changed) != baseKey); changed = base;
+  changed.dropCapMode = 2; assert(readerLayoutKey(changed) != baseKey);
+''')
+
+    def test_layout_key_is_stable_for_the_same_layout_and_carries_the_cache_version(self):
+        text = (REPO / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
+        self.assertIn('mixField(SECTION_FILE_VERSION);', re.search(r'uint32_t readerLayoutKey\(.*?\n}', text, re.S).group(0))
+        self.check(r'''
+  assert(readerLayoutKey(readerRenderSpecFor(16)) == readerLayoutKey(readerRenderSpecFor(16)));
+  assert(readerLayoutKey(readerRenderSpecFor(16)) != readerLayoutKey(readerRenderSpecFor(18)));
 ''')
 
     def test_quote_and_percent_jumps_save_once_and_same_page_saves_nothing(self):

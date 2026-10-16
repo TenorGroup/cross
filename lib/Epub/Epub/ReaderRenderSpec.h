@@ -1,7 +1,13 @@
 #pragma once
 #include <Epub/ReaderSpacing.h>
 
+#include <cstddef>
 #include <cstdint>
+#include <type_traits>
+
+// Keep the reader return-position key and section-cache format on the same
+// version. A cache format change must invalidate saved page labels too.
+inline constexpr uint8_t SECTION_FILE_VERSION = 56;
 
 // The resolved text-rendering configuration a reader hands to the layout
 // engine. Section-cache validation keys on every field: a section file built
@@ -34,3 +40,11 @@ struct ReaderRenderSpec {
   // settings preview can never disagree.
   uint8_t dropCapMode = readerSpacing::DROP_CAP_DEFAULT;
 };
+
+static_assert(std::is_standard_layout_v<ReaderRenderSpec>, "ReaderRenderSpec must stay standard layout");
+static_assert(sizeof(ReaderRenderSpec) == 24, "ReaderRenderSpec size changed");
+static_assert(offsetof(ReaderRenderSpec, fontId) == 0, "ReaderRenderSpec font offset changed");
+static_assert(offsetof(ReaderRenderSpec, lineCompression) == 4, "ReaderRenderSpec line offset changed");
+static_assert(offsetof(ReaderRenderSpec, viewportWidth) == 14, "ReaderRenderSpec width offset changed");
+static_assert(offsetof(ReaderRenderSpec, viewportHeight) == 16, "ReaderRenderSpec height offset changed");
+static_assert(offsetof(ReaderRenderSpec, dropCapMode) == 21, "ReaderRenderSpec drop cap offset changed");
