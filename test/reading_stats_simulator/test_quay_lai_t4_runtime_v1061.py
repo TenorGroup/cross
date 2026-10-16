@@ -179,6 +179,12 @@ struct EpubReaderActivity {
   // Keep the legacy harness at the unchanged-layout value so its page-stack
   // checks exercise the v2 file format without inventing a second layout.
   uint32_t currentLayoutKey = 0;
+  mutable const Section* returnPageCacheSection = nullptr;
+  mutable uint32_t returnPageCacheLayoutKey = 0;
+  mutable int returnPageCacheSpineIndex = -1;
+  mutable uint32_t returnPageCacheTextOffset = UINT32_MAX;
+  mutable int returnPageCacheValue = -1;
+  mutable bool returnPageCacheValid = false;
   bool returnPushedForLoad = false;
   bool linkStackOnCard = false;
   void clearDeferredReposition() { cachedVisibleTextOffset.reset(); }

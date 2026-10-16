@@ -89,6 +89,7 @@ ReaderRenderSpec readerRenderSpecFor(const uint8_t fontSize) {
   return spec;
 }
 std::map<std::string, std::vector<uint8_t>> files;
+int sectionLutFileOpens = 0;
 struct HalFile {
   std::string path;
   int read(uint8_t* data, size_t count) {
@@ -181,6 +182,7 @@ struct Section {
   }
   std::optional<uint16_t> getPageForVisibleTextOffset(uint32_t offset) const {
     ++lookups;
+    ++sectionLutFileOpens;
     return offset / charsPerPage < static_cast<uint32_t>(pageCount) ?
         std::optional<uint16_t>(offset / charsPerPage) : std::nullopt;
   }
@@ -210,6 +212,12 @@ struct EpubReaderActivity {
   int footnoteDepth = 0;
   uint8_t fontSize = 16;
   uint32_t currentLayoutKey = 0;
+  mutable const Section* returnPageCacheSection = nullptr;
+  mutable uint32_t returnPageCacheLayoutKey = 0;
+  mutable int returnPageCacheSpineIndex = -1;
+  mutable uint32_t returnPageCacheTextOffset = UINT32_MAX;
+  mutable int returnPageCacheValue = -1;
+  mutable bool returnPageCacheValid = false;
   bool returnPushedForLoad = false;
   bool linkStackOnCard = false;
   EpubReaderActivity() { renderBookLayout(); }
@@ -498,6 +506,17 @@ class ReturnStackRuntimeTest(unittest.TestCase):
   assert(readerLayoutKey(readerRenderSpecFor(16)) != readerLayoutKey(readerRenderSpecFor(18)));
 ''')
 
+    def test_return_page_number_caches_the_section_lut_lookup(self):
+        self.check(r'''
+  EpubReaderActivity reader;
+  reader.pushSavedPosition({0, 14, 1400, readerLayoutKey(readerRenderSpecFor(16))});
+  reader.applyTextSetting(18);
+  reader.section->charsPerPage = 65;
+  assert(reader.returnPageNumber() == 22);
+  assert(reader.returnPageNumber() == 22);
+  assert(reader.section->lookups == 1 && sectionLutFileOpens == 1);
+''')
+
     def test_legacy_zero_entry_gets_a_computed_page_after_a_later_size_change(self):
         self.check(r'''
   EpubReaderActivity reader;
@@ -506,6 +525,25 @@ class ReturnStackRuntimeTest(unittest.TestCase):
   reader.applyTextSetting(18);
   reader.section->charsPerPage = 65;
   assert(reader.returnPageNumber() == 22);
+''')
+
+    def test_return_page_cache_follows_the_layout_and_the_section(self):
+        self.check(r'''
+  EpubReaderActivity reader;
+  reader.pushSavedPosition({0, 14, 1400, readerLayoutKey(readerRenderSpecFor(16))});
+  reader.applyTextSetting(18);
+  reader.section->charsPerPage = 65;
+  assert(reader.returnPageNumber() == 22 && reader.section->lookups == 1);
+  reader.applyTextSetting(20);
+  assert(reader.returnPageNumber() == 22 && reader.section->lookups == 2);
+  reader.section = std::make_unique<Section>();
+  reader.section->charsPerPage = 50;
+  assert(reader.returnPageNumber() == 29 && reader.section->lookups == 1);
+  reader.section = std::make_unique<Section>();
+  reader.section->building = true;
+  reader.section->reached = 5000;
+  reader.section->charsPerPage = 50;
+  assert(reader.returnPageNumber() == 29 && reader.returnPageNumber() == 29 && reader.section->lookups == 2);
 ''')
 
     def test_quote_and_percent_jumps_save_once_and_same_page_saves_nothing(self):
