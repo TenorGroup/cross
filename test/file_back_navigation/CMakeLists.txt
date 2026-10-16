@@ -23,6 +23,9 @@ if(FILE_BACK_SIMULATOR_X3)
   add_test(NAME FileBackNavigation.X3Selection
            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_file_back_keeps_selection.py
                    ${FILE_BACK_SIMULATOR_X3} ${CMAKE_CURRENT_BINARY_DIR}/x3)
+  add_test(NAME FileBackNavigation.X3UglyBack
+           COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_ugly_file_back_x3.py
+                   ${FILE_BACK_SIMULATOR_X3} ${CMAKE_CURRENT_BINARY_DIR}/x3-ugly)
   add_test(NAME FileBackNavigation.X3HomeDirectChild
            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_file_keeps_selection.py
                    ${FILE_BACK_SIMULATOR_X3} ${CMAKE_CURRENT_BINARY_DIR}/x3-home)

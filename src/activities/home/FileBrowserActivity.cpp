@@ -608,7 +608,9 @@ bool FileBrowserActivity::handleButtons() {
     // Short press: go up one directory, or go home if at root
     if (mappedInput.getHeldTime() < GO_HOME_MS) {
       // The root of File is the File card of Home, so a folder right under it goes back there.
-      if (mode == Mode::Books && basepath != "/" && basepath.find('/', 1) == std::string::npos) {
+      // tenor/ugly keeps its own way up unless the notebook's folder page opened the browser.
+      if (mode == Mode::Books && basepath != "/" && basepath.find('/', 1) == std::string::npos &&
+          (!shell::uglyParts() || openedFromUglyFile)) {
         const HomeMenuItem origin = activityManager.homeMenuOrigin();
         const bool returnToFile = tenorchrome::kTouchShell || openedFromUglyFile ||
                                   origin == HomeMenuItem::FILE_BROWSER || origin == HomeMenuItem::NONE;
