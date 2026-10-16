@@ -23,7 +23,8 @@ bleturner::RadioInputs readerBeforeStart(const size_t freeBytes, const size_t la
 }  // namespace
 
 static_assert(kPullReaderReserveBytes == 20480);
-static_assert(PULL_JOIN_MS == 9500);
+static_assert(PULL_JOIN_MS == 8000);
+static_assert(PULL_JOIN_MS + 4000 == PULL_NETWORK_MS);
 
 TEST(PullResumeRestart, UsesThePageTurnerReaderVerdictAtTheX3Boundary) {
   EXPECT_EQ(bleturner::radioVerdict(readerBeforeStart(kRadioStartFreeBytes, kRadioLargestBlockBytes),
@@ -209,6 +210,9 @@ TEST(PullResumeRecord, DoneMarkerCannotBeConsumedAgain) {
 }
 
 TEST(PullResumeNetwork, RequestBudgetClampsAtSixSecondsAndExpiresAtTwelve) {
+  EXPECT_EQ(PULL_NETWORK_MS - PULL_JOIN_MS, 4000u);
+  EXPECT_EQ(pullRequestMs(PULL_JOIN_MS), 4000u);
+  EXPECT_EQ(pullRequestMs(PULL_JOIN_MS + 1), 3999u);
   EXPECT_EQ(pullRequestMs(0), 6000u);
   EXPECT_EQ(pullRequestMs(5999), 6000u);
   EXPECT_EQ(pullRequestMs(6000), 6000u);

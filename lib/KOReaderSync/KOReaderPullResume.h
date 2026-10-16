@@ -12,8 +12,9 @@ namespace kosyncauto {
 constexpr uint32_t PULL_ARMED_MAGIC = 0x4b415233;
 constexpr uint32_t PULL_DONE_MAGIC = 0x4b444e33;
 constexpr uint32_t PULL_NETWORK_MS = 12000;
-// GET took 2.1 s; keep 400 ms for variance while letting a slower join finish.
-constexpr uint32_t PULL_JOIN_MS = PULL_NETWORK_MS - 2500;
+// The pull keeps 4 s for GET and TLS after the saved-network join. A join may use at most 8 s
+// inside the 12 s network phase, matching the measured scan path while leaving the request floor.
+constexpr uint32_t PULL_JOIN_MS = PULL_NETWORK_MS - 4000;
 // X3, 15/10: opening used 16,632 B after the Home pull (12,876 B on wake).
 // Keep 3,848 B above the larger observation, including room in the largest block.
 constexpr size_t kPullReaderReserveBytes = 20480;
