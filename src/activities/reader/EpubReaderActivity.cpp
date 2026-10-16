@@ -2968,6 +2968,9 @@ void EpubReaderActivity::renderBook() {
   const ReaderRenderSpec renderSpec = SETTINGS.readerRenderSpec(viewportWidth, viewportHeight);
 #if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
   currentLayoutKey = readerLayoutKey(renderSpec);
+  for (int i = 0; i < footnoteDepth; ++i) {
+    if (savedPositions[i].layoutKey == 0) savedPositions[i].layoutKey = currentLayoutKey;
+  }
 #endif
 
   if (xemTruoc && !section) {

@@ -34,6 +34,9 @@ def run_case(body):
             names.append(name)
     methods = '\n'.join(function(text, 'EpubReaderActivity', name) for name in names)
     layout_key = re.search(r'uint32_t readerLayoutKey\(.*?\n}', text, re.S).group(0)
+    # The product's own key step in renderBook(): everything from the key assignment to the closing #endif.
+    first = text.index('  currentLayoutKey = readerLayoutKey(renderSpec);')
+    render_key = text[first:text.index('#endif', first)].rstrip()
     start = text.index('  auto progressChangeResultHandler = [this]')
     end = text.index('\n  };', start) + len('\n  };')
     progress = ('void EpubReaderActivity::changeProgress(const ActivityResult& result) {\n' +
@@ -215,10 +218,8 @@ struct EpubReaderActivity {
     renderBookLayout();
   }
   void renderBookLayout() {
-    currentLayoutKey = readerLayoutKey(readerRenderSpecFor(fontSize));
-    for (int i = 0; i < footnoteDepth; ++i) {
-      if (savedPositions[i].layoutKey == 0) savedPositions[i].layoutKey = currentLayoutKey;
-    }
+    const ReaderRenderSpec renderSpec = readerRenderSpecFor(fontSize);
+''' + render_key + r'''
   }
   void clearDeferredReposition() { cachedVisibleTextOffset.reset(); }
   void requestUpdate() {}
@@ -444,6 +445,14 @@ class ReturnStackRuntimeTest(unittest.TestCase):
   assert(reader.returnPageNumber() == -1);
 ''')
 
+    def test_render_assigns_the_current_key_to_legacy_zero_entries(self):
+        self.check(r'''
+  EpubReaderActivity reader;
+  reader.pushSavedPosition({0, 14, 1400, 0});
+  reader.renderBookLayout();
+  assert(reader.savedPositions[0].layoutKey == reader.currentLayoutKey && reader.currentLayoutKey != 0);
+''')
+
     def test_layout_key_changes_for_every_render_field(self):
         self.check(r'''
   ReaderRenderSpec base;
@@ -487,6 +496,16 @@ class ReturnStackRuntimeTest(unittest.TestCase):
         self.check(r'''
   assert(readerLayoutKey(readerRenderSpecFor(16)) == readerLayoutKey(readerRenderSpecFor(16)));
   assert(readerLayoutKey(readerRenderSpecFor(16)) != readerLayoutKey(readerRenderSpecFor(18)));
+''')
+
+    def test_legacy_zero_entry_gets_a_computed_page_after_a_later_size_change(self):
+        self.check(r'''
+  EpubReaderActivity reader;
+  reader.pushSavedPosition({0, 14, 1400, 0});
+  reader.renderBookLayout();
+  reader.applyTextSetting(18);
+  reader.section->charsPerPage = 65;
+  assert(reader.returnPageNumber() == 22);
 ''')
 
     def test_quote_and_percent_jumps_save_once_and_same_page_saves_nothing(self):
