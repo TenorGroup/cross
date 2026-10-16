@@ -74,6 +74,11 @@ def run(program, out, case, machine, port):
     log, shots = sim.run(program, out, sd, steps, port, gap=2800, settle=1800)
     if case in ('sibling', 'direct'):
         changed = count(shots['expected'], shots['result'])
+    elif case == 'reopen' and not touch:
+        # X3 and X4C intentionally return to Home File in .62. The baseline
+        # image is the old FileBrowser root, so the destination is checked by
+        # the Home transition and the selected reopen row in the log below.
+        changed = 0
     else:
         name = f'{machine}-{case}.png'
         manifest = json.loads((REFERENCES / 'sha256.json').read_text())
@@ -82,8 +87,14 @@ def run(program, out, case, machine, port):
         changed = count(Image.open(ref).convert('L'), shots['result'])
     print(f'{machine} {case} changed_pixels={changed}', flush=True)
     if case == 'reopen' and not touch:
+        home_count = log.count('Entering activity: Home')
+        assert home_count >= 2, 'RED: Back from a level-1 folder did not return to Home File'
+        tabs = re.findall(r'Restored Home tab=(\d+)', log)
+        assert tabs and tabs[-1] == '1', f'RED: Home came back on the wrong card: {tabs[-1:]}'
         paths = re.findall(r'X3PILL.*current=1 .*text=(/[^\n]*)', log)
         assert paths and paths[-1] == '/books', f'Reopened the wrong root row: {paths[-1:]}'
+    if case == 'reopen' and touch:
+        assert log.count('Entering activity: Home') >= 2, 'RED: X4 Pro reopen did not return to Home File'
     if case == 'favorite':
         assert log.count('Entering activity: Home') == 2, 'Back did not return to Home'
     assert changed == 0, f'{case}: wrong destination, row, or viewport'
