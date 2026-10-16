@@ -364,7 +364,7 @@ static bool loadSleepFrameBuffer() {
 // drain (at-least-once). The caller's WiFi shutdown tears the radio down
 // either way. Deferrable events already queued (reader.exit) ride along in
 // the same drain.
-static void deliverSleepPluginEvents() {
+static void deliverSleepPluginEvents(const bool allowNetwork) {
   // Activity-owned state must be queued before sleep.enter and before this
   // same-sleep drain. The hook is idempotent with ordinary activity teardown.
   activityManager.prepareForSleep();
@@ -383,6 +383,7 @@ static void deliverSleepPluginEvents() {
     vars[varCount++] = {"percent", percent};
   }
   pluginevents::emit(pluginevents::Event::SleepEnter, vars, varCount);
+  if (!allowNetwork) return;
   if (WiFi.status() == WL_CONNECTED) {
     pluginevents::drain(&renderer);
     return;
@@ -419,7 +420,11 @@ void enterDeepSleep(bool fromTimeout = false) {
   // floor now so a later cold boot resumes from it.
   trustedtime::note();
 
-  deliverSleepPluginEvents();
+  // Stop Bluetooth before plugin delivery can start WiFi; a timeout defers delivery.
+  deepSleepInProgress = true;
+  const bool bluetoothStopped = bleturner::beforeSleep(2000);
+  if (!bluetoothStopped) LOG_ERR("SLP", "Bluetooth did not stop; deferring sleep-event delivery");
+  deliverSleepPluginEvents(bluetoothStopped);
 
   const bool isQuickResumeSleep =
       SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME ||
@@ -431,12 +436,6 @@ void enterDeepSleep(bool fromTimeout = false) {
 
   APP_STATE.saveToFile();
 
-  // Commit to sleeping before goToSleep() runs the outgoing activity's onExit():
-  // a WiFi activity would otherwise silentRestart() here and reboot instead.
-  deepSleepInProgress = true;
-  // The sleep screen is a screen change too: the radio stops first, and the SD card stays untouched
-  // until it has.
-  if (!bleturner::beforeSleep(2000)) LOG_ERR("SLP", "Bluetooth did not stop before sleep");
   activityManager.goToSleep(fromTimeout);
 
   if (isQuickResumeSleep) {
