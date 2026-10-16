@@ -91,12 +91,6 @@ void releaseRequestArguments(WebServer* server) {
 // Note: Items starting with "." are automatically hidden
 constexpr const char* HIDDEN_ITEMS[] = {"System Volume Information", "XTCache"};
 
-// Formats the library index tracks (LibraryIndex isBookName): an upload of any
-// of these must mark the index dirty so the next Library entry rebuilds it.
-bool isLibraryBookFile(const String& filename) {
-  return FsHelpers::checkFileExtension(filename, ".epub") || FsHelpers::checkFileExtension(filename, ".txt") ||
-         FsHelpers::checkFileExtension(filename, ".md") || FsHelpers::checkFileExtension(filename, ".xtc");
-}
 constexpr uint16_t UDP_PORTS[] = {54982, 48123, 39001, 44044, 59678};
 constexpr uint16_t LOCAL_UDP_PORT = 8134;
 
@@ -961,7 +955,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
         if (!filePath.endsWith("/")) filePath += "/";
         filePath += state.fileName;
         clearBookCache(filePath.c_str());
-        if (isLibraryBookFile(state.fileName)) library::markLibraryIndexDirty();
+        if (library::isLibraryBookFile(filePath.c_str())) library::markLibraryIndexDirty();
       }
     }
     state.buffer.reset();
@@ -2375,6 +2369,8 @@ void CrossPointWebServer::handleFetch() {
     Storage.remove(part.c_str());
     complete = false;
     resp["error"] = "sd write failed";
+  } else if (complete && library::isLibraryBookFile(dest)) {
+    library::markLibraryIndexDirty();
   }
   resp["status"] = status;
   resp["bytes"] = written;
@@ -2453,6 +2449,8 @@ void CrossPointWebServer::handlePluginFsUpload() {
         fail(400, "empty body");
       } else if (!Storage.replaceFile(st.tmp.c_str(), st.path.c_str())) {
         fail(500, "sd write failed");
+      } else if (library::isLibraryBookFile(st.path)) {
+        library::markLibraryIndexDirty();
       }
       return;
     case UPLOAD_FILE_ABORTED:
@@ -2478,7 +2476,7 @@ void CrossPointWebServer::handlePluginFs() {
   st.started = false;
 }
 
-// POST /api/book-key {path, key (base64, 16 bytes), expires?} -> {ok}
+// POST /api/book-key {path, key (base64, 16 or 32 bytes), expires?} -> {ok}
 // Stores a protected book's content key, wrapped to this device, as
 // "<path>.key" for the reader to open the book with.
 void CrossPointWebServer::handleBookKey() {
@@ -2487,13 +2485,13 @@ void CrossPointWebServer::handleBookKey() {
   const std::string path = req["path"] | "";
   const char* keyB64 = req["key"] | "";
   const int64_t expires = req["expires"] | static_cast<int64_t>(0);
-  uint8_t key[bookkey::KEY_LEN];
+  uint8_t key[bookkey::MAX_KEY_LEN];
   const int32_t n = freeink::content::base64Decode(keyB64, strlen(keyB64), key, sizeof(key));
-  if (!protectedpaths::isPluginPath(path) || n != static_cast<int32_t>(sizeof(key)) || expires < 0) {
+  if (!protectedpaths::isPluginPath(path) || (n != 16 && n != 32) || expires < 0) {
     server->send(400, "application/json", "{\"error\":\"bad path/key\"}");
     return;
   }
-  if (!bookkey::write(path, key, expires)) {
+  if (!bookkey::write(path, key, static_cast<size_t>(n), expires)) {
     server->send(500, "application/json", "{\"error\":\"cannot store key\"}");
     return;
   }
@@ -2737,7 +2735,7 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
             wsLastCompleteAt = millis();
             LOG_DBG("WS", "Zero-byte upload complete: %s", filePath.c_str());
             clearBookCache(filePath.c_str());
-            if (isLibraryBookFile(wsUploadFileName)) library::markLibraryIndexDirty();
+            if (library::isLibraryBookFile(filePath.c_str())) library::markLibraryIndexDirty();
             wsServer->sendTXT(num, "DONE");
             wsLastProgressSent = 0;
             break;
@@ -2807,7 +2805,7 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
         if (!filePath.endsWith("/")) filePath += "/";
         filePath += wsUploadFileName;
         clearBookCache(filePath.c_str());
-        if (isLibraryBookFile(wsUploadFileName)) library::markLibraryIndexDirty();
+        if (library::isLibraryBookFile(filePath.c_str())) library::markLibraryIndexDirty();
 
         wsServer->sendTXT(num, "DONE");
         wsLastProgressSent = 0;
