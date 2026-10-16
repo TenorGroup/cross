@@ -111,12 +111,25 @@ if "markAfterFramePending = false" not in off:
 epub_reader = open(f"{root}/src/activities/reader/EpubReaderActivity.cpp", encoding="utf-8").read()
 if "if (!openCommitPending) koautosync::afterFirstFrame();" not in epub_reader:
     problems.append("the EPUB loop must flush a pending pull mark only after the first rendered page")
+flush_hint_at = push.find("flushHint()")
+empty_debt_at = push.find("if (!loadDebts(list) || list.empty()) return;")
+if flush_hint_at < 0 or empty_debt_at < 0 or flush_hint_at > empty_debt_at:
+    problems.append("pushBeforeSleep must flush a pending Wi-Fi hint before the empty debt return")
+fast_success_at = text.find("if (fastConnected) {")
+fast_success = text[fast_success_at:text.find("return true;", fast_success_at)] if fast_success_at >= 0 else ""
+if "pendingHint = hint" not in fast_success or "hasPendingHint = true" not in fast_success:
+    problems.append("a successful fast join must replace pending hint state with a zero-failure hint")
 resume = open(f"{root}/lib/KOReaderSync/KOReaderPullResume.h", encoding="utf-8").read()
 if "constexpr uint32_t PULL_JOIN_MS" not in resume:
     problems.append("the pull join must have a named budget")
 pull_now = body("PullResult pullNow(")
 if "joinSavedNetwork(networkAt + PULL_JOIN_MS)" not in pull_now:
     problems.append("pullNow must use the named pull join budget")
+autosync = text
+if "hintFailureMemo = {HINT_FAILURE_MAGIC, hintKey(stored), 2, 0};" not in autosync:
+    problems.append("a changed access point must disable the old hint across a pre-frame restart")
+if "hintFailureMemo = {HINT_FAILURE_MAGIC, hintKey(now), 0, 1};" not in autosync:
+    problems.append("a successful scan must arm a reset marker for the current hint")
 client = open(f"{root}/lib/KOReaderSync/KOReaderSyncClient.cpp", encoding="utf-8").read()
 deadline_json = (r"hasDeadline\s*\?\s*deserializeJson\(doc,\s*reinterpret_cast<const char\*>\(deadlineBody\.bytes\(\)\),"
                  r"\s*deadlineBody\.size\(\)\)")

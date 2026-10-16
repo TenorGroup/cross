@@ -72,6 +72,21 @@ bool pullRestartPending = false;
 bool restoredFrame = false;
 bool usedPullNetwork = false;
 
+#if FREEINK_DEVICE_X3
+// The wake pull runs before the reader's first frame. Keep a failed fast-join run in RTC so the next
+// round can skip the stale AP hint without adding an SD write to that pre-frame path.
+struct HintFailureMemo {  // plain aggregate like PullResume: no constructor runs over RTC memory at boot
+  uint32_t magic;
+  uint32_t key;
+  uint8_t failures;
+  uint8_t reset;
+};
+constexpr uint32_t HINT_FAILURE_MAGIC = 0x4B48464Du;
+RTC_NOINIT_ATTR HintFailureMemo hintFailureMemo;
+WifiHint pendingHint;
+bool hasPendingHint = false;
+#endif
+
 std::string documentHash(const std::string& path);
 
 #ifdef TENOR_PRESS_PROBE
@@ -219,16 +234,48 @@ const char* why(const Eligibility e) {
   return "?";
 }
 
+#if FREEINK_DEVICE_X3
+uint32_t hintKey(const WifiHint& hint) {
+  uint32_t key = 2166136261u;
+  for (const char c : hint.ssid) key = (key ^ static_cast<uint8_t>(c)) * 16777619u;
+  key = (key ^ hint.channel) * 16777619u;
+  for (const uint8_t byte : hint.bssid) key = (key ^ byte) * 16777619u;
+  return key;
+}
+#endif
+
 WifiHint loadHint() {
   WifiHint hint;
   JsonDocument doc;
   if (PersistableStoreBase::readDocFromFileStatus(HINT_FILE, doc, 512) == PersistableStoreBase::ReadResult::Ready) {
     hint.fromJson(doc);  // empty on a damaged file
   }
+#if FREEINK_DEVICE_X3
+  if (hint.wellFormed() && hintFailureMemo.magic == HINT_FAILURE_MAGIC && hintFailureMemo.key == hintKey(hint)) {
+    hint.fastJoinFailures = hintFailureMemo.reset ? 0 : std::max(hint.fastJoinFailures, hintFailureMemo.failures);
+  }
+#endif
   return hint;
 }
 
+#if FREEINK_DEVICE_X3
+void rememberHintFailure(const WifiHint& hint) {
+  hintFailureMemo = {HINT_FAILURE_MAGIC, hintKey(hint), hint.fastJoinFailures, 0};
+  pendingHint = hint;
+  hasPendingHint = true;
+}
+
+void flushHint() {
+  if (!hasPendingHint) return;
+  JsonDocument doc;
+  pendingHint.toJson(doc);
+  if (!PersistableStoreBase::writeDocToFile(HINT_FILE, doc)) return;
+  hasPendingHint = false;
+  hintFailureMemo = {};
+}
+#else
 void dropHint() { Storage.remove(HINT_FILE); }
+#endif
 
 // Remembers where the network that just connected is, when that differs from what is stored.
 void rememberHint(const std::string& ssid, const WifiHint& stored) {
@@ -236,10 +283,29 @@ void rememberHint(const std::string& ssid, const WifiHint& stored) {
   now.ssid = ssid;
   now.channel = static_cast<uint8_t>(WiFi.channel());
   if (const uint8_t* bssid = WiFi.BSSID()) memcpy(now.bssid, bssid, sizeof(now.bssid));
-  if (!now.wellFormed() || now == stored) return;
+  if (!now.wellFormed()) return;
+#if FREEINK_DEVICE_X3
+  const bool sameHint = stored.wellFormed() && hintKey(stored) == hintKey(now);
+  if (sameHint) {
+    // A scan fallback connected to the same AP. It did not prove that the fast hint works, so keep
+    // the failure run and let the next round scan directly again.
+    return;
+  }
+  if (stored.wellFormed()) {
+    // The old file can still be on the card if a restart happens before the first frame. Keep that
+    // stale AP disabled in RTC until the new hint is flushed after the first frame.
+    hintFailureMemo = {HINT_FAILURE_MAGIC, hintKey(stored), 2, 0};
+  } else {
+    hintFailureMemo = {HINT_FAILURE_MAGIC, hintKey(now), 0, 1};
+  }
+  pendingHint = now;
+  hasPendingHint = true;
+#else
+  if (now == stored) return;
   JsonDocument doc;
   now.toJson(doc);
   PersistableStoreBase::writeDocToFile(HINT_FILE, doc);
+#endif
 }
 
 bool waitConnected(const uint32_t until) {
@@ -253,8 +319,8 @@ bool waitConnected(const uint32_t until) {
 }
 
 // Joins a saved network without any screen: the last one that worked first, then the others, each
-// until the deadline. A remembered channel and access point (WifiHint) go first and skip the scan; if
-// that join fails the hint is dropped and the join goes the normal way. false when none connects in time.
+// until the deadline. A remembered channel and access point (WifiHint) go first; after one failed fast
+// attempt, the next round scans directly. false when none connects in time.
 bool joinSavedNetwork(const uint32_t deadline) {
   const uint32_t began = millis();
   std::vector<WifiCredential> order;
@@ -266,7 +332,7 @@ bool joinSavedNetwork(const uint32_t deadline) {
     const auto cred = WIFI_STORE.getCredentialAt(i);
     if (cred && cred->ssid != last) order.push_back(*cred);
   }
-  const WifiHint hint = loadHint();
+  WifiHint hint = loadHint();
 
   WiFi.persistent(false);
   powerManager.setPowerSaving(false);
@@ -281,7 +347,11 @@ bool joinSavedNetwork(const uint32_t deadline) {
     if (msLeft(deadline) <= 0) break;
     const char* password = cred.password.empty() ? nullptr : cred.password.c_str();
 #ifndef SIMULATOR  // the simulator's Wi-Fi has no channels
-    if (hint.usableFor(cred.ssid)) {
+    if (hint.usableFor(cred.ssid)
+#if FREEINK_DEVICE_X3
+        && shouldTryFastJoin(hint.fastJoinFailures)
+#endif
+    ) {
       WiFi.disconnect(false, false);
       WiFi.begin(cred.ssid.c_str(), password, hint.channel, hint.bssid, true);
       const uint32_t fastUntil = std::min<uint32_t>(deadline, millis() + FAST_JOIN_MS);
@@ -293,11 +363,24 @@ bool joinSavedNetwork(const uint32_t deadline) {
 #endif
       if (fastConnected) {
         WiFi.setSleep(false);
+#if FREEINK_DEVICE_X3
+        hint.fastJoinFailures = 0;
+        pendingHint = hint;
+        hasPendingHint = true;
+        hintFailureMemo = {HINT_FAILURE_MAGIC, hintKey(hint), 0, 1};
+#endif
         LOG_INF("KAS", "join fast in %lu ms", static_cast<unsigned long>(millis() - began));
         return true;
       }
+#if FREEINK_DEVICE_X3
+      hint.fastJoinFailures = recordFastJoinFailure(hint.fastJoinFailures);
+      rememberHintFailure(hint);
+      LOG_INF("KAS", "remembered access point failed after %lu ms, failures=%u, scanning",
+              static_cast<unsigned long>(millis() - began), static_cast<unsigned>(hint.fastJoinFailures));
+#else
       LOG_INF("KAS", "remembered access point failed after %lu ms, dropped", static_cast<unsigned long>(millis() - began));
       dropHint();
+#endif
     }
 #endif
     if (msLeft(deadline) <= 0) break;
@@ -466,6 +549,11 @@ void switchedOff() {
   hasPendingNote = false;
   hasPendingMark = false;
   markAfterFramePending = false;
+#if FREEINK_DEVICE_X3
+  hasPendingHint = false;
+  pendingHint = {};
+  hintFailureMemo = {};
+#endif
   pendingMark = {};
   pendingMarkPath.clear();
   Storage.remove(DEBT_FILE);
@@ -483,6 +571,11 @@ void flushNote() {
 void pushBeforeSleep(GfxRenderer& renderer) {
   flushNote();
   flushMark();
+#if FREEINK_DEVICE_X3
+  // A pull can leave a new or failed hint pending while its debt list is empty. Persist it on the
+  // sleep path before any eligibility or empty-list return, after the first frame has already been shown.
+  flushHint();
+#endif
   const Eligibility eligible = gate();
   if (eligible != Eligibility::Ready) {
     if (eligible != Eligibility::Disabled) LOG_INF("KAS", "sleep push skipped: %s", why(eligible));
@@ -511,6 +604,9 @@ void pushBeforeSleep(GfxRenderer& renderer) {
     }
   }
   leaveWifi(true);
+#if FREEINK_DEVICE_X3
+  flushHint();  // this round may have replaced the hint; no frame is waiting on the card here
+#endif
   if (changed && !saveDebts(list)) LOG_ERR("KAS", "Could not write %s", DEBT_FILE);
   if (marksChanged && marksReadable && !saveMarks(marks)) LOG_ERR("KAS", "Could not write %s", MARK_FILE);
   LOG_INF("KAS", "sleep push done total=%lu ms left=%u", static_cast<unsigned long>(millis() - started),
@@ -814,12 +910,20 @@ void afterFirstFrame() {
     probeHeap("first_frame");
   }
 #endif
+#if FREEINK_DEVICE_X3
+  if ((!hasPendingMark || !markAfterFramePending) && !hasPendingHint) return;
+#else
   if (!hasPendingMark || !markAfterFramePending) return;
+#endif
   RenderLock lock(RenderLock::TryTake{});
-  if (lock.acquired()) {
+  if (!lock.acquired()) return;
+  if (hasPendingMark && markAfterFramePending) {
     markAfterFramePending = false;
     flushMark();  // A failed read waits for the existing sleep retry.
   }
+#if FREEINK_DEVICE_X3
+  flushHint();
+#endif
 }
 
 const PullChange* progressJustPulled() { return hasPullChange ? &pullChange : nullptr; }

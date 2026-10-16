@@ -494,6 +494,44 @@ TEST(WifiHint, RoundTripsAndIsUsableOnlyForItsOwnNetwork) {
   EXPECT_FALSE(loaded.usableFor("van-phong"));
 }
 
+TEST(WifiHint, RepeatedFastJoinFailuresDisableTheHintUntilARealJoinSucceeds) {
+  EXPECT_TRUE(shouldTryFastJoin(0));
+  EXPECT_EQ(recordFastJoinFailure(0), 1);
+  EXPECT_FALSE(shouldTryFastJoin(recordFastJoinFailure(0)));
+  EXPECT_EQ(recordFastJoinFailure(1), 2);
+  EXPECT_FALSE(shouldTryFastJoin(recordFastJoinFailure(1)));
+  EXPECT_EQ(recordFastJoinFailure(2), 2);
+
+  WifiHint blocked = goodHint();
+  blocked.fastJoinFailures = 2;
+  JsonDocument blockedDoc;
+  blocked.toJson(blockedDoc);
+  std::string blockedText;
+  serializeJson(blockedDoc, blockedText);
+  JsonDocument blockedBack;
+  ASSERT_FALSE(deserializeJson(blockedBack, blockedText));
+  WifiHint loadedBlocked;
+  ASSERT_TRUE(loadedBlocked.fromJson(blockedBack));
+  EXPECT_EQ(loadedBlocked.fastJoinFailures, 2);
+  EXPECT_FALSE(shouldTryFastJoin(loadedBlocked.fastJoinFailures));
+
+  WifiHint hint = goodHint();
+  hint.fastJoinFailures = recordFastJoinFailure(0);
+  JsonDocument doc;
+  hint.toJson(doc);
+  std::string text;
+  serializeJson(doc, text);
+  JsonDocument back;
+  ASSERT_FALSE(deserializeJson(back, text));
+  WifiHint loaded;
+  ASSERT_TRUE(loaded.fromJson(back));
+  EXPECT_EQ(loaded.fastJoinFailures, 1);
+  EXPECT_FALSE(shouldTryFastJoin(loaded.fastJoinFailures));
+
+  hint.fastJoinFailures = 0;  // a later fast join success resets the remembered failure run
+  EXPECT_TRUE(shouldTryFastJoin(hint.fastJoinFailures));
+}
+
 TEST(WifiHint, MalformedHintsAreRefusedSoTheJoinGoesTheNormalWay) {
   const auto refused = [](const char* json) {
     JsonDocument doc;
@@ -508,6 +546,7 @@ TEST(WifiHint, MalformedHintsAreRefusedSoTheJoinGoesTheNormalWay) {
   refused(R"({"ssid":"x","ch":0,"bssid":"3c846a112233"})");
   refused(R"({"ssid":"x","ch":15,"bssid":"3c846a112233"})");
   refused(R"({"ssid":"x","ch":300,"bssid":"3c846a112233"})");
+  refused(R"({"ssid":"x","ch":6,"bssid":"3c846a112233","fast_join_failures":3})");
   refused(R"({"ssid":"x","ch":6,"bssid":"3c846a11223"})");
   refused(R"({"ssid":"x","ch":6,"bssid":"3c846a11223g"})");
   refused(R"({"ssid":"x","ch":6,"bssid":"000000000000"})");

@@ -139,6 +139,7 @@ bool restoredFrame = false;
 bool usedPullNetwork = false;
 bool hasPullChange = false;
 bool hasPendingMark = false;
+bool hasPendingHint = false;
 bool markAfterFramePending = false;
 PullResume keptPull{};
 PullChange pullChange{};
@@ -172,6 +173,8 @@ void flushMark() {
   ++flushMarkCalls;
   if (flushMarkSucceeds) hasPendingMark = false;
 }
+
+void flushHint() { hasPendingHint = false; }
 
 #include "KOReaderAfterFirstFrame.inc"
 
@@ -213,6 +216,7 @@ class RestartChainBehaviorTest : public ::testing::Test {
     usedPullNetwork = false;
     hasPullChange = false;
     hasPendingMark = false;
+    hasPendingHint = false;
     markAfterFramePending = false;
     keptPull = {};
     pullChange = {};
@@ -368,6 +372,20 @@ TEST_F(RestartChainBehaviorTest, FirstFrameMarkFlushKeepsPendingWorkWhenTheLockO
   EXPECT_EQ(flushMarkCalls, 1);
   EXPECT_TRUE(hasPendingMark);
   EXPECT_EQ(renderLockDepth, 0);
+}
+
+TEST_F(RestartChainBehaviorTest, FirstFrameFlushesAQueuedHintWithoutAQueuedMark) {
+  hasPendingHint = true;
+  afterFirstFrame();
+  EXPECT_EQ(renderLockTryCalls, 1);
+  EXPECT_FALSE(hasPendingHint);
+  EXPECT_EQ(renderLockDepth, 0);
+
+  hasPendingHint = true;
+  renderLockTrySucceeds = false;
+  afterFirstFrame();
+  EXPECT_TRUE(hasPendingHint);
+  EXPECT_EQ(renderLockTryCalls, 2);
 }
 
 }  // namespace

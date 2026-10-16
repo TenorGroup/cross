@@ -14,7 +14,7 @@ target_include_directories(KoreaderAutoSyncTest PRIVATE
   ${REPO_ROOT}/lib/BlePageTurner/src
   ${REPO_ROOT}/.pio/libdeps/gh_release/ArduinoJson/src
 )
-target_compile_definitions(KoreaderAutoSyncTest PRIVATE ARDUINOJSON_ENABLE_ARDUINO_STRING=0)
+target_compile_definitions(KoreaderAutoSyncTest PRIVATE ARDUINOJSON_ENABLE_ARDUINO_STRING=0 FREEINK_DEVICE_X3=1)
 target_link_libraries(KoreaderAutoSyncTest PRIVATE crosspoint_test_common GTest::gtest_main)
 gtest_discover_tests(KoreaderAutoSyncTest)
 
