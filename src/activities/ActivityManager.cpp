@@ -77,8 +77,9 @@ void ActivityManager::renderTaskLoop() {
       // Night mode is a global output polarity applied to every activity.
       // The sleep screen forces normal polarity itself (SleepActivity).
       display.setInverted(SETTINGS.screenInverted != 0);
+      const uint32_t renderingVisit = screenVisit;
       currentActivity->render(std::move(lock));
-      paintedVisit.store(screenVisit, std::memory_order_release);
+      paintedVisit.store(renderingVisit, std::memory_order_release);
     }
     // Notify any task blocked in requestUpdateAndWait() that the render is done.
     TaskHandle_t waiter = nullptr;
@@ -145,7 +146,6 @@ void ActivityManager::loop() {
         !bleturner::beforeScreenChange(0, pendingActivity && pendingActivity->isReaderActivity())) {
       return;
     }
-    ++screenVisit;
     if (pendingAction == PendingAction::Pop) {
       RenderLock lock;
 
@@ -156,6 +156,7 @@ void ActivityManager::loop() {
         continue;
       }
 
+      ++screenVisit;
       ActivityResult pendingResult = std::move(currentActivity->result);
 
       // Destroy the current activity
@@ -212,6 +213,7 @@ void ActivityManager::loop() {
         HeaderBackTapTarget::clear();
         LOG_DBG("ACT", "Pushed to activity stack, new size = %zu", stackActivities.size());
       }
+      ++screenVisit;
       pendingAction = PendingAction::None;
       currentActivity = std::move(pendingActivity);
 

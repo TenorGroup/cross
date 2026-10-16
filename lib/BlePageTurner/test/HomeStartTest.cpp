@@ -109,6 +109,25 @@ TEST_F(HomeStartTest, PressesMadeAtHomeAreDroppedNotCarriedIntoTheBook) {
   EXPECT_TRUE(host().delivered.empty());
 }
 
+TEST_F(HomeStartTest, PressQueuedBetweenHomeAndReaderCannotTurnTheBook) {
+  pass(home());
+  radio().connected = true;
+  radio().name = "Generic Remote";
+  ASSERT_TRUE(bleturner::beforeScreenChange(0, true));
+  bleturner::port::KeyPress key;
+  key.keycode = bleturner::kUsageRight;
+  key.pressed = true;
+  radio().keys.push_back(key);
+  pass(fake::reading(2));
+  EXPECT_TRUE(radio().keys.empty());
+  EXPECT_TRUE(host().delivered.empty());
+
+  radio().keys.push_back(key);
+  pass(fake::reading(2));
+  ASSERT_EQ(host().delivered.size(), 1u);
+  EXPECT_EQ(host().delivered.front(), bleturner::Action::NextPage);
+}
+
 // The radio that comes up at Home is there for the remote too: without the reconnect armed and polled it
 // finds nothing to link, and 30 s later the idle rule stops it for good (a60a, 14/10).
 TEST_F(HomeStartTest, HomeArmsTheBondedReconnectOnceAndPollsIt) {

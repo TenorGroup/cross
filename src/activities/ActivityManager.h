@@ -67,6 +67,7 @@ class ActivityManager {
   std::atomic<bool> requestedUpdate{false};
 
   // Counts screen changes, so the Bluetooth page turner can tell one visit of a book from the next.
+  // Written by the main loop under RenderLock; the render task captures it under that lock.
   uint32_t screenVisit = 0;
   // The screen visit whose frame the render task painted last.
   std::atomic<uint32_t> paintedVisit{0};

@@ -19,9 +19,6 @@ inline constexpr uint32_t kWaitMs = 15000;
 // Held this long or more is a "hold". A host whose own buttons skip chapters on a
 // hold should use the same number and pin it with a static_assert.
 inline constexpr uint32_t kHoldMs = 700;
-// While learning: how long to wait for the pressed button's release. No release
-// means the remote does not report it, and the button is learned as a tap.
-inline constexpr uint32_t kReleaseWaitMs = 2000;
 
 // Stored by value in settings.json (bits 28-31 of a slot): new actions go last, and the
 // numbers never change (a test pins them). The four moves are the remote's own;

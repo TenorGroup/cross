@@ -287,8 +287,8 @@ void BleSettingsActivity::stepLearning() {
     }
   }
   if (learnAction == action) {
-    // A remote that never reports the release: the press alone is the answer.
-    if (learnCode != 0 && millis() - learnSinceMs >= bleturner::kReleaseWaitMs) {
+    // Allow the full learning window for a hold before falling back to a no-release tap.
+    if (learnCode != 0 && millis() - learnSinceMs >= bleturner::kWaitMs) {
       keepLearned(false);
     } else if (learnCode == 0 && millis() - learnSinceMs >= bleturner::kWaitMs) {
       learnAction = bleturner::Action::None;
