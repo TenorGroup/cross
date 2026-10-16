@@ -277,7 +277,8 @@ std::atomic<bool> ladderInUse{false};
 
 void HalGPIO::startBackgroundSampling() {
   const auto style = BoardConfig::ACTIVE.inputStyle;
-  const bool touchPanel = inputMgr.hasTouch() || BoardConfig::ACTIVE.touch.controller != BoardConfig::TouchController::None;
+  const bool touchPanel =
+      inputMgr.hasTouch() || BoardConfig::ACTIVE.touch.controller != BoardConfig::TouchController::None;
   if (sampleTimer || !samplesInBackground(style == BoardConfig::InputStyle::XteinkAdcLadder,
                                           style == BoardConfig::InputStyle::DigitalButtons, touchPanel)) {
     return;

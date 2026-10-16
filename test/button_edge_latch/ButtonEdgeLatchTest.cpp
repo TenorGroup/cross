@@ -215,8 +215,23 @@ TEST(HalGpioSampling, TheTimerIsKeptOnlyOnceItRuns) {
 // quick tap in that wait was never seen (5 of 20 taps typing in the Wi-Fi keyboard). Every board
 // without a touch panel hands its keys to the sample timer. A touch board keeps polling.
 TEST(ButtonSampling, EveryButtonBoardWithoutTouchUsesTheTimer) {
-  EXPECT_TRUE(samplesInBackground(true, false, false));   // X3, X4: ADC ladder
-  EXPECT_TRUE(samplesInBackground(false, true, false));   // X4 Classic: GPIO keys
-  EXPECT_FALSE(samplesInBackground(false, true, true));   // X4 Pro: GPIO keys plus touch panel
-  EXPECT_FALSE(samplesInBackground(false, false, false)); // any other input style
+  EXPECT_TRUE(samplesInBackground(true, false, false));    // X3, X4: ADC ladder
+  EXPECT_TRUE(samplesInBackground(false, true, false));    // X4 Classic: GPIO keys
+  EXPECT_FALSE(samplesInBackground(false, true, true));    // X4 Pro: GPIO keys plus touch panel
+  EXPECT_FALSE(samplesInBackground(false, false, false));  // any other input style
+}
+
+// The start decision goes through that rule, and a touch panel is told by the board profile as well
+// as by a controller that came up: a failed touch init must not move the X4 Pro to the timer, whose
+// task would then run touch I2C.
+TEST(HalGpioSampling, TheStartFollowsTheRuleAndTheBoardsTouchController) {
+  std::ifstream file(REPO_ROOT_PATH "/lib/hal/HalGPIO.cpp");
+  const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  const size_t begin = text.find("void HalGPIO::startBackgroundSampling()");
+  ASSERT_NE(begin, std::string::npos);
+  const std::string body = text.substr(begin, text.find("\n}\n", begin) - begin);
+  EXPECT_NE(body.find("samplesInBackground("), std::string::npos) << "the start does not use the rule";
+  EXPECT_NE(body.find("ACTIVE.touch.controller != BoardConfig::TouchController::None"), std::string::npos)
+      << "the touch panel is judged only by whether its init worked";
+  EXPECT_NE(body.find("inputMgr.hasTouch()"), std::string::npos);
 }
