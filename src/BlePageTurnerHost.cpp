@@ -113,7 +113,7 @@ bool preparePageTurnerAfterPull(const bool enabled, const bool usedNetwork, cons
 #if !FREEINK_DEVICE_X3
   return false;
 #else
-  if (!enabled || !usedNetwork || !succeeded || BoardConfig::isX4Pro()) return false;
+  if (!enabled || !usedNetwork || BoardConfig::isX4Pro()) return false;
   const auto heap = bleHeap();
   const auto& memo = bleturner::port::restartMemo();
   const bool spent = memo.magic == bleturner::kRestartSpentMagic;

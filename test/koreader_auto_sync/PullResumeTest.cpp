@@ -59,8 +59,13 @@ TEST(PullResumeRestart, DisabledUnusedFailedOrSpentPullNeverRestarts) {
   constexpr size_t lowLargest = kRadioLargestBlockBytes - 1;
   EXPECT_FALSE(restartAfterPull(false, true, true, false, lowFree, lowLargest));
   EXPECT_FALSE(restartAfterPull(true, false, true, false, lowFree, lowLargest));
-  EXPECT_FALSE(restartAfterPull(true, true, false, false, lowFree, lowLargest));
+  EXPECT_TRUE(restartAfterPull(true, true, false, false, lowFree, lowLargest));
   EXPECT_FALSE(restartAfterPull(true, true, true, true, lowFree, lowLargest));
+}
+
+TEST(PullResumeRestart, AFailedNetworkPullStillRepairsFragmentedBleHeapBeforeTheFirstFrame) {
+  EXPECT_TRUE(restartAfterPull(true, true, false, false, kRadioStartFreeBytes, kRadioLargestBlockBytes - 1));
+  EXPECT_TRUE(restartAfterPull(true, true, false, false, kRadioStartFreeBytes - 1, kRadioLargestBlockBytes));
 }
 
 TEST(PullResumeRestart, LowHeapPolicyRequestsOneRestartUntilMarkedSpent) {

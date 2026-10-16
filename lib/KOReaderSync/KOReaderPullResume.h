@@ -57,7 +57,8 @@ inline uint32_t takePullMagic(PullResume& kept, const bool quietRestart) {
 
 constexpr bool restartAfterPull(const bool enabled, const bool usedNetwork, const bool succeeded, const bool spent,
                                 const size_t freeBytes, const size_t largest) {
-  if (!enabled || !usedNetwork || !succeeded || spent) return false;
+  (void)succeeded;  // A failed or expired request has fragmented the heap in the same way as a kept result.
+  if (!enabled || !usedNetwork || spent) return false;
   auto need = bleturner::kX3Profile;
   need.startFreeBytes += kPullReaderReserveBytes;
   need.minimumLargest += kPullReaderReserveBytes;

@@ -324,6 +324,23 @@ TEST_F(RestartChainBehaviorTest, DoneRestartIsPublishedBeforeTheActivitySpendsTh
   }
 }
 
+TEST_F(RestartChainBehaviorTest, FailedNetworkPullStillPublishesRestartBeforeTheFirstFrame) {
+  fakePullResult = PullResult::Failed;
+  fakePrepareRestart = true;
+  const std::string path = epubPathOfLength(175);
+
+  EXPECT_EQ(pullGated(renderer, path, false, "wake pull"), PullResult::Failed);
+  EXPECT_EQ(pullNowCalls, 1);
+  EXPECT_EQ(prepareCalls, 1);
+  EXPECT_TRUE(pullRestartPending);
+  EXPECT_EQ(keptPull.magic, PULL_DONE_MAGIC);
+
+  PullRestartActivity restart(renderer, input, path);
+  restart.onEnter();
+  EXPECT_EQ(markSpentCalls, 1);
+  EXPECT_EQ(silentRestartCalls, 1);
+}
+
 TEST_F(RestartChainBehaviorTest, FirstFrameMarkFlushKeepsPendingWorkWhenTheLockOrCardIsUnavailable) {
   afterFirstFrame();
   EXPECT_EQ(renderLockTryCalls, 0);
