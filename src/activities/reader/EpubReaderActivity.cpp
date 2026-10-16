@@ -6485,27 +6485,27 @@ int EpubReaderActivity::returnPageNumber() const {
     return position.pageNumber >= 0 ? position.pageNumber + 1 : -1;
   if (currentLayoutKey == 0 || !section || position.spineIndex != currentSpineIndex || position.textOffset == UINT32_MAX)
     return -1;
+  // A found page is final once the build is past the saved character; a missing one stays missing until the
+  // section gains pages (buildStamp).
+  const uint32_t stamp = section->buildStamp();
   if (returnPageCacheValid && returnPageCacheSection == section.get() &&
       returnPageCacheLayoutKey == currentLayoutKey && returnPageCacheSpineIndex == currentSpineIndex &&
-      returnPageCacheTextOffset == position.textOffset) {
+      returnPageCacheTextOffset == position.textOffset && (returnPageCacheValue >= 0 || returnPageCacheStamp == stamp)) {
     return returnPageCacheValue;
   }
   // Reflow replaces section. A running build must reach the offset before its map can name the page.
   if (section->isBuilding() && !section->buildReachedVisibleTextOffset(position.textOffset)) return -1;
   const auto page = section->getPageForVisibleTextOffset(position.textOffset);
-  if (!page) {
-    returnPageCacheValid = false;
-    return -1;
-  }
-  if (!section->isBuilding()) {
+  if (!page || !section->isBuilding() || section->buildPassedVisibleTextOffset(position.textOffset)) {
     returnPageCacheSection = section.get();
     returnPageCacheLayoutKey = currentLayoutKey;
     returnPageCacheSpineIndex = currentSpineIndex;
     returnPageCacheTextOffset = position.textOffset;
-    returnPageCacheValue = static_cast<int>(*page) + 1;
+    returnPageCacheValue = page ? static_cast<int>(*page) + 1 : -1;
+    returnPageCacheStamp = stamp;
     returnPageCacheValid = true;
   }
-  return static_cast<int>(*page) + 1;
+  return page ? static_cast<int>(*page) + 1 : -1;
 #endif
 }
 

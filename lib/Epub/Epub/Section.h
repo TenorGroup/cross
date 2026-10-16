@@ -278,4 +278,13 @@ class Section {
   bool buildReachedVisibleTextOffset(uint32_t offset) const {
     return build_ && builtPageCount_ > 0 && offset <= build_->lastVisibleTextOffset;
   }
+
+  // True when the active build has laid out a page that starts after `offset`: the page holding
+  // `offset` can no longer change while the build goes on.
+  bool buildPassedVisibleTextOffset(uint32_t offset) const {
+    return build_ && builtPageCount_ > 0 && offset < build_->lastVisibleTextOffset;
+  }
+
+  // Changes whenever the section gains pages (pages laid out so far, pages in the cache file).
+  uint32_t buildStamp() const { return (static_cast<uint32_t>(pageCount) << 16) | builtPageCount_; }
 };

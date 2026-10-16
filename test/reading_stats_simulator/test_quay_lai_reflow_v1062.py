@@ -175,6 +175,8 @@ struct Section {
   mutable int lookups = 0;
   bool isBuilding() const { return building; }
   bool buildReachedVisibleTextOffset(uint32_t offset) const { return building && offset <= reached; }
+  bool buildPassedVisibleTextOffset(uint32_t offset) const { return building && offset < reached; }
+  uint32_t buildStamp() const { return static_cast<uint32_t>(pageCount); }
   Section() = default;
   Section(const std::shared_ptr<Epub>&, int, int) {}
   std::optional<uint32_t> getVisibleTextOffsetForPage(uint16_t page) const {
@@ -217,6 +219,7 @@ struct EpubReaderActivity {
   mutable int returnPageCacheSpineIndex = -1;
   mutable uint32_t returnPageCacheTextOffset = UINT32_MAX;
   mutable int returnPageCacheValue = -1;
+  mutable uint32_t returnPageCacheStamp = 0;
   mutable bool returnPageCacheValid = false;
   bool returnPushedForLoad = false;
   bool linkStackOnCard = false;
@@ -329,6 +332,8 @@ class ReturnStackRuntimeTest(unittest.TestCase):
   reader.section->charsPerPage = 65;
   reader.section->reached = 2000;
   assert(reader.returnPageNumber() == 22);
+  // A section that lost its pages is another section (a rebuild); the remembered page belongs to the old one.
+  reader.section = std::make_unique<Section>();
   reader.section->pageCount = 0;
   assert(reader.returnPageNumber() == -1);
   reader.section.reset();
@@ -543,8 +548,27 @@ class ReturnStackRuntimeTest(unittest.TestCase):
   reader.section->building = true;
   reader.section->reached = 5000;
   reader.section->charsPerPage = 50;
+  // The build is past the saved character: the page cannot change any more, so one lookup serves both calls.
+  assert(reader.returnPageNumber() == 29 && reader.returnPageNumber() == 29 && reader.section->lookups == 1);
+  // The build stands exactly on the saved character: a page may still be added there, so every call looks again.
+  reader.section = std::make_unique<Section>();
+  reader.section->building = true;
+  reader.section->reached = 1400;
+  reader.section->charsPerPage = 50;
   assert(reader.returnPageNumber() == 29 && reader.returnPageNumber() == 29 && reader.section->lookups == 2);
 ''')
+
+    def test_return_page_cache_keeps_a_missing_page_until_the_section_grows(self):
+        self.check(r'''
+  EpubReaderActivity reader;
+  reader.pushSavedPosition({0, 14, 1400, readerLayoutKey(readerRenderSpecFor(16))});
+  reader.applyTextSetting(18);
+  reader.section->charsPerPage = 30;
+  assert(reader.returnPageNumber() == -1 && reader.returnPageNumber() == -1 && reader.section->lookups == 1);
+  reader.section->pageCount = 60;
+  assert(reader.returnPageNumber() == 47 && reader.returnPageNumber() == 47 && reader.section->lookups == 2);
+''')
+
 
     def test_quote_and_percent_jumps_save_once_and_same_page_saves_nothing(self):
         self.check(r'''

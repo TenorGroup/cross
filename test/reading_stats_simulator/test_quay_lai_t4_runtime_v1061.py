@@ -144,6 +144,8 @@ struct Section {
   Section(const std::shared_ptr<Epub>&, int, int) {}
   bool isBuilding() const { return building; }
   bool buildReachedVisibleTextOffset(uint32_t offset) const { return building && offset <= reached; }
+  bool buildPassedVisibleTextOffset(uint32_t offset) const { return building && offset < reached; }
+  uint32_t buildStamp() const { return static_cast<uint32_t>(pageCount); }
   std::optional<uint32_t> getVisibleTextOffsetForPage(uint16_t page) const {
     return page < pageCount ? std::optional<uint32_t>(page * 100) : std::nullopt;
   }
@@ -184,6 +186,7 @@ struct EpubReaderActivity {
   mutable int returnPageCacheSpineIndex = -1;
   mutable uint32_t returnPageCacheTextOffset = UINT32_MAX;
   mutable int returnPageCacheValue = -1;
+  mutable uint32_t returnPageCacheStamp = 0;
   mutable bool returnPageCacheValid = false;
   bool returnPushedForLoad = false;
   bool linkStackOnCard = false;
