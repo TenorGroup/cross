@@ -267,7 +267,7 @@ extern "C" uint64_t esp_rtc_get_time_us(void);
 // silent restart, and report the heap they leave, to decide whether the restart is still needed.
 static bool probeKeepHeap = false;
 // CMD:OTA_DRYRUN: the test manifest the series of update boots reads.
-RTC_NOINIT_ATTR char probeDryRunUrl[160];
+RTC_NOINIT_ATTR char probeDryRunUrl[128];  // 128 so the X4 Classic probe fits the RTC slow memory with Home's idle budget
 // The last dry run's result line, printed again by the boot after it (the restart drops the port).
 constexpr uint32_t PROBE_DRYRUN_LINE_MAGIC = 0x4C494E45;
 RTC_NOINIT_ATTR uint32_t probeDryRunLineMagic;

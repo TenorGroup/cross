@@ -81,6 +81,12 @@ static constexpr bool kInkX3 = true;
 #else
 static constexpr bool kInkX3 = false;
 #endif
+// The tenor/ink 1 bit Home cover: the X3 and the X4 Classic, whose button Home has no 4-level cover.
+#if (defined(FREEINK_DEVICE_X3) && FREEINK_DEVICE_X3) || (defined(FREEINK_DEVICE_X4CLASSIC) && FREEINK_DEVICE_X4CLASSIC)
+static constexpr bool kInkCover = true;
+#else
+static constexpr bool kInkCover = false;
+#endif
 // X3 Home draws tenor/ink 1 bit. Its 4-level pass decodes the cover once per strip and plane
 // (14 decodes, 5.7 s measured on an X3 with input held); turn it on once one decode feeds every strip.
 static constexpr bool kInkX3Gray = false;
@@ -1209,7 +1215,7 @@ void HomeActivity::render(RenderLock&&) {
   } else if (refresh.mode == HomeRefresh::Mode::Restore) {
     restoreHomeGhost("tab");
   } else if (!showHomeGray()) {
-    if (grayRequested && !homeGraySelected && kInkX3) {
+    if (grayRequested && !homeGraySelected && kInkCover) {
       homeGraySelected = false;
       freeCoverBuffer();
       coverRendered = false;
@@ -2316,7 +2322,7 @@ void HomeActivity::drawRecentCard() {
   cardThumbHeight = alignCover ? frame.coverH : HOME_CARD_COVER_H;
   heldCover = {static_cast<int16_t>(frame.coverX), static_cast<int16_t>(frame.coverY), static_cast<int16_t>(frame.coverW),
                static_cast<int16_t>(frame.coverH)};
-  if (kInkX3 && homeInkEnabled()) {
+  if (kInkCover && homeInkEnabled()) {
     cardThumbWidth = frame.coverW;
     cardThumbHeight = frame.coverH;
   }
@@ -2827,7 +2833,7 @@ progluma::Result copyCover(void* user, const std::string& path, const idlework::
 // Every tenor/ink slot this frame showed, for the idle step. The 1 bit branch (ugly shell, X3
 // layout off) keeps its GrayThumb covers as they are.
 void HomeActivity::queueIdleCovers() {
-  if (!kInkX3) return;
+  if (!kInkCover) return;
   idleQueue.clear();
   idleQuietSince = millis();
   if (!homeInkEnabled()) return;
@@ -2851,7 +2857,7 @@ void HomeActivity::queueIdleCovers() {
 
 // On the main task, while Home stands still: one step of the queue's first job.
 void HomeActivity::idleStep() {
-  if (!kInkX3) return;
+  if (!kInkCover) return;
   // A key pressed, let go or still held (a key held past 3 s has no edge left to see): not idle.
   if (mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() || gpio.rawInputActive()) {
     idleQuietSince = millis();
@@ -2976,7 +2982,7 @@ void HomeActivity::queueTouchThumb(const int index, const int width, const int h
 
 bool HomeActivity::homeInkEnabled() const {
   return !shell::isUgly() && ((tenorchrome::kTouchShell && HalMemory::getPsramHeap().totalBytes > 0) ||
-                              (kInkX3 && tenorchrome::x3ScreenLayoutEnabled()));
+                              (kInkCover && tenorchrome::x3ScreenLayoutEnabled()));
 }
 
 bool HomeActivity::homeGrayWanted() const {
@@ -3032,7 +3038,7 @@ bool HomeActivity::showHomeGray() {
     if (present[i]) ++found;
   }
   if (!found) return false;
-  if (kInkX3) {
+  if (kInkCover) {
     constexpr int stripRows = heapfloor::kGrayStripRows;
     const int rowBytes = renderer.getDisplayWidthBytes();
     const size_t bytes = size_t(rowBytes) * stripRows;
