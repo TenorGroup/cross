@@ -40,7 +40,7 @@ harness = r'''
 #include <vector>
 #include <set>
 namespace coverink { enum class Outcome : uint8_t { Nothing, Sharp, Stopped, NoHeap, Later, Failed, Gone }; }
-static constexpr bool kInkX3 = true;
+static constexpr bool kInkCover = true;
 uint32_t now = 10000;
 uint32_t millis() { return now; }
 struct { bool pressed = false; bool wasAnyPressed() const { return pressed; } bool wasAnyReleased() const { return false; } } mappedInput;
