@@ -306,6 +306,46 @@ TEST(HalGpioSampling, TheStartFollowsTheRuleAndKeepsTouchOffTheTimer) {
   EXPECT_EQ(body.find("begin()"), std::string::npos) << "the timer's reader must never start the panel";
 }
 
+// The own reader sits behind the SDK's touch capability. A misspelt macro still compiles (an
+// unknown name in #if reads as 0) and would put inputMgr, GT911 included, on the timer's core.
+TEST(HalGpioSampling, TheOwnReaderIsBuiltUnderTheTouchCapability) {
+  const std::string body = halGpioBody("void HalGPIO::startBackgroundSampling()");
+  const size_t ownReader = body.find("new (std::nothrow) InputManager()");
+  ASSERT_NE(ownReader, std::string::npos);
+  const size_t guard = body.rfind("\n#if", ownReader);
+  ASSERT_NE(guard, std::string::npos) << "the own reader is not behind a capability";
+  EXPECT_EQ(body.substr(guard + 1, body.find('\n', guard + 1) - guard - 1), "#if FREEINK_CAP_TOUCH");
+  EXPECT_GT(body.find("\n#endif", ownReader), ownReader);
+
+  std::ifstream file(REPO_ROOT_PATH "/freeink-sdk/libs/hardware/BoardConfig/include/BoardConfig.h");
+  const std::string sdk((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  const size_t define = sdk.find("#define FREEINK_CAP_TOUCH ");
+  ASSERT_NE(define, std::string::npos) << "the SDK no longer defines FREEINK_CAP_TOUCH";
+  const size_t x4pro = sdk.find("FREEINK_DEVICE_X4PRO", define);
+  EXPECT_LT(x4pro, sdk.find("#endif", define)) << "FREEINK_CAP_TOUCH is not set on the X4 Pro";
+}
+
+// A key held while the timer starts (the power key held to wake) must read as held, not as a fresh
+// press: the own reader settles its debounce on the keys as they are before the first tick.
+TEST(HalGpioSampling, TheOwnReaderSettlesOnHeldKeysBeforeTheTimer) {
+  const std::string body = halGpioBody("void HalGPIO::startBackgroundSampling()");
+  const size_t ownReader = body.find("new (std::nothrow) InputManager()");
+  const size_t publish = body.find("sampledInput = input;");
+  ASSERT_NE(ownReader, std::string::npos);
+  ASSERT_NE(publish, std::string::npos);
+  const size_t settle = body.find("input->isDebouncePending()", ownReader);
+  EXPECT_LT(settle, publish) << "the own reader starts unsettled: a held key becomes a press";
+  EXPECT_LT(body.find("input->update();", settle), publish) << "the settling loop never samples";
+}
+
+// The timer's first tick runs on the other core and dereferences sampledInput at once.
+TEST(HalGpioSampling, TheReaderIsPublishedBeforeTheTimerStarts) {
+  const std::string body = halGpioBody("void HalGPIO::startBackgroundSampling()");
+  const size_t start = body.find("esp_timer_start_periodic(");
+  ASSERT_NE(start, std::string::npos);
+  EXPECT_LT(body.find("sampledInput = input;"), start) << "the first tick reads a null reader";
+}
+
 TEST(HalGpioSampling, TheTimerReadsItsReaderAndTheLoopKeepsThePanel) {
   const std::string sample = halGpioBody("void HalGPIO::sampleButtons(void* self)");
   ASSERT_FALSE(sample.empty());
