@@ -66,6 +66,11 @@ class HalStorage {
   bool openFileForWrite(const char* moduleName, const String& path, HalFile& file);
   bool removeDir(const char* path);
   bool freeSpace(uint64_t& bytes, uint32_t& clusterBytes);
+#if defined(TENOR_PRESS_PROBE) && FREEINK_DEVICE_X3 && !defined(SIMULATOR)
+  // CMD:SD_CUT (press probe, X3/X4 build): from here the card looks dead until the next boot,
+  // and with nextBootToo the next begin() fails once as well.
+  void probeKillCard(bool nextBootToo);
+#endif
 
   static HalStorage& getInstance() { return instance; }
 

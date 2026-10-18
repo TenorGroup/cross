@@ -11,6 +11,11 @@
 #ifdef TENOR_UI_ACCEPTANCE
 #include <esp_timer.h>
 #endif
+#if defined(TENOR_PRESS_PROBE) && FREEINK_DEVICE_X3 && !defined(SIMULATOR)
+#include <BoardConfig.h>
+#include <driver/gpio.h>
+#include <esp_attr.h>
+#endif
 
 #define SDCard SDCardManager::getInstance()
 
@@ -38,7 +43,22 @@ HalStorage::HalStorage() {
 
 // begin() and ready() are only called from setup, no need to acquire mutex for them
 
-bool HalStorage::begin() { return SDCard.begin(); }
+#if defined(TENOR_PRESS_PROBE) && FREEINK_DEVICE_X3 && !defined(SIMULATOR)
+// Set by SD_CUT 2, spent by the next begin(): RTC memory keeps it across the restart.
+RTC_NOINIT_ATTR static uint32_t probeDeadAtBoot;
+constexpr uint32_t PROBE_DEAD_AT_BOOT = 0x53444354;
+#endif
+
+bool HalStorage::begin() {
+#if defined(TENOR_PRESS_PROBE) && FREEINK_DEVICE_X3 && !defined(SIMULATOR)
+  if (probeDeadAtBoot == PROBE_DEAD_AT_BOOT) {
+    probeDeadAtBoot = 0;
+    LOG_INF("SD", "SD_CUT boot: card taken as dead");
+    return false;
+  }
+#endif
+  return SDCard.begin();
+}
 
 bool HalStorage::ready() const { return SDCard.ready(); }
 
@@ -49,6 +69,23 @@ class HalStorage::StorageLock {
   StorageLock() { xSemaphoreTakeRecursive(HalStorage::getInstance().storageMutex, portMAX_DELAY); }
   ~StorageLock() { xSemaphoreGiveRecursive(HalStorage::getInstance().storageMutex); }
 };
+
+#if defined(TENOR_PRESS_PROBE) && FREEINK_DEVICE_X3 && !defined(SIMULATOR)
+// The card as the X3 lost it on 18/10/2026: MISO reads 0 and every command waits out its timeout.
+// CS becomes an input pulled up, so SdFat's digitalWrite no longer selects the card, and MISO is
+// pulled down. The card gets no command, so nothing on it changes; the boot's SDCard.begin()
+// drives CS again. GPIO13 cannot do this: it does not cut the card's power on the X3.
+void HalStorage::probeKillCard(const bool nextBootToo) {
+  StorageLock lock;
+  if (nextBootToo) probeDeadAtBoot = PROBE_DEAD_AT_BOOT;
+  const auto cs = static_cast<gpio_num_t>(BoardConfig::ACTIVE.sd.cs);
+  const auto miso = static_cast<gpio_num_t>(BoardConfig::ACTIVE.sd.miso);
+  gpio_set_direction(cs, GPIO_MODE_INPUT);
+  gpio_pullup_en(cs);
+  gpio_pullup_dis(miso);
+  gpio_pulldown_en(miso);
+}
+#endif
 
 void HalStorage::prepareForDeepSleep() {
   StorageLock lock;

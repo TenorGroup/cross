@@ -1997,6 +1997,17 @@ void loop() {
         mappedInputManager.setStrokeLog(arg.toInt() != 0, label.c_str());
         logSerial.printf("STROKE_LOG:%d,%s\n", arg.toInt() != 0 ? 1 : 0, label.c_str());
 #endif
+#if FREEINK_DEVICE_X3 && !defined(SIMULATOR)
+      } else if (cmd.startsWith("SD_CUT ")) {
+        // CMD:SD_CUT 1: the card looks dead from here (HalStorage::probeKillCard), as it did on
+        // 18/10/2026; a page turn then meets it. SD_CUT 2: the next boot also takes it as dead.
+        const int mode = cmd.substring(7).toInt();
+        {
+          RenderLock lock;
+          Storage.probeKillCard(mode == 2);
+        }
+        logSerial.printf("SD_CUT:mode=%d t=%lu\n", mode, millis());
+#endif
       } else if (cmd == "PANIC") {
 #if TENOR_COLD_LOG
         coldlog::flush("panic");
