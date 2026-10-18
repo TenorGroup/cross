@@ -16,6 +16,7 @@
 
 #include "CrossPointSettings.h"
 #include "DictionaryDefinitionActivity.h"
+#include "util/DictionaryLookupPolicy.h"
 #include "QuoteHighlight.h"
 #include "QuoteReselect.h"
 #include "ReadingStatsStore.h"
@@ -203,7 +204,28 @@ void DictionaryWordSelectActivity::performLookup() {
   std::string definition;
   std::string headword;
   Dictionary::LookupResult result = Dictionary::LookupResult::NotFound;
-  const bool found = ok && dict.lookup(words[selected].text, definition, headword, &result);
+  std::string phrase = words[selected].text;
+  // Build at most three adjacent words on the same rendered line. The policy
+  // helper tries the longest phrase first, then backs off to one token while
+  // preserving UTF-8 and Vietnamese marks.
+  for (int i = selected + 1; i < static_cast<int>(words.size()) && i < selected + 3; ++i) {
+    if (words[i].row != words[selected].row) break;
+    phrase.push_back(' ');
+    phrase += words[i].text;
+  }
+  const auto candidates = DictionaryLookupPolicy::phraseCandidates(phrase);
+  bool found = false;
+  if (ok) {
+    for (const auto& candidate : candidates) {
+      if (dict.lookup(candidate.c_str(), definition, headword, &result)) {
+        found = true;
+        break;
+      }
+      if (result == Dictionary::LookupResult::LowMemory || result == Dictionary::LookupResult::Decompress ||
+          result == Dictionary::LookupResult::ReadError)
+        break;
+    }
+  }
 
   if (found) {
     popup = Popup::None;

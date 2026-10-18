@@ -12,7 +12,7 @@
 
 #include "DictZip.h"
 #include "DictionaryRegistry.h"
-#include "StringUtils.h"
+#include "DictionaryLookupPolicy.h"
 
 namespace {
 
@@ -93,12 +93,51 @@ IfoFacts readIfoFacts(const std::string& ifoPath) {
   return facts;
 }
 
+// A qidx sidecar is only safe for a sorted source. Keep the check bounded in
+// RAM and compare the actual UTF-8 headwords with the same comparator used by
+// lookup. This is a one-time linear pass when a dictionary is opened.
+bool indexHasOrderWarning(const std::string& indexPath) {
+  HalFile file;
+  if (!Storage.openFileForRead("DICT", indexPath.c_str(), file)) return true;
+  char previous[256] = {};
+  char current[256] = {};
+  bool havePrevious = false;
+  while (static_cast<uint32_t>(file.position()) < static_cast<uint32_t>(file.fileSize())) {
+    size_t length = 0;
+    bool terminated = false;
+    while (length + 1 < sizeof(current)) {
+      const int byte = file.read();
+      if (byte < 0) return true;
+      if (byte == 0) {
+        current[length] = '\0';
+        terminated = true;
+        break;
+      }
+      current[length++] = static_cast<char>(byte);
+    }
+    if (!terminated) {
+      int byte;
+      do {
+        byte = file.read();
+      } while (byte > 0);
+      return true;
+    }
+    uint8_t suffix[8];
+    if (file.read(suffix, sizeof(suffix)) != static_cast<int>(sizeof(suffix))) return true;
+    if (havePrevious && DictionaryLookupPolicy::hasIndexOrderWarning(previous, current)) return true;
+    memcpy(previous, current, sizeof(previous));
+    havePrevious = true;
+  }
+  return false;
+}
+
 }  // namespace
 
 bool Dictionary::open(const char* folderName) {
   basePath.clear();
   hasSyn = false;
   htmlDefinitions = false;
+  indexOrderWarning = false;
   std::string resolved;
   if (!DictionaryRegistry::resolveBasePath(folderName, resolved)) {
     LOG_ERR("DICT", "No dictionary found in folder '%s'", folderName ? folderName : "");
@@ -127,6 +166,8 @@ bool Dictionary::open(const char* folderName) {
   }
   hasSyn = Storage.exists((resolved + ".syn").c_str());
   htmlDefinitions = ifo.htmlDefinitions;
+  indexOrderWarning = indexHasOrderWarning(resolved + ".idx");
+  if (indexOrderWarning) LOG_INF("DICT", "Index order warning: linear lookup fallback for %s", resolved.c_str());
 
   basePath = std::move(resolved);
   return true;
@@ -372,7 +413,7 @@ uint32_t Dictionary::bisectSamples(HalFile& sidecar, HalFile& source, uint32_t s
       lo = 0;  // unreadable sample: abandon the descent and scan from the start
       break;
     }
-    if (StringUtils::asciiCaseCmp(wordBuf, target) <= 0) {
+    if (DictionaryLookupPolicy::comparatorKey(wordBuf) <= DictionaryLookupPolicy::comparatorKey(target)) {
       lo = mid;
     } else {
       hi = mid - 1;
@@ -388,10 +429,10 @@ DictLocation Dictionary::locate(LookupSession& session, const char* target, std:
   DictLocation result;
 
   // Bisect the sampled offsets to the last sample whose headword <= target.
-  const uint32_t startByte = bisectSamples(session.qidx, session.idx, session.sampleCount, target);
+  const uint32_t startByte = indexOrderWarning ? 0 : bisectSamples(session.qidx, session.idx, session.sampleCount, target);
 
-  // Linear scan of at most SAMPLE_INTERVAL entries: headword NUL, BE32 offset,
-  // BE32 size. The index is sorted, so stop at the first headword > target.
+  // Linear scan of at most SAMPLE_INTERVAL entries for an ordered index. A
+  // warning index scans from byte zero without the early-stop assumption.
   if (!session.idx.seekSet(startByte)) {
     LOG_ERR("DICT", "Index seek to %lu failed", static_cast<unsigned long>(startByte));
     result.readError = true;
@@ -406,7 +447,7 @@ DictLocation Dictionary::locate(LookupSession& session, const char* target, std:
     uint8_t suffix[8];
     if (session.idx.read(suffix, 8) != 8) break;
 
-    const int cmp = StringUtils::asciiCaseCmp(wordBuf, target);
+    const int cmp = DictionaryLookupPolicy::comparatorKey(wordBuf).compare(DictionaryLookupPolicy::comparatorKey(target));
     if (cmp == 0) {
       result.offset = readBe32(suffix);
       result.size = readBe32(suffix + 4);
@@ -414,7 +455,7 @@ DictLocation Dictionary::locate(LookupSession& session, const char* target, std:
       if (matchedHeadwordOut) *matchedHeadwordOut = wordBuf;
       return result;
     }
-    if (cmp > 0) break;
+    if (cmp > 0 && !indexOrderWarning) break;
   }
   return result;
 }
@@ -484,7 +525,7 @@ DictLocation Dictionary::locateSynonym(LookupSession& session, const char* targe
     uint8_t ordBytes[4];
     if (session.syn.read(ordBytes, 4) != 4) break;
 
-    const int cmp = StringUtils::asciiCaseCmp(wordBuf, target);
+    const int cmp = DictionaryLookupPolicy::comparatorKey(wordBuf).compare(DictionaryLookupPolicy::comparatorKey(target));
     if (cmp == 0) return locateByOrdinal(session, readBe32(ordBytes), matchedHeadwordOut);
     if (cmp > 0) break;
   }
@@ -557,6 +598,13 @@ bool Dictionary::readDefinition(const DictLocation& location, std::string& out, 
     return fail(LookupResult::ReadError);
   }
   out.assign(size, '\0');
+  // std::string does not pass through the heap-floor door itself. Judge its
+  // contiguous buffer immediately so a large definition cannot consume the
+  // grayscale reserve and leave the reader in a poisoned state.
+  if (!heapfloor::judge(size, out.data(), "dict-definition")) {
+    out.clear();
+    return fail(LookupResult::LowMemory);
+  }
   // The bounds check above guarantees the bytes exist, so a short read is an IO
   // failure — surface it instead of returning a silently truncated definition.
   if (dict.read(&out[0], size) != static_cast<int>(size)) {
@@ -593,9 +641,7 @@ std::string Dictionary::cleanWord(const char* word) {
   if (start >= end) return "";
 
   std::string result(word + start, end - start);
-  std::transform(result.begin(), result.end(), result.begin(),
-                 [](unsigned char c) { return c >= 0x80 ? c : static_cast<unsigned char>(std::tolower(c)); });
-  return result;
+  return DictionaryLookupPolicy::comparatorKey(result);
 }
 
 void Dictionary::stemVariants(const std::string& word, std::vector<std::string>& out) {

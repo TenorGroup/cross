@@ -47,6 +47,9 @@ class Dictionary {
   // dictionaries with 64-bit index offsets (idxoffsetbits=64 in .ifo).
   bool open(const char* folderName);
   bool isOpen() const { return !basePath.empty(); }
+  // Some supplied .idx files have local inversions after case/diacritic
+  // folding. Such files are still usable, but binary search cannot be trusted.
+  bool orderWarning() const { return indexOrderWarning; }
 
   // True when the .qidx sidecar (or the .sidx sidecar of a present .syn) is
   // missing or stale — call buildIndex() first so the UI can show an
@@ -187,6 +190,7 @@ class Dictionary {
   bool hasPlainDict = false;
   bool hasSyn = false;  // a <stem>.syn synonym index exists next to the .idx
   bool htmlDefinitions = false;
+  bool indexOrderWarning = false;
 
   // Shared scan buffer: lookups are single-threaded and this avoids a
   // 256-byte array on the stack of every locate() call.
