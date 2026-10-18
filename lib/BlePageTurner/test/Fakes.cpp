@@ -1,5 +1,6 @@
 #include "Fakes.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <stdexcept>
 
@@ -142,7 +143,11 @@ bool connect(const char* addr) {
   return true;
 }
 void disconnect() { theRadio.connected = false; }
-void forget(const char* addr) { theRadio.forgotten.emplace_back(addr); }
+void forget(const char* addr) {
+  theRadio.forgotten.emplace_back(addr);
+  // The SDK drops the bond from its list whether or not the radio runs.
+  theRadio.bonds.erase(std::remove(theRadio.bonds.begin(), theRadio.bonds.end(), addr), theRadio.bonds.end());
+}
 bool takeConnectFailure(char*, size_t) { return false; }
 uint8_t bondCount() { return static_cast<uint8_t>(theRadio.bonds.size()); }
 Peer bond(const uint8_t index) { return {theRadio.bonds[index].c_str(), ""}; }

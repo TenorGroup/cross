@@ -689,7 +689,10 @@ bool pair(const char* addr, const char* name) {
 void disconnect() { port::disconnect(); }
 
 bool forget(const char* addr) {
+  const uint8_t before = port::bondCount();
   port::forget(addr);
+  // tick() refreshes the count only while the radio runs: stopped, the next book would start it for nothing.
+  if (port::bondCount() < before) savedBonds = port::bondCount();
   // Forgetting a device forgets its button table too.
   bool changed = forgetRemote(config->remotes, config->remoteCount, addr);
   // A forgotten address left as the choice would be a reconnect into nothing next time.

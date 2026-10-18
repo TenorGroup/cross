@@ -71,6 +71,16 @@ TEST_F(TickTest, HomeNeverStartsTheRadioInTheX3Profile) {
   EXPECT_FALSE(bleturner::beforeScreenChange(0, /*nextIsReader=*/true) && radio().running);
 }
 
+// The count of saved remotes is refreshed from the stack only while it runs: forgetting the last one
+// with the radio stopped must still keep the next book from bringing the stack up for nothing.
+TEST_F(TickTest, ForgettingTheLastRemoteWhileStoppedKeepsTheBookFromStartingIt) {
+  const std::vector<std::string> saved = radio().bonds;
+  for (const std::string& addr : saved) bleturner::forget(addr.c_str());
+  ASSERT_FALSE(radio().running);
+  pass(fake::reading());
+  EXPECT_EQ(radio().creates, 0u);
+}
+
 TEST_F(TickTest, StartsOnceTheBookShowsItsPageAndOncePerVisit) {
   Scene s = fake::reading();
   s.pageShown = false;
