@@ -93,11 +93,10 @@ class TransferEntryContract(unittest.TestCase):
         self.assertIn("props.inputMask = fui::InputTouch", self.chooser)
 
     def test_usb_is_fourth_and_capability_gated(self):
-        self.assertRegex(
-            self.chooser_header,
-            r"#if FREEINK_CAP_USB_MSC\s+static constexpr int MENU_ITEM_COUNT = 4;\s+#else\s+"
-            r"static constexpr int MENU_ITEM_COUNT = 3;",
-        )
+        self.assertIn("static constexpr int MENU_ITEM_COUNT = 5;", self.chooser_header)
+        self.assertIn("#elif !FREEINK_DEVICE_X3", self.chooser_header)
+        self.assertIn("static constexpr int MENU_ITEM_COUNT = 4;", self.chooser_header)
+        self.assertIn("static constexpr int MENU_ITEM_COUNT = 3;", self.chooser_header)
         items = re.search(r"constexpr StrId menuItems.*?= \{(.*?)\n\};", self.chooser, re.S).group(1)
         self.assertRegex(items, r"#if FREEINK_CAP_USB_MSC\s+StrId::STR_USB_DRIVE")
         branch = function_body(self.activity, "void CrossPointWebServerActivity::onNetworkModeSelected")

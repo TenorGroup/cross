@@ -19,6 +19,9 @@ constexpr StrId menuItems[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
 #if FREEINK_CAP_USB_MSC
     StrId::STR_USB_DRIVE,
 #endif
+#if !FREEINK_DEVICE_X3
+    StrId::STR_WEBDAV_PULL,
+#endif
 };
 constexpr StrId menuDescs[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
     StrId::STR_JOIN_DESC,
@@ -27,6 +30,9 @@ constexpr StrId menuDescs[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
 #if FREEINK_CAP_USB_MSC
     StrId::STR_USB_DRIVE_DESC,
 #endif
+#if !FREEINK_DEVICE_X3
+    StrId::STR_WEBDAV_PULL_DESC,
+#endif
 };
 constexpr UIIcon menuIcons[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
     UIIcon::Wifi,
@@ -34,6 +40,9 @@ constexpr UIIcon menuIcons[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
     UIIcon::Hotspot,
 #if FREEINK_CAP_USB_MSC
     UIIcon::Usb,
+#endif
+#if !FREEINK_DEVICE_X3
+    UIIcon::Wifi,
 #endif
 };
 }  // namespace

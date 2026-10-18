@@ -4,7 +4,15 @@
 
 #include "activities/UiListActivity.h"
 
-enum class NetworkMode { JOIN_NETWORK, CONNECT_CALIBRE, CREATE_HOTSPOT, USB_DRIVE };
+// Keep USB_DRIVE at its historical ordinal. WebDAV is appended so persisted
+// or test-provided mode values continue to select the same USB row.
+enum class NetworkMode {
+  JOIN_NETWORK,
+  CONNECT_CALIBRE,
+  CREATE_HOTSPOT,
+  USB_DRIVE,
+  WEB_DAV,
+};
 
 /**
  * NetworkModeSelectionActivity presents the user with a choice:
@@ -24,6 +32,8 @@ class NetworkModeSelectionActivity final : public UiListActivity {
   explicit NetworkModeSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
 #if FREEINK_CAP_USB_MSC
+  static constexpr int MENU_ITEM_COUNT = 5;
+#elif !FREEINK_DEVICE_X3
   static constexpr int MENU_ITEM_COUNT = 4;
 #else
   static constexpr int MENU_ITEM_COUNT = 3;

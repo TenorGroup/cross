@@ -27,6 +27,9 @@
 #include "UIFontTiers.h"
 #include "WifiSelectionActivity.h"
 #include "activities/network/CalibreConnectActivity.h"
+#if !FREEINK_DEVICE_X3
+#include "activities/network/WebDavPullActivity.h"
+#endif
 #include "activities/reader/ReaderActivity.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
@@ -300,6 +303,13 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
 #if FREEINK_CAP_USB_MSC
   if (mode == NetworkMode::USB_DRIVE) {
     activityManager.goToUsbDrive();
+    return;
+  }
+#endif
+
+#if !FREEINK_DEVICE_X3
+  if (mode == NetworkMode::WEB_DAV) {
+    activityManager.replaceActivity(std::make_unique<WebDavPullActivity>(renderer, mappedInput));
     return;
   }
 #endif
