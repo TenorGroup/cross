@@ -112,6 +112,9 @@ if 'EpubReaderActivity::yieldForRadio(' not in cpp:
 # A reader without the exit step (the previous release) writes nothing as it closes.
 if 'EpubReaderActivity::writePendingThumbs(' not in cpp:
     functions.append('void EpubReaderActivity::writePendingThumbs() {}')
+# A reader that restarts for a dead card (src/CardRescue.h): the card in these cases always answers.
+if 'restartForDeadCard(' in cpp:
+    functions.append('static bool restartForDeadCard(const Epub&) { return false; }')
 reader = (reader_source / 'src/activities/reader/ReaderActivity.cpp').read_text()
 functions += [function(name, reader, 'ReaderActivity') for name in ['luotLatTrangNgoai', 'processExternalPageTurn', 'pageTurnLocked', 'onTick',
                                                                    'updateReadingTime', 'chotSoLieuDoc', 'onPause']

@@ -9,8 +9,24 @@
 
 namespace cardrescue {
 
+// Bits of the silent restart payload (main.cpp), kept in RTC memory across ESP.restart().
+constexpr uint32_t PAYLOAD_LIGHT_ON = 1u << 0;
+constexpr uint32_t PAYLOAD_RESCUED = 1u << 1;
+
 // True once this boot chain has restarted for the card.
 inline bool rescued = false;
+
+// Setup reads the payload before clearing it. Only a silent restart carries one, so a cold boot
+// or a wake from sleep starts a new chain.
+inline void onBoot(const bool silentRestart, const uint32_t payload) {
+  rescued = silentRestart && (payload & PAYLOAD_RESCUED) != 0;
+}
+
+// The payload of every silent restart. A spent rescue rides along each later restart of the chain
+// (a heap restart after the rescue included), or a card that dies again would restart in a loop.
+inline uint32_t payload(const bool lightOn) {
+  return (lightOn ? PAYLOAD_LIGHT_ON : 0) | (rescued ? PAYLOAD_RESCUED : 0);
+}
 
 // The book file answers: "PK" at its start and a byte from its second sector. SdFat caches one
 // sector, so at least one of the two reads reaches the card.

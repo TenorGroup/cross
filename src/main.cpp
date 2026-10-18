@@ -56,6 +56,7 @@
 #endif
 
 #include "BlePageTurnerHost.h"
+#include "CardRescue.h"
 #include "CrossPointSettings.h"
 #include "HeapMapProbe.h"
 #include "HeapBigProbe.h"
@@ -307,7 +308,7 @@ constexpr uint32_t SILENT_REBOOT_TARGET_READER = 1;
 constexpr uint32_t SILENT_REBOOT_TARGET_SETTINGS = 2;
 constexpr uint32_t SILENT_REBOOT_TARGET_OTA = 3;
 constexpr uint32_t SILENT_REBOOT_TARGET_MAX = SILENT_REBOOT_TARGET_OTA;
-constexpr uint32_t SILENT_REBOOT_LIGHT_ON = 1U << 0;
+constexpr uint32_t SILENT_REBOOT_LIGHT_ON = cardrescue::PAYLOAD_LIGHT_ON;
 
 // How the device is coming back to life, resolved once at boot. Both resume
 // flows suppress the splash and leave the panel holding its pre-boot frame; a
@@ -337,7 +338,7 @@ static void armSilentReboot(const uint32_t target) {
   silentRebootTarget = target;
   if (target == SILENT_REBOOT_TARGET_HOME)
     silentRebootHomeMenu = static_cast<uint32_t>(activityManager.homeMenuOrigin());
-  silentRebootPayload = Frontlight.isOn() ? SILENT_REBOOT_LIGHT_ON : 0;
+  silentRebootPayload = cardrescue::payload(Frontlight.isOn());
   silentRebootMagic = SILENT_REBOOT_MAGIC;
 }
 
@@ -399,6 +400,15 @@ void silentRestart() {
 void silentRestartToReader() { silentRestartTo(SILENT_REBOOT_TARGET_READER, "reader"); }
 
 void silentRestartToSettings() { silentRestartTo(SILENT_REBOOT_TARGET_SETTINGS, "settings"); }
+
+void silentRestartForCard() {
+  if (deepSleepInProgress) return;
+  cardrescue::rescued = true;
+  armSilentReboot(SILENT_REBOOT_TARGET_READER);
+  LOG_ERR("MAIN", "SD_RESCUE restart");
+  showRestartNotice();
+  ESP.restart();
+}
 
 void silentRestartToOta(const uint8_t dryRunsLeft, const uint8_t dryRunsTotal) {
   if (deepSleepInProgress) return;
@@ -721,6 +731,7 @@ void setup() {
   const uint32_t snapshotTarget =
       (isSilentReboot && silentRebootTarget <= SILENT_REBOOT_TARGET_MAX) ? silentRebootTarget : 0;
   const bool silentRebootLightOn = isSilentReboot && (silentRebootPayload & SILENT_REBOOT_LIGHT_ON) != 0;
+  cardrescue::onBoot(isSilentReboot, silentRebootPayload);
   const HomeMenuItem snapshotHomeMenu =
       isSilentReboot && silentRebootHomeMenu <= static_cast<uint32_t>(HomeMenuItem::FAVORITES_TAB)
           ? static_cast<HomeMenuItem>(silentRebootHomeMenu)

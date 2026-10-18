@@ -72,3 +72,32 @@ TEST(CardRescueDecision, OnceAChainHasRestartedNoMoreProbes) {
   EXPECT_EQ(dead.calls, 0);
   cardrescue::rescued = false;
 }
+
+TEST(CardRescueChain, SpentRescueSurvivesALaterHeapRestart) {
+  cardrescue::onBoot(false, 0);  // cold boot
+  ProbeCount dead{0, false};
+  ASSERT_TRUE(cardrescue::shouldRestart(true, dead));
+  cardrescue::rescued = true;  // silentRestartForCard()
+  uint32_t rtc = cardrescue::payload(true);
+  cardrescue::onBoot(true, rtc);
+  rtc = cardrescue::payload(false);  // the heap restarts the book again, light off
+  cardrescue::onBoot(true, rtc);
+  EXPECT_EQ(rtc & cardrescue::PAYLOAD_LIGHT_ON, 0u);
+  EXPECT_FALSE(cardrescue::shouldRestart(true, dead));
+  EXPECT_EQ(dead.calls, 1);
+}
+
+TEST(CardRescueChain, ColdBootOrWakeStartsANewChain) {
+  cardrescue::rescued = true;
+  const uint32_t rtc = cardrescue::payload(true);  // left in RTC memory, read by no silent restart
+  cardrescue::onBoot(false, rtc);
+  EXPECT_FALSE(cardrescue::rescued);
+}
+
+TEST(CardRescueChain, LightBitIsUnchanged) {
+  cardrescue::rescued = false;
+  EXPECT_EQ(cardrescue::payload(true), cardrescue::PAYLOAD_LIGHT_ON);
+  EXPECT_EQ(cardrescue::payload(false), 0u);
+  cardrescue::onBoot(true, cardrescue::PAYLOAD_LIGHT_ON);
+  EXPECT_FALSE(cardrescue::rescued);
+}

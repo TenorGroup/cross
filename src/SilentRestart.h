@@ -10,6 +10,9 @@
 void silentRestart();            // home screen
 void silentRestartToReader();    // currently-open EPUB (APP_STATE.openEpubPath)
 void silentRestartToSettings();  // settings screen
+// The open book's card stopped answering (CardRescue.h): restart into the book with nothing
+// written first, since every write would wait out the dead card. Returns only if sleep won.
+void silentRestartForCard();
 // The update boot (network/UpdateBoot.h): the confirmed install when dryRunsLeft is 0, else the
 // probe's next dry run. Callers: the update screen after the user chose Update, and CMD:OTA_DRYRUN.
 void silentRestartToOta(uint8_t dryRunsLeft = 0, uint8_t dryRunsTotal = 0);

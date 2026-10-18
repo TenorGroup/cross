@@ -39,7 +39,9 @@
 #include "BookmarkEntry.h"
 #include "CrossPointSettings.h"
 #include "ReaderInkWeight.h"
+#include "CardRescue.h"
 #include "CrossPointState.h"
+#include "SilentRestart.h"
 #include "DictionaryWordSelectActivity.h"
 #include "EpubReaderBookmarksActivity.h"
 #include "EpubReaderChapterSelectionActivity.h"
@@ -548,6 +550,18 @@ bool EpubReaderActivity::loadBook() {
 
 namespace {
 void saveTapTipHidden() { SETTINGS.saveToFile(); }
+
+// A page or chapter that failed to load on a card that no longer answers: restart into the book
+// (CardRescue.h). True when the paint must stop here.
+bool restartForDeadCard(const Epub& book) {
+  if (!cardrescue::shouldRestart(gpio.deviceIsX3(), [&book] {
+        HalFile f;
+        return Storage.openFileForRead("ERS", book.getPath(), f) && cardrescue::answers(f);
+      }))
+    return false;
+  silentRestartForCard();
+  return true;
+}
 }  // namespace
 
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
@@ -2921,6 +2935,7 @@ void EpubReaderActivity::renderBook() {
   };
 
   const auto showBuildError = [this]() {
+    if (restartForDeadCard(*epub)) return;
 #ifdef TENOR_TURN_TRACE
     tracePaint("ERROR", "index");
     logTurnTrace("FAILED", appliedTurnTrace, "index");
@@ -3404,6 +3419,8 @@ void EpubReaderActivity::renderBook() {
     if (!p) {
       LOG_ERR("ERS", "Failed to load page from SD (attempt %u reason=%u)", static_cast<unsigned>(pageLoadRetryCount + 1),
               static_cast<unsigned>(Page::loadFailure));
+      // Once per incident, before the retries: they would only wait out a dead card.
+      if (pageLoadRetryCount == 0 && restartForDeadCard(*epub)) return;
       automaticPageTurnActive = false;
       const bool giveUp = ++pageLoadRetryCount > MAX_PAGE_LOAD_RETRIES;
       if (giveUp) {
