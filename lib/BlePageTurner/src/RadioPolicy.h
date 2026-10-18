@@ -151,6 +151,7 @@ struct NoteInputs {
   bool refused;        // this visit's radio start was refused (heap rules, rollback)
   uint32_t runningMs;  // how long the radio has been up without a break in this visit
   bool acknowledged;   // a page turn was applied
+  bool hasBond;        // a remote has been paired: without one nothing can link
 };
 
 // The ONE answer to "what does the status bar say about the remote now".

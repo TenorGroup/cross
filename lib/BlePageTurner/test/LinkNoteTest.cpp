@@ -32,6 +32,7 @@ NoteInputs in(const bool entered, const bool linked = false, const bool refused 
   i.refused = refused;
   i.runningMs = runningMs;
   i.acknowledged = acknowledged;
+  i.hasBond = true;
   return i;
 }
 

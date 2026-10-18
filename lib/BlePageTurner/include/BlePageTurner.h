@@ -100,6 +100,7 @@ enum class Why : uint8_t {
   IdleNoLink,      // nothing connected for kIdleOffMs
   HeapLow,         // not enough heap for the stack
   HeapInPieces,    // enough in total, but no block the stack can take
+  NoBond,          // the book is in front and no remote was ever paired
 };
 
 // Module -> host. Every pointer is required except heapMap.
