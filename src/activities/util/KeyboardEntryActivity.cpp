@@ -221,6 +221,7 @@ void paintUglyKeys(const GfxRenderer& r, const fui::KeyboardProps& props, const 
 void KeyboardEntryActivity::onEnter() {
   mark_.reset();
   Activity::onEnter();
+  inputGeneration.fetch_add(1, std::memory_order_acq_rel);
   idleSince = static_cast<uint32_t>(millis());
   // ActivityManager publishes the activity before calling onEnter unlocked.
   // A pending render notification can already be reading its initial state.
@@ -258,7 +259,11 @@ void KeyboardEntryActivity::onEnter() {
   requestUpdate();
 }
 
-void KeyboardEntryActivity::onExit() { Activity::onExit(); }
+void KeyboardEntryActivity::onExit() {
+  inputGeneration.fetch_add(1, std::memory_order_acq_rel);
+  touchRouter.reset();
+  Activity::onExit();
+}
 
 const fui::KeyboardLayout& KeyboardEntryActivity::currentLayout() const {
   if (symbols) return fui::builtinKeyboardLayout(layoutId, shifted, true);
@@ -788,6 +793,7 @@ void KeyboardEntryActivity::loop() {
   input.touchHeld = mappedInput.isScreenTouchHeld(hx, hy);
   input.heldMs = mappedInput.getHeldTime();
   input.capturedAt = millis();
+  input.generation = inputGeneration.load(std::memory_order_acquire);
 
   const auto buttonActive = [](const ButtonInput& value) { return value.pressed || value.released || value.held; };
   const bool interaction = buttonActive(input.rowPrev) || buttonActive(input.rowNext) ||
@@ -806,10 +812,13 @@ void KeyboardEntryActivity::loop() {
     // render() retains this same lock through its entire frame, so its text
     // copy, cursor spans, visibility and layout all describe one input state.
     RenderLock lock(*this);
+    if (input.generation != inputGeneration.load(std::memory_order_acquire)) return;
     loopLocked(input, complete);
     if (complete) completedText = text;
   }
   if (complete) {
+    inputGeneration.fetch_add(1, std::memory_order_acq_rel);
+    touchRouter.reset();
     if (backCancels && input.back.released) onCancel();
     else onComplete(std::move(completedText));
   }
@@ -817,6 +826,8 @@ void KeyboardEntryActivity::loop() {
 
 bool KeyboardEntryActivity::saveInputBeforeHome() {
   if (backCancels) { onCancel(); return true; }
+  inputGeneration.fetch_add(1, std::memory_order_acq_rel);
+  touchRouter.reset();
   std::string completedText;
   {
     RenderLock lock(*this);

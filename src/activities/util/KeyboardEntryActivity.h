@@ -62,6 +62,10 @@ class KeyboardEntryActivity : public Activity {
   bool backCancels = false;
   uint32_t idleTimeoutMs = 0;
   uint32_t idleSince = 0;
+  // Every activity lifetime owns a generation. A frame captured before Back,
+  // Home, or completion must never reach the next state after the render lock
+  // becomes available.
+  std::atomic<uint32_t> inputGeneration{0};
   bool passwordVisible = false;
 
   ButtonNavigator buttonNavigator;
@@ -139,6 +143,7 @@ class KeyboardEntryActivity : public Activity {
   struct InputFrame {
     ButtonInput rowPrev, rowNext, colPrev, colNext, confirm, back;
     unsigned long heldMs, capturedAt;
+    uint32_t generation;
     bool tapped, touchDown, touchHeld;
     int tapX = 0, tapY = 0, touchX = 0, touchY = 0;
   };

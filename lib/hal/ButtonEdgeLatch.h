@@ -31,7 +31,10 @@ constexpr bool samplesInBackground(const bool adcLadder, const bool gpioKeys, co
 // one edge per frame see each tap in a frame of its own. Each edge keeps the sample it
 // was seen in, so a short tap handed out late still reads its own held time.
 struct ButtonEdgeLatch {
-  static constexpr int kMaxPending = 16;
+  // A short tap contributes one press and one release. Forty edges cover 20 taps;
+  // the extra slots leave a small margin while keeping this plain-data latch below
+  // 2 KiB on the host build as well as on the device.
+  static constexpr int kMaxPending = 48;
   struct Edge {
     uint8_t pressed;
     uint8_t released;
@@ -40,10 +43,18 @@ struct ButtonEdgeLatch {
   Edge queue[kMaxPending];
   uint8_t head = 0;
   uint8_t count = 0;
+  uint32_t droppedEdges = 0;
+  bool overflow = false;
 
-  // A full queue drops the newest edges: a stuck contact cannot run away.
+  // A full queue drops the newest edges and enters drain mode. While draining,
+  // new edges stay out so a partially observed burst cannot overtake the FIFO.
   void add(const uint8_t pressedMask, const uint8_t releasedMask, const ButtonSample& at = {}) {
-    if (!(pressedMask | releasedMask) || count == kMaxPending) return;
+    if (!(pressedMask | releasedMask)) return;
+    if (overflow || count == kMaxPending) {
+      ++droppedEdges;
+      overflow = true;
+      return;
+    }
     queue[(head + count++) % kMaxPending] = {pressedMask, releasedMask, at};
   }
 
@@ -63,10 +74,13 @@ struct ButtonEdgeLatch {
       buttons |= mine;
       if (at) *at = edge.at;
     }
+    if (count == 0) overflow = false;
     return buttons != 0;
   }
 
   bool pending() const { return count != 0; }
+  bool overflowed() const { return overflow; }
+  uint32_t droppedCount() const { return droppedEdges; }
 };
 
 // Everything the sample timer hands the main loop: the edges it collected and
@@ -96,6 +110,9 @@ struct ButtonFrames {
   // stood at its last edge. With no edge left, the latest sample.
   void beginFrame() {
     if (!edges.take(framePressed, frameReleased, &frame)) frame = latest;
+    // A full latch has dropped an unknown suffix. Hold actions until the
+    // surviving FIFO drains, then accept fresh input on the next frame.
+    if (edges.overflowed()) framePressed = frameReleased = 0;
   }
 
   bool isPressed(const uint8_t button) const { return (frame.state >> button) & 1u; }

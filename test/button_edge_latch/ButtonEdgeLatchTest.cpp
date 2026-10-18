@@ -33,6 +33,51 @@ TEST(ButtonEdgeLatch, FourTapsDuringOneStallBecomeFourPresses) {
   EXPECT_EQ(framesWithPress(latch, kDown, 6), 4);
 }
 
+// The X3 probe records 20 short taps while one display refresh holds the main
+// loop. Every press and release must survive that stall for the keyboard to
+// receive all 20 actions.
+TEST(ButtonEdgeLatch, TwentyTapsDuringOneStallAreNotLost) {
+  ButtonEdgeLatch latch;
+  for (int i = 0; i < 20; ++i) {
+    latch.add(kDown, 0);
+    latch.add(0, kDown);
+  }
+  EXPECT_EQ(framesWithPress(latch, kDown, 24), 20);
+  EXPECT_FALSE(latch.pending());
+  EXPECT_FALSE(latch.overflowed());
+  EXPECT_EQ(latch.droppedCount(), 0u);
+}
+
+TEST(ButtonEdgeLatch, QueueAndAccountingStayBounded) {
+  EXPECT_LT(sizeof(ButtonEdgeLatch), 2048u);
+}
+
+TEST(ButtonEdgeLatch, OverflowIsCountedAndNewEdgesWaitForSafeDrain) {
+  ButtonEdgeLatch latch;
+  for (int i = 0; i < ButtonEdgeLatch::kMaxPending; ++i) latch.add(kDown, 0);
+  latch.add(kUp, 0);
+  latch.add(kDown, 0);
+
+  EXPECT_TRUE(latch.overflowed());
+  EXPECT_EQ(latch.droppedCount(), 2u);
+  EXPECT_TRUE(latch.pending());
+
+  uint8_t pressed = 0, released = 0;
+  latch.take(pressed, released);
+  EXPECT_TRUE(latch.overflowed());
+  latch.add(kUp, 0);
+  EXPECT_EQ(latch.droppedCount(), 3u);
+
+  while (latch.take(pressed, released)) {
+  }
+  EXPECT_FALSE(latch.pending());
+  EXPECT_FALSE(latch.overflowed());
+
+  latch.add(kUp, 0);
+  EXPECT_TRUE(latch.take(pressed, released));
+  EXPECT_EQ(pressed, kUp);
+}
+
 TEST(ButtonEdgeLatch, OneTapIsOnePressAndOneRelease) {
   ButtonEdgeLatch latch;
   latch.add(kDown, 0);
@@ -182,6 +227,20 @@ TEST(ButtonFrames, AQueuedReleaseKeepsItsOwnHeldTime) {
   frames.beginFrame();
   EXPECT_EQ(frames.framePressed, kBack);
   EXPECT_EQ(frames.heldTime(2000), 800u);
+}
+
+TEST(ButtonFrames, OverflowSuppressesActionsUntilTheLatchDrains) {
+  ButtonFrames frames;
+  for (int i = 0; i < ButtonEdgeLatch::kMaxPending; ++i) frames.publish(kDown, 0, sampleAt(kDown, 0, 1000 + i));
+  frames.publish(kUp, 0, sampleAt(kUp, 0, 2000));
+  frames.beginFrame();
+  EXPECT_EQ(frames.framePressed, 0);
+  EXPECT_TRUE(frames.edges.overflowed());
+  while (frames.edges.pending()) frames.beginFrame();
+  EXPECT_FALSE(frames.edges.overflowed());
+  frames.publish(kUp, 0, sampleAt(kUp, 0, 3000));
+  frames.beginFrame();
+  EXPECT_EQ(frames.framePressed, kUp);
 }
 
 // The idle poll still wakes on what the timer sees now, not on the last pass.

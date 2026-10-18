@@ -35,6 +35,7 @@ save=block(keyboard,keyboard.index('bool KeyboardEntryActivity::saveInputBeforeH
 complete=block(keyboard,keyboard.index('void KeyboardEntryActivity::onComplete('))
 fixture=r'''
 #include <cassert>
+#include <atomic>
 #include <string>
 #include <utility>
 #include <vector>
@@ -44,11 +45,13 @@ struct RenderLock {template<class T> explicit RenderLock(T&){} RenderLock(){} vo
 namespace tenorchrome {constexpr bool kTouchShell=true;}
 namespace shell {inline bool isUgly(){return false;}}
 struct KeyboardResult {std::string text;};
+struct TouchHoldRouter {void reset(){}};
 struct Activity {virtual ~Activity()=default; std::string name; bool isHomeActivity()const{return false;}
   virtual bool saveInputBeforeHome(){return false;} bool handleHomeGesture(){return false;}
 };
 struct KeyboardEntryActivity:Activity {
   std::string text="Draft preserved";bool backCancels=false,popPending=false;std::string saved;
+  std::atomic<unsigned> inputGeneration{0};TouchHoldRouter touchRouter;
   bool saveInputBeforeHome() override;
   void onComplete(std::string text);
   void onCancel(){popPending=true;}
