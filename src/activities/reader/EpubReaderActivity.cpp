@@ -3402,7 +3402,8 @@ void EpubReaderActivity::renderBook() {
     tracePaint("LOAD_END", p ? "ok" : "failed");
 #endif
     if (!p) {
-      LOG_ERR("ERS", "Failed to load page from SD (attempt %u)", static_cast<unsigned>(pageLoadRetryCount + 1));
+      LOG_ERR("ERS", "Failed to load page from SD (attempt %u reason=%u)", static_cast<unsigned>(pageLoadRetryCount + 1),
+              static_cast<unsigned>(Page::loadFailure));
       automaticPageTurnActive = false;
       const bool giveUp = ++pageLoadRetryCount > MAX_PAGE_LOAD_RETRIES;
       if (giveUp) {
