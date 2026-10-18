@@ -103,5 +103,17 @@ int main(){
  reset();auto result=HttpDownloader::downloadToFile("https://fixture/book","book");check(result==HttpDownloader::OK&&Storage.files["book"]=="new-book"&&invalidations==1,"download commits before cache invalidation");
  transferBody="third-book";result=HttpDownloader::downloadToFile("https://fixture/book","book");check(result==HttpDownloader::OK&&Storage.files["book"]=="third-book"&&invalidations==2,"two ordinary downloads replace consecutively");
  reset();Storage.files["book.epub"]="old-epub";transferBody="broken-epub";result=HttpDownloader::downloadToFile("https://fixture/book","book.epub");check(result!=HttpDownloader::OK&&Storage.files["book.epub"]=="old-epub","invalid EPUB structure preserves old book");
+ // WebDAV pull asks for its own EPUB check: it must run on the staged bytes, before the book is replaced or a
+ // backup left by an interrupted replace is retired.
+ const auto ocf=[](const char*path){return Storage.files[path]=="ocf-epub";};
+ for(bool backupOnly:{false,true}){
+  reset();Storage.files["book.epub"]="old-epub";if(backupOnly){Storage.files.erase("book.epub");Storage.files["book.epub.davbak"]="old-epub";}
+  transferBody="zip-but-not-ocf";
+  result=HttpDownloader::downloadToFile("https://fixture/book","book.epub",nullptr,nullptr,"","",false,ocf);
+  check(result==HttpDownloader::INVALID_EPUB&&Storage.files["book.epub"]=="old-epub"&&!Storage.files.count("book.epub.davtmp")&&invalidations==0,
+        backupOnly?"caller check refuses before retiring a recovered backup":"caller check refuses before replacing the old book");
+ }
+ reset();transferBody="ocf-epub";result=HttpDownloader::downloadToFile("https://fixture/book","book.epub",nullptr,nullptr,"","",false,ocf);
+ check(result==HttpDownloader::OK&&Storage.files["book.epub"]=="ocf-epub","caller check passes the staged book through");
  printf("RESULT %d/%d passed\n",total-failed,total);return failed?1:0;
 }

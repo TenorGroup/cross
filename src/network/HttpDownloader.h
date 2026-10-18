@@ -113,9 +113,10 @@ class HttpDownloader {
    * Download a file to the SD card with optional credentials.
    *
    * The legacy downgradeRedirectsToHttp flag is rejected by the TLS backend.
+   * validate, when given, judges the staged file before it replaces destPath: false is INVALID_EPUB.
    */
   static DownloadError downloadToFile(const std::string& url, const std::string& destPath,
                                       ProgressCallback progress = nullptr, bool* cancelFlag = nullptr,
                                       const std::string& username = "", const std::string& password = "",
-                                      bool downgradeRedirectsToHttp = false);
+                                      bool downgradeRedirectsToHttp = false, bool (*validate)(const char* path) = nullptr);
 };

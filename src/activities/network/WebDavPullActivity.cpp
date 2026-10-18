@@ -419,13 +419,13 @@ webdav::QueueResult WebDavPullActivity::downloadEntry(const webdav::PropfindEntr
     mappedInput.update(true);
     if (mappedInput.wasReleased(MappedInputManager::Button::Back)) cancelRequested = true;
   };
+  // The EPUB check runs on the staged copy: once committed, a failed re-read would delete the book.
   const auto transfer = HttpDownloader::downloadToFile(remoteUrl, std::string(destinationPath), progress, &cancelRequested,
-                                                        currentConfig.username, currentConfig.password);
+                                                        currentConfig.username, currentConfig.password, false,
+                                                        validDownloadedEpub);
   // CACHE_ERROR still committed the book; INVALID_EPUB arrived whole and was refused.
   const bool committed = transfer == HttpDownloader::OK || transfer == HttpDownloader::CACHE_ERROR;
-  const bool valid = committed && validDownloadedEpub(std::string(destinationPath).c_str());
-  if (committed && !valid) Storage.remove(std::string(destinationPath).c_str());
-  return recordDownload(entry, false, committed || transfer == HttpDownloader::INVALID_EPUB, valid);
+  return recordDownload(entry, false, committed || transfer == HttpDownloader::INVALID_EPUB, committed);
 }
 
 webdav::QueueResult WebDavPullActivity::recordDownload(const webdav::PropfindEntry& entry,

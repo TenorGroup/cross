@@ -630,7 +630,7 @@ bool HttpDownloader::fetchRange(const std::string& url, const size_t first, cons
 HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& url, const std::string& destPath,
                                                              ProgressCallback progress, bool* cancelFlag,
                                                              const std::string& username, const std::string& password,
-                                                             bool downgradeRedirectsToHttp) {
+                                                             bool downgradeRedirectsToHttp, bool (*validate)(const char*)) {
   LOG_DBG("HTTP", "Downloading file");
 
   if (!webdav::recoverFile(Storage, destPath.c_str())) return FILE_ERROR;
@@ -663,6 +663,10 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
       Storage.remove(staging.c_str());
       return INVALID_EPUB;
     }
+  }
+  if (validate && !validate(staging.c_str())) {
+    Storage.remove(staging.c_str());
+    return INVALID_EPUB;
   }
   bool backupCleanupPending = false;
   if (!webdav::replaceFile(Storage, staging.c_str(), destPath.c_str(), &backupCleanupPending)) {
