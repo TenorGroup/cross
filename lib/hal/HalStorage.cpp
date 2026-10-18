@@ -1,11 +1,8 @@
 #include "HalStorage.h"
 
-#include <Arduino.h>
-#include <BoardConfig.h>
 #include <FS.h>  // need to be included before SdFat.h for compatibility with FS.h's File class
 #include <Logging.h>
 #include <SDCardManager.h>
-#include <SPI.h>
 #if FREEINK_CAP_USB_MSC
 #include <UsbMassStorage.h>
 #endif
@@ -24,34 +21,6 @@ freeink::UsbMassStorage usbMassStorage;
 #ifdef TENOR_UI_ACCEPTANCE
 uint32_t nextFileTraceId = 0;  // Accessed only while StorageLock is held.
 #endif
-
-#if !FREEINK_SD_SDMMC
-// X3 only: the card's rail is GPIO13 (active-high) and the card shares the panel's SPI
-// pins. On the X4 GPIO13 is the battery latch, so no other profile gets here.
-bool canCycleCardPower() {
-  const auto& p = BoardConfig::ACTIVE;
-  return (p.board == BoardConfig::Board::XteinkX3 || p.board == BoardConfig::Board::XteinkX3Uc8279) &&
-         p.sd.powerEnable >= 0;
-}
-
-// Cut the card's rail for offMs with the bus pins held LOW, so nothing back-feeds the
-// card through them, then release the pins and power it again. The panel CS (21) stays HIGH.
-void cycleCardPower(const uint32_t offMs) {
-  const auto& p = BoardConfig::ACTIVE;
-  const int8_t bus[] = {p.sd.miso, p.display.sclk, p.display.mosi, p.sd.cs};
-  // Arduino 3.3: pinMode() on a pin the SPI bus still holds detaches it but leaves SPI
-  // marked as started, so SDCard.begin()'s SPI.begin() would then do nothing.
-  SPI.end();
-  for (const int8_t pin : bus) {
-    pinMode(pin, OUTPUT);
-    digitalWrite(pin, LOW);
-  }
-  digitalWrite(p.sd.powerEnable, LOW);
-  delay(offMs);
-  for (const int8_t pin : bus) pinMode(pin, INPUT);
-  digitalWrite(p.sd.powerEnable, HIGH);
-}
-#endif
 }  // namespace
 
 HalStorage HalStorage::instance;
@@ -69,21 +38,7 @@ HalStorage::HalStorage() {
 
 // begin() and ready() are only called from setup, no need to acquire mutex for them
 
-bool HalStorage::begin() {
-  if (SDCard.begin()) return true;
-#if !FREEINK_SD_SDMMC
-  // A card that does not answer at boot gets a real power cycle before each of two more tries.
-  if (!canCycleCardPower()) return false;
-  unsigned attempt = 0;
-  for (const uint32_t offMs : {250u, 1000u}) {
-    cycleCardPower(offMs);
-    const bool ok = SDCard.begin();
-    LOG_INF("SD", "SD_RECOVER attempt=%u ok=%u", ++attempt, ok ? 1u : 0u);
-    if (ok) return true;
-  }
-#endif
-  return false;
-}
+bool HalStorage::begin() { return SDCard.begin(); }
 
 bool HalStorage::ready() const { return SDCard.ready(); }
 

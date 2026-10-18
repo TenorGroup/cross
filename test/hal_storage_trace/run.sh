@@ -14,7 +14,3 @@ for mode in off on; do
   "$tmp_dir/trace_test"
   echo "hal_storage_trace $mode: PASS"
 done
-"$compiler" -std=c++17 -Wall -Wextra -Werror -Wno-unused-private-field -DFREEINK_CAP_USB_MSC=0 \
-  -I"$here/stubs" -I"$source_dir/lib/hal" \
-  "$source_dir/lib/hal/HalStorage.cpp" "$here/boot_cycle_test.cpp" -o "$tmp_dir/boot_cycle_test"
-"$tmp_dir/boot_cycle_test"
