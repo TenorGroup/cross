@@ -810,7 +810,12 @@ void setup() {
     LOG_ERR("MAIN", "SD card initialization failed");
     if (watchWakeHold) gpio.endPowerWakeHold(false);
     setupDisplayAndFonts(isSilentReboot);
-    activityManager.goToFullScreenMessage("SD card error", EpdFontFamily::BOLD);
+    // The settings, and so the language, are on the card: all 3 languages of the device.
+    activityManager.goToFullScreenMessage(
+        "Không đọc được thẻ SD\nRút thẻ ra rồi cắm lại,\nsau đó tắt máy và bật lại.\n\n"
+        "Can't read the SD card\nTake the card out, put it back in,\nthen turn the device off and on.\n\n"
+        "无法读取存储卡\n请拔下存储卡，重新插入，\n然后关机再开机。",
+        EpdFontFamily::BOLD);
     return;
   }
 
