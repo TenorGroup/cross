@@ -721,7 +721,10 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
     // Retry logic for SD card timing issues
     bool streamed = false;
     uint32_t fileSize = 0;
-    for (int attempt = 0; attempt < 3 && !streamed; attempt++) {
+    // A buffer the heap floor refused is the heap's failure, not the card's: no retry here while
+    // the heap is still short; the build reports itself starved and the reader frees the heap.
+    const uint32_t refusedBefore = heapfloor::refusals.load();
+    for (int attempt = 0; attempt < 3 && !streamed && !buildStarved_; attempt++) {
       if (attempt > 0) {
         LOG_DBG("SCT", "Retrying stream (attempt %d)...", attempt + 1);
         delay(50);  // Brief delay before retry
@@ -750,6 +753,7 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
         Storage.remove(tmpHtmlPath.c_str());
         LOG_DBG("SCT", "Removed incomplete temp file after failed attempt");
       }
+      if (!streamed && heapfloor::refusals.load() != refusedBefore) buildStarved_ = true;
     }
 
     if (!streamed) {

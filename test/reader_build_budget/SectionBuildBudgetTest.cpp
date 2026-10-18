@@ -108,4 +108,47 @@ TEST(SectionBuildBudget, SuspendedSmallerRebuildPreservesCacheBytesAndCurrentPag
   }
   std::filesystem::remove_all(root);
 }
+// X3, BLE on and nothing paired, 18/10/2026: the radio held the heap, the floor refused the
+// inflate's 8 KB output buffer and the chapter showed "invalid book" three times in a row.
+// A stream the floor refused is the heap's failure: the build reports itself starved at once,
+// so the reader frees the heap and builds again.
+TEST(SectionBuildBudget, StreamRefusedByTheHeapFloorStarvesTheBuild) {
+  const auto root = std::filesystem::temp_directory_path() / ("reader-refused-stream-" + std::to_string(getpid()));
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  auto epub = std::make_shared<Epub>();
+  epub->cachePath = root.string();
+  epub->contents = "<html><body><p>word</p></body></html>";
+  epub->refuseStreams = 3;
+  GfxRenderer renderer;
+  ReaderRenderSpec spec;
+  spec.viewportWidth = 160; spec.viewportHeight = 34;
+  {
+    Section refused(epub, 0, renderer);
+    EXPECT_FALSE(refused.startBuild(spec));
+    EXPECT_TRUE(refused.buildStarved());
+    EXPECT_EQ(epub->streamCalls, 1) << "no retry while the heap is still short";
+  }
+  std::filesystem::remove_all(root);
+}
+// A card that fails the write is not the heap: three tries, then the build error as before.
+TEST(SectionBuildBudget, StreamFailedWithoutARefusalIsNotStarved) {
+  const auto root = std::filesystem::temp_directory_path() / ("reader-failed-stream-" + std::to_string(getpid()));
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  auto epub = std::make_shared<Epub>();
+  epub->cachePath = root.string();
+  epub->contents = "<html><body><p>word</p></body></html>";
+  epub->failStreams = 3;
+  GfxRenderer renderer;
+  ReaderRenderSpec spec;
+  spec.viewportWidth = 160; spec.viewportHeight = 34;
+  {
+    Section failed(epub, 0, renderer);
+    EXPECT_FALSE(failed.startBuild(spec));
+    EXPECT_FALSE(failed.buildStarved());
+    EXPECT_EQ(epub->streamCalls, 3);
+  }
+  std::filesystem::remove_all(root);
+}
 }
