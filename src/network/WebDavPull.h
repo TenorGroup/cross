@@ -7,6 +7,16 @@
 #include <string_view>
 #include <vector>
 
+enum class WebDavPullStatus {
+  wifi_selection,
+  needs_configuration,
+  ready,
+  discovering,
+  downloading,
+  complete,
+  failed,
+};
+
 namespace webdav {
 
 struct WebDavPullLimits {
@@ -102,6 +112,10 @@ PullStatus downloadStatus(const PropfindEntry& entry, bool destinationExists, bo
 
 // Whether the pull goes on to the next listed file after one ended with this status.
 bool pullContinuesAfter(PullStatus status);
+
+// The screen once the listing has been walked: complete, unless a step failed or was cancelled. A
+// listing with nothing to fetch (only folders or TXT) is complete too.
+WebDavPullStatus statusAfterPull(WebDavPullStatus current);
 
 class PullQueue {
  public:

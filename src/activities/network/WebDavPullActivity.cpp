@@ -429,10 +429,7 @@ webdav::QueueResult WebDavPullActivity::recordDownload(const webdav::PropfindEnt
   return result;
 }
 
-void WebDavPullActivity::finishDownloads() {
-  if (pullStatus == WebDavPullStatus::downloading || pullStatus == WebDavPullStatus::ready)
-    pullStatus = WebDavPullStatus::complete;
-}
+void WebDavPullActivity::finishDownloads() { pullStatus = webdav::statusAfterPull(pullStatus); }
 
 void WebDavPullActivity::setFailure(const char* message) {
   pullStatus = WebDavPullStatus::failed;

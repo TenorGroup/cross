@@ -10,16 +10,6 @@
 #include "network/WebDavConfigStore.h"
 #include "network/WebDavPull.h"
 
-enum class WebDavPullStatus {
-  wifi_selection,
-  needs_configuration,
-  ready,
-  discovering,
-  downloading,
-  complete,
-  failed,
-};
-
 enum class WebDavConfigField { Url, Username, Password };
 
 // P2 activity: edits the endpoint, performs a bounded PROPFIND, then reuses

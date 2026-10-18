@@ -559,6 +559,13 @@ bool redirectAllowed(std::string_view currentUrl, std::string_view nextUrl) {
   return current.port == next.port || (current.port == 80u && next.port == 443u);
 }
 
+WebDavPullStatus statusAfterPull(const WebDavPullStatus current) {
+  return current == WebDavPullStatus::discovering || current == WebDavPullStatus::downloading ||
+                 current == WebDavPullStatus::ready
+             ? WebDavPullStatus::complete
+             : current;
+}
+
 bool validLocalPath(std::string_view path) {
   if (path.empty() || path.front() != '/' || path.find('\\') != std::string_view::npos) return false;
   for (const unsigned char c : path) {

@@ -204,3 +204,10 @@ TEST(WebDavPullPath, LocalPathRefusesOnlyDotSegments) {
   EXPECT_FALSE(webdav::validLocalPath("/a\\b.epub"));
   EXPECT_FALSE(webdav::validLocalPath(std::string("/a\x01.epub")));
 }
+
+// A folder with no EPUB in it (only folders or TXT) left the screen on "Reading WebDAV listing".
+TEST(WebDavPullStatus, AListingWithNothingToFetchStillCompletes) {
+  EXPECT_EQ(webdav::statusAfterPull(WebDavPullStatus::discovering), WebDavPullStatus::complete);
+  EXPECT_EQ(webdav::statusAfterPull(WebDavPullStatus::downloading), WebDavPullStatus::complete);
+  EXPECT_EQ(webdav::statusAfterPull(WebDavPullStatus::failed), WebDavPullStatus::failed);
+}
