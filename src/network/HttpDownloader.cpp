@@ -224,7 +224,8 @@ HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std:
     // answers 400 "Duplicate 'User-Agent' header found").
     http.setUserAgent("CrossPoint-ESP32-" CROSSPOINT_VERSION);
     if (range) http.addHeader("Range", "bytes=" + std::to_string(range->first) + "-" + std::to_string(range->last));
-    if (!username.empty() && !password.empty() && freeink::http_url::sameOrigin(startUrl, url)) {
+    // An empty password with a user is valid Basic auth (RFC 7617), as SecureHttpClient sends it.
+    if (!username.empty() && freeink::http_url::sameOrigin(startUrl, url)) {
       const std::string credentials = username + ":" + password;
       const String encoded = base64::encode(credentials.c_str());
       http.addHeader("Authorization", std::string("Basic ") + encoded.c_str());
@@ -351,7 +352,7 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
   }
 
   esp_http_client_set_header(client, "User-Agent", "CrossPoint-ESP32-" CROSSPOINT_VERSION);
-  if (!username.empty() && !password.empty()) {
+  if (!username.empty()) {
     // Preemptive Basic auth, like the prior addHeader; don't wait for a 401.
     const std::string credentials = username + ":" + password;
     const String header = "Basic " + base64::encode(credentials.c_str());

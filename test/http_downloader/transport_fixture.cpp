@@ -237,6 +237,16 @@ TEST_F(WolfRedirect, RejectsOverlongLocationBeforeConnecting) {
   EXPECT_EQ(get("https://books.example/catalog/page"), HttpDownloader::HTTP_ERROR);
   EXPECT_EQ(wire::connectAttempts, 1);
 }
+
+// RFC 7617 allows an empty password; the WebDAV listing already sends it, so the book GET must too.
+TEST_F(WolfRedirect, SendsBasicAuthWithAnEmptyPassword) {
+  wire::replies = {"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc"};
+  Sink sink;
+  sink.write = [](const uint8_t*, size_t) { return true; };
+  EXPECT_EQ(runGetWolf("https://books.example/book.epub", "reader", "", sink, false, nullptr, true), HttpDownloader::OK);
+  ASSERT_EQ(wire::requests.size(), 1u);
+  EXPECT_NE(wire::requests[0].bytes.find("\r\nAuthorization: Basic "), std::string::npos);
+}
 #endif
 
 #ifndef FREEINK_NET_WOLFSSL
@@ -361,5 +371,12 @@ TEST_F(FallbackRedirect, RejectsSixthHop) {
     wire::replies.push_back("HTTP/1.1 302 Found\r\nLocation: /again\r\nContent-Length: 0\r\n\r\n");
   EXPECT_EQ(get("http://books.example/opds"), HttpDownloader::HTTP_ERROR);
   EXPECT_EQ(wire::fallbackRequests.size(), 6u);
+}
+
+TEST_F(FallbackRedirect, SendsBasicAuthWithAnEmptyPassword) {
+  wire::replies = {"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc"};
+  EXPECT_EQ(get("https://books.example/book.epub", "reader", ""), HttpDownloader::OK);
+  ASSERT_EQ(wire::fallbackRequests.size(), 1u);
+  EXPECT_TRUE(wire::fallbackRequests[0].authorized);
 }
 #endif
