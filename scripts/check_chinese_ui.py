@@ -12,7 +12,11 @@ FORMAT = re.compile(r'%(?:\d+\$)?[-+#0 ]*(?:\d+|\*)?(?:\.(?:\d+|\*))?(?:hh|ll|[h
 
 # Characters that card file and folder names use but no translation does ("自带外部字体" lost its 外).
 # Each one is a glyph in every UI face (about 0.7 KB of flash for all 9): add with care, report the cost.
-FILE_NAME_CJK = '外'
+# The SD-card error screen in src/main.cpp is hard-coded (no STR_ key, the card holding the language is unreadable),
+# so its Chinese is read from the source: dropping one of its characters from chinese.yaml must fail here.
+SD_ERROR_CJK = ''.join(sorted({c for c in (Path(__file__).resolve().parents[1]/'src/main.cpp').read_text(encoding='utf8') if 0x2e80 <= ord(c) <= 0x9fff}))
+assert SD_ERROR_CJK, 'no Chinese found in src/main.cpp'
+FILE_NAME_CJK = '外' + SD_ERROR_CJK
 
 def required(data):
     return {ord(c) for k, v in data.items() if k.startswith('STR_') or k == '_language_name' for c in v if c not in '\n\r\t' and not 0xe000 <= ord(c) <= 0xf8ff}

@@ -14,6 +14,7 @@ target_include_directories(UIExtraSizeLifetimeTest PRIVATE manager-stubs stubs $
 add_test(NAME UIExtraSizeLifetime COMMAND UIExtraSizeLifetimeTest)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(NAME UIFaces COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_ui_faces.py)
+add_test(NAME UIChineseGlyphs COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/check_chinese_ui.py)
 add_test(NAME UIBootAndApply
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/run_boot_apply.py
           --build ${CMAKE_CURRENT_BINARY_DIR}/boot-apply)
