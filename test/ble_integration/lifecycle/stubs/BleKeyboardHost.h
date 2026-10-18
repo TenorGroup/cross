@@ -76,7 +76,7 @@ class BleKeyboardHost {
   void disconnect() {}
   void forget(const char*) {}
   bool takeConnectFailure(char*, size_t) { return false; }
-  uint8_t pairedCount() const { return 0; }
+  uint8_t pairedCount() const { return 1; }
   const PairedHidDevice& paired(uint8_t) const { return pairedNone; }
   uint8_t deviceCount() const { return 0; }
   const DiscoveredDevice& device(uint8_t) const { return deviceNone; }

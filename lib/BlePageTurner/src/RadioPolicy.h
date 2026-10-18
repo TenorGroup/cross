@@ -159,11 +159,12 @@ constexpr LinkNote nextLinkNote(const LinkNote note, const NoteInputs& in) {
   if (!in.enabled || !in.reading) return LinkNote::None;
   // Every visit starts over. A remote still linked has nothing to wait for, and a radio off for
   // idleness does not try until a key of the device wakes it.
-  if (in.entered) return in.linked || in.idleStopped ? LinkNote::None : LinkNote::Connecting;
+  // With no remote paired nothing can link.
+  if (in.entered) return in.linked || in.idleStopped || !in.hasBond ? LinkNote::None : LinkNote::Connecting;
   switch (note) {
     case LinkNote::Connecting:
       if (in.linked) return LinkNote::None;
-      return in.refused || in.runningMs >= kLinkNoteFailMs ? LinkNote::Failed : LinkNote::Connecting;
+      return in.refused || !in.hasBond || in.runningMs >= kLinkNoteFailMs ? LinkNote::Failed : LinkNote::Connecting;
     case LinkNote::Failed:
     case LinkNote::Connected:
     case LinkNote::LowMemory:

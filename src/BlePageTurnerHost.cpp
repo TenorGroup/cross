@@ -14,6 +14,7 @@
 #include <HalPowerManager.h>
 #include <Logging.h>
 #include <BlePageTurner.h>
+#include <Preferences.h>
 #include "../lib/BlePageTurner/src/RadioPort.h"
 #include "KOReaderPullResume.h"
 #include "platform/ColdLogProbe.h"
@@ -105,6 +106,17 @@ void beginPageTurner(GfxRenderer& renderer, bleturner::Config& config, void (*sh
   runShortcut = shortcut;
   restartBook = restartIntoBook;
   bleturner::begin(bleHost, config);
+  // The remotes the SDK saved (namespace "freeink-hid", key "n", at most 4), read only. The stack loads
+  // them only when it starts, and the book must know before that whether any remote can link.
+  uint8_t bonds = 0;
+  Preferences saved;
+  if (saved.begin("freeink-hid", true)) {
+    bonds = saved.getUChar("n", 0);
+    saved.end();
+  }
+  if (bonds > 4) bonds = 0;
+  LOG_INF("BLE", "Saved bonds=%u", static_cast<unsigned>(bonds));
+  bleturner::setSavedBonds(bonds);
 }
 
 bool preparePageTurnerAfterPull(const bool enabled, const bool usedNetwork, const bool succeeded) {

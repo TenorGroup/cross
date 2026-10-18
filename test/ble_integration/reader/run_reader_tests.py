@@ -128,7 +128,7 @@ for name in ['bleDeliver', 'bleYieldForRadio', 'bleFileTransfer']:
 glue += ('bleturner::Heap fixtureHeap(){return {100000,60000};}bool fixtureRelease(){return true;}void fixtureRestart(){}void fixtureHold(bool){}void fixtureLog(bool,const char*,va_list){}\n'
          'const bleturner::Host fixtureHost{fixtureHeap,fixtureRelease,bleDeliver,bleYieldForRadio,bleFileTransfer,fixtureRestart,fixtureHold,fixtureLog,nullptr};\n'
          'void resetModule(){freeink::ble::init=false;freeink::ble::startSuccess=true;freeink::ble::startQueued=false;freeink::ble::starts=0;bleturner::detail::resetForTests();'
-         'SETTINGS.ble=bleturner::Config{};SETTINGS.ble.enabled=1;SETTINGS.ble.nextKeyUsage=1;SETTINGS.ble.prevKeyUsage=2;bleturner::begin(fixtureHost,SETTINGS.ble);}\n')
+         'SETTINGS.ble=bleturner::Config{};SETTINGS.ble.enabled=1;SETTINGS.ble.nextKeyUsage=1;SETTINGS.ble.prevKeyUsage=2;bleturner::begin(fixtureHost,SETTINGS.ble);bleturner::setSavedBonds(1);}\n')
 mainfixture = P(__file__).with_name('main_fixture.hpp').read_text() + '\n' + glue
 pump = 'struct MainPump { unsigned long lastActivityTime=millis(),lastSleepResetTime=millis(); void pump(){\nfreeink::ble::runQueuedStart();\n' + tick + tilt_capture.group() + timers + '\nfreeink::ble::runQueuedStart();\n}};\n'
 source = prefix + '\n\n' + '\n\n'.join(functions) + '\n\n' + mainfixture + pump + suffix

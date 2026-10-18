@@ -147,6 +147,9 @@ struct Scene {
 };
 
 void begin(const Host& host, Config& config);
+// The remotes paired on this device, as the host read them from storage at boot: the stack loads its own
+// list only when it starts. Once it has started, its list counts instead. Main loop.
+void setSavedBonds(uint8_t count);
 void requestConnect();
 // Returns true when a remote press acted this pass (the host counts it as user activity).
 bool tick(const Scene& scene);
@@ -191,8 +194,8 @@ Status status();
 // Why the radio may not be on at the last tick (Ok: it may), from radioVerdict.
 Why why();
 
-// What the book's status bar says about the remote in place of its title. Connecting from the
-// moment a book is entered until a remote links; Failed when the radio was refused for this
+// What the book's status bar says about the remote in place of its title. With a remote paired,
+// Connecting from the moment a book is entered until a remote links; Failed when the radio was refused for this
 // visit or ran kLinkNoteFailMs without a link, until the next page turn; None otherwise.
 // nextLinkNote (RadioPolicy.h) decides; tick() and acknowledgeLinkNote() apply it.
 enum class LinkNote : uint8_t { None, Connecting, Failed, Connected, LowMemory };

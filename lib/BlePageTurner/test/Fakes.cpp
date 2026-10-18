@@ -56,6 +56,8 @@ void reset(const bool keepMemo) {
   if (keepMemo) theRadio.memo = memo;
   theHost = HostState{};
   bleturner::detail::resetForTests();
+  // The host reads the saved bonds at boot: the fake radio's.
+  bleturner::setSavedBonds(static_cast<uint8_t>(theRadio.bonds.size()));
 }
 
 bleturner::Scene reading(const uint32_t visit) {

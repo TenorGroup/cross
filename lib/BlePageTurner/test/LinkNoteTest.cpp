@@ -49,11 +49,18 @@ TEST(LinkNoteRuleTest, Table) {
   leaving.reading = false;
   NoteInputs idleEntry = in(true);
   idleEntry.idleStopped = true;
+  NoteInputs unpairedEntry = in(true);
+  unpairedEntry.hasBond = false;
+  NoteInputs unpaired = in(false);
+  unpaired.hasBond = false;
   const Row rows[] = {
       {"enter", LinkNote::None, in(true), LinkNote::Connecting},
       {"enter again after a failure", LinkNote::Failed, in(true), LinkNote::Connecting},
       {"enter with a remote still linked", LinkNote::None, in(true, true), LinkNote::None},
       {"enter with the radio off for idleness", LinkNote::None, idleEntry, LinkNote::None},
+      // Nothing paired: nothing can link, so the title stays.
+      {"enter with no remote paired", LinkNote::None, unpairedEntry, LinkNote::None},
+      {"connecting with no remote paired", LinkNote::Connecting, unpaired, LinkNote::Failed},
       {"waiting", LinkNote::Connecting, in(false), LinkNote::Connecting},
       {"link", LinkNote::Connecting, in(false, true), LinkNote::None},
       {"refused", LinkNote::Connecting, in(false, false, true), LinkNote::Failed},
@@ -238,6 +245,43 @@ TEST_F(LinkNoteTest, Journeys) {
          t.pass(fake::reading());
        },
        LinkNote::None},
+      {"enter with no remote paired -> None",
+       [](LinkNoteTest& t) {
+         radio().bonds.clear();
+         bleturner::setSavedBonds(0);
+         t.pass(fake::reading());
+         t.pass(fake::reading());
+       },
+       LinkNote::None},
+      {"connect asked with no remote paired -> Failed",
+       [](LinkNoteTest& t) {
+         radio().bonds.clear();
+         bleturner::setSavedBonds(0);
+         t.pass(fake::reading());
+         bleturner::requestConnect();
+         t.pass(fake::reading());
+       },
+       LinkNote::Failed},
+      {"connect asked with no remote paired, then a page turn -> None",
+       [](LinkNoteTest& t) {
+         radio().bonds.clear();
+         bleturner::setSavedBonds(0);
+         t.pass(fake::reading());
+         bleturner::requestConnect();
+         t.pass(fake::reading());
+         bleturner::acknowledgeLinkNote();
+       },
+       LinkNote::None},
+      // Saved bonds are read at boot; a remote paired since then is in the stack's own list.
+      {"remote paired this boot, then the book -> Connecting",
+       [](LinkNoteTest& t) {
+         bleturner::setSavedBonds(0);
+         radio().bonds = {"7d:de:5c:bd:ae:ca"};
+         radio().running = true;
+         t.pass(home());
+         t.pass(fake::reading());
+       },
+       LinkNote::Connecting},
       {"new book entry after idle stop -> Connecting",
        [](LinkNoteTest& t) {
          ASSERT_TRUE(bleturner::detail::stopForIdle());

@@ -82,6 +82,9 @@ std::atomic<LinkNote> linkNoteNow{LinkNote::None};
 // Since when the radio has been up without a break in this book visit. Main loop only.
 bool noteRadioUp = false;
 uint32_t noteRadioUpSinceMs = 0;
+// Remotes paired on the device: the host's count from storage at boot, then the stack's own list once it
+// is up (a remote paired or forgotten since). Main loop only.
+uint8_t savedBonds = 0;
 
 void say(const bool error, const char* format, ...) {
   va_list args;
@@ -301,6 +304,7 @@ void stepLinkNote(const bool entered, const bool acknowledged) {
                !attemptInFlight.load(std::memory_order_acquire);
   in.runningMs = noteRadioUp ? port::nowMs() - noteRadioUpSinceMs : 0;
   in.acknowledged = acknowledged;
+  in.hasBond = savedBonds > 0;
   LinkNote note = nextLinkNote(linkNoteNow.load(std::memory_order_relaxed), in);
   if (visit.manualConnect && in.refused && note == LinkNote::Failed) {
     const Why refused = startRefusal.load(std::memory_order_relaxed);
@@ -386,6 +390,7 @@ void resetForTests() {
   linkNoteNow.store(LinkNote::None);
   noteRadioUp = false;
   noteRadioUpSinceMs = 0;
+  savedBonds = 0;
 }
 #endif
 
@@ -396,6 +401,8 @@ void begin(const Host& h, Config& c) {
   config = &c;
 }
 
+void setSavedBonds(const uint8_t count) { savedBonds = count; }
+
 void requestConnect() { connectRequested = true; }
 
 bool tick(const Scene& s) {
@@ -403,6 +410,8 @@ bool tick(const Scene& s) {
   // A book visit starts: the book comes in front, or another visit of it does.
   const bool entered = s.where == Where::Reader && (lastScene.where != Where::Reader || s.visit != lastScene.visit);
   lastScene = s;
+  // Not while a start is in flight: begin() empties the stack's list before it loads it again.
+  if (port::running() && !attemptInFlight.load(std::memory_order_acquire)) savedBonds = port::bondCount();
   // Finish a stop in the background without blocking input.
   if (port::stopping() && port::nowMs() - lastCleanupMs >= 250) {
     lastCleanupMs = port::nowMs();
