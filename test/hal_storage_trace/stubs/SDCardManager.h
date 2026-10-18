@@ -1,13 +1,21 @@
 #pragma once
 
 #include <FS.h>
+#include <HwLog.h>
 #include <common/FsApiConstants.h>
 #include <vector>
 
 class SDCardManager {
  public:
   static SDCardManager& getInstance() { static SDCardManager manager; return manager; }
-  bool begin() { return true; }
+  // The first beginFailures calls fail, as a card that does not answer.
+  inline static int beginFailures = 0;
+  bool begin() {
+    const bool ok = beginFailures <= 0;
+    if (!ok) --beginFailures;
+    hwLog.push_back(ok ? "begin ok" : "begin fail");
+    return ok;
+  }
   bool ready() const { return true; }
   bool freeSpace(uint64_t& bytes, uint32_t& clusterBytes) {
     bytes = 1ULL << 30;
