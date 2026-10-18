@@ -74,6 +74,8 @@ class HalGPIO {
   // spends 50 ms to seconds in one step (next-page prewarm, section build). The
   // edges it collects wait until update() hands them to the next frame.
   esp_timer* sampleTimer = nullptr;
+  // What the timer reads: inputMgr, or on a touch board a reader that never started the panel.
+  InputManager* sampledInput = nullptr;
   static void sampleButtons(void* self);
 
   // The power key's hold through a wake (beginPowerWakeHold): a 5 ms timer feeds the watch.
@@ -114,7 +116,7 @@ class HalGPIO {
   // none were read (no probe on this board, or the probe timed out).
   bool panelVersion(uint8_t ver[3]) const;
   // Moves button sampling onto the timer. Call once the boot-time presses are
-  // settled; later calls do nothing. Boards with touch keep sampling in update().
+  // settled; later calls do nothing. A touch panel keeps being read in update().
   void startBackgroundSampling();
 
   // Button input methods

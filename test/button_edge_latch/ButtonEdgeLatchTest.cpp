@@ -270,27 +270,50 @@ TEST(HalGpioSampling, TheTimerIsKeptOnlyOnceItRuns) {
   EXPECT_GT(body.find("sampleTimer = timer"), start) << "the handle is kept before the timer runs";
 }
 
-// X4 Classic reads plain GPIO keys on the main loop; the loop waits on every display frame, so a
-// quick tap in that wait was never seen (5 of 20 taps typing in the Wi-Fi keyboard). Every board
-// without a touch panel hands its keys to the sample timer. A touch board keeps polling.
-TEST(ButtonSampling, EveryButtonBoardWithoutTouchUsesTheTimer) {
-  EXPECT_TRUE(samplesInBackground(true, false, false));    // X3, X4: ADC ladder
-  EXPECT_TRUE(samplesInBackground(false, true, false));    // X4 Classic: GPIO keys
-  EXPECT_FALSE(samplesInBackground(false, true, true));    // X4 Pro: GPIO keys plus touch panel
-  EXPECT_FALSE(samplesInBackground(false, false, false));  // any other input style
+// X4 Classic and X4 Pro read plain GPIO keys; the main loop waits on every display frame, so a
+// quick tap in that wait was never seen (5 of 20 taps typing in the Wi-Fi keyboard on both). Every
+// board with ADC or GPIO keys hands them to the sample timer, a touch panel or not.
+TEST(ButtonSampling, EveryBoardWithKeysUsesTheTimer) {
+  EXPECT_TRUE(samplesInBackground(true, false));    // X3, X4: ADC ladder
+  EXPECT_TRUE(samplesInBackground(false, true));    // X4 Classic, X4 Pro (touch panel too): GPIO keys
+  EXPECT_FALSE(samplesInBackground(false, false));  // any other input style
 }
 
-// The start decision goes through that rule, and a touch panel is told by the board profile as well
-// as by a controller that came up: a failed touch init must not move the X4 Pro to the timer, whose
-// task would then run touch I2C.
-TEST(HalGpioSampling, TheStartFollowsTheRuleAndTheBoardsTouchController) {
+// The start decision goes through that rule. The touch panel shares its I2C bus with the fuel gauge
+// (X4 Pro), so its reads stay on the main loop: on a board with a touch profile or a controller that
+// came up, the timer runs a reader of its own that never started the panel, and the loop keeps
+// polling the panel through inputMgr.
+namespace {
+std::string halGpioBody(const char* signature) {
   std::ifstream file(REPO_ROOT_PATH "/lib/hal/HalGPIO.cpp");
   const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-  const size_t begin = text.find("void HalGPIO::startBackgroundSampling()");
-  ASSERT_NE(begin, std::string::npos);
-  const std::string body = text.substr(begin, text.find("\n}\n", begin) - begin);
+  const size_t begin = text.find(signature);
+  if (begin == std::string::npos) return {};
+  return text.substr(begin, text.find("\n}\n", begin) - begin);
+}
+}  // namespace
+
+TEST(HalGpioSampling, TheStartFollowsTheRuleAndKeepsTouchOffTheTimer) {
+  const std::string body = halGpioBody("void HalGPIO::startBackgroundSampling()");
+  ASSERT_FALSE(body.empty());
   EXPECT_NE(body.find("samplesInBackground("), std::string::npos) << "the start does not use the rule";
-  EXPECT_NE(body.find("ACTIVE.touch.controller != BoardConfig::TouchController::None"), std::string::npos)
-      << "the touch panel is judged only by whether its init worked";
+  const size_t touch = body.find("ACTIVE.touch.controller != BoardConfig::TouchController::None");
+  EXPECT_NE(touch, std::string::npos) << "the touch panel is judged only by whether its init worked";
   EXPECT_NE(body.find("inputMgr.hasTouch()"), std::string::npos);
+  const size_t ownReader = body.find("new (std::nothrow) InputManager()");
+  ASSERT_NE(ownReader, std::string::npos) << "a touch board's timer would run inputMgr and its touch I2C";
+  EXPECT_GT(ownReader, touch);
+  EXPECT_EQ(body.find("begin()"), std::string::npos) << "the timer's reader must never start the panel";
+}
+
+TEST(HalGpioSampling, TheTimerReadsItsReaderAndTheLoopKeepsThePanel) {
+  const std::string sample = halGpioBody("void HalGPIO::sampleButtons(void* self)");
+  ASSERT_FALSE(sample.empty());
+  EXPECT_NE(sample.find("->sampledInput"), std::string::npos);
+  EXPECT_EQ(sample.find("->inputMgr"), std::string::npos) << "the timer reads inputMgr, touch included";
+  const std::string update = halGpioBody("void HalGPIO::update()");
+  const size_t frame = update.find("frames.beginFrame()");
+  ASSERT_NE(frame, std::string::npos);
+  const size_t panel = update.find("if (sampledInput != &inputMgr) inputMgr.update();", frame);
+  EXPECT_NE(panel, std::string::npos) << "with the timer on, nothing polls the touch panel";
 }

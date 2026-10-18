@@ -16,6 +16,7 @@
 
 #include <atomic>
 #include <cstring>
+#include <new>
 
 // Global HalGPIO instance
 HalGPIO gpio;
@@ -277,10 +278,8 @@ std::atomic<bool> ladderInUse{false};
 
 void HalGPIO::startBackgroundSampling() {
   const auto style = BoardConfig::ACTIVE.inputStyle;
-  const bool touchPanel =
-      inputMgr.hasTouch() || BoardConfig::ACTIVE.touch.controller != BoardConfig::TouchController::None;
   if (sampleTimer || !samplesInBackground(style == BoardConfig::InputStyle::XteinkAdcLadder,
-                                          style == BoardConfig::InputStyle::DigitalButtons, touchPanel)) {
+                                          style == BoardConfig::InputStyle::DigitalButtons)) {
     return;
   }
   // Ticks missed while the flash cache is off (OTA, settings save) are dropped, not replayed
@@ -288,13 +287,36 @@ void HalGPIO::startBackgroundSampling() {
   const esp_timer_create_args_t args{sampleButtons, this, ESP_TIMER_TASK, "buttons", true};
   esp_timer_handle_t timer = nullptr;
   if (esp_timer_create(&args, &timer) != ESP_OK) return;
+  // A touch panel (X4 Pro) shares its I2C bus with the fuel gauge, so it is read on the main loop
+  // only. The timer gets a reader of its own that never started the panel: the keys alone. The
+  // board profile counts as well as a controller that came up. Built for touch boards only: the X3
+  // build sits near its flash floor.
+  InputManager* input = &inputMgr;
+#if FREEINK_CAP_TOUCH
+  if (inputMgr.hasTouch() || BoardConfig::ACTIVE.touch.controller != BoardConfig::TouchController::None) {
+    input = new (std::nothrow) InputManager();
+    if (!input) {
+      esp_timer_delete(timer);
+      return;
+    }
+    // Settled on the keys as they are, so a key held right now (a wake hold) is no fresh press.
+    input->update();
+    for (const unsigned long settling = millis(); input->isDebouncePending() && millis() - settling < 20;) {
+      delay(1);
+      input->update();
+    }
+  }
+#endif
+  sampledInput = input;
   // Published before the first tick: from here on only the timer runs the debounce,
   // and the main loop reads the snapshot, seeded here with the state it had.
-  frames.latest = frames.frame = readSample(inputMgr);
+  frames.latest = frames.frame = readSample(*input);
   // Kept only once it runs: with `sampleTimer` set, update() stops polling and reads the frames,
   // so a timer that never started would leave every button dead.
   if (esp_timer_start_periodic(timer, 10000) != ESP_OK) {
     esp_timer_delete(timer);
+    if (input != &inputMgr) delete input;
+    sampledInput = nullptr;
     return;
   }
   sampleTimer = timer;
@@ -302,7 +324,7 @@ void HalGPIO::startBackgroundSampling() {
 
 void HalGPIO::sampleButtons(void* self) {
   if (ladderInUse.load(std::memory_order_acquire)) return;
-  auto& input = static_cast<HalGPIO*>(self)->inputMgr;
+  auto& input = *static_cast<HalGPIO*>(self)->sampledInput;
   input.update();
   uint8_t pressed = 0;
   uint8_t released = 0;
@@ -321,6 +343,7 @@ void HalGPIO::update() {
     portENTER_CRITICAL(&edgeLock);
     frames.beginFrame();
     portEXIT_CRITICAL(&edgeLock);
+    if (sampledInput != &inputMgr) inputMgr.update();  // the touch panel, read on this loop only
   } else {
     inputMgr.update();
   }

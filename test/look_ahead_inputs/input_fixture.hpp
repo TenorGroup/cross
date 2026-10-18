@@ -51,6 +51,7 @@ struct InputManager {
 struct HalGPIO {
   InputManager inputMgr;
   bool sampleTimer=false;
+  InputManager* sampledInput=nullptr;
   bool lastUsbConnected=false, usbStateChanged=false;
   void injectPresses(uint8_t, uint16_t, uint16_t, uint16_t);
   void update(); bool rawInputActive();
