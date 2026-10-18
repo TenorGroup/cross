@@ -205,6 +205,7 @@ add_subdirectory(shed_parser)
 
 add_subdirectory(storage_recovery)
 add_subdirectory(hal_storage_trace)
+add_subdirectory(progress_file)
 
 add_subdirectory(folder_rows)
 add_subdirectory(habits_info_nav)

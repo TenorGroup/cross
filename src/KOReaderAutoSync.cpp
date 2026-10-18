@@ -670,7 +670,7 @@ PullResult pullNow(GfxRenderer& renderer, const std::string& path) {
   HalFile file;
   uint8_t data[10] = {};
   size_t got = 0;
-  if (Storage.openFileForRead("KAS", epub->getCachePath() + "/progress.bin", file)) {
+  if (ProgressFile::openForRead("KAS", epub->getCachePath(), file)) {
     const int n = file.read(data, sizeof(data));
     got = n > 0 ? static_cast<size_t>(n) : 0;
   }
