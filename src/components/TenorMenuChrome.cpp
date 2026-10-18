@@ -288,13 +288,14 @@ constexpr const char* FULL_BAR[] = {
     "BookSearch",  // the search in a book's text, X4 Pro only
 #endif
     "QuoteDetail", "QuoteTrim", "Quotes", "ReadingHabits", "ReadingHistory", "Settings",
-    "SettingsChoices", "StatusBarSettings", "TimezonePicker", "WifiSelection", "XtcReaderChapterSelection"};
+    "SettingsChoices", "StatusBarSettings", "TimezonePicker", "WebDavPull", "WifiSelection",
+    "XtcReaderChapterSelection"};
 // "<" at the left, the screen's own content in the rest of the foot: the keyboard of an input screen,
 // the cards of a screen with cards (the reader menu: "<" goes back a level, from the top level it
-// closes the menu; the text settings; the library), a screen laid over another one (a question, a slider,
+// closes the menu; the text settings), a screen laid over another one (a question, a slider,
 // a word picked on the page, the light panel, a picture), where "<" cancels, and a screen that must leave
 // through its own exit (a firmware update, the card lent to a computer): no zone icon to jump away by.
-constexpr const char* BACK_ONLY_BAR[] = {"KeyboardEntry", "EpubReaderMenu", "TxtReaderMenu", "TextSettings", "Library",
+constexpr const char* BACK_ONLY_BAR[] = {"KeyboardEntry", "EpubReaderMenu", "TxtReaderMenu", "TextSettings",
                                          "BmpViewer", "ChapterNumberEntry", "Confirmation", "Crash",
                                          "DictionaryWordSelect", "EpubReaderPercentSelection", "FrontlightPanel",
                                          "OtaUpdate", "QuoteSelect", "SdFirmwareUpdate", "SleepTimeoutInterval",

@@ -21,6 +21,7 @@ EXEMPT = {
     'UglyDiary': 'tenor/ugly root, its own nav row over the Home key',
     'UglyDesk': 'tenor/ugly root, its own nav row over the Home key',
     'UglyNotebook': 'tenor/ugly notebook, "< page" in its own nav row',
+    'PullRestart': 'restarts into the book at once, never draws a frame',
 }
 
 PATTERNS = [

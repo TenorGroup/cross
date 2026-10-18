@@ -45,6 +45,9 @@ add_test(NAME ReaderReturnPositionT4
 add_test(NAME ReaderReturnReflowV1062
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reading_stats_simulator/test_quay_lai_reflow_v1062.py)
 
+add_test(NAME X4ProEveryScreenHasABar
+  COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/x4pro_simulator/test_bang_thanh.py)
+
 add_test(NAME KoreaderFavoritesRows
   COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/koreader_favorites/check.py ${REPO_ROOT})
 
