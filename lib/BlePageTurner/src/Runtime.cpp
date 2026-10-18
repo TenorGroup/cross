@@ -83,8 +83,9 @@ std::atomic<LinkNote> linkNoteNow{LinkNote::None};
 bool noteRadioUp = false;
 uint32_t noteRadioUpSinceMs = 0;
 // Remotes paired on the device: the host's count from storage at boot, then the stack's own list once it
-// is up (a remote paired or forgotten since). Main loop only.
-uint8_t savedBonds = 0;
+// is up (a remote paired or forgotten since). Until the host tells, a bond is assumed and the radio behaves
+// as it did before the count existed. Main loop only.
+uint8_t savedBonds = UINT8_MAX;
 
 void say(const bool error, const char* format, ...) {
   va_list args;
@@ -103,7 +104,7 @@ RadioInputs inputsFor(const Phase phase, const Scene& s) {
   in.storageBusy = s.storageBusy;
   in.heldForBuild = heldForBuild.load(std::memory_order_relaxed);
   in.idleStopped = radioIdleStopped.load(std::memory_order_relaxed);
-  in.hasBond = config->peerAddr[0] != '\0';
+  in.hasBond = savedBonds > 0;
   in.linked = true;
   return in;
 }
@@ -390,7 +391,7 @@ void resetForTests() {
   linkNoteNow.store(LinkNote::None);
   noteRadioUp = false;
   noteRadioUpSinceMs = 0;
-  savedBonds = 0;
+  savedBonds = UINT8_MAX;
 }
 #endif
 
@@ -468,7 +469,7 @@ bool tick(const Scene& s) {
   }
   RadioInputs in = inputsFor(Phase::Running, s);
   const Why must = radioVerdict(in);
-  if (must == Why::Off || must == Why::StorageBusy) {
+  if (must == Why::Off || must == Why::StorageBusy || must == Why::NoBond) {
     idleSinceMs = 0;
     idleClockRunning = false;
     detail::suspend(0);

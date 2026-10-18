@@ -53,11 +53,13 @@ TEST_F(HomeStartTest, StartsAfterTheFirstFrameAndOncePerVisit) {
   EXPECT_EQ(radio().creates, 1u);
 }
 
-TEST_F(HomeStartTest, NeedsTheRemoteOnAndChosen) {
-  config.peerAddr[0] = '\0';
+TEST_F(HomeStartTest, NeedsTheRemoteOnAndPaired) {
+  radio().bonds.clear();
+  bleturner::setSavedBonds(0);
   pass(home());
   EXPECT_EQ(radio().creates, 0u);
-  std::strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  radio().bonds = {"7d:de:5c:bd:ae:ca"};
+  bleturner::setSavedBonds(1);
   config.enabled = 0;
   pass(home(2));
   EXPECT_EQ(radio().creates, 0u);

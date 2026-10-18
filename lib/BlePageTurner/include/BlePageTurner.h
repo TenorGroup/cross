@@ -148,7 +148,8 @@ struct Scene {
 
 void begin(const Host& host, Config& config);
 // The remotes paired on this device, as the host read them from storage at boot: the stack loads its own
-// list only when it starts. Once it has started, its list counts instead. Main loop.
+// list only when it starts. Once it has started, its list counts instead. With none, the book never starts
+// the radio and stops one left up; until this is called, a bond is assumed. Main loop.
 void setSavedBonds(uint8_t count);
 void requestConnect();
 // Returns true when a remote press acted this pass (the host counts it as user activity).

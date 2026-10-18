@@ -569,4 +569,36 @@ TEST_F(TickTest, HoldsHeapWhileTheRadioOwnsOrAsksForIt) {
   EXPECT_FALSE(bleturner::holdsHeap()) << "switched off in settings: the book stops deferring at once";
 }
 
+// X3, 18/10/2026: BLE on and nothing paired. The radio started in every book visit and held about
+// 51 KB for 30 s for a remote that could never link.
+TEST_F(TickTest, NoRemotePairedNeverStartsTheRadioInTheBook) {
+  radio().bonds.clear();
+  bleturner::setSavedBonds(0);
+  for (int i = 0; i < 10; ++i) pass(fake::reading());
+  EXPECT_EQ(radio().creates, 0u);
+}
+
+// The settings screen starts the radio and leaves it up; with nothing paired it stops in the book.
+TEST_F(TickTest, ARadioLeftUpWithNoRemotePairedStopsInTheBook) {
+  radio().bonds.clear();
+  bleturner::setSavedBonds(0);
+  radio().running = true;
+  Scene settings{};
+  settings.where = bleturner::Where::Elsewhere;
+  pass(settings);
+  ASSERT_TRUE(radio().running) << "outside the book it stays";
+  pass(fake::reading());
+  EXPECT_FALSE(radio().running);
+}
+
+// A remote paired by an older version may have no chosen address: the saved bond alone starts the
+// radio, and the stack reconnects the first bonded remote.
+TEST_F(TickTest, ASavedBondWithoutAChosenAddressStartsTheRadio) {
+  radio().bonds = {"7d:de:5c:bd:ae:ca"};
+  bleturner::setSavedBonds(1);
+  ASSERT_EQ(config.peerAddr[0], '\0');
+  pass(fake::reading());
+  EXPECT_EQ(radio().creates, 1u);
+}
+
 }  // namespace

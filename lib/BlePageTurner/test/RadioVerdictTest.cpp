@@ -138,6 +138,25 @@ TEST(RadioVerdictTest, Table) {
        Why::Ok},
       {"running: idle long past", with(Phase::Running, [](RadioInputs& i) { i.idleMs = kIdleOffMs * 3; }),
        Why::IdleNoLink},
+      // X3, 18/10/2026: BLE on and nothing paired, the radio held about 51 KB in every book visit for
+      // a remote that could never link; a radio the settings screen left up ran on into the book.
+      {"idle: no remote paired", with(Phase::Idle, [](RadioInputs& i) { i.hasBond = false; }), Why::NoBond},
+      {"idle: pairing screen with no remote paired",
+       with(Phase::Idle,
+            [](RadioInputs& i) {
+              i.where = Where::PairingScreen;
+              i.hasBond = false;
+            }),
+       Why::Ok},
+      {"running: no remote paired in the book", with(Phase::Running, [](RadioInputs& i) { i.hasBond = false; }),
+       Why::NoBond},
+      {"running: no remote paired outside the book stays",
+       with(Phase::Running,
+            [](RadioInputs& i) {
+              i.where = Where::Elsewhere;
+              i.hasBond = false;
+            }),
+       Why::Ok},
       {"running: a linked remote is never idle",
        with(Phase::Running,
             [](RadioInputs& i) {
