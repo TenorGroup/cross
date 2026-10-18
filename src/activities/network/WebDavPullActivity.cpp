@@ -32,16 +32,6 @@ std::string originFor(std::string_view url) {
   return std::string(url.substr(0, pathStart == std::string_view::npos ? url.size() : pathStart));
 }
 
-bool validLocalPath(std::string_view path) {
-  if (path.empty() || path.front() != '/' || path.find("//") != std::string_view::npos ||
-      path.find("..") != std::string_view::npos || path.find('\\') != std::string_view::npos)
-    return false;
-  for (const unsigned char c : path) {
-    if (c < 32 || c == 127) return false;
-  }
-  return true;
-}
-
 bool isEpubPath(std::string_view path) {
   if (path.size() < 5) return false;
   const size_t start = path.size() - 5;
@@ -402,7 +392,7 @@ bool WebDavPullActivity::readQueueEntry(webdav::PropfindEntry& entry) {
 
 webdav::QueueResult WebDavPullActivity::downloadEntry(const webdav::PropfindEntry& entry,
                                                        const std::string_view destinationPath) {
-  if (!WebDavConfigStore::isValid(currentConfig) || !validLocalPath(entry.path) || !validLocalPath(destinationPath)) {
+  if (!WebDavConfigStore::isValid(currentConfig) || !webdav::validLocalPath(entry.path) || !webdav::validLocalPath(destinationPath)) {
     setFailure("Invalid WebDAV path");
     return {webdav::PullStatus::invalid, false};
   }

@@ -189,3 +189,18 @@ TEST(WebDavPullQueue, Enforces128KiBByteCap) {
   EXPECT_LE(queue.bytes(), webdav::WebDavPullLimits::maxQueueBytes);
   EXPECT_GT(queue.bytes(), webdav::WebDavPullLimits::maxQueueBytes - 2000u);
 }
+
+// A Vietnamese title with an ellipsis is listed by the parser, so the download must take it too.
+TEST(WebDavPullPath, LocalPathRefusesOnlyDotSegments) {
+  EXPECT_TRUE(webdav::validLocalPath("/Truyện... tập 1.epub"));
+  EXPECT_TRUE(webdav::validLocalPath("/Books/a..b.epub"));
+  EXPECT_TRUE(webdav::validLocalPath("/..hidden.epub"));
+  EXPECT_FALSE(webdav::validLocalPath("/Books/../x.epub"));
+  EXPECT_FALSE(webdav::validLocalPath("/.."));
+  EXPECT_FALSE(webdav::validLocalPath("/a/.."));
+  EXPECT_FALSE(webdav::validLocalPath("/./x.epub"));
+  EXPECT_FALSE(webdav::validLocalPath("x.epub"));
+  EXPECT_FALSE(webdav::validLocalPath("//x.epub"));
+  EXPECT_FALSE(webdav::validLocalPath("/a\\b.epub"));
+  EXPECT_FALSE(webdav::validLocalPath(std::string("/a\x01.epub")));
+}

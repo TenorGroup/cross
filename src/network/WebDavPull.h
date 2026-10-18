@@ -81,6 +81,10 @@ class PropfindStreamParser {
 // follows a downgrade to HTTP.
 bool redirectAllowed(std::string_view currentUrl, std::string_view nextUrl);
 
+// A card path a listed file may be written to: absolute, no empty, "." or ".." segment, no
+// backslash or control character. Dots inside a name ("Truyện... tập 1.epub") are fine.
+bool validLocalPath(std::string_view path);
+
 // Small OCF check used by the queue fixture. It accepts an uncompressed first
 // ZIP entry named mimetype with the required EPUB media type.
 bool isValidEpub(std::string_view bytes);

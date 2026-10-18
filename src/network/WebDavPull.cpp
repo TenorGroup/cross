@@ -559,6 +559,20 @@ bool redirectAllowed(std::string_view currentUrl, std::string_view nextUrl) {
   return current.port == next.port || (current.port == 80u && next.port == 443u);
 }
 
+bool validLocalPath(std::string_view path) {
+  if (path.empty() || path.front() != '/' || path.find('\\') != std::string_view::npos) return false;
+  for (const unsigned char c : path) {
+    if (c < 32 || c == 127) return false;
+  }
+  for (std::size_t start = 1; start <= path.size();) {
+    const std::size_t end = std::min(path.find('/', start), path.size());
+    const std::string_view part = path.substr(start, end - start);
+    if (part.empty() || part == "." || part == "..") return false;
+    start = end + 1;
+  }
+  return true;
+}
+
 bool isValidEpub(std::string_view bytes) {
   if (bytes.size() < 30 || bytes.substr(0, 4) != "PK\x03\x04") return false;
   const auto read16 = [&bytes](std::size_t offset) -> std::uint16_t {
