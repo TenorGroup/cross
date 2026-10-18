@@ -875,12 +875,16 @@ void KeyboardEntryActivity::loopLocked(const InputFrame& input, bool& complete) 
     }
   }
 
+  // A hold that began and ended inside one slow refresh comes as a single frame from the button timer:
+  // pressed and released together, the held time measured at the release. It is still a hold.
+  const auto holding = [](const ButtonInput& b) { return b.held || (b.pressed && b.released); };
+
   if (!cursorMode && input.rowPrev.pressed) {
     upHeld = true;
     upLongHandled = false;
   }
 
-  if (upHeld && !upLongHandled && input.rowPrev.held && input.heldMs > LONG_PRESS_MS) {
+  if (upHeld && !upLongHandled && holding(input.rowPrev) && input.heldMs > LONG_PRESS_MS) {
     cursorMode = true;
     upLongHandled = true;
     hintVisible = true;
@@ -929,7 +933,7 @@ void KeyboardEntryActivity::loopLocked(const InputFrame& input, bool& complete) 
     colPrevLongHandled = false;
   }
 
-  if (colPrevHeld && !colPrevLongHandled && input.colPrev.held &&
+  if (colPrevHeld && !colPrevLongHandled && holding(input.colPrev) &&
       input.heldMs > LONG_PRESS_MS) {
     if (backspaceUtf8()) {
       requestUpdate();
@@ -971,7 +975,7 @@ void KeyboardEntryActivity::loopLocked(const InputFrame& input, bool& complete) 
   // typing a multi-word name meant crossing the layout for every gap, and cursor
   // mode had no way to add one at all. A password field keeps this gesture for
   // its reveal instead.
-  if (colNextHeld && !colNextLongHandled && input.colNext.held &&
+  if (colNextHeld && !colNextLongHandled && holding(input.colNext) &&
       input.heldMs > LONG_PRESS_MS) {
     if (rightHeld && !rightLongHandled) {
       savedCursorPos = rightStartCursorPos;
@@ -1011,14 +1015,14 @@ void KeyboardEntryActivity::loopLocked(const InputFrame& input, bool& complete) 
   const fui::KeyboardKey* selKey = selectedKey();
   const bool selectedDel = selKey && selKey->value == fui::QWERTY_KEY_BACKSPACE;
 
-  if (confirmHeld && !confirmLongHandled && input.confirm.held &&
+  if (confirmHeld && !confirmLongHandled && holding(input.confirm) &&
       input.heldMs > DEL_LONG_PRESS_MS && selectedDel) {
     clearAllOrAltOnSelected();
     confirmLongHandled = true;
     requestUpdate();
   }
 
-  if (confirmHeld && !confirmLongHandled && input.confirm.held &&
+  if (confirmHeld && !confirmLongHandled && holding(input.confirm) &&
       input.heldMs > LONG_PRESS_MS) {
     if (!selectedDel && clearAllOrAltOnSelected()) {
       requestUpdate();

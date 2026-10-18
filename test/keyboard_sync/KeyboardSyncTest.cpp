@@ -287,6 +287,43 @@ static void run(const std::string& test) {
         require(f.completed() == "aế 中", "short left release failed to move the UTF-8 cursor exactly once");
       }
     }
+  } else if (test == "merged_hold") {
+    // The button timer hands a hold that began and ended inside one slow refresh (X3 1069 ms,
+    // X4C 718 ms) to a single frame: pressed and released together, the held time of the release.
+    const auto merged = [](Fixture& f, Button b, unsigned long ms) {
+      f.input.reset();
+      f.input.pressed[static_cast<size_t>(b)] = true;
+      f.input.released[static_cast<size_t>(b)] = true;
+      f.input.heldMs = ms;
+      f.activity.loop();
+    };
+    {
+      Fixture f("aế中");
+      f.hold(Button::Up);
+      merged(f, Button::Left, 600);
+      require(f.completed() == "aế", "a hold inside one refresh moved the cursor instead of deleting");
+    }
+    {
+      Fixture f("aế中");
+      f.hold(Button::Up);
+      merged(f, Button::Left, 80);
+      f.hold(Button::Right);
+      require(f.completed() == "aế 中", "a tap inside one refresh did not stay a one-character cursor move");
+    }
+    {
+      Fixture f("aế中");
+      merged(f, Button::Up, 600);
+      f.tap(Button::Left);
+      f.hold(Button::Right);
+      require(f.completed() == "aế 中", "a hold of row-previous inside one refresh did not enter cursor mode");
+    }
+    {
+      Fixture f(std::string(4096, 'x'));
+      for (int i = 0; i < 3; ++i) f.tap(Button::Down);
+      f.tap(Button::Left);  // Shift column wraps to Delete.
+      merged(f, Button::Confirm, 1600);
+      require(f.completed().empty(), "a hold of Delete inside one refresh did not clear the field");
+    }
   } else if (test == "touch") {
     Fixture f("aế中");
     f.render();  // Publish actual FreeInkUI key regions.
