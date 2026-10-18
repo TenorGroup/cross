@@ -661,7 +661,7 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
     zip.close();
     if (!valid) {
       Storage.remove(staging.c_str());
-      return FILE_ERROR;
+      return INVALID_EPUB;
     }
   }
   bool backupCleanupPending = false;

@@ -40,6 +40,7 @@ class HttpDownloader {
     FILE_ERROR,
     ABORTED,
     CACHE_ERROR,  // File committed, but stale reading cache could not be removed.
+    INVALID_EPUB,  // Arrived whole, but is not a readable EPUB; nothing was replaced.
   };
 
   // Pre-flight floor for starting a TLS transfer. Below this the session or

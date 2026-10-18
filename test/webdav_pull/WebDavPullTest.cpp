@@ -159,6 +159,23 @@ TEST(WebDavPullQueue, ReportsStatusesAndRejectsInvalidEpub) {
   EXPECT_EQ(queue.size(), 1u);
 }
 
+// Measured on the X4C 18/10/2026: a transfer cut off mid-body was shown as "Invalid EPUB", and one
+// broken EPUB on the server stopped every file listed after it, on every later pull.
+TEST(WebDavPullQueue, CutTransferIsFailedAndOnlyFailedStopsThePull) {
+  EXPECT_EQ(webdav::downloadStatus(epubEntry("/cut.epub"), false, false, false), webdav::PullStatus::failed);
+  EXPECT_EQ(webdav::downloadStatus(epubEntry("/bad.epub"), false, true, false), webdav::PullStatus::invalid);
+  EXPECT_EQ(webdav::downloadStatus(epubEntry("/ok.epub"), false, true, true), webdav::PullStatus::downloaded);
+  EXPECT_EQ(webdav::downloadStatus(epubEntry("/ok.epub"), true, false, false), webdav::PullStatus::skipped_existing);
+  webdav::PullQueue queue;
+  EXPECT_EQ(queue.submit(epubEntry("/cut.epub"), false, false, false).status, webdav::PullStatus::failed);
+
+  EXPECT_TRUE(webdav::pullContinuesAfter(webdav::PullStatus::invalid));
+  EXPECT_TRUE(webdav::pullContinuesAfter(webdav::PullStatus::skipped_existing));
+  EXPECT_TRUE(webdav::pullContinuesAfter(webdav::PullStatus::collision));
+  EXPECT_TRUE(webdav::pullContinuesAfter(webdav::PullStatus::downloaded));
+  EXPECT_FALSE(webdav::pullContinuesAfter(webdav::PullStatus::failed));
+}
+
 TEST(WebDavPullQueue, Enforces128KiBByteCap) {
   webdav::PullQueue queue;
   webdav::QueueResult last;

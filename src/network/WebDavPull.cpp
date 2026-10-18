@@ -579,13 +579,25 @@ std::size_t PullQueue::itemBytes(const PropfindEntry& entry) {
   return 64u + entry.href.size() + entry.path.size() + entry.contentType.size();
 }
 
+PullStatus downloadStatus(const PropfindEntry& entry, const bool destinationExists, const bool downloadSucceeded,
+                          const bool epubValid) {
+  if (destinationExists) return PullStatus::skipped_existing;
+  if (entry.collection || entry.path.size() < 5 || lower(entry.path.substr(entry.path.size() - 5)) != ".epub")
+    return PullStatus::invalid;
+  // A transfer that did not arrive whole is failed, whatever its first bytes looked like.
+  if (!downloadSucceeded) return PullStatus::failed;
+  return epubValid ? PullStatus::downloaded : PullStatus::invalid;
+}
+
+// A broken file is that file's problem; the network or the card failing ends the pull.
+bool pullContinuesAfter(const PullStatus status) { return status != PullStatus::failed; }
+
 QueueResult PullQueue::submit(const PropfindEntry& entry, bool destinationExists, bool downloadSucceeded,
                               bool epubValid) {
   if (destinationExists) return {PullStatus::skipped_existing, false};
   if (std::find(paths_.begin(), paths_.end(), entry.path) != paths_.end()) return {PullStatus::collision, false};
-  if (entry.collection || entry.path.size() < 5 || lower(entry.path.substr(entry.path.size() - 5)) != ".epub" || !epubValid)
-    return {PullStatus::invalid, false};
-  if (!downloadSucceeded) return {PullStatus::failed, false};
+  const PullStatus status = downloadStatus(entry, false, downloadSucceeded, epubValid);
+  if (status != PullStatus::downloaded) return {status, false};
   const std::size_t cost = itemBytes(entry);
   if (cost > WebDavPullLimits::maxEntry) return {PullStatus::invalid, false};
   if (cost > WebDavPullLimits::maxQueueBytes || bytes_ > WebDavPullLimits::maxQueueBytes - cost)

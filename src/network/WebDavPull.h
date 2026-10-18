@@ -92,6 +92,13 @@ struct QueueResult {
   bool queued = false;
 };
 
+// The status of one listed file once its transfer is over: skipped when the card already has it,
+// otherwise judged on what arrived.
+PullStatus downloadStatus(const PropfindEntry& entry, bool destinationExists, bool downloadSucceeded, bool epubValid);
+
+// Whether the pull goes on to the next listed file after one ended with this status.
+bool pullContinuesAfter(PullStatus status);
+
 class PullQueue {
  public:
   QueueResult submit(const PropfindEntry& entry, bool destinationExists, bool downloadSucceeded,

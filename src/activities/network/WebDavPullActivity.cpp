@@ -275,6 +275,8 @@ bool WebDavPullActivity::performPropfind() {
         return parser.feed(data, size, &WebDavPullActivity::queueEntrySink, this);
       },
       [this] {
+        // The loop is blocked for the whole request: pump input here so Back can cancel it.
+        mappedInput.update(true);
         if (mappedInput.wasReleased(MappedInputManager::Button::Back)) cancelRequested = true;
         return cancelRequested;
       });
@@ -325,6 +327,7 @@ void WebDavPullActivity::performPull() {
     return;
   }
 
+  destinationKeys.clear();
   webdav::PropfindEntry entry;
   while (readQueueEntry(entry)) {
     if (cancelRequested) break;
@@ -339,7 +342,7 @@ void WebDavPullActivity::performPull() {
     }
     destinationKeys.push_back(destinationKey);
     const auto result = downloadEntry(entry, destination);
-    if (result.status == webdav::PullStatus::failed || result.status == webdav::PullStatus::invalid) break;
+    if (!webdav::pullContinuesAfter(result.status)) break;
   }
   if (cancelRequested) {
     setFailure("WebDAV pull cancelled");
@@ -412,30 +415,25 @@ webdav::QueueResult WebDavPullActivity::downloadEntry(const webdav::PropfindEntr
     return {webdav::PullStatus::invalid, false};
   }
   const auto progress = [this](size_t, size_t) {
+    // The loop is blocked for the whole download: pump input here so Back can cancel it.
+    mappedInput.update(true);
     if (mappedInput.wasReleased(MappedInputManager::Button::Back)) cancelRequested = true;
   };
   const auto transfer = HttpDownloader::downloadToFile(remoteUrl, std::string(destinationPath), progress, &cancelRequested,
                                                         currentConfig.username, currentConfig.password);
-  const bool downloaded = transfer == HttpDownloader::OK;
-  const bool valid = downloaded && validDownloadedEpub(std::string(destinationPath).c_str());
-  if (downloaded && !valid) Storage.remove(std::string(destinationPath).c_str());
-  return recordDownload(entry, false, downloaded, valid);
+  // CACHE_ERROR still committed the book; INVALID_EPUB arrived whole and was refused.
+  const bool committed = transfer == HttpDownloader::OK || transfer == HttpDownloader::CACHE_ERROR;
+  const bool valid = committed && validDownloadedEpub(std::string(destinationPath).c_str());
+  if (committed && !valid) Storage.remove(std::string(destinationPath).c_str());
+  return recordDownload(entry, false, committed || transfer == HttpDownloader::INVALID_EPUB, valid);
 }
 
 webdav::QueueResult WebDavPullActivity::recordDownload(const webdav::PropfindEntry& entry,
                                                        const bool destinationExists, const bool downloadSucceeded,
                                                        const bool epubValid) {
   pullStatus = WebDavPullStatus::downloading;
-  webdav::QueueResult result;
-  if (destinationExists) {
-    result = {webdav::PullStatus::skipped_existing, false};
-  } else if (entry.collection || !isEpubPath(entry.path) || !epubValid) {
-    result = {webdav::PullStatus::invalid, false};
-  } else if (!downloadSucceeded) {
-    result = {webdav::PullStatus::failed, false};
-  } else {
-    result = {webdav::PullStatus::downloaded, true};
-  }
+  const webdav::PullStatus status = webdav::downloadStatus(entry, destinationExists, downloadSucceeded, epubValid);
+  const webdav::QueueResult result{status, status == webdav::PullStatus::downloaded};
   if (result.status == webdav::PullStatus::failed) setFailure("WebDAV download failed");
   if (result.status == webdav::PullStatus::invalid) setFailure("Invalid EPUB");
   return result;
@@ -484,7 +482,7 @@ void WebDavPullActivity::render(RenderLock&&) {
     line += labels[row];
     if (row < 3) line += ": " + std::string(values[row]);
     const std::string visible = renderer.truncatedText(UI_10_FONT_ID, line.c_str(), renderer.getScreenWidth() - left - 12);
-    renderer.drawText(UI_10_FONT_ID, left, y, visible.c_str(), selected, selected ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
+    renderer.drawText(UI_10_FONT_ID, left, y, visible.c_str(), true, selected ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
     y += lineHeight + 8;
   }
   if (!detail.empty()) renderer.drawText(UI_10_FONT_ID, left, y + 6, detail.c_str());
@@ -506,10 +504,10 @@ void WebDavPullActivity::handleInput() {
   if (pullStatus != WebDavPullStatus::ready && pullStatus != WebDavPullStatus::needs_configuration &&
       pullStatus != WebDavPullStatus::failed)
     return;
-  if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::NavPrevious)) {
     selectedField = (selectedField + 3) % 4;
     requestUpdate();
-  } else if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
+  } else if (mappedInput.wasReleased(MappedInputManager::Button::NavNext)) {
     selectedField = (selectedField + 1) % 4;
     requestUpdate();
   } else if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
