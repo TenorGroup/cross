@@ -15,7 +15,7 @@ the manual SD card copy method below.
 ### Option 1: Download from device (recommended)
 
 1. Connect your CrossPoint reader to Wi-Fi
-2. Go to **Settings > Reader > Manage Fonts**
+2. Go to **Settings > Reader > Get Fonts**
 3. Browse available font families and tap to download
 4. Downloaded fonts appear immediately in **Settings > Reader > Font Family**
 
@@ -24,7 +24,11 @@ the manual SD card copy method below.
 1. Start **File Transfer** and connect through **Join Network** or **Create Hotspot**
 2. Open the web interface URL shown on the reader
 3. Navigate to the **Fonts** tab
-4. Upload `.cpfont` files using the upload form
+4. Upload `.cpfont` files, a `.cpfontpack`, or `.ttf`/`.otf` files. On a device
+   without external RAM (X3, X4) the page converts a TTF or OTF to `.cpfont` in the
+   browser (12, 14, 16 and 18 pt, one file per style of the same font) before sending
+   it. Letters the font lacks are drawn by the browser from the font's own marks or
+   from a fallback font, and the page says how many.
 
 ### Option 3: Manual SD card copy
 
@@ -78,9 +82,9 @@ file in the same family folder takes priority over TTF/OTF/TTC files, so keep
 the two formats in separate folders. If both font roots contain the same family
 name, the copy in `/.fonts/` takes priority.
 
-Direct fonts use the standard reader sizes: 12, 14, 16, and 18 pt. The **Fonts**
-tab in File Transfer accepts `.cpfont` files only. Copy direct fonts to the SD
-card instead. To remove a loose font file, delete that file from the SD card.
+Direct fonts use the standard reader sizes: 12, 14, 16, and 18 pt. On a device
+with external RAM the **Fonts** tab in File Transfer stores TTF/OTF files as they
+are; elsewhere it converts them to `.cpfont` first. To remove a loose font file, delete that file from the SD card.
 The Fonts page can delete families stored in subfolders.
 
 ## CJK in the User Interface

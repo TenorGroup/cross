@@ -41,6 +41,12 @@
 #include "html/ThemeCss.generated.h"
 #include "html/js/WebI18nJs.generated.h"
 #include "html/js/jszip_minJs.generated.h"
+#if !CROSSPOINT_VECTOR_FONTS
+#include "html/js/font_builderJs.generated.h"
+#endif
+
+static void sendStaticContent(WebServer* server, const char* data, size_t len, const char* etag,
+                              const char* contentType);
 #include "util/BookCacheUtils.h"
 #include "util/TaskWatchdog.h"
 
@@ -269,6 +275,14 @@ void CrossPointWebServer::begin() {
   server->on("/js/web-i18n.js", HTTP_GET, [this] {
     if (auth.authorize(*server, true, requestLanguage())) handleWebI18n();
   });
+#if !CROSSPOINT_VECTOR_FONTS
+  // A board that cannot draw .ttf turns one into .cpfont in the browser (fonts page).
+  server->on("/js/font-builder.js", HTTP_GET, [this] {
+    if (auth.authorize(*server, true, requestLanguage()))
+      sendStaticContent(server.get(), font_builderJs, font_builderJsCompressedSize, font_builderJsETag,
+                        "application/javascript; charset=utf-8");
+  });
+#endif
 
   server->on("/api/status", HTTP_GET, [this] {
     if (auth.authorize(*server, true, requestLanguage())) handleStatus();

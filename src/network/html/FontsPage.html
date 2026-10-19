@@ -364,17 +364,60 @@
       return fontFilesOnly(['fontTtf', 'fontFiles', 'fontPacks'].flatMap(id => [...document.getElementById(id).files]));
     }
 
-    // Only PSRAM builds can render .ttf/.otf: elsewhere the picker is hidden and
-    // the hint says so, instead of storing a file that never shows up in the list.
+    // Only PSRAM builds render .ttf/.otf; elsewhere the page turns them into .cpfont
+    // (/js/font-builder.js) before sending.
     function applyVectorSupport() {
-      document.getElementById('pickTtf').style.display = vectorSupported ? '' : 'none';
       renderHint();
     }
 
     function renderHint() {
       document.getElementById('ttfHint').textContent = vectorSupported
         ? TenorI18n.t('fonts.ttfHint', { max: MAX_VECTOR_MB, count: MAX_FILES_PER_UPLOAD })
-        : TenorI18n.t('fonts.err.unsupported');
+        : TenorI18n.t('fonts.convertHint');
+    }
+
+    function loadFontBuilder() {
+      if (window.TenorFontBuilder) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = '/js/font-builder.js';
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('notFont'));
+        document.head.appendChild(s);
+      });
+    }
+
+    // TTF/OTF on a board without vector fonts: build the four .cpfont sizes here and
+    // send them as one family, the way a picked .cpfont folder goes.
+    async function convertAndSend(vec) {
+      setStatus('', () => TenorI18n.t('fonts.converting'));
+      let built;
+      try {
+        await loadFontBuilder();
+        built = await TenorFontBuilder.build(vec, fraction => setBar(fraction));
+      } catch (e) {
+        const key = 'fonts.err.convert.' + (e && e.message);
+        setStatus('status-err', () => TenorI18n.t(key) === key ? TenorI18n.t('fonts.unknownError') : TenorI18n.t(key));
+        return;
+      }
+      const family = built.family;
+      if (familiesState && familiesState.families && familiesState.families.some(f => f.name.toLowerCase() === family.toLowerCase())) {
+        setStatus('status-err', () => TenorI18n.t('fonts.err.familyExists', { family: family }));
+        return;
+      }
+      for (let i = 0; i < built.files.length; i++) {
+        const f = built.files[i];
+        setStatus('', () => TenorI18n.t('fonts.uploading', { index: i + 1, total: built.files.length, file: f.name }));
+        const data = await sendFont(family, f.blob, f.name, setBar);
+        if (!data.ok) {
+          setStatus('status-err', () => TenorI18n.t('fonts.uploadFailedFile', { file: f.name, message: failureText(data) }));
+          await loadFonts();
+          return;
+        }
+      }
+      const note = built.missing ? ' ' + TenorI18n.t('fonts.missingViet', { count: built.missing }) : '';
+      setStatus('status-ok', () => TenorI18n.tPlural('fonts.uploadedSummary', built.files.length, { family: family }) + note);
+      await loadFonts();
     }
 
     ['fontTtf', 'fontFiles', 'fontPacks'].forEach(id => document.getElementById(id).addEventListener('change', function() {
@@ -417,7 +460,6 @@
 
     function preflightError(files) {
       const vec = files.filter(f => VECTOR_RE.test(f.name));
-      if (vec.length > 0 && !vectorSupported) return () => TenorI18n.t('fonts.err.unsupported');
       if (files.length > MAX_FILES_PER_UPLOAD) return () => TenorI18n.t('fonts.err.tooMany', { count: MAX_FILES_PER_UPLOAD });
       const big = vec.find(f => f.size > MAX_VECTOR_MB * 1048576);
       if (big) return () => TenorI18n.t('fonts.uploadFailedFile', { file: big.name, message: TenorI18n.t('fonts.err.size', { max: MAX_VECTOR_MB }) });
@@ -463,6 +505,16 @@
       submitBtn.disabled = true;
       let uploaded = 0;
       try {
+        await fontsReady;
+        const vec = files.filter(f => VECTOR_RE.test(f.name));
+        if (vec.length && !vectorSupported) {
+          if (vec.length !== files.length) {
+            setStatus('status-err', () => TenorI18n.t('fonts.multiFamily'));
+            return;
+          }
+          await convertAndSend(vec);
+          return;
+        }
         for (const file of files) {
           const index = uploaded + 1;
           let percent = 0;
@@ -507,7 +559,8 @@
     });
 
     renderHint();
-    loadFonts();
+    // Whether the device draws .ttf comes with the list; a send waits for it.
+    const fontsReady = loadFonts();
   </script>
   </body>
 </html>
