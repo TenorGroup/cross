@@ -322,11 +322,23 @@
     }
 
     // A .ttf/.otf name is Family-Style.ttf: the family is what precedes the last
-    // hyphen (underscores stay, Noto_Sans-Bold.ttf is the family Noto_Sans).
+    // hyphen (underscores stay, Noto_Sans-Bold.ttf is the family Noto_Sans). Variable
+    // fonts carry their axes too: Literata[opsz,wght].ttf, Literata-VariableFont_wght.ttf.
+    const STYLE_RE = /^(?:(?:Thin|Hairline|ExtraLight|UltraLight|Light|Regular|Normal|Book|Medium|SemiBold|DemiBold|Demi|Bold|ExtraBold|UltraBold|Black|Heavy)?(?:Italic|Oblique|It)?)$/i;
+    function vectorStem(name) {
+      return name.replace(VECTOR_RE, '').replace(/\[[^\]]*\]/g, '').replace(/-VariableFont_.*$/i, '').replace(/[-_]+$/, '');
+    }
     function vectorFamilyFromFilename(name) {
-      const stem = name.replace(VECTOR_RE, '');
+      const stem = vectorStem(name);
       const cut = stem.lastIndexOf('-');
       return cut > 0 ? stem.slice(0, cut) : stem;
+    }
+    // Second try when the first split one family: drop only a trailing style name, so
+    // Noto-Sans[wght].ttf and Noto-Sans-Italic[wght].ttf are both Noto-Sans.
+    function vectorFamilyByStyle(name) {
+      const stem = vectorStem(name);
+      const cut = stem.lastIndexOf('-');
+      return cut > 0 && STYLE_RE.test(stem.slice(cut + 1)) ? stem.slice(0, cut) : stem;
     }
 
     // Sanitize to match firmware's [A-Za-z0-9_-]{1,31} pattern.
@@ -342,14 +354,23 @@
       return n.slice(-87);
     }
 
-    function familyForFile(f) {
+    function familyForFile(f, vectorFamily = vectorFamilyFromFilename) {
       if (VECTOR_RE.test(f.name)) {
         // A picked folder names the family; loose files fall back to their own name.
         const rel = f.webkitRelativePath || '';
         const top = rel.indexOf('/') > 0 ? rel.slice(0, rel.indexOf('/')) : '';
-        return sanitizeFamily(top || vectorFamilyFromFilename(f.name));
+        return sanitizeFamily(top || vectorFamily(f.name));
       }
       return sanitizeFamily(familyFromFilename(f.name));
+    }
+
+    // The one family the picked files belong to, or null when they are several.
+    function familyForFiles(files) {
+      for (const vectorFamily of [vectorFamilyFromFilename, vectorFamilyByStyle]) {
+        const families = [...new Set(files.map(f => familyForFile(f, vectorFamily)))];
+        if (families.length === 1) return families[0];
+      }
+      return null;
     }
 
     function cpfontFilesOnly(fileList) {
@@ -401,7 +422,8 @@
         return;
       }
       const family = built.family;
-      if (familiesState && familiesState.families && familiesState.families.some(f => f.name.toLowerCase() === family.toLowerCase())) {
+      const known = hasFamily(family);
+      if (known) {
         setStatus('status-err', () => TenorI18n.t('fonts.err.familyExists', { family: family }));
         return;
       }
@@ -410,7 +432,8 @@
         setStatus('', () => TenorI18n.t('fonts.uploading', { index: i + 1, total: built.files.length, file: f.name }));
         const data = await sendFont(family, f.blob, f.name, setBar);
         if (!data.ok) {
-          setStatus('status-err', () => TenorI18n.t('fonts.uploadFailedFile', { file: f.name, message: failureText(data) }));
+          setStatus('status-err', () => partialNote(TenorI18n.t('fonts.uploadFailedFile', { file: f.name, message: failureText(data) }),
+            family, known === false, i, built.files.length));
           await loadFonts();
           return;
         }
@@ -427,7 +450,7 @@
         renderPicked();
         return;
       }
-      const family = familyForFile(files[0]);
+      const family = familyForFiles(files) || familyForFile(files[0]);
       pickedState = () => TenorI18n.tPlural('fonts.pickedSummary', files.length, { family: family });
       renderPicked();
     }));
@@ -452,6 +475,18 @@
 
     // backend errors carry either a reason code (vector uploads: the page owns the
     // wording in the three locales) or finished text in the request locale.
+    // A send that broke after some files leaves a family with sizes missing, and the next
+    // send stops at "already there". Say so, only for a family this send created.
+    function partialNote(message, family, wasNew, done, total) {
+      if (!wasNew || done === 0) return message;
+      return message + (/[.!?。！？]$/.test(message) ? ' ' : '. ') +
+        TenorI18n.t('fonts.partialFamily', { family: family, done: done, total: total });
+    }
+
+    function hasFamily(family) {
+      return familiesState && familiesState.families ? familiesState.families.some(f => f.name.toLowerCase() === family.toLowerCase()) : null;
+    }
+
     function failureText(data) {
       if (data.networkError) return TenorI18n.t('fonts.networkError');
       if (data.code) return TenorI18n.t('fonts.err.' + data.code, { max: MAX_VECTOR_MB, count: MAX_FILES_PER_UPLOAD });
@@ -489,12 +524,11 @@
       // A directory picker may include files from multiple family subfolders.
       // Reject that up front: otherwise files[0]'s family is silently reused
       // for every upload, corrupting the install layout.
-      const families = [...new Set(files.map(familyForFile))];
-      if (families.length !== 1) {
+      const family = familyForFiles(files);
+      if (!family) {
         setStatus('status-err', () => TenorI18n.t('fonts.multiFamily'));
         return;
       }
-      const family = families[0];
       const pre = preflightError(files);
       if (pre) {
         setStatus('status-err', pre);
@@ -504,6 +538,7 @@
       const submitBtn = document.getElementById('submitBtn');
       submitBtn.disabled = true;
       let uploaded = 0;
+      const wasNew = hasFamily(family) === false;
       try {
         await fontsReady;
         const vec = files.filter(f => VECTOR_RE.test(f.name));
@@ -532,10 +567,10 @@
             showProgress();
           });
           if (!data.ok) {
-            setStatus('status-err', () => TenorI18n.t('fonts.uploadFailedFile', {
+            setStatus('status-err', () => partialNote(TenorI18n.t('fonts.uploadFailedFile', {
               file: file.name,
               message: failureText(data)
-            }));
+            }), family, wasNew, uploaded, files.length));
             await loadFonts();
             return;
           }
