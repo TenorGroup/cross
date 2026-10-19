@@ -292,6 +292,21 @@ TEST_F(ChapterHtmlSlimParserTest, DivWithHiddenAttributeContentShouldBeSkipped) 
   ASSERT_EQ(parser.partWordBufferIndex, 0);
 }
 
+// Text running straight into a block or a heading ends its own paragraph: the pending word is
+// not glued onto the first word of the next block ("two<div>three" read "twothree").
+TEST_F(ChapterHtmlSlimParserTest, TextRunningIntoABlockIsNotGluedToIt) {
+  for (const char* tag : {"div", "h3", "p"}) {
+    parser.beginParse();
+    parser.currentTextBlock = std::make_unique<ParsedText>(false);
+    ChapterHtmlSlimParser::startElement(&parser, "div", nullptr);
+    ChapterHtmlSlimParser::characterData(&parser, "two", 3);
+    ChapterHtmlSlimParser::startElement(&parser, tag, nullptr);
+    ChapterHtmlSlimParser::characterData(&parser, "three", 5);
+    ASSERT_EQ(std::string(parser.partWordBuffer, parser.partWordBufferIndex), "three") << tag;
+    ASSERT_EQ(parser.currentTextBlock->size(), 0u) << tag;
+  }
+}
+
 }  // namespace
 
 TEST_F(ChapterHtmlSlimParserTest, ForcedIndentCoexistsWithParagraphSpacingAndOnlyIndentsFirstLine) {
