@@ -1946,9 +1946,14 @@
     fetchVersion();
 
     // Close modals when clicking overlay - call proper cleanup functions
+    let clickTarget = null;
     document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
+      overlay.addEventListener('mousedown', (e) => {
+        clickTarget = e.target;
+      });
+
       overlay.addEventListener('click', function(e) {
-        if (e.target === overlay) {
+        if (clickTarget === overlay && e.target === overlay) {
           // Call the appropriate close function for each modal to ensure cleanup
           if (overlay.id === 'uploadModal') return closeUploadModal();
           if (overlay.id === 'folderModal') return closeFolderModal();
@@ -1958,6 +1963,8 @@
           if (overlay.id === 'imagePreviewModal') return closeImagePreview();
           overlay.classList.remove('open');
         }
+
+        clickTarget = null;
       });
     });
 
