@@ -23,6 +23,9 @@
 #include <algorithm>
 #include <climits>
 #include <cstring>
+#if defined(BOARD_HAS_PSRAM) && defined(ESP_PLATFORM) && !defined(SIMULATOR)
+#include <esp_heap_caps.h>
+#endif
 
 #include "CjkTextWrap.h"
 #include "FontCacheManager.h"
@@ -2892,7 +2895,13 @@ bool GfxRenderer::storeBwBuffer() {
 
     const size_t offset = i * BW_BUFFER_CHUNK_SIZE;
     const size_t chunkSize = std::min(BW_BUFFER_CHUNK_SIZE, static_cast<size_t>(frameBufferSize - offset));
-    bwBufferChunks[i] = static_cast<uint8_t*>(heapfloor::take(chunkSize, "snapshot"));
+#if defined(BOARD_HAS_PSRAM) && defined(ESP_PLATFORM) && !defined(SIMULATOR)
+    // Chunks under 4,096 B stay internal on the S3 (SPIRAM_MALLOC_ALWAYSINTERNAL), where the Bluetooth stack
+    // leaves no room for 48 KB: every page lost its gray (X4 Pro, 19/10/2026). PSRAM holds them; internal if absent.
+    bwBufferChunks[i] = static_cast<uint8_t*>(heap_caps_malloc(chunkSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!bwBufferChunks[i])
+#endif
+      bwBufferChunks[i] = static_cast<uint8_t*>(heapfloor::take(chunkSize, "snapshot"));
 
     if (!bwBufferChunks[i] || !heapfloor::judge(frameBufferSize, bwBufferChunks[i], "snapshot")) {
       LOG_ERR("GFX", "!! Failed to allocate BW buffer chunk %zu (%zu bytes)", i, chunkSize);
