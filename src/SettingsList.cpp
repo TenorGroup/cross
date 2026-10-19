@@ -348,8 +348,6 @@ const std::vector<SettingInfo>& getBaseSettingsList() {
     };
     // Double-click power frontlight shortcut only exists on the X4 Pro.
     if (!BoardConfig::isX4Pro()) eraseEntry(StrId::STR_DBL_CLICK_PWR_LIGHT);
-    // Tilt page turn needs an IMU with a gyroscope.
-    if (!halTiltSensor.isAvailable()) eraseEntry(StrId::STR_TILT_PAGE_TURN);
     if (!BoardConfig::hasTouch()) {
       // The reader menu style stays available on button boards (the toolbar
       // chrome is button-navigable); only the touch controls are hidden.

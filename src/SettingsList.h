@@ -291,6 +291,13 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                            [](const SettingInfo& s) { return s.nameId == StrId::STR_RESTORE_LIGHT_ON_WAKE; }),
             v.end());
   }
+  // Tilt page turn needs an IMU with a gyroscope. UI-only, like the frontlight
+  // entry: a failed probe on one boot must not drop the saved value.
+  if (!halTiltSensor.isAvailable()) {
+    v.erase(
+        std::remove_if(v.begin(), v.end(), [](const SettingInfo& s) { return s.nameId == StrId::STR_TILT_PAGE_TURN; }),
+        v.end());
+  }
   if (registry && registry->getFamilyCount() > 0) {
     auto it = std::find_if(v.begin(), v.end(), [](const SettingInfo& s) { return s.nameId == StrId::STR_FONT_FAMILY; });
     if (it != v.end()) {
