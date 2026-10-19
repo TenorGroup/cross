@@ -1,5 +1,6 @@
 #include "DictionaryWordSelectActivity.h"
 
+#include <Arduino.h>
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HeapFloor.h>
@@ -227,6 +228,14 @@ void DictionaryWordSelectActivity::performLookup() {
     }
   }
 
+  // The definition screen makes a plain-text copy as big as the definition while it still holds it;
+  // a std::string that cannot grow aborts (no exceptions), so ask the heap floor for that copy first.
+  // Under the floor's 4 KB line a copy goes through as any small allocation does.
+  if (found && definition.size() >= heapfloor::kBigBytes &&
+      !heapfloor::leaves(definition.size(), definition.size(), ESP.getFreeHeap(), ESP.getMaxAllocHeap())) {
+    found = false;
+    result = Dictionary::LookupResult::LowMemory;
+  }
   if (found) {
     popup = Popup::None;
     startActivityForResult(
