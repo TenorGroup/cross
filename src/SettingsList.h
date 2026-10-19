@@ -341,6 +341,9 @@ inline void forEachBaseSetting(const std::function<void(SettingInfo&&)>& emit) {
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_LEFT] = StrId::STR_DIR_LEFT;
 
     const bool hasTilt = halTiltSensor.isAvailable();
+    // The motion keys are saved by the board, not by this boot's probe: an X3 whose sensor did not
+    // answer once must not drop them at the next save (CrossPoint #3385). The lists hide the rows.
+    const bool savesMotion = hasTilt || BoardConfig::hasImu();
     // --- Display ---
     emit(SettingInfo::Enum(StrId::STR_UI_TEXT_SIZE, &CrossPointSettings::uiTextSize,
                           {StrId::STR_UI_SIZE_SMALL, StrId::STR_UI_SIZE_MEDIUM, StrId::STR_UI_SIZE_LARGE},
@@ -513,7 +516,7 @@ inline void forEachBaseSetting(const std::function<void(SettingInfo&&)>& emit) {
     // --- Gestures (only with the QMI8658 IMU, X3) ---
     // Keys and values are the ones these rows had in Reader and Controls, so a saved
     // file reads the same here.
-    if (hasTilt) {
+    if (savesMotion) {
       emit(SettingInfo::Enum(StrId::STR_TILT_PAGE_TURN, &CrossPointSettings::tiltPageTurn,
                             // STR_INVERTED means inverted colours elsewhere; tilt needs a
                             // reversed direction, so it gets a word of its own.
@@ -806,8 +809,14 @@ inline bool settingHiddenInShell(const SettingInfo& setting) {
                     setting.valuePtr == &CrossPointSettings::uglyRootScreen));
 }
 
+// Motion rows stay in the saved file on a board with a sensor, and leave every list while this boot's
+// probe found none (CrossPoint #3385).
+inline bool motionRowWithoutSensor(const SettingInfo& setting) {
+  return setting.category == StrId::STR_CAT_MOTION && !halTiltSensor.isAvailable();
+}
+
 inline int deviceSettingsTab(const SettingInfo& setting) {
-  if (settingHiddenOnThisBoard(setting) || settingHiddenInShell(setting)) return -1;
+  if (settingHiddenOnThisBoard(setting) || settingHiddenInShell(setting) || motionRowWithoutSensor(setting)) return -1;
   // X4 Pro: four rows made for front buttons do nothing here. They leave the lists, not the saved file.
   if (BoardConfig::isX4Pro() && (setting.nameId == StrId::STR_SIDE_ARROW_HINTS || setting.nameId == StrId::STR_BUTTON_LABELS ||
                                  setting.nameId == StrId::STR_BUTTON_HINTS ||
@@ -862,6 +871,7 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
   // The web page saves values without shell::changed(), so the shell is chosen on the device only.
   v.erase(std::remove_if(v.begin(), v.end(),
                          [](const SettingInfo& s) {
+                           if (motionRowWithoutSensor(s)) return true;
                            return s.valuePtr == &CrossPointSettings::uiShell || s.valuePtr == &CrossPointSettings::uiUglyLevel ||
                                   s.valuePtr == &CrossPointSettings::uiShellSleepMemo ||
                                   s.valuePtr == &CrossPointSettings::uiShellClockMemo ||

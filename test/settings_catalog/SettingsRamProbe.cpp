@@ -24,6 +24,19 @@ void operator delete(void*p,size_t)noexcept{operator delete(p);}
 void*operator new[](size_t n){return operator new(n);}void operator delete[](void*p)noexcept{operator delete(p);}void operator delete[](void*p,size_t)noexcept{operator delete(p);}
 int main(int argc,char**argv){
  if(argc!=3)return 2;const std::string mode=argv[1];halTiltSensor.available=std::atoi(argv[2])!=0;
+ if(mode=="imu-lost") {
+  // An X3 whose motion sensor did not answer at boot keeps the saved motion settings: one failed probe and a
+  // save used to drop them from the file. The rows stay off the screen and the web page.
+  BoardConfig::ACTIVE=BoardConfig::XTEINK_X3;halTiltSensor.available=false;
+  JsonDocument in;SETTINGS.toJson(in);in["tiltPageTurn"]=1;in["shakeAction"]=1;
+  bool ok=SETTINGS.fromJson(in.as<JsonVariantConst>());
+  JsonDocument out;SETTINGS.toJson(out);
+  ok=ok&&out["tiltPageTurn"].as<int>()==1&&out["shakeAction"].as<int>()==1;
+  for(const auto& row:getSettingsList()) ok=ok&&row.category!=StrId::STR_CAT_MOTION;
+  ok=ok&&menufavorites::label("settings/tiltPageTurn")==StrId::STR_NONE_OPT;  // a pinned motion row is hidden too
+  std::printf("imu_lost_keeps_motion=%s\n",ok?"GREEN":"RED");
+  return ok?0:16;
+ }
  if(mode=="reader-text" || mode=="reader-text-empty-heap") {
   // The actual toolbar lookup must fit after BLE and the saved page have fragmented RAM.
   const auto expected=getBaseSettingsList();

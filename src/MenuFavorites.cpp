@@ -100,7 +100,9 @@ StrId label(const std::string& key, const std::vector<SettingInfo>& settings) {
     return buildGlobalStatusBarChoiceSetting().nameId;
   if (key.rfind("settings/", 0) == 0) {
     for (const auto& info : settings) {
-      if (settingHiddenOnThisBoard(info) || !info.key || key.compare(9, std::string::npos, info.key) != 0) continue;
+      if (settingHiddenOnThisBoard(info) || motionRowWithoutSensor(info) || !info.key ||
+          key.compare(9, std::string::npos, info.key) != 0)
+        continue;
       if (info.valuePtr == &CrossPointSettings::uiUglyLevel && !ugly::logic::levelRowShown(SETTINGS.uiShell))
         return StrId::STR_NONE_OPT;
       if (info.valuePtr == &CrossPointSettings::fadingFix && (BoardConfig::isX4Pro() || BoardConfig::isX4Classic()))
@@ -140,7 +142,9 @@ std::string value(const std::string& key, const std::vector<SettingInfo>& settin
   const auto slash = key.find('/');
   if (slash == std::string::npos) return "";
   for (const auto& info : settings) {
-    if (settingHiddenOnThisBoard(info) || !info.key || key.compare(slash + 1, std::string::npos, info.key) != 0) continue;
+    if (settingHiddenOnThisBoard(info) || motionRowWithoutSensor(info) || !info.key ||
+        key.compare(slash + 1, std::string::npos, info.key) != 0)
+      continue;
     // Favorites never copy credentials or other string values into their labels.
     if (info.type == SettingType::STRING) return "";
     return SettingsActivity::settingValueText(info);
