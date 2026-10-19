@@ -104,3 +104,15 @@ TEST(UglyFont, ABuiltinFontPickedByHandStaysWhateverHappensToShantell) {
   after.leave();
   EXPECT_STREQ(after.name, "");
 }
+
+TEST(UglyFont, NotoSansPickedInsideTheShellBeforeThisVersionStays) {
+  Reader r;  // what v1.0.67 saved after Noto Sans was picked inside the shell
+  r.name[0] = '\0';
+  r.builtinDefault = false;
+  r.memo = 2;
+  r.enter(true);
+  EXPECT_STREQ(r.name, "");
+  EXPECT_EQ(r.memo, 3);
+  r.leave();
+  EXPECT_STREQ(r.name, "");
+}

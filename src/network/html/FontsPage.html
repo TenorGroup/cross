@@ -538,9 +538,10 @@
       const submitBtn = document.getElementById('submitBtn');
       submitBtn.disabled = true;
       let uploaded = 0;
-      const wasNew = hasFamily(family) === false;
+      let wasNew = false;
       try {
         await fontsReady;
+        wasNew = hasFamily(family) === false;
         const vec = files.filter(f => VECTOR_RE.test(f.name));
         if (vec.length && !vectorSupported) {
           if (vec.length !== files.length) {

@@ -63,7 +63,8 @@ Response:
 
 ### `GET /api/files`
 
-Lists files and folders under a directory.
+Lists files and folders under a directory. The list is streamed with chunked transfer encoding, so the
+client must speak HTTP/1.1 (curl, browsers and most HTTP libraries do by default).
 
 ```bash
 curl "http://tenor-cross.local/api/files?path=/Books"

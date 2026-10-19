@@ -25,7 +25,9 @@ void take(char (&name)[N], const bool builtinDefault, uint8_t& memo, const bool 
       name[N - 1] = '\0';
     }
   } else if (memo < 3 && name[0] == '\0') {
-    if (familyOnCard) {
+    if (!builtinDefault) {
+      memo = 3;  // Noto Sans was picked (v1.0.67 saved that without the 3)
+    } else if (familyOnCard) {
       std::strncpy(name, FAMILY, N - 1);
       name[N - 1] = '\0';
     }
