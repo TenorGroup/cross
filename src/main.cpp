@@ -64,6 +64,7 @@
 #include "CrossPointState.h"
 #include "KOReaderAutoSync.h"
 #include "KOReaderCredentialStore.h"
+#include "KOReaderDocumentId.h"
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
 #include "QuickAction.h"
@@ -2163,6 +2164,13 @@ void loop() {
         activityManager.goHome();
       } else if (cmd == "SLEEP") {
         enterDeepSleep();
+#ifdef TENOR_PRESS_PROBE
+      } else if (cmd.startsWith("KODOC ")) {
+        // CMD:KODOC <path>: the KOReader ids this device sends for a book (measuring build only).
+        const std::string path = cmd.substring(6).c_str();
+        logSerial.printf("KODOC:binary=%s filename=%s\n", KOReaderDocumentId::calculate(path).c_str(),
+                         KOReaderDocumentId::calculateFromFilename(path).c_str());
+#endif
       } else if (cmd.startsWith("OPEN_BOOK ")) {
         // CMD:OPEN_BOOK <duong/dan>: mo dung mot cuon de nghiem thu (chi co trong
         // ban nghiem thu qua USB). Duong dan tinh tu goc the nho.

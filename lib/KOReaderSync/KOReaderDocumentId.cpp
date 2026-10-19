@@ -4,6 +4,9 @@
 #include <Logging.h>
 #include <MD5Builder.h>
 
+#include <algorithm>
+#include <cstring>
+
 namespace {
 // Extract filename from path (everything after last '/')
 std::string getFilename(const std::string& path) {
@@ -12,6 +15,40 @@ std::string getFilename(const std::string& path) {
     return path;
   }
   return path.substr(pos + 1);
+}
+
+// The web page's "keep KOReader sync" optimisation stores the partial-MD5 windows of the original file as
+// the entry right after `mimetype`, uncompressed. Hashing that entry gives the original's id, so KOReader
+// holding the original and this device holding the smaller copy share one record.
+constexpr char kSampleName[] = "META-INF/tenor-koreader-sample.bin";
+constexpr uint32_t kZipLocal = 0x04034b50;
+constexpr size_t kMaxSample = 12 * 1024;
+
+uint16_t le16(const uint8_t* b) { return b[0] | (b[1] << 8); }
+uint32_t le32(const uint8_t* b) { return le16(b) | (static_cast<uint32_t>(le16(b + 2)) << 16); }
+
+bool hashEmbeddedSample(HalFile& file, const size_t fileSize, MD5Builder& md5, uint8_t* buffer, const size_t capacity) {
+  uint8_t header[30];
+  if (!file.seekSet(0) || file.read(header, 30) != 30 || le32(header) != kZipLocal) return false;
+  // 64-bit sums: size_t is 32 bits on the device and a hostile header must not wrap around.
+  const uint64_t second = 30ull + le16(header + 26) + le16(header + 28) + le32(header + 18);
+  if (second + 30 > fileSize || !file.seekSet(static_cast<size_t>(second)) || file.read(header, 30) != 30) return false;
+  const size_t nameLength = le16(header + 26), size = le32(header + 18);
+  const uint64_t body = second + 30 + nameLength + le16(header + 28);
+  char name[sizeof(kSampleName)];
+  if (le32(header) != kZipLocal || (le16(header + 6) & ~0x0800u) || le16(header + 8) != 0 || size != le32(header + 22) ||
+      size == 0 || size > kMaxSample || nameLength != sizeof(kSampleName) - 1 || body + size > fileSize ||
+      static_cast<size_t>(file.read(name, nameLength)) != nameLength ||
+      std::memcmp(name, kSampleName, nameLength) != 0 || !file.seekSet(static_cast<size_t>(body)))
+    return false;
+  md5.begin();
+  for (size_t left = size; left;) {
+    const size_t count = std::min(left, capacity);
+    if (static_cast<size_t>(file.read(buffer, count)) != count) return false;
+    md5.add(buffer, count);
+    left -= count;
+  }
+  return true;
 }
 }  // namespace
 
@@ -53,10 +90,16 @@ std::string KOReaderDocumentId::calculate(const std::string& filePath) {
 
   // Initialize MD5 builder
   MD5Builder md5;
-  md5.begin();
 
   // Buffer for reading chunks
   uint8_t buffer[CHUNK_SIZE];
+  if (hashEmbeddedSample(file, fileSize, md5, buffer, sizeof(buffer))) {
+    md5.calculate();
+    std::string result = md5.toString().c_str();
+    LOG_DBG("KODoc", "Hash of the original file kept in the book: %s", result.c_str());
+    return result;
+  }
+  md5.begin();
   size_t totalBytesRead = 0;
 
   // Read from each offset (i = -1 to 10)

@@ -159,6 +159,8 @@ A **Wi-Fi signal strength indicator** (dBm) is displayed on-screen during joined
 > Advanced users can also manage files programmatically or via the command line using `curl`. See the [web server docs](./docs/webserver.md) for details.
 > [!TIP]
 > If your EPUBs have compatibility issues, you can run the built-in **EPUB Optimizer** directly from the device to clean up and reprocess books for better rendering.
+>
+> With **Keep KOReader sync** ticked (the default), the optimizer only shrinks JPEG and PNG images to the screen and rewrites progressive or interlaced ones the reader cannot show well; text, file names and every other byte stay as they were, and the book carries the KOReader id of the original file. KOReader on another device holding the original still finds the same progress. Untick it to also split long images and turn GIF and WebP into JPEG; KOReader may then not recognise the book.
 
 ### 3.5.1 Calibre Wireless Transfers
 
@@ -341,7 +343,7 @@ The Settings screen allows you to configure the device's behavior. There are a f
 
 - **Language**: Set the UI language. CrossPoint supports 32 languages: English, Spanish, French, German, Czech, Brazilian Portuguese, European Portuguese, Russian, Swedish, Romanian, Catalan, Ukrainian, Belarusian, Italian, Polish, Finnish, Danish, Dutch, Turkish, Kazakh, Hungarian, Lithuanian, Slovenian, Valencian, Hebrew, Arabic, Slovak, Bosnian, Vietnamese, Norwegian Bokmål, Indonesian, and Orangutan.
 
-- **Manage Fonts**: Browse, download, and manage custom font families installed from the SD card. See [Custom Fonts (SD Card)](#38-custom-fonts-sd-card) for more information.
+- **Get Fonts**: Browse and download font families over Wi-Fi. See [Custom Fonts (SD Card)](#38-custom-fonts-sd-card) for more information.
 
 #### 3.6.5 OPDS Servers (Multiple Libraries)
 
@@ -574,8 +576,8 @@ CrossPoint loads additional fonts from the SD card. Custom fonts can add Chinese
 
 There are three ways to install fonts:
 
-1. **Download from device (recommended):** Go to **Settings -> System -> Manage Fonts**, browse the available font families, and select one to download over Wi-Fi.
-2. **Upload via web interface:** While in **File Transfer** mode, open the web UI and use the **Fonts** tab to upload `.cpfont` files. The Fonts tab does not accept TTF/OTF/TTC files.
+1. **Download from device (recommended):** Go to **Settings -> Reader -> Get Fonts**, browse the available font families, and select one to download over Wi-Fi.
+2. **Upload via web interface:** While in **File Transfer** mode, open the web UI and use the **Fonts** tab to upload `.cpfont` files or TTF/OTF files. Without external RAM the page converts a TTF/OTF to `.cpfont` in the browser before sending it.
 3. **Manual SD card copy:** Copy `.cpfont` families from the [crosspoint-fonts repository](https://github.com/crosspoint-reader/crosspoint-fonts) to `/.fonts/` or `/fonts/`. If your device have external RAM, you can also copy TTF/OTF/TTC files there without conversion.
 
 Once installed, custom fonts appear in **Settings → Reader → Font Family** alongside the built-in fonts.

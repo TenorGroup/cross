@@ -1568,6 +1568,10 @@
               <input type="checkbox" id="convertBeforeUpload" onchange="toggleConvertOptions()">
               <span data-i18n="files.optimizeEpub">Tối ưu EPUB</span>
             </label>
+            <label class="convert-checkbox">
+              <input type="checkbox" id="keepKoSync" checked onchange="toggleConvertOptions()">
+              <span data-i18n="files.keepSync">Giữ đồng bộ KOReader</span>
+            </label>
             <span class="convert-separator">-</span>
             <span class="advanced-options-toggle" id="advancedOptionsToggle" onclick="toggleAdvancedOptions()">
               <span class="advanced-options-arrow" id="advancedOptionsArrow">▶</span>
@@ -1742,6 +1746,7 @@
       </div>
       </div><!-- end picker-columns -->
       <!-- Sync compatibility warning - outside picker-columns -->
+      <div class="convert-info" id="keepSyncInfo" style="display:none;" data-i18n="files.keepSyncInfo">Chỉ thu nhỏ ảnh, giữ nguyên chữ và tên tệp để KOReader trên máy khác vẫn nhận ra sách.</div>
       <div class="convert-warning" id="convertWarning" style="display:none;" role="alert" aria-live="polite">
         ⚠️ <span data-i18n="files.convertWarning">Converting will modify files and can break hash-based sync.</span> ⚠️<br>
         <span data-i18n="files.convertWarningBackup">Please back up or disable sync before proceeding.</span>
@@ -2264,7 +2269,7 @@
     const convertOptions = document.getElementById('convertOptions');
     if (convertOptions) convertOptions.style.display = 'none';
     document.getElementById('convertInfo').style.display = 'none';
-    document.getElementById('convertWarning').style.display = 'none';
+    document.getElementById('convertWarning').style.display = 'none'; document.getElementById('keepSyncInfo').style.display = 'none';
     // Clear image picker cache and reset layout
     epubImagesCache = [];
     imageStates = {};
@@ -2295,11 +2300,18 @@
     if (overlapRow) overlapRow.style.display = isBatch ? 'none' : '';
   }
 
+  function keepKoSyncChecked() {
+    return !!document.getElementById('keepKoSync')?.checked;
+  }
+
   function toggleConvertOptions() {
     const checked = document.getElementById('convertBeforeUpload').checked;
     const uploadBtn = document.getElementById('uploadBtn');
-    document.getElementById('convertWarning').style.display = checked ? 'block' : 'none';
+    const keepSync = keepKoSyncChecked();
+    document.getElementById('convertWarning').style.display = checked && !keepSync ? 'block' : 'none';
+    document.getElementById('keepSyncInfo').style.display = checked && keepSync ? 'block' : 'none';
     document.getElementById('convertInfo').style.display = checked ? 'block' : 'none';
+    if (keepSync) clearImagePicker();
     // Update button text and style
     if (checked) {
       uploadBtn.textContent = TenorI18n.t('files.optimizeAndUpload');
@@ -2824,6 +2836,8 @@
   }
 
   async function showImagePicker(file) {
+    // Keeping KOReader sync never splits or turns an image, so there is nothing to pick per image.
+    if (keepKoSyncChecked()) { clearImagePicker(); return; }
     // Check if JSZip is available
     if (typeof JSZip === 'undefined') {
       console.error('JSZip not loaded');
@@ -3350,7 +3364,7 @@
       uploadBtn.textContent = TenorI18n.t('files.upload');
       uploadBtn.classList.remove('optimize');
       document.getElementById('convertInfo').style.display = 'none';
-      document.getElementById('convertWarning').style.display = 'none';
+      document.getElementById('convertWarning').style.display = 'none'; document.getElementById('keepSyncInfo').style.display = 'none';
       if (files.length === 0) clearImagePicker();
     }
 
@@ -3438,6 +3452,7 @@ let OVERLAP_PERCENT = 5; // Minimum overlap percentage for splits (5%, 10%, 15%)
 const UPLOAD_SETTINGS_STORAGE_KEY = 'crosspoint.files.uploadSettings.v1';
 const DEFAULT_UPLOAD_SETTINGS = Object.freeze({
   convertBeforeUpload: false,
+  keepKoSync: true,
   renameFromMetadata: false,
   quality: DEFAULT_JPEG_QUALITY,
   autoCrop: DEFAULT_ENABLE_AUTO_CROP,
@@ -3451,6 +3466,7 @@ let suppressUploadSettingsSave = false;
 function getCurrentUploadSettings() {
   return {
     convertBeforeUpload: !!document.getElementById('convertBeforeUpload')?.checked,
+    keepKoSync: keepKoSyncChecked(),
     renameFromMetadata: !!document.getElementById('renameFromMetadataToggle')?.checked,
     quality: parseInt(document.getElementById('qualitySlider')?.value || JPEG_QUALITY, 10),
     autoCrop: !!document.getElementById('autoCropToggle')?.checked,
@@ -3466,6 +3482,7 @@ function applyUploadSettings(settings = {}) {
   suppressUploadSettingsSave = true;
   try {
     document.getElementById('convertBeforeUpload').checked = !!merged.convertBeforeUpload;
+    document.getElementById('keepKoSync').checked = merged.keepKoSync !== false;
     document.getElementById('renameFromMetadataToggle').checked = !!merged.renameFromMetadata;
     document.getElementById('autoCropToggle').checked = !!merged.autoCrop;
     document.getElementById('export-log-checkbox').checked = !!merged.exportLog;
@@ -5167,6 +5184,105 @@ async function processImage(data, imageState = 0, imagePath = '') {
   });
 }
 
+// "Keep KOReader sync" optimisation: only image bytes change, every name and every other byte of text
+// stays, and the original file's partial-MD5 windows travel in the book so the reader hashes the copy as
+// the original (KOReaderDocumentId::calculate).
+const KO_SAMPLE = 'META-INF/tenor-koreader-sample.bin';
+
+// The bytes KOReader's partialMD5 reads: 1 KiB at 0, then at 1024 << 2i, up to the end of the file.
+async function koreaderSample(file) {
+  const parts = [];
+  for (let i = -1; i < 11; i++) {
+    const offset = i < 0 ? 0 : 1024 * Math.pow(4, i);
+    if (offset >= file.size) break;
+    parts.push(await file.slice(offset, offset + 1024).arrayBuffer());
+  }
+  return new Uint8Array(await new Blob(parts).arrayBuffer());
+}
+
+// The sample an earlier optimisation left, read exactly as KOReaderDocumentId::calculate() reads it (second
+// local entry, stored, named, 1..12 KiB); anything else means the reader hashes this file, so it is sampled anew.
+async function keptKoreaderSample(file) {
+  const head = new DataView(await file.slice(0, 30).arrayBuffer());
+  if (head.byteLength < 30 || head.getUint32(0, true) !== 0x04034b50) return null;
+  const second = 30 + head.getUint16(26, true) + head.getUint16(28, true) + head.getUint32(18, true);
+  const h = new DataView(await file.slice(second, second + 30 + KO_SAMPLE.length).arrayBuffer());
+  if (h.byteLength < 30 + KO_SAMPLE.length || h.getUint32(0, true) !== 0x04034b50 || (h.getUint16(6, true) & ~0x800) ||
+      h.getUint16(8, true) !== 0 || h.getUint16(26, true) !== KO_SAMPLE.length) return null;
+  const size = h.getUint32(18, true);
+  if (size !== h.getUint32(22, true) || size < 1 || size > 12288) return null;
+  if (new TextDecoder().decode(new Uint8Array(h.buffer, 30, KO_SAMPLE.length)) !== KO_SAMPLE) return null;
+  const body = second + 30 + KO_SAMPLE.length + h.getUint16(28, true);
+  if (body + size > file.size) return null;
+  return new Uint8Array(await file.slice(body, body + size).arrayBuffer());
+}
+
+// Progressive JPEG decodes at 1/8 size on the reader; interlaced or 16-bit PNG does not decode.
+function imageNeedsRewrite(data, png) {
+  if (png) return data.length > 28 && (data[24] === 16 || data[28] === 1);
+  for (let i = 2; i + 3 < data.length;) {
+    if (data[i] !== 0xFF) return false;
+    const marker = data[i + 1];
+    if (marker === 0xC2) return true;
+    if (marker === 0xC0 || marker === 0xC1 || marker === 0xDA) return false;
+    i += 2 + (data[i + 2] << 8 | data[i + 3]);
+  }
+  return false;
+}
+
+async function shrinkImageKeepFormat(data, png) {
+  const bitmap = await createImageBitmap(new Blob([data]));
+  const scale = Math.min(1, MAX_WIDTH / bitmap.width, MAX_HEIGHT / bitmap.height);
+  const w = Math.max(1, Math.round(bitmap.width * scale)), h = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.fillStyle = '#FFF';
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  applyGrayscale(ctx, w, h);
+  const blob = await new Promise(res => canvas.toBlob(res, png ? 'image/png' : 'image/jpeg', JPEG_QUALITY / 100));
+  const out = new Uint8Array(await blob.arrayBuffer());
+  return out.length < data.length * 0.9 || imageNeedsRewrite(data, png) ? out : null;
+}
+
+async function convertEpubKeepSync(file, progressCallback) {
+  clearLog();
+  showLog();
+  log(`<strong>${escapeHtml(file.name)}</strong> <span class="log-detail">(${formatBytes(file.size)})</span>`, '', 'INFO');
+  const zip = await JSZip.loadAsync(file);
+  const out = new JSZip();
+  const store = { compression: 'STORE', createFolders: false };
+  // mimetype first, always: the reader finds the sample as the second entry.
+  out.file('mimetype', 'application/epub+zip', store);
+  out.file(KO_SAMPLE, (await keptKoreaderSample(file)) || await koreaderSample(file), store);
+  const entries = Object.entries(zip.files);
+  let shrunk = 0, failed = 0;
+  for (let i = 0; i < entries.length; i++) {
+    const [path, entry] = entries[i];
+    if (entry.dir || path === 'mimetype' || path === KO_SAMPLE) continue;
+    let data = await entry.async('uint8array');
+    const jpeg = /\.jpe?g$/i.test(path), png = /\.png$/i.test(path);
+    if (jpeg || png) {
+      try {
+        const smaller = await shrinkImageKeepFormat(data, png);
+        if (smaller) { data = smaller; shrunk++; }
+      } catch (e) {
+        failed++;
+        log(TenorI18n.t('files.logImageFailed', { file: escapeHtml(path.split('/').pop()) }), 'warning', 'IMG-ERR');
+      }
+    }
+    out.file(path, data, jpeg || png ? store : { createFolders: false });
+    if (progressCallback) progressCallback((i / entries.length) * 90);
+  }
+  const blob = await out.generateAsync({ type: 'blob', mimeType: 'application/epub+zip', compression: 'DEFLATE', compressionOptions: { level: 8 } });
+  log(TenorI18n.t('files.logKeepSync', { count: shrunk, size: formatBytes(blob.size) }), 'success', 'INFO');
+  return blob;
+}
+
 // Convert EPUB file - returns converted blob
 async function convertEpubFile(file, progressCallback) {
   const startTime = Date.now();
@@ -5881,7 +5997,8 @@ async function uploadFile() {
     let convOriginalSize = 0;      // Picked-file size; 0 unless conversion succeeded
     let convNewSize = 0;           // Generated blob size; 0 unless conversion succeeded
 
-    if (isEpub && document.getElementById('renameFromMetadataToggle').checked) {
+    const keepSync = needsConversion && keepKoSyncChecked();
+    if (isEpub && !keepSync && document.getElementById('renameFromMetadataToggle').checked) {
       const originalName = file.name;
       progressText.style.color = '';
       progressText.textContent = TenorI18n.t('files.readingMetadata', {
@@ -5896,6 +6013,8 @@ async function uploadFile() {
     }
 
     const availableName = reserveAvailableUploadFilename(file.name, usedFileNames);
+    // A copy renamed to sit beside its namesake no longer matches by file name (KOReader's other mode).
+    const renamedAway = keepSync && availableName !== file.name.normalize('NFC');
     if (availableName !== file.name) {
       file = new File([file], availableName, {
         type: file.type,
@@ -6007,7 +6126,7 @@ async function uploadFile() {
         const origFileSize = file.size;
 
         try {
-          const convertedBlob = await convertEpubFile(file, (percent) => {
+          const convertedBlob = await (keepSync ? convertEpubKeepSync : convertEpubFile)(file, (percent) => {
             // Pass current quality setting to converter
             progressFill.style.width = (percent * 0.5) + '%'; // Conversion takes first 50%
           });
@@ -6016,6 +6135,7 @@ async function uploadFile() {
           file = new File([convertedBlob], file.name, { type: 'application/epub+zip' });
           progressFill.style.backgroundColor = '#27ae60'; // Back to green for upload
           conversionSucceeded = true;
+          if (renamedAway) log(TenorI18n.t('files.logKeepSyncRenamed', { file: escapeHtml(file.name) }), 'warning', 'INFO');
           convOriginalSize = origFileSize;
           convNewSize = convertedBlob.size;
         } catch (convError) {
