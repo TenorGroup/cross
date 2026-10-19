@@ -33,6 +33,8 @@ static char probeLog[32768];
 static size_t probeLogDropped = 0;
 static portMUX_TYPE probeLogLock = portMUX_INITIALIZER_UNLOCKED;
 static TaskHandle_t probeLogBinaryTask = nullptr;
+#elif defined(TENOR_PROBE_LITE)
+static char probeLog[1024];  // the lite probe measures heap close to the release image
 #else
 static char probeLog[6144];
 #endif
