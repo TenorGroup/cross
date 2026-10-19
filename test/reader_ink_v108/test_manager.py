@@ -40,6 +40,7 @@ struct SdCardFont {
  uint32_t contentHash() const { return 12345; }
  bool matchesBuiltinLayout(const EpdFontFamily&) const { return layoutMatches; }
  int styleCount() const { return 4; }
+ bool hasStyle(int) const { return true; }
  const int* getEpdFont(int) const { static int value=1; return &value; }
 };
 ''')

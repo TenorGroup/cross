@@ -62,7 +62,9 @@ Bytes pattern(size_t n, uint8_t seed) {
 }
 
 std::string hashOf(const Bytes& file) {
-  const auto path = std::filesystem::temp_directory_path() / "koreader_document_id_test.epub";
+  // One file per test: ctest runs the cases of this binary in parallel.
+  const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+  const auto path = std::filesystem::temp_directory_path() / (std::string("kodoc_") + info->name() + ".epub");
   std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char*>(file.data()), static_cast<std::streamsize>(file.size()));
   return KOReaderDocumentId::calculate(path.string());
 }

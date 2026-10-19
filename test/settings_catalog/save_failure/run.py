@@ -111,10 +111,14 @@ for mode in modes:
                         else 'bool saveSettings();')
     (output / 'SaveDeclaration.inc').write_text(save_declaration + '\n')
     shell_source = sources['src/shells/Shell.cpp']
-    settle = ('namespace {\n' + method_slice(shell_source, 'void settle()') + '}\n'
+    # tenor/ugly's reading font asks the card whether Shantell is there; this harness has no card, so that
+    # check is a no-op and only the pure memo rule (shells/UglyFont.h) is compiled in.
+    font_stub = ('void takeUglyFont(CrossPointSettings&) {}\n' if 'void takeUglyFont(' in shell_source else '')
+    settle = ('namespace {\n' + font_stub + method_slice(shell_source, 'void settle()') + '}\n'
               if 'void settle()' in shell_source else '')
+    font_header = (f'#include "{ROOT / "src/shells/UglyFont.h"}"\n' if 'UglyFont.h' in shell_source else '')
     (output / 'ShellChanged.inc').write_text(
-        'namespace shell {\n' + settle + method_slice(shell_source, 'void changed()') + '}\n')
+        font_header + 'namespace shell {\n' + settle + method_slice(shell_source, 'void changed()') + '}\n')
     sanitizer = ['-fsanitize=address,undefined', '-fno-omit-frame-pointer'] if args.sanitize else []
     dead_strip = '-Wl,-dead_strip' if platform.system() == 'Darwin' else '-Wl,--gc-sections'
     command = [os.environ.get('CXX', 'c++'), '-std=c++20', '-g', '-O1', *sanitizer,
