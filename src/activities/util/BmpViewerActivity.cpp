@@ -8,10 +8,12 @@
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Memory.h>
+#include <Utf8.h>
 
 #include <algorithm>
 
 #include "CrossPointSettings.h"
+#include "activities/util/ConfirmationActivity.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -317,7 +319,22 @@ void BmpViewerActivity::loop() {
   int tapX = 0, tapY = 0;
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
       (tenorchrome::kTouchShell && mappedInput.wasScreenTapped(tapX, tapY) && tenorchrome::footActionAt(tapX, tapY) == 0)) {
-    if (canSetSleepCover()) doSetSleepCover();
+    if (!canSetSleepCover()) return;
+    // One press used to overwrite the sleep image at once; ask first.
+    auto confirmation =
+        makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, tr(STR_SET_SLEEP_COVER) + std::string("?"),
+                                                utf8ComposeNfc(filePath.substr(filePath.find_last_of('/') + 1)));
+    if (!confirmation) {
+      LOG_ERR("BMP", "OOM: sleep cover confirmation");
+      return;
+    }
+    startActivityForResult(std::move(confirmation), [this](const ActivityResult& result) {
+      if (result.isCancelled) {
+        onEnter();
+        return;
+      }
+      doSetSleepCover();
+    });
     return;
   }
 
