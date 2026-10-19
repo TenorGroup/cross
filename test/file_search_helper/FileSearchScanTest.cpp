@@ -56,6 +56,7 @@ void finish(filesearch::Scanner& s) { while (s.tick() == filesearch::ScanReason:
 int main() {
   Clock clock;
   Store store(clock);
+  require(clock.acceptFile("Manga.XTCH") && clock.acceptFile("a.xtc"), "search lists every XTC book the reader opens");
   store.tree["/"] = {{"z", true}, {"a", true}, {".hidden.epub", false, true}, {"System Volume Information", true}};
   store.tree["/z"] = {{"Book 2.epub", false}, {"Đường 2.epub", false}};
   store.tree["/a"] = {{"Book 10.epub", false}, {"Book 2.epub", false}};

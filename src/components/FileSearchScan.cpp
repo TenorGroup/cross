@@ -12,7 +12,7 @@ bool ScanHooks::acceptFile(const std::string& name) const {
   std::string ext = name.substr(dot);
   for (char& c : ext)
     if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
-  return ext == ".epub" || ext == ".xtc" || ext == ".txt" || ext == ".md" || ext == ".bmp" || ext == ".png";
+  return ext == ".epub" || ext == ".xtc" || ext == ".xtch" || ext == ".txt" || ext == ".md" || ext == ".bmp" || ext == ".png";
 }
 ScanBuffer ScanHooks::allocate(size_t bytes) {
   return ScanBuffer(static_cast<uint8_t*>(heapfloor::take(bytes, "file-search-scan")), [](uint8_t* p) { free(p); });
