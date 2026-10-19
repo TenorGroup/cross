@@ -321,9 +321,12 @@ void BmpViewerActivity::loop() {
       (tenorchrome::kTouchShell && mappedInput.wasScreenTapped(tapX, tapY) && tenorchrome::footActionAt(tapX, tapY) == 0)) {
     if (!canSetSleepCover()) return;
     // One press used to overwrite the sleep image at once; ask first.
-    auto confirmation =
-        makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, tr(STR_SET_SLEEP_COVER) + std::string("?"),
-                                                utf8ComposeNfc(filePath.substr(filePath.find_last_of('/') + 1)));
+    // The cross and touch sheets draw the question and the action from the content; without it they were blank.
+    const std::string question = tr(STR_SET_SLEEP_COVER) + std::string("?");
+    const std::string name = utf8ComposeNfc(filePath.substr(filePath.find_last_of('/') + 1));
+    auto confirmation = makeUniqueNoThrow<ConfirmationActivity>(
+        renderer, mappedInput, question, name,
+        ConfirmationContent{question, name, tr(STR_SET_SLEEP_COVER), tr(STR_SET_SLEEP_COVER), "", false});
     if (!confirmation) {
       LOG_ERR("BMP", "OOM: sleep cover confirmation");
       return;
