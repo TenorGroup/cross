@@ -48,6 +48,10 @@ TEST(LinkNoteRuleTest, Table) {
   disabled.enabled = false;
   NoteInputs leaving = in(false);
   leaving.reading = false;
+  NoteInputs noRemote = in(true);
+  noRemote.hasBond = false;
+  NoteInputs noRemoteWaiting = in(false);
+  noRemoteWaiting.hasBond = false;
   NoteInputs idleEntry = in(true);
   idleEntry.idleStopped = true;
   const Row rows[] = {
@@ -55,6 +59,8 @@ TEST(LinkNoteRuleTest, Table) {
       {"enter again after a failure", LinkNote::Failed, in(true), LinkNote::Connecting},
       {"enter with a remote still linked", LinkNote::None, in(true, true), LinkNote::None},
       {"enter with the radio off for idleness", LinkNote::None, idleEntry, LinkNote::None},
+      {"enter with no remote chosen", LinkNote::None, noRemote, LinkNote::None},
+      {"connect asked with no remote chosen", LinkNote::Connecting, noRemoteWaiting, LinkNote::Failed},
       {"waiting", LinkNote::Connecting, in(false), LinkNote::Connecting},
       {"link", LinkNote::Connecting, in(false, true), LinkNote::None},
       {"refused", LinkNote::Connecting, in(false, false, true), LinkNote::Failed},
