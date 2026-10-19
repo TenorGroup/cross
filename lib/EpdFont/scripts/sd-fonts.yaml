@@ -432,3 +432,34 @@ families:
         path: "builtinFonts/source/Mali/Mali-BoldItalic.ttf"
         url: "https://raw.githubusercontent.com/google/fonts/bd8f81ddb5c74d5c8897b36ad88b440266245103/ofl/mali/Mali-BoldItalic.ttf"
         sha256: "ed51d1fa721e4dc4a43dba34926442a007f8a300543c1171887810a547e5b23b"
+
+  - name: ShantellSans
+    description: "Friendly handwriting with 4 styles, the reading font of tenor/ugly (Vietnamese, Latin)"
+    scripts: [latin]
+    intervals: builtin
+    sizes: [12, 14, 16, 18]
+    pack: {line_factor: 1.4, pnum: true}
+    license:
+      path: "builtinFonts/source/ShantellSans/OFL.txt"
+      sha256: "ebfce7d104d597c385b71e9fbf8f0e2034e73320f857086105dc265b82c05caa"
+      url: "https://raw.githubusercontent.com/arrowtype/shantell-sans/43932aa9375e60fbcb930b0f865f2f60eae9d206/OFL.txt"
+    fallback:
+      path: "builtinFonts/source/ShantellSans/replacement/Replacement.ttf"
+      sha256: "3e50c1ebb4f3d56efc894eb0ac01125484038ddd6123081c3468514829d6476c"
+    styles:
+      regular:
+        path: "builtinFonts/source/ShantellSans/Shantell_Sans-Normal-Regular.ttf"
+        url: "https://raw.githubusercontent.com/arrowtype/shantell-sans/43932aa9375e60fbcb930b0f865f2f60eae9d206/fonts/Shantell%20Sans/Desktop/Static/TTF/Shantell_Sans-Normal-Regular.ttf"
+        sha256: "15435e7fcb1b7d7501ef1f6697e17d0fbd6a41a11bbd3570b9398405ca9f2651"
+      bold:
+        path: "builtinFonts/source/ShantellSans/Shantell_Sans-Normal-Bold.ttf"
+        url: "https://raw.githubusercontent.com/arrowtype/shantell-sans/43932aa9375e60fbcb930b0f865f2f60eae9d206/fonts/Shantell%20Sans/Desktop/Static/TTF/Shantell_Sans-Normal-Bold.ttf"
+        sha256: "88e32ed463d25281548abd7a344f39af97e97ec3d1bb06478e04e31b6d5878f2"
+      italic:
+        path: "builtinFonts/source/ShantellSans/Shantell_Sans-Normal-Regular_Italic.ttf"
+        url: "https://raw.githubusercontent.com/arrowtype/shantell-sans/43932aa9375e60fbcb930b0f865f2f60eae9d206/fonts/Shantell%20Sans/Desktop/Static/TTF/Shantell_Sans-Normal-Regular_Italic.ttf"
+        sha256: "cb8377716e42dd4c8bda3f4a4d0f6bb5a333f9d22ed3ae00401afb8b54f68d05"
+      bolditalic:
+        path: "builtinFonts/source/ShantellSans/Shantell_Sans-Normal-Bold_Italic.ttf"
+        url: "https://raw.githubusercontent.com/arrowtype/shantell-sans/43932aa9375e60fbcb930b0f865f2f60eae9d206/fonts/Shantell%20Sans/Desktop/Static/TTF/Shantell_Sans-Normal-Bold_Italic.ttf"
+        sha256: "368e5bbbcf0c7357eb7d101e3ec101089d8887d54b8488a98e058c5005b2df79"

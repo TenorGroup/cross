@@ -526,6 +526,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // 1 once the header clock of tenor/ugly has had its one-time turn on (shell::settingsLoaded): a device already
   // in tenor/ugly when that arrived shows the time, and a clock hidden after that stays hidden. Persisted only.
   uint8_t uiShellClockOnce = 0;
+  // What tenor/ugly's reading font (Shantell Sans) gave way to: see shells/UglyFont.h. Persisted only.
+  uint8_t uiShellFontMemo = 0;
   // tenor/ugly on a touch screen: the battery struck off the top band (a ring round its corner brings it
   // back). Persisted only; tenor/cross never reads it.
   uint8_t uglyBatteryHidden = 0;

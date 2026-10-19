@@ -1,0 +1,32 @@
+[
+  {
+    "name": "OFL.txt",
+    "url": "https://raw.githubusercontent.com/arrowtype/shantell-sans/43932aa9375e60fbcb930b0f865f2f60eae9d206/OFL.txt",
+    "bytes": 4397,
+    "sha256": "ebfce7d104d597c385b71e9fbf8f0e2034e73320f857086105dc265b82c05caa"
+  },
+  {
+    "name": "Shantell_Sans-Normal-Bold.ttf",
+    "url": "https://raw.githubusercontent.com/arrowtype/shantell-sans/43932aa9375e60fbcb930b0f865f2f60eae9d206/fonts/Shantell%20Sans/Desktop/Static/TTF/Shantell_Sans-Normal-Bold.ttf",
+    "bytes": 191500,
+    "sha256": "88e32ed463d25281548abd7a344f39af97e97ec3d1bb06478e04e31b6d5878f2"
+  },
+  {
+    "name": "Shantell_Sans-Normal-Bold_Italic.ttf",
+    "url": "https://raw.githubusercontent.com/arrowtype/shantell-sans/43932aa9375e60fbcb930b0f865f2f60eae9d206/fonts/Shantell%20Sans/Desktop/Static/TTF/Shantell_Sans-Normal-Bold_Italic.ttf",
+    "bytes": 199828,
+    "sha256": "368e5bbbcf0c7357eb7d101e3ec101089d8887d54b8488a98e058c5005b2df79"
+  },
+  {
+    "name": "Shantell_Sans-Normal-Regular.ttf",
+    "url": "https://raw.githubusercontent.com/arrowtype/shantell-sans/43932aa9375e60fbcb930b0f865f2f60eae9d206/fonts/Shantell%20Sans/Desktop/Static/TTF/Shantell_Sans-Normal-Regular.ttf",
+    "bytes": 193104,
+    "sha256": "15435e7fcb1b7d7501ef1f6697e17d0fbd6a41a11bbd3570b9398405ca9f2651"
+  },
+  {
+    "name": "Shantell_Sans-Normal-Regular_Italic.ttf",
+    "url": "https://raw.githubusercontent.com/arrowtype/shantell-sans/43932aa9375e60fbcb930b0f865f2f60eae9d206/fonts/Shantell%20Sans/Desktop/Static/TTF/Shantell_Sans-Normal-Regular_Italic.ttf",
+    "bytes": 201412,
+    "sha256": "cb8377716e42dd4c8bda3f4a4d0f6bb5a333f9d22ed3ae00401afb8b54f68d05"
+  }
+]

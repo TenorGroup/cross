@@ -1,10 +1,12 @@
 #include "Shell.h"
 
+#include <HalStorage.h>
 #include <I18n.h>
 
 #include <cstdio>
 
 #include "CrossPointSettings.h"
+#include "UglyFont.h"
 #include "activities/home/HomeActivity.h"
 #include "ugly/UglyQuip.h"
 #include "ugly/UglyShell.h"
@@ -24,6 +26,15 @@ void valueChanged(const SettingInfo& setting) {
 }
 
 namespace {
+void takeUglyFont(CrossPointSettings& settings) {
+  // A pack installs to /fonts/<family>; a family copied by hand may sit in /.fonts. Every pack carries the
+  // 14 pt file, so an empty or half-copied folder does not count.
+  const bool onCard = Storage.exists("/fonts/ShantellSans/ShantellSans_14.cpfont") ||
+                      Storage.exists("/.fonts/ShantellSans/ShantellSans_14.cpfont");
+  uglyfont::take(settings.sdFontFamilyName, settings.fontFamily == CrossPointSettings::NOTOSERIF,
+                 settings.uiShellFontMemo, onCard);
+}
+
 // The sleep screen follows the shell and the settings are saved.
 void settle() {
   auto& settings = SETTINGS;
@@ -34,6 +45,7 @@ void settle() {
   // The header clock is hidden by default in tenor/cross and shows the time in tenor/ugly: going in turns a
   // hidden one on and remembers it; leaving hides it again unless the user changed it meanwhile.
   if (isUgly()) {
+    takeUglyFont(settings);
     if (settings.sleepScreen == S::TENOR || settings.sleepScreen == S::QUOTE) {
       settings.uiShellSleepMemo = static_cast<uint8_t>(settings.sleepScreen + 1);
       settings.sleepScreen = S::UGLY;
@@ -44,6 +56,7 @@ void settle() {
       settings.uiShellClockMemo = 1;
     }
   } else {
+    uglyfont::give(settings.sdFontFamilyName, settings.uiShellFontMemo);
     if (settings.uiShellClockMemo && settings.clockShowInHeader == S::CLOCK_HEADER_TIME)
       settings.clockShowInHeader = S::CLOCK_HEADER_HIDE;
     settings.uiShellClockMemo = 0;
@@ -63,7 +76,9 @@ void settle() {
 void settingsLoaded() {
   auto& settings = SETTINGS;
   using S = CrossPointSettings;
-  if (!isUgly() || settings.uiShellClockOnce) return;
+  if (!isUgly()) return;
+  takeUglyFont(settings);  // every start: a Shantell family installed since then takes over now
+  if (settings.uiShellClockOnce) return;
   settings.uiShellClockOnce = 1;
   if (settings.clockShowInHeader == S::CLOCK_HEADER_HIDE) {
     settings.clockShowInHeader = S::CLOCK_HEADER_TIME;

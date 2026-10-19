@@ -1,0 +1,3 @@
+add_executable(UglyFontTest UglyFontTest.cpp)
+target_link_libraries(UglyFontTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(UglyFontTest)
