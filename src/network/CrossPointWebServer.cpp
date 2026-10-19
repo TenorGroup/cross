@@ -774,13 +774,28 @@ void CrossPointWebServer::handleFileListData() const {
 
   server->setContentLength(CONTENT_LENGTH_UNKNOWN);
   server->send(200, "application/json", "");
-  server->sendContent("[");
+  // Entries leave in chunks of about 1 KB written here, not one sendContent() each: that put three tiny TCP
+  // segments on the air per file, and on a crowded heap their buffers starved Wi-Fi receive until the
+  // listing stalled for minutes. A short write (the browser left, or the socket stayed full through every
+  // retry) ends the listing at once instead of writing on into a broken chunk stream.
+  NetworkClient& client = server->client();
+  bool sending = true;
+  const auto sendChunk = [&client, &sending](const char* data, size_t length) {
+    char head[12];
+    const int headLength = snprintf(head, sizeof(head), "%x\r\n", static_cast<unsigned>(length));
+    sending = sending && client.write(head, headLength) == static_cast<size_t>(headLength) &&
+              client.write(data, length) == length && client.write("\r\n", 2) == 2;
+  };
+  char chunk[1024];
+  size_t used = 0;
+  chunk[used++] = '[';
   char output[512];
   constexpr size_t outputSize = sizeof(output);
   bool seenFirst = false;
   JsonDocument doc;
 
-  scanFiles(currentPath.c_str(), [this, &output, &doc, seenFirst](const FileInfo& info) mutable {
+  scanFiles(currentPath.c_str(), [&](const FileInfo& info) {
+    if (!sending) return;
     doc.clear();
     doc["name"] = info.name;
     doc["size"] = info.size;
@@ -793,15 +808,21 @@ void CrossPointWebServer::handleFileListData() const {
       LOG_DBG("WEB", "Skipping file entry with oversized JSON for name: %s", info.name.c_str());
       return;
     }
-
-    if (seenFirst) {
-      server->sendContent(",");
-    } else {
-      seenFirst = true;
+    if (used + written + 2 > sizeof(chunk)) {  // room for the comma and the closing bracket
+      sendChunk(chunk, used);
+      used = 0;
     }
-    server->sendContent(output);
+    if (seenFirst) chunk[used++] = ',';
+    seenFirst = true;
+    std::memcpy(chunk + used, output, written);
+    used += written;
   });
-  server->sendContent("]");
+  if (!sending) {
+    LOG_ERR("WEB", "File listing cut short: %s", currentPath.c_str());
+    return;
+  }
+  chunk[used++] = ']';
+  sendChunk(chunk, used);
   // End of streamed response, empty chunk to signal client
   server->sendContent("");
   LOG_DBG("WEB", "Served file listing page for path: %s", currentPath.c_str());
