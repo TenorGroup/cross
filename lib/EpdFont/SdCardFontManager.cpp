@@ -51,7 +51,8 @@ int SdCardFontManager::loadFile(const SdCardFontFamilyInfo& family, const SdCard
     return 0;
   }
 
-  if (!font->load(path.c_str())) {
+  // A family is drawn from its regular style; a file without one (a lone bold or italic) cannot stand in.
+  if (!font->load(path.c_str()) || !font->hasStyle(0)) {
     LOG_ERR("SDMGR", "Failed to load %s", path.c_str());
     delete font;
     return 0;

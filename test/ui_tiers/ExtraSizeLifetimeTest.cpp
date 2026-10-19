@@ -74,5 +74,13 @@ int main() {
     manager.unloadAll(renderer);
   }
   UI_CHECK(SdCardFont::alive == 0);
+  {
+    // A .cpfont without a regular style (a lone bold made in the browser) is refused, not registered.
+    SdCardFont::regularStyle = false;
+    SdCardFontManager manager;
+    UI_CHECK(!manager.loadFamily(family, renderer, 14));
+    UI_CHECK(SdCardFont::alive == 0 && manager.getFontId(family.name) == 0);
+    SdCardFont::regularStyle = true;
+  }
   std::puts("PASS: 450 tier changes preserve reader object/ID/weight, at most four live fonts");
 }
