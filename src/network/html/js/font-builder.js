@@ -82,6 +82,9 @@
     for (let i = 0; i < count; i++) {
       const p = base + 6 + i * 12, pid = v.getUint16(p), id = v.getUint16(p + 6), len = v.getUint16(p + 8), off = v.getUint16(p + 10);
       if (pid !== 3 || (id !== 1 && id !== 16)) continue;
+      // English (0x409) first: other languages' names lose their letters to the ASCII family rule.
+      const lang = v.getUint16(p + 4);
+      if (found[id] && lang !== 0x409) continue;
       let s = '';
       for (let k = 0; k < len; k += 2) s += String.fromCharCode(v.getUint16(strings + off + k));
       found[id] = s;

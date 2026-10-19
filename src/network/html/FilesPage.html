@@ -3482,7 +3482,8 @@ function applyUploadSettings(settings = {}) {
   suppressUploadSettingsSave = true;
   try {
     document.getElementById('convertBeforeUpload').checked = !!merged.convertBeforeUpload;
-    document.getElementById('keepKoSync').checked = merged.keepKoSync !== false;
+    // Settings saved before this option existed keep the optimizer they chose; new setups keep sync.
+    document.getElementById('keepKoSync').checked = 'keepKoSync' in settings ? !!settings.keepKoSync : !settings.convertBeforeUpload;
     document.getElementById('renameFromMetadataToggle').checked = !!merged.renameFromMetadata;
     document.getElementById('autoCropToggle').checked = !!merged.autoCrop;
     document.getElementById('export-log-checkbox').checked = !!merged.exportLog;
@@ -5263,6 +5264,7 @@ async function convertEpubKeepSync(file, progressCallback) {
   let shrunk = 0, failed = 0;
   for (let i = 0; i < entries.length; i++) {
     const [path, entry] = entries[i];
+    if (operationCancelled) throw new Error('Cancelled by user');
     if (entry.dir || path === 'mimetype' || path === KO_SAMPLE) continue;
     let data = await entry.async('uint8array');
     const jpeg = /\.jpe?g$/i.test(path), png = /\.png$/i.test(path);
@@ -5278,6 +5280,7 @@ async function convertEpubKeepSync(file, progressCallback) {
     out.file(path, data, jpeg || png ? store : { createFolders: false });
     if (progressCallback) progressCallback((i / entries.length) * 90);
   }
+  if (operationCancelled) throw new Error('Cancelled by user');
   const blob = await out.generateAsync({ type: 'blob', mimeType: 'application/epub+zip', compression: 'DEFLATE', compressionOptions: { level: 8 } });
   log(TenorI18n.t('files.logKeepSync', { count: shrunk, size: formatBytes(blob.size) }), 'success', 'INFO');
   return blob;
