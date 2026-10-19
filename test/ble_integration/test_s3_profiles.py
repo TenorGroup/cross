@@ -74,6 +74,7 @@ class S3Profiles(unittest.TestCase):
                         self.assertIn(flag, released, release)
                     self.assertEqual(released[released.index("-include") + 1], "scripts/s3_nimble_psram.h")
                     self.assertNotIn("-DTENOR_PRESS_PROBE", released)
+                    self.assertIn("-DTENOR_HYPH_NO_DE", released)
                     for dep in option("ble_hid_beta", "lib_deps").splitlines():
                         if dep.strip():
                             self.assertIn(dep.strip(), option("env:" + release, "lib_deps"))
