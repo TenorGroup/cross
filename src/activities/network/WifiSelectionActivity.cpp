@@ -1440,9 +1440,6 @@ void WifiSelectionActivity::renderConnecting(const Rect* screen, const ThemeMetr
                                      EpdFontFamily::BOLD, UITheme::TextVerticalAlignment::BOTTOM);
 
     std::string ssidInfo = std::string(tr(STR_TO_PREFIX)) + selectedSSID;
-    if (ssidInfo.length() > 25) {
-      ssidInfo.replace(22, ssidInfo.length() - 22, "...");
-    }
     ssidInfo = renderer.truncatedText(UI_10_FONT_ID, ssidInfo.c_str(), statusWidth, EpdFontFamily::REGULAR);
     UITheme::drawCenteredText(renderer, *screen, UI_10_FONT_ID, top, ssidInfo.c_str());
     if (autoConnecting) {
@@ -1459,9 +1456,6 @@ void WifiSelectionActivity::renderConnected(const Rect* screen, const ThemeMetri
   UITheme::drawCenteredText(renderer, *screen, UI_12_FONT_ID, top - 30, tr(STR_CONNECTED), true, EpdFontFamily::BOLD);
 
   std::string ssidInfo = std::string(tr(STR_NETWORK_PREFIX)) + selectedSSID;
-  if (ssidInfo.length() > 28) {
-    ssidInfo.replace(25, ssidInfo.length() - 25, "...");
-  }
   ssidInfo = renderer.truncatedText(UI_10_FONT_ID, ssidInfo.c_str(),
                                     screen->width - metrics->contentSidePadding * 2, EpdFontFamily::REGULAR);
   UITheme::drawCenteredText(renderer, *screen, UI_10_FONT_ID, top + 10, ssidInfo.c_str());
