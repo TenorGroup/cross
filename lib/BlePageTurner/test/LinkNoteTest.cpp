@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstring>
 #include <functional>
 #include <string>
 #include <vector>
@@ -32,6 +33,7 @@ NoteInputs in(const bool entered, const bool linked = false, const bool refused 
   i.refused = refused;
   i.runningMs = runningMs;
   i.acknowledged = acknowledged;
+  i.hasBond = true;
   return i;
 }
 
@@ -80,6 +82,7 @@ class LinkNoteTest : public ::testing::Test {
   void SetUp() override {
     fake::reset();
     config.enabled = 1;
+    std::strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
     bleturner::begin(fake::hostFns(), config);
     radio().queueStarts = true;
   }
@@ -262,6 +265,7 @@ TEST(StartOrder, QuickRefusalInsideStartAsyncStillReportsFailedAndRetries) {
   fake::reset();
   bleturner::Config config;
   config.enabled = 1;
+  std::strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
   bleturner::begin(fake::hostFns(), config);
   fake::radio().queueStarts = false;
   fake::host().heap = {65535, 32768};  // HeapLow: refused before the stack

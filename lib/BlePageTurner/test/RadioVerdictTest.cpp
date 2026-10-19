@@ -14,6 +14,7 @@ RadioInputs reading(const Phase phase) {
   in.enabled = true;
   in.where = Where::Reader;
   in.pageShown = true;
+  in.hasBond = true;
   in.heap = {kStartFreeBytes, kMinimumLargestBlockBytes};
   return in;
 }
