@@ -8,7 +8,8 @@ import struct
 MIN_APP_HEADROOM = 128 * 1024
 
 
-def check_image_size(image, partition_table):
+def check_image_size(image, partition_table, slot_bytes=None):
+    """slot_bytes: the app slot size of a board whose units carry their own table (X4 Pro: 0x7e0000)."""
     size = Path(image).stat().st_size
     if size == 0:
         raise ValueError("Firmware image is empty")
@@ -29,7 +30,7 @@ def check_image_size(image, partition_table):
             raise ValueError("Invalid partition table entry")
         if kind == 0:
             name = label.split(b"\0", 1)[0].decode("ascii", errors="replace")
-            slots.append((name, offset, capacity))
+            slots.append((name, offset, slot_bytes or capacity))
     if not slots:
         raise ValueError("Partition table has no application slots")
     for name, offset, capacity in slots:
@@ -46,7 +47,8 @@ def check_image_size(image, partition_table):
 
 def register_check(env):
     def verify(source, target, env):
-        check_image_size(str(target[0]), env.subst("$BUILD_DIR/partitions.bin"))
+        slot = env.GetProjectOption("custom_app_slot_bytes", "")
+        check_image_size(str(target[0]), env.subst("$BUILD_DIR/partitions.bin"), int(slot, 0) if slot else None)
 
     # Register after the platform has created the BIN builder so the action stays
     # attached. A failure stops the build/upload, including after a factory merge.

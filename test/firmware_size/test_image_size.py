@@ -59,6 +59,16 @@ class FirmwareSizeTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.check()
 
+    def test_board_slot_size_replaces_the_table(self):
+        # X4 Pro units carry 0x7e0000 slots: the Bluetooth image fails the 0x640000 table, passes the unit's slot.
+        self.fixture(6489488)
+        with self.assertRaises(ValueError):
+            self.check()
+        self.api["check_image_size"](self.image, self.table, 0x7E0000)
+        self.fixture(0x7E0000 - 128 * 1024 + 1)
+        with self.assertRaises(ValueError):
+            self.api["check_image_size"](self.image, self.table, 0x7E0000)
+
     def test_smaller_second_ota_slot_limits_the_image(self):
         self.fixture(0x630000 - 131072, slots=(0x640000, 0x630000))
         self.check()

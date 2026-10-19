@@ -1,4 +1,4 @@
-"""Keep BLE beta profiles on the S3 USB-capable core and board libraries."""
+"""Keep the S3 Bluetooth profiles on the S3 USB-capable core and board libraries."""
 import configparser
 from pathlib import Path
 import re
@@ -12,6 +12,8 @@ INI.read(ROOT / "platformio.ini")
 
 
 def option(section, key):
+    if section == "sysenv":
+        return ""
     if key in INI[section]:
         return re.sub(r"\$\{([^}]+)\}",
                       lambda m: option(*m[1].rsplit(".", 1)), INI[section][key])
@@ -51,7 +53,7 @@ class S3Profiles(unittest.TestCase):
                 self.assertIn("-include", flags)
                 self.assertIn("scripts/s3_nimble_psram.h", flags)
                 self.assertEqual(flags[flags.index("-include") + 1], "scripts/s3_nimble_psram.h")
-                for plain in (board, board + "-gh_release", "x3-ble", "gh_release"):
+                for plain in (board, "x3-ble", "gh_release") + ((board + "-gh_release",) if board == "x4c" else ()):
                     # German hyphenation is out of every X4 Pro build since v1.0.61 (flash headroom); the X4 Classic
                     # and C3 builds keep it outside the Bluetooth beta.
                     self.assertEqual("-DTENOR_HYPH_NO_DE" in option("env:" + plain, "build_flags").split(),
@@ -60,8 +62,21 @@ class S3Profiles(unittest.TestCase):
                 self.assertIn("-DBOARD_HAS_PSRAM", flags)
                 self.assertNotIn("-DFREEINK_DEVICE_X3=1", flags)
                 self.assertNotIn("-DTENOR_PRESS_PROBE", flags)
-                self.assertNotIn("-DFREEINK_CAP_BLE_HID_HOST=1",
-                                 option("env:" + board + "-gh_release", "build_flags").split())
+                # v1.0.65: the X4 Pro release and rc images carry the Bluetooth page turner, as upstream CrossPoint
+                # does. The X4 Classic's 0x640000 slot cannot hold it.
+                if board == "x4c":
+                    for release in (board + "-gh_release", board + "-gh_release_rc"):
+                        self.assertNotIn("-DFREEINK_CAP_BLE_HID_HOST=1", option("env:" + release, "build_flags").split())
+                    continue
+                for release in (board + "-gh_release", board + "-gh_release_rc"):
+                    released = option("env:" + release, "build_flags").split()
+                    for flag in option("ble_hid_beta", "build_flags").split():
+                        self.assertIn(flag, released, release)
+                    self.assertEqual(released[released.index("-include") + 1], "scripts/s3_nimble_psram.h")
+                    self.assertNotIn("-DTENOR_PRESS_PROBE", released)
+                    for dep in option("ble_hid_beta", "lib_deps").splitlines():
+                        if dep.strip():
+                            self.assertIn(dep.strip(), option("env:" + release, "lib_deps"))
 
     def test_probe(self):
         flags = option("env:x4pro-ble-probe", "build_flags").split()
