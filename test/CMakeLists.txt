@@ -56,6 +56,8 @@ add_test(NAME KoreaderAutoSyncSource
 
 add_subdirectory(streaming_json_parser)
 add_subdirectory(release_json_parser)
+add_subdirectory(koreader_document_id)
+add_subdirectory(ugly_font)
 add_subdirectory(differential_rounding)
 add_subdirectory(hyphenation_eval)
 add_subdirectory(hyphenation_no_de)
@@ -278,6 +280,7 @@ add_test(NAME heap_floor COMMAND heap_floor)
 
 add_test(NAME heap_floor_gate COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/../scripts/cong_san.py)
 
+add_test(NAME WebHtmlStripJs COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/web_html_strip/test_strip_js.py)
 add_test(NAME UiTextRules COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/ui_text_rules/check.py)
 
 add_executable(sheet_radio_plan sheet_radio_plan/SheetRadioPlanTest.cpp)
