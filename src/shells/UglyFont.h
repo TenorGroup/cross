@@ -6,7 +6,8 @@
 // tenor/ugly reads in Shantell Sans. Going in (and at every start while in), the reader font becomes Shantell
 // when its family is on the card and the font is still the default one; going out gives the default back if the
 // font is still the one the shell chose. The memo says what was given way: 0 nothing yet, 1 the built-in font,
-// 2 the shipped card font, 3 the user's own font (left alone until the shell is left).
+// 2 the shipped card font, 3 the user's own font (left alone until the shell is left). While the shell holds the
+// font, an empty name means Shantell went away (deleted, or failed to load), since a font picked by hand sets 3.
 namespace uglyfont {
 
 constexpr char FAMILY[] = "ShantellSans";
@@ -23,6 +24,11 @@ void take(char (&name)[N], const bool builtinDefault, uint8_t& memo, const bool 
       std::strncpy(name, FAMILY, N - 1);
       name[N - 1] = '\0';
     }
+  } else if (memo < 3 && name[0] == '\0') {
+    if (familyOnCard) {
+      std::strncpy(name, FAMILY, N - 1);
+      name[N - 1] = '\0';
+    }
   } else if (memo < 3 && std::strcmp(name, FAMILY) != 0) {
     memo = 3;
   }
@@ -30,11 +36,16 @@ void take(char (&name)[N], const bool builtinDefault, uint8_t& memo, const bool 
 
 template <size_t N>
 void give(char (&name)[N], uint8_t& memo) {
-  if ((memo == 1 || memo == 2) && std::strcmp(name, FAMILY) == 0) {
+  if ((memo == 1 || memo == 2) && (name[0] == '\0' || std::strcmp(name, FAMILY) == 0)) {
     std::strncpy(name, memo == 1 ? "" : SHIPPED, N - 1);
     name[N - 1] = '\0';
   }
   memo = 0;
+}
+
+// A font the user picks while the shell holds the font is theirs: leaving keeps it.
+inline void pickedByHand(uint8_t& memo) {
+  if (memo == 1 || memo == 2) memo = 3;
 }
 
 }  // namespace uglyfont

@@ -25,6 +25,7 @@
 #include "QuickAction.h"
 #include "activities/home/FileBrowserState.h"
 #include "ReaderFontSizes.h"
+#include "shells/UglyFont.h"
 #include "shells/ugly/UglyLevel.h"
 #include "activities/settings/SettingsActivity.h"
 #include "components/UITheme.h"
@@ -103,6 +104,7 @@ inline SettingInfo buildFontFamilySetting(const SdCardFontRegistry* registry) {
         SETTINGS.sdFontFamilyName[sizeof(SETTINGS.sdFontFamilyName) - 1] = '\0';
       }
     }
+    uglyfont::pickedByHand(SETTINGS.uiShellFontMemo);
   };
 
   return s;

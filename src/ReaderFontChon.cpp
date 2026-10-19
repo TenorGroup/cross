@@ -8,6 +8,7 @@
 #include "CrossPointSettings.h"
 #include "ReaderFontSizes.h"
 #include "SdCardFontSystem.h"
+#include "shells/UglyFont.h"
 
 namespace fontdoc {
 
@@ -57,6 +58,7 @@ bool apHo(GfxRenderer& renderer, const SdCardFontRegistry* registry, const int i
     strncpy(SETTINGS.sdFontFamilyName, families[sd].name.c_str(), sizeof(SETTINGS.sdFontFamilyName) - 1);
     SETTINGS.sdFontFamilyName[sizeof(SETTINGS.sdFontFamilyName) - 1] = '\0';
   }
+  uglyfont::pickedByHand(SETTINGS.uiShellFontMemo);
   sdFontSystem.ensureLoaded(renderer);  // go font the cu, nap font moi, hoac ve font nap san
   return true;
 }
