@@ -55,9 +55,9 @@ std::vector<int> shownDefault(const int count) {
 }
 
 // One Settings page for every device, in X4 Pro's order and names (founder 20/10/2026): Connections, Display,
-// Reader, Controls | System, Device, Keyboard, Motion | Sleep, Other, About & updates, under three titles. Home
-// rows are Connections (0), the groups (1..n) and About & updates (n + 1). A board without the motion sensor has
-// the same page without that row.
+// Reader, Controls | System, Device, Keyboard, Motion | Sleep, Other, About & updates. Home rows are Connections
+// (0), the groups (1..n) and About & updates (n + 1). A board without the motion sensor has the same page without
+// that row. This host build is a button reader: no titles (the X4 Pro's titles: UiLayout.home_settings_binding).
 TEST(SettingsTabs, OneOrderEveryDevice) {
   for (const bool motion : {true, false}) {
     const auto groups = shownDefault(motion ? 9 : 8);
@@ -67,11 +67,8 @@ TEST(SettingsTabs, OneOrderEveryDevice) {
     const int rows = static_cast<int>(groups.size()) + 2;
     std::vector<StrId> headings;
     for (int row = 0; row < rows; ++row) headings.push_back(homesettings::heading(groups, row));
-    std::vector<StrId> titled(rows, StrId::STR_NONE_OPT);
-    titled[0] = StrId::STR_READER_TAB_READING;
-    titled[4] = StrId::STR_CAT_SYSTEM;
-    titled[motion ? 8 : 7] = StrId::STR_CAT_OTHER;
-    EXPECT_EQ(headings, titled) << (motion ? "with" : "without") << " the motion sensor";
+    EXPECT_EQ(headings, std::vector<StrId>(rows, StrId::STR_NONE_OPT))
+        << (motion ? "with" : "without") << " the motion sensor";
     EXPECT_EQ(homesettings::heading(groups, -1), StrId::STR_NONE_OPT);
     EXPECT_EQ(homesettings::heading(groups, rows), StrId::STR_NONE_OPT);
   }

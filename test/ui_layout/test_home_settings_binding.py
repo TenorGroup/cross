@@ -1,4 +1,4 @@
-"""Run Home's production Settings-page row methods: one list, one order and the same titles on every device."""
+"""Run Home's production Settings-page row methods: one list and one order on every device, titled on the X4 Pro only."""
 from pathlib import Path
 import os
 import re
@@ -70,13 +70,15 @@ int main() {
       titles.emplace_back(item.sectionHeading ? item.sectionHeading : "");
       assert(home.rowStartsGroup(i) == (item.sectionHeading != nullptr));
     }
+    // The X3 and X4 Classic: no titles and no gap between groups, the rows evenly spaced (founder 20/10/2026).
     std::vector<std::string> want(rows);
-    want[0] = "Reading", want[4] = "System", want[motion ? 8 : 7] = "Other";
+    if (TITLED) want[0] = "Reading", want[4] = "System", want[motion ? 8 : 7] = "Other";
     assert(titles == want);
     home.pinned = true;
     fui::ListItem pinned;
     HomeActivity::settingsRow(&home, 0, pinned);
-    assert(std::string(pinned.label) == "\xEE\x84\x8A" + labels[0] && std::string(pinned.sectionHeading) == "Reading");
+    assert(std::string(pinned.label) == "\xEE\x84\x8A" + labels[0]);
+    assert(TITLED ? std::string(pinned.sectionHeading) == "Reading" : !pinned.sectionHeading);
     assert(home.focusFavorite("action/15") == 0 && home.nav.selected == 1 && home.nav.followOnBuild);
     assert(home.focusFavorite("other") == -2);
     home.activeTabId = HomeActivity::Tab::OTHER;
@@ -91,20 +93,23 @@ int main() {
     HomeActivity::settingsRow(&chosen, i, item);
     assert(!item.sectionHeading && !chosen.rowStartsGroup(i));
   }
-  std::printf("PASS: one Settings page, titled at Connections, System and Sleep, untitled when the user chose\n");
+  std::printf(TITLED ? "PASS: X4 Pro Settings page titled at Connections, System and Sleep, untitled when the user chose\n"
+                     : "PASS: X3/X4 Classic Settings page untitled, no gap between groups\n");
 }
 '''
 
-with tempfile.TemporaryDirectory(prefix='home-settings-binding-') as temporary:
-    folder = Path(temporary)
-    (folder / 'test.cpp').write_text(HARNESS + '\n'.join(methods) + CASES)
-    build = subprocess.run(['c++', '-std=c++20', '-UNDEBUG', '-I' + str(ROOT / 'src'), '-I' + str(ROOT / 'lib/I18n'),
-                            str(folder / 'test.cpp'), '-o', str(folder / 'test')], capture_output=True, text=True)
-    assert build.returncode == 0, build.stdout + build.stderr
-    run = subprocess.run([str(folder / 'test')], capture_output=True, text=True)
-    if artifact := os.environ.get('CROSSPOINT_TEST_ARTIFACTS'):
-        output = Path(artifact); output.mkdir(parents=True, exist_ok=True)
-        (output / 'binding.cpp').write_text('\n'.join(methods))
-        (output / 'result.log').write_text(run.stdout + run.stderr)
-    assert run.returncode == 0, run.stdout + run.stderr
-    print(run.stdout, end='')
+for device, x4pro in (('x4pro', '1'), ('buttons', '0')):
+    with tempfile.TemporaryDirectory(prefix='home-settings-binding-') as temporary:
+        folder = Path(temporary)
+        (folder / 'test.cpp').write_text(HARNESS + '\n'.join(methods) + CASES)
+        build = subprocess.run(['c++', '-std=c++20', '-UNDEBUG', '-DFREEINK_DEVICE_X4PRO=' + x4pro, '-DTITLED=' + x4pro,
+                                '-I' + str(ROOT / 'src'), '-I' + str(ROOT / 'lib/I18n'),
+                                str(folder / 'test.cpp'), '-o', str(folder / 'test')], capture_output=True, text=True)
+        assert build.returncode == 0, build.stdout + build.stderr
+        run = subprocess.run([str(folder / 'test')], capture_output=True, text=True)
+        if artifact := os.environ.get('CROSSPOINT_TEST_ARTIFACTS'):
+            output = Path(artifact) / device; output.mkdir(parents=True, exist_ok=True)
+            (output / 'binding.cpp').write_text('\n'.join(methods))
+            (output / 'result.log').write_text(run.stdout + run.stderr)
+        assert run.returncode == 0, run.stdout + run.stderr
+        print(run.stdout, end='')
