@@ -50,6 +50,8 @@ if 'bool FontPackInstaller::matchesInstalled(' in installer:
     extracted += body(installer, 'bool FontPackInstaller::matchesInstalled(')
 else:
     extracted += 'bool FontPackInstaller::matchesInstalled(const char*, const char*, uint32_t, uint32_t) { return false; }'
+if 'bool FontPackInstaller::isPackFamily(' in installer:
+    extracted += '\n' + body(installer, 'bool FontPackInstaller::isPackFamily(')
 # Older sources use the same callback without the catalog arguments.
 extracted = extracted.replace('installDownloadedPack(const char* path)', 'installDownloadedPack(const char* path, uint32_t size, uint32_t crc)')
 extracted = extracted.replace('return installDownloadedPack(path);', 'return installDownloadedPack(path, file.size, file.crc32);')
@@ -74,6 +76,7 @@ class FontDownloadPack(unittest.TestCase):
     def test_receipt_crc_change(self): self.scenario('receipt-crc')
     def test_receipt_size_change(self): self.scenario('receipt-size')
     def test_receipt_missing(self): self.scenario('receipt-missing')
+    def test_user_family_with_store_name(self): self.scenario('receipt-user')
     def test_receipt_forwarded_to_installer(self): self.scenario('receipt-install')
     def test_success(self): self.scenario('success')
     def test_crc(self): self.scenario('crc')
@@ -88,6 +91,7 @@ class FontDownloadPack(unittest.TestCase):
     def test_legacy_crc(self): self.scenario('legacycrc')
     def test_legacy_cancel(self): self.scenario('legacycancel')
     def test_batch_order(self): self.scenario('batchorder')
+    def test_batch_chosen_only(self): self.scenario('chosen')
     def test_batch_bytes(self): self.scenario('batchbytes')
     def test_batch_crc_continue(self): self.scenario('batchcrc')
     def test_batch_space_continue(self): self.scenario('batchspace')
@@ -133,7 +137,7 @@ class FontDownloadPack(unittest.TestCase):
     def test_manifest_dispatch(self):
         self.assertTrue('fontdownload::classifyManifestFile' in source, 'manifest entries must use the classifier')
         header = (args.repo / 'src/activities/settings/FontDownloadActivity.h').read_text()
-        self.assertIn('https://cross.tenor.vn/firmware/v1.0.61/fonts/fonts.json', header)
+        self.assertIn('https://cross.tenor.vn/firmware/v1.0.70/fonts/fonts.json', header)
 
 
 if args.range_only:

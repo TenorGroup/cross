@@ -590,9 +590,10 @@ bool FontDownloadActivity::fetchAndParseManifest() {
         return false;
       }
 
-      // Packs use their verified archive receipt; individual fonts keep their size check.
+      // Packs use their verified archive receipt; individual fonts keep their size check. A folder under the
+      // store's name that no pack made is the user's own family: it shows as installed and is never overwritten.
       if (kind == fontdownload::ManifestFileKind::Pack) {
-        family.hasUpdate = family.installed &&
+        family.hasUpdate = family.installed && FontPackInstaller::isPackFamily(familyRoot, str(family.name)) &&
                            !FontPackInstaller::matchesInstalled(familyRoot, str(family.name), file.size, file.crc32);
       } else if (family.installed && !family.hasUpdate) {
         HalFile f;
@@ -655,14 +656,14 @@ void FontDownloadActivity::downloadSelected(const bool updates) {
     }
     for (const int familyIndex : filteredIndices_) {
       const auto& family = families_[familyIndex];
-      if (updates ? !family.hasUpdate : family.installed) continue;
+      if (updates ? !family.hasUpdate : family.installed || !family.chosen) continue;
       batchTotalBytes_ += family.totalSize;
       ++batchFamilyCount_;
     }
   }
   for (const int familyIndex : filteredIndices_) {
     auto& family = families_[familyIndex];
-    if (updates ? !family.hasUpdate : family.installed) continue;
+    if (updates ? !family.hasUpdate : family.installed || !family.chosen) continue;
     {
       RenderLock lock(*this);
       ++batchFamilyIndex_;
@@ -719,7 +720,12 @@ bool FontDownloadActivity::isUpdateAllRow(int index) const {
 }
 
 int FontDownloadActivity::listItemCount() const {
-  return filteredIndices_.empty() ? 0 : static_cast<int>(filteredIndices_.size()) + specialRowCount();
+  return filteredIndices_.empty() ? 0 : static_cast<int>(filteredIndices_.size()) + specialRowCount() + 1;
+}
+
+// The last row says how to add a font the store does not have; Up from the first row reaches it.
+bool FontDownloadActivity::isOwnFontRow(const int index) const {
+  return !filteredIndices_.empty() && index == listItemCount() - 1;
 }
 
 int FontDownloadActivity::listCount() const {
@@ -781,10 +787,17 @@ void FontDownloadActivity::enterGroup(const int groupListIndex) {
   }
 }
 
+int FontDownloadActivity::chosenCount() const {
+  int count = 0;
+  for (const int familyIndex : filteredIndices_) count += families_[familyIndex].chosen && !families_[familyIndex].installed;
+  return count;
+}
+
 size_t FontDownloadActivity::totalDownloadSize() const {
   size_t total = 0;
   for (const int familyIndex : filteredIndices_) {
-    if (!families_[familyIndex].installed) total += families_[familyIndex].totalSize;
+    const auto& family = families_[familyIndex];
+    if (!family.installed && family.chosen) total += family.totalSize;
   }
   return total;
 }
@@ -1074,6 +1087,7 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
     RenderLock lock(*this);
     sdFontSystem.markRegistryDirty();
     family.installed = true;
+    family.chosen = false;  // a later delete shows it off again
     family.hasUpdate = false;
     installingPack_ = false;
     state_ = batchRunning_ ? DOWNLOADING : COMPLETE;
@@ -1117,6 +1131,7 @@ void FontDownloadActivity::onDeleteConfirmationResult(const ActivityResult& resu
   } else {
     sdFontSystem.markRegistryDirty();
     family.installed = false;
+    family.chosen = false;
     family.hasUpdate = false;
     // Unlike the other family_ mutations, this one stays in FAMILY_LIST (no
     // state_ transition to hang the rebuild off), so it must set the flag
@@ -1128,19 +1143,22 @@ void FontDownloadActivity::onDeleteConfirmationResult(const ActivityResult& resu
 }
 
 bool FontDownloadActivity::isSelectedFamilyDeletable() const {
-  if (isDownloadAllRow(nav.selected) || isUpdateAllRow(nav.selected)) return false;
-  if (nav.selected < specialRowCount() || nav.selected >= listItemCount()) return false;
-  const auto& family = families_[familyIndexFromList(nav.selected)];
+  const int familyIndex = familyIndexFromList(nav.selected);  // -1 on the special rows and the own-font row
+  if (familyIndex < 0) return false;
+  const auto& family = families_[familyIndex];
   return family.installed && !family.hasUpdate;
 }
 
 void FontDownloadActivity::activateSelected() {
   if (filteredIndices_.empty()) return;
   if (isDownloadAllRow(nav.selected)) {
+    // Nothing switched on: the row only says to pick families (the whole store is hundreds of MB).
+    if (chosenCount() == 0) return;
     currentFileIndex_ = 0;
     currentFileTotal_ = 0;
     for (const int familyIndex : filteredIndices_) {
-      if (!families_[familyIndex].installed) currentFileTotal_ += families_[familyIndex].fileCount;
+      const auto& family = families_[familyIndex];
+      if (!family.installed && family.chosen) currentFileTotal_ += family.fileCount;
     }
     downloadAll();
   } else if (isUpdateAllRow(nav.selected)) {
@@ -1156,7 +1174,16 @@ void FontDownloadActivity::activateSelected() {
     const int familyIndex = familyIndexFromList(nav.selected);
     if (familyIndex < 0 || familyIndex >= static_cast<int>(families_.size())) return;
     auto& family = families_[familyIndex];
-    if (!family.installed || family.hasUpdate) {
+    if (!family.installed) {
+      {
+        RenderLock lock(*this);
+        family.chosen = !family.chosen;
+        rowsDirty_ = true;
+      }
+      requestUpdate();  // a button press does not repaint the list by itself (touch does)
+      return;
+    }
+    if (family.hasUpdate) {
       currentFileIndex_ = 0;
       currentFileTotal_ = family.fileCount;
       downloadFamily(family);
@@ -1245,15 +1272,32 @@ void FontDownloadActivity::rebuildFamilyRowItems() {
   for (int i = 0; i < listSize; i++) {
     fui::ListItem item;
     if (isDownloadAllRow(i)) {
-      rowLabels_[i] = std::string(tr(STR_DOWNLOAD_ALL)) + " (" + formatSize(totalDownloadSize()) + ")";
-      item.label = rowLabels_[i].c_str();
+      const int chosen = chosenCount();
+      if (chosen) {
+        rowLabels_[i] = std::string(tr(STR_DOWNLOAD_CHOSEN)) + " (" + std::to_string(chosen) + ", " +
+                        formatSize(totalDownloadSize()) + ")";
+        item.label = rowLabels_[i].c_str();
+      } else {
+        item.label = tr(STR_PICK_FONTS_TO_DOWNLOAD);
+        item.state = fui::StateDisabled;
+      }
+    } else if (isOwnFontRow(i)) {
+      // The way there, from the screens' own names, so a renamed screen cannot leave the hint stale.
+      rowLabels_[i] = std::string(tr(STR_FILE_TRANSFER)) + " > " + tr(STR_JOIN_NETWORK) + tr(STR_OWN_FONT_HINT);
+      item.label = tr(STR_OWN_FONT);
+      item.subtitle = rowLabels_[i].c_str();
     } else if (isUpdateAllRow(i)) {
       rowLabels_[i] = std::string(tr(STR_UPDATE_ALL)) + " (" + formatSize(totalUpdateSize()) + ")";
       item.label = rowLabels_[i].c_str();
     } else {
       const auto& family = families_[familyIndexFromList(i)];
       item.label = str(family.name);
-      if (family.description != 0) item.subtitle = str(family.description);
+      if (family.description != 0) {
+        item.subtitle = str(family.description);
+      } else if (!family.installed || family.hasUpdate) {
+        rowLabels_[i] = formatSize(family.totalSize);  // what switching it on adds to the download
+        item.subtitle = rowLabels_[i].c_str();
+      }
       if (family.hasUpdate) {
         item.value = tr(STR_UPDATE_AVAILABLE);
       } else if (family.installed) {
@@ -1261,6 +1305,9 @@ void FontDownloadActivity::rebuildFamilyRowItems() {
         // Dimmed but still tappable (opens the delete prompt): visual-only
         // disabled state, the row stays enabled for hit registration.
         item.state = fui::StateDisabled;
+      } else {
+        item.toggle = true;
+        item.toggleChecked = family.chosen;
       }
     }
     item.actionValue = static_cast<int16_t>(i);
@@ -1482,9 +1529,14 @@ void FontDownloadActivity::drawListHints() {
     return;
   }
   const bool hasVisibleFamilies = !filteredIndices_.empty();
-  const char* confirmLabel = !hasVisibleFamilies            ? ""
+  const int familyIndex = familyIndexFromList(nav.selected);
+  const bool toggles = familyIndex >= 0 && !families_[familyIndex].installed;
+  const char* confirmLabel = !hasVisibleFamilies || isOwnFontRow(nav.selected) ||
+                                     (isDownloadAllRow(nav.selected) && chosenCount() == 0)
+                                 ? ""
                              : isSelectedFamilyDeletable()  ? tr(STR_DELETE)
                              : isUpdateAllRow(nav.selected) ? tr(STR_UPDATE)
+                             : toggles                      ? tr(STR_TOGGLE)
                                                             : tr(STR_DOWNLOAD);
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, hasVisibleFamilies ? tr(STR_DIR_UP) : "",
                                             hasVisibleFamilies ? tr(STR_DIR_DOWN) : "");

@@ -27,7 +27,7 @@ inline bool preventsAutoSleep(const Phase phase) {
 }  // namespace font_power
 
 #ifndef FONT_MANIFEST_URL
-#define FONT_MANIFEST_URL "https://cross.tenor.vn/firmware/v1.0.61/fonts/fonts.json"
+#define FONT_MANIFEST_URL "https://cross.tenor.vn/firmware/v1.0.70/fonts/fonts.json"
 #endif
 
 class FontDownloadActivity final : public UiListActivity {
@@ -92,6 +92,7 @@ class FontDownloadActivity final : public UiListActivity {
     uint32_t scriptMask = 0;
     bool installed = false;
     bool hasUpdate = false;
+    bool chosen = false;  // toggled on in the list: the download row takes only the chosen families
     const char* failureReason = nullptr;
     uint32_t requiredMb = 0;
   };
@@ -210,6 +211,8 @@ class FontDownloadActivity final : public UiListActivity {
   void buildFilteredIndices(int groupListIndex);
   void enterGroup(int groupListIndex);
   size_t totalDownloadSize() const;
+  int chosenCount() const;
+  bool isOwnFontRow(int index) const;
   size_t totalUpdateSize() const;
   static std::string formatSize(uint64_t bytes);
   bool renderUglyNote() const;

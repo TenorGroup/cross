@@ -183,6 +183,7 @@ class FontDownloadActivity {
     std::string name = "Example";
     uint32_t fileStart = 0, fileCount = 1, totalSize = 0;
     bool installed = true, hasUpdate = true;
+    bool chosen = false;
     const char* failureReason = nullptr;
     uint32_t requiredMb = 0;
   };
@@ -190,6 +191,11 @@ class FontDownloadActivity {
   std::vector<ManifestFamily> families_{ManifestFamily{}};
   std::vector<ManifestFile> files_;
   std::vector<int> filteredIndices_{0};
+  int chosenCount() const {
+    int count = 0;
+    for (const int index : filteredIndices_) count += families_[index].chosen && !families_[index].installed;
+    return count;
+  }
   std::vector<std::string> rowLabels_;
   std::vector<fui::ListItem> rowItems_;
   FontInstaller fontInstaller_;
@@ -269,7 +275,10 @@ int main(int argc, char** argv) {
     uint32_t receipt[] = {0x31525046, 100, crc};
     if (scenario == "receipt-crc") receipt[2] ^= 1;
     if (scenario == "receipt-size") ++receipt[1];
-    if (scenario != "receipt-missing") {
+    // receipt-missing: a pack installed before receipts existed (its pack.json is there), so it updates.
+    // receipt-user: a family the user added under the store's name (no pack.json, no receipt), never overwritten.
+    if (scenario == "receipt-missing") std::ofstream(cardRoot / "fonts/Example/pack.json") << "{}";
+    else if (scenario != "receipt-user") {
       std::ofstream marker(cardRoot / "fonts/Example/.pack-ready", std::ios::binary);
       marker.write(reinterpret_cast<const char*>(receipt), sizeof(receipt));
     }
@@ -277,7 +286,7 @@ int main(int argc, char** argv) {
     auto& family = activity.families_[0];
     family.totalSize = 100;
     activity.refreshPack(family, activity.files_[0]);
-    const bool expectedUpdate = scenario != "receipt-match" && scenario != "receipt-install";
+    const bool expectedUpdate = scenario != "receipt-match" && scenario != "receipt-install" && scenario != "receipt-user";
     if (scenario == "receipt-install") family.hasUpdate = true;
     else if (family.hasUpdate != expectedUpdate) {
       std::cerr << scenario << " wrong update flag=" << family.hasUpdate << '\n'; return 1;
@@ -376,6 +385,25 @@ int main(int argc, char** argv) {
               << " bytes=" << activity.streamedBytes_ << '\n';
     return passed ? 0 : 1;
   }
+  if (scenario == "chosen") {
+    // Three families not on the card, two switched on: the download row fetches those two only.
+    activity.families_.clear();
+    activity.filteredIndices_.clear();
+    const auto crc = esp_rom_crc32_le(0, HttpDownloader::payload.data(), HttpDownloader::payload.size());
+    for (int index = 0; index < 3; ++index) {
+      const auto name = std::string("Family") + std::to_string(index);
+      activity.families_.push_back({name, static_cast<uint32_t>(index), 1, 100, false, false});
+      activity.families_.back().chosen = index != 1;
+      activity.filteredIndices_.push_back(index);
+      activity.files_.push_back({name + ".cpfontpack", "", 100, crc});
+    }
+    activity.downloadAll();
+    const bool passed = HttpDownloader::calls == 2 && activity.batchTotalBytes_ == 200 &&
+                        activity.families_[0].installed && !activity.families_[1].installed && activity.families_[2].installed;
+    std::cout << scenario << " calls=" << HttpDownloader::calls << " total=" << activity.batchTotalBytes_ << '\n';
+    std::filesystem::remove_all(cardRoot);
+    return passed ? 0 : 1;
+  }
   if (scenario.starts_with("batch")) {
     activity.families_.clear();
     activity.filteredIndices_.clear();
@@ -387,6 +415,7 @@ int main(int argc, char** argv) {
       std::vector<uint8_t> bytes(size, 7);
       activity.families_.push_back({name, static_cast<uint32_t>(index), 1, size,
                                    scenario != "batchorder", true});
+      activity.families_.back().chosen = true;  // the download row takes the families switched on
       activity.filteredIndices_.push_back(index);
       activity.files_.push_back({name + ".cpfontpack", "", size,
                                 esp_rom_crc32_le(0, bytes.data(), size)});
