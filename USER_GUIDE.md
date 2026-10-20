@@ -577,8 +577,8 @@ CrossPoint loads additional fonts from the SD card. Custom fonts can add Chinese
 
 There are three ways to install fonts:
 
-1. **Download from device (recommended):** Go to **Settings -> Reader -> Get Fonts**, browse the available font families, and select one to download over Wi-Fi.
-2. **Upload via web interface:** While in **Connections** mode, open the web UI and use the **Fonts** tab to upload `.cpfont` files or TTF/OTF files. Without external RAM the page converts a TTF/OTF to `.cpfont` in the browser before sending it, at 12 to 24 pt and the reader weights you tick (0, +1, +2, +3 by default).
+1. **Download from device (recommended):** Go to **Connections -> Get Fonts**, switch on the families you want (each row shows its size), then choose **Download selected** at the top. The store never replaces a family you added yourself under the same name: it shows as installed. The last row, **Add your own font**, points to the web interface below.
+2. **Upload via web interface:** While in **Connections** mode, open the web UI and use the **Fonts** tab to upload `.cpfont` files or TTF/OTF files. Without external RAM the page converts a TTF/OTF to `.cpfont` in the browser before sending it, at 12 to 24 pt and the reader weights you tick (0, +1, +2, +3 by default). The family keeps the font's own name; a name already on the card is refused.
 3. **Manual SD card copy:** Copy `.cpfont` families from the [crosspoint-fonts repository](https://github.com/crosspoint-reader/crosspoint-fonts) to `/.fonts/` or `/fonts/`. If your device have external RAM, you can also copy TTF/OTF/TTC files there without conversion.
 
 Once installed, custom fonts appear in **Settings → Reader → Font Family** alongside the built-in fonts.
