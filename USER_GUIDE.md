@@ -15,7 +15,7 @@ Welcome to the **CrossPoint** firmware. This guide outlines the hardware control
     - [3.2 Reading Mode](#32-reading-mode)
     - [3.3 Browse Files Screen](#33-browse-files-screen)
     - [3.4 Library Screen](#34-library-screen)
-    - [3.5 File Transfer Screen](#35-file-transfer-screen)
+    - [3.5 Connections Screen](#35-connections-screen)
     - [3.5.1 Calibre Wireless Transfers](#351-calibre-wireless-transfers)
       - [Installing the Plugin in Calibre](#installing-the-plugin-in-calibre)
       - [Configuring the CrossPoint Plugin in Calibre](#configuring-the-crosspoint-plugin-in-calibre)
@@ -107,7 +107,7 @@ Upon turning the device on for the first time, you will be placed on the **[Home
 
 ### 3.1 Home Screen
 
-The Home screen is the main entry point to the firmware. From here you can navigate to **[Reading Mode](#4-reading-mode)** with the most recently read book, **[Browse Files](#33-browse-files-screen)**, the **[Library](#34-library-screen)**, **[File Transfer](#35-file-transfer-screen)**, or **[Settings](#36-settings)**.
+The Home screen is the main entry point to the firmware. From here you can navigate to **[Reading Mode](#4-reading-mode)** with the most recently read book, **[Browse Files](#33-browse-files-screen)**, the **[Library](#34-library-screen)**, **[Connections](#35-connections-screen)**, or **[Settings](#36-settings)**.
 
 ### 3.2 Reading Mode
 
@@ -143,9 +143,9 @@ On a touch device, tap tabs, books, and the Search icon directly. Tap an active 
 
 The index is created automatically the first time the Library is opened. To pick up later file changes or updated metadata, use **Settings → System → Rebuild library index**. The **Use book metadata** setting controls whether the index reads titles and authors stored inside books.
 
-### 3.5 File Transfer Screen
+### 3.5 Connections Screen
 
-The File Transfer screen allows you to upload and manage files on the device. When you enter the screen, choose **Join a Network**, **Calibre Wireless**, or **Create Hotspot**. The reader then starts the web server for the selected mode.
+The Connections screen (called File Transfer before v1.0.69) allows you to upload and manage files on the device and to get fonts. When you enter the screen, choose **Join a Network**, **Calibre Wireless**, or **Create Hotspot** (USB drive and WebDAV sync where the device has them), or **Get Fonts** for the font store. The reader then starts the web server for the selected mode.
 
 See the [web server docs](./docs/webserver.md) for more information on how to connect to the web server and upload files.
 
@@ -191,7 +191,7 @@ If you don't already have the plugin installed:
 
 To upload a book using the CrossPoint plugin in Calibre:
 
-1. On the device: File Transfer -> Calibre Wireless, then join a network.
+1. On the device: Connections -> Calibre Wireless, then join a network.
 2. Select one or more books.
 3. Right-click on that selection.
 4. Select "Send to Device" > "Send to main memory"
@@ -312,7 +312,7 @@ The Settings screen allows you to configure the device's behavior. There are a f
   - "Dictionary" - Hold Confirm (~0.4 second) to start dictionary word selection on the current page (see [docs/dictionary.md](docs/dictionary.md)).
   - "Disabled" - Long-press is ignored; only short-press opens the reader menu.
   - "Reader Menu" - Hold Confirm (~0.4 second) to open the reader menu, which lands on its Favorites tab.
-  - "File Transfer" - Hold Confirm (~0.4 second) to leave the book for the File Transfer screen. Reading progress is kept.
+  - "Connections" - Hold Confirm (~0.4 second) to leave the book for the Connections screen (send files over Wi-Fi, USB drive, WebDAV, Get fonts). Reading progress is kept.
   - "Tilt Page Turn" *(X3 only)* - Hold Confirm (~0.4 second) to switch tilt page turning off, or back on in the direction it had. A popup shows the new state.
 
 - **Short Power Button Click**: Controls the effect of a short click of the power button:
@@ -369,7 +369,7 @@ Behavior notes:
 - You can store up to 8 OPDS servers.
 - OPDS authentication supports HTTP Basic auth. If you use Calibre Content Server with authentication enabled, set it to Basic (not Digest).
 
-You can also manage OPDS servers from the web interface while in File Transfer mode:
+You can also manage OPDS servers from the web interface while in Connections mode:
 
 1. Connect to the device web UI.
 2. Open `http://<device-ip>/settings`.
@@ -379,9 +379,9 @@ For web-based Wi-Fi network management, see [Web Settings (Wi-Fi + OPDS)](#366-w
 
 #### 3.6.6 Web Settings (Wi-Fi + OPDS)
 
-While in **File Transfer** mode, the web settings page includes management cards for both **Wi-Fi Networks** and **OPDS Servers**.
+While in **Connections** mode, the web settings page includes management cards for both **Wi-Fi Networks** and **OPDS Servers**.
 
-1. On device: open **File Transfer** and connect through **Join a Network** or **Create Hotspot**.
+1. On device: open **Connections** and connect through **Join a Network** or **Create Hotspot**.
 2. In a browser, open `http://<device-ip>/settings` or `http://crosspoint.local`.
 3. In **Wi-Fi Networks**, add, edit, or delete saved network entries (SSID + optional password).
 4. In **OPDS Servers**, add, edit, or delete OPDS catalogs.
@@ -578,7 +578,7 @@ CrossPoint loads additional fonts from the SD card. Custom fonts can add Chinese
 There are three ways to install fonts:
 
 1. **Download from device (recommended):** Go to **Settings -> Reader -> Get Fonts**, browse the available font families, and select one to download over Wi-Fi.
-2. **Upload via web interface:** While in **File Transfer** mode, open the web UI and use the **Fonts** tab to upload `.cpfont` files or TTF/OTF files. Without external RAM the page converts a TTF/OTF to `.cpfont` in the browser before sending it.
+2. **Upload via web interface:** While in **Connections** mode, open the web UI and use the **Fonts** tab to upload `.cpfont` files or TTF/OTF files. Without external RAM the page converts a TTF/OTF to `.cpfont` in the browser before sending it, at 12 to 24 pt and the reader weights you tick (0, +1, +2, +3 by default).
 3. **Manual SD card copy:** Copy `.cpfont` families from the [crosspoint-fonts repository](https://github.com/crosspoint-reader/crosspoint-fonts) to `/.fonts/` or `/fonts/`. If your device have external RAM, you can also copy TTF/OTF/TTC files there without conversion.
 
 Once installed, custom fonts appear in **Settings → Reader → Font Family** alongside the built-in fonts.
@@ -667,7 +667,7 @@ Available options include:
 - **Go Home** – Close the book and return to the Home screen.
 - **Sync Progress** – Push or pull reading progress with a KOReader sync server (see [KOReader Sync Quick Setup](#367-koreader-sync-quick-setup)).
 - **Delete Book Cache** – Clear the cached layout data for the current book, forcing a re-index on next open.
-- **File Transfer** - Leave the book for the File Transfer screen. Reading progress is kept.
+- **Connections** - Leave the book for the Connections screen. Reading progress is kept.
 - **Tilt Page Turn** *(X3 only)* - Switch tilt page turning off, or back on in the direction it had.
 
 Hold **Confirm** on any row to pin it to the **Favorites** tab, where the menu opens.
