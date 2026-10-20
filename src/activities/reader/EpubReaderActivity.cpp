@@ -2932,6 +2932,7 @@ void EpubReaderActivity::renderBook() {
     // Once, over the first page read after the saved family went with the built-in Noto Serif.
     if (SETTINGS.fontFallbackNotice) {
       SETTINGS.fontFallbackNotice = false;
+      fontNoticeShown = true;
       GUI.drawPopup(renderer, tr(STR_READER_FONT_FELL_BACK));
       return;
     }
@@ -6971,4 +6972,5 @@ void EpubReaderActivity::onExit() {
   LOG_INF("ERS", "EXIT_STAGES excerpt=%lu base=%lu thumbs=%lu commit=%lu load=%lu", excerptDone - exitStarted,
           baseDone - excerptDone, millis() - baseDone, committed - exitStarted, pageLoaded - committed);
 #endif
+  if (fontNoticeShown) SETTINGS.saveToFile();  // after the book's memory is given back, not while drawing
 }

@@ -564,7 +564,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   char sdFontFamilyName[64] = "Bokerlam";
   // RAM only: the file read was written before v1.0.69 with the built-in Noto Serif as the fallback
   // under the saved name. SdCardFontSystem::begin() then takes the card's NotoSerif when the saved family
-  // is gone, and otherwise says once that the reader font changed (fontFallbackNotice).
+  // is gone, and otherwise says once that the reader font changed (fontFallbackNotice, saved until the
+  // reader has shown it, so a sleep or another reader first does not lose it).
   bool legacySerifFallback = false;
   bool fontFallbackNotice = false;
   // Dictionary folder name under /dictionaries (empty = no dictionary)

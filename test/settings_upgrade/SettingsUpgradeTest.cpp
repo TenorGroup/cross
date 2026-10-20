@@ -636,6 +636,14 @@ int runNotoSerifCard() {
   doc["sdFontFamilyName"] = "";
   doc["uiShellFontMemo"] = 1;
   ok = expect(load(doc) && SETTINGS.uiShellFontMemo == 1, "an old serif file keeps the shell's memo") && ok;
+  // The notice waits in the file until the reader shows it.
+  SETTINGS.fontFallbackNotice = true;
+  doc = written();
+  ok = expect(doc["fontFallbackNotice"] == 1 && load(doc) && SETTINGS.fontFallbackNotice, "a pending notice survives a restart") &&
+       ok;
+  SETTINGS.fontFallbackNotice = false;
+  doc = written();
+  ok = expect(doc["fontFallbackNotice"].isNull() && load(doc) && !SETTINGS.fontFallbackNotice, "a shown notice is gone") && ok;
   std::printf("settings_upgrade=noto-serif-card:%s\n", ok ? "GREEN" : "RED");
   return ok ? 0 : 1;
 }

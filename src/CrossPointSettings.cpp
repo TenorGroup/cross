@@ -148,6 +148,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   // Always the stored Noto Sans number: older firmware reading this file finds its own Noto Sans.
   doc["fontFamily"] = STORED_NOTOSANS;
   doc["fontFamilyVersion"] = FONT_FAMILY_VERSION;
+  if (fontFallbackNotice) doc["fontFallbackNotice"] = 1;
   doc["fontSize"] = fontPointSize;
   // Hold-Select function - list position differs from the number on a board without an IMU, so the
   // row in SettingsList is dynamic and the generic loop skips it. Saved as the number.
@@ -513,6 +514,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   // card font and wins; SdCardFontSystem::begin() falls back to the card's NotoSerif when that family is gone
   // and this file had the serif under it (the v1.0.68 default, Bokerlam over Noto Serif).
   legacySerifFallback = storedFontFamily == LEGACY_NOTOSERIF;
+  fontFallbackNotice = (doc["fontFallbackNotice"] | 0) != 0;
   if (sdFontFamilyName[0] == '\0' &&
       (storedFontFamily == LEGACY_NOTOSERIF || storedFontFamily == LEGACY_OPENDYSLEXIC)) {
     copyToField(sdFontFamilyName, storedFontFamily == LEGACY_NOTOSERIF ? "NotoSerif" : "OpenDyslexic",
