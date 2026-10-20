@@ -274,12 +274,61 @@ uint16_t measureWordWidth(const GfxRenderer& renderer, const int fontId, const s
   return renderer.getTextAdvanceX(fontId, sanitized.c_str(), style, letterSpacing);
 }
 
-// True when a token ends with a hyphen or dash that allows a line break after it. U+00AD is
-// excluded because it renders as nothing, so only a hyphenation break -- which substitutes a
-// visible '-' -- may use it; U+2011 because forbidding that break is its purpose.
-bool endsWithBreakableHyphen(const std::string_view token) {
-  if (token.empty()) return false;
-  return TokenBoundary::allowsBreakAfterExplicitHyphen(lastCodepoint(token));
+// Letters for the explicit-hyphen break rule below. ASCII and Latin-1 are exact; above them the
+// punctuation, symbol, space and digit blocks are rejected and every other codepoint counts as a
+// letter, which covers Latin with diacritics (Vietnamese included), Greek, Cyrillic and the rest.
+bool isLetterNextToHyphen(const uint32_t cp) {
+  if (cp < 0x80) return (cp | 0x20) >= 'a' && (cp | 0x20) <= 'z';
+  if (cp < 0xC0) return cp == 0x00AA || cp == 0x00B5 || cp == 0x00BA;  // ª µ º
+  if (cp == 0x00D7 || cp == 0x00F7 || utf8IsCombiningMark(cp)) return false;
+  return !((cp >= 0x2000 && cp <= 0x2BFF)     // General Punctuation .. Miscellaneous Symbols and Arrows
+           || (cp >= 0x2E00 && cp <= 0x2E7F)  // Supplemental Punctuation
+           || (cp >= 0x3000 && cp <= 0x303F)  // CJK Symbols and Punctuation
+           || (cp >= 0xFE10 && cp <= 0xFE6F)  // Vertical, CJK Compatibility and Small Form Variants
+           || (cp >= 0xFF00 && cp <= 0xFF20)  // Fullwidth punctuation and digits
+           || (cp >= 0xFF3B && cp <= 0xFF40) || (cp >= 0xFF5B && cp <= 0xFF65));
+}
+
+// Byte-level pre-check for scanHyphenBreaks: every breakable hyphen or dash is '-' or '_', or has
+// UTF-8 lead byte 0xD6 (U+058A), 0xE2 (U+2010..U+2E3B) or 0xEF (U+FE58..U+FF0D).
+bool mayContainHyphen(const std::string_view text) {
+  return text.find_first_of("-_\xD6\xE2\xEF") != std::string_view::npos;
+}
+
+// A line may break after a visible hyphen or dash only when letters stand on both sides of it:
+// "foo—bar" and "Việt-Nam" may wrap after the dash, "10-20", "-foo", "foo-" and "foo—." may not.
+// A run of dashes ("a--b") is one unit. Combining marks after a letter belong to it. U+00AD is
+// excluded because only a hyphenation break, which substitutes a visible '-', may use it; U+2011
+// because forbidding that break is its purpose. The state carries across tokens, so a dash at an
+// inline-element edge still sees the letter on the other side.
+struct HyphenBreakScan {
+  bool afterLetter = false;     // the last base character was a letter
+  bool inRun = false;           // inside a run of hyphens/dashes
+  bool runAfterLetter = false;  // that run started right after a letter
+};
+
+// Feeds `text` through the scan. When `offsets` is given, appends the byte offsets in `text` where a
+// line may break after a dash run.
+void scanHyphenBreaks(HyphenBreakScan& scan, const std::string_view text, std::vector<size_t>* offsets) {
+  const auto* const start = reinterpret_cast<const unsigned char*>(text.data());
+  const auto* const end = start + text.size();
+  const auto* ptr = start;
+  while (ptr < end) {
+    const size_t offset = static_cast<size_t>(ptr - start);
+    const uint32_t cp = utf8NextCodepoint(&ptr);
+    if (cp == 0) break;
+    if (TokenBoundary::allowsBreakAfterExplicitHyphen(cp)) {
+      if (!scan.inRun) scan.runAfterLetter = scan.afterLetter;
+      scan.inRun = true;
+      scan.afterLetter = false;
+    } else if (scan.inRun || !utf8IsCombiningMark(cp)) {
+      // A mark on a dash ends the run; a mark on any other character leaves the state alone.
+      const bool letter = isLetterNextToHyphen(cp);
+      if (letter && scan.inRun && scan.runAfterLetter && offsets) offsets->push_back(offset);
+      scan.inRun = false;
+      scan.afterLetter = letter;
+    }
+  }
 }
 
 // Focus Reading renders the first `focusBoundary` bytes of a token bold and the rest at the
@@ -494,6 +543,20 @@ bool ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     pushStyledToken(token, baseStyle, continues, noSpaceBefore, focusBoundary, tokenOffset, true);
   };
 
+  const std::string_view previousToken =
+      attachToPrevious && !words.empty() ? wordStore.view(words.back()) : std::string_view();
+
+  // Byte offsets after a dash run between letters. Offset 0 means the glued previous token ends in
+  // such a run, so the boundary in front of this word is the break.
+  std::vector<size_t> hyphenBreaks;
+  if (mayContainHyphen(word) || mayContainHyphen(previousToken)) {
+    HyphenBreakScan scan;
+    scanHyphenBreaks(scan, previousToken, nullptr);
+    scanHyphenBreaks(scan, word, &hyphenBreaks);
+  }
+  const bool hyphenBreakBefore = !hyphenBreaks.empty() && hyphenBreaks.front() == 0;
+  if (hyphenBreakBefore) hyphenBreaks.erase(hyphenBreaks.begin());
+
   bool effectiveAttachToPrevious = attachToPrevious;
   bool effectiveNoSpaceBefore = false;
   // Only a glued token (attachToPrevious == true, i.e. no whitespace separated it from the
@@ -501,8 +564,11 @@ bool ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   // whitespace separated the two words, that space is content and must be rendered: Korean
   // is a space-delimited script written in Hangul, which utf8IsCjkBreakable() covers.
   if (attachToPrevious && !words.empty() &&
-      hasCjkBreakOpportunityBetween(lastCodepoint(wordStore.view(words.back())), firstCodepoint(word))) {
+      hasCjkBreakOpportunityBetween(lastCodepoint(previousToken), firstCodepoint(word))) {
     effectiveAttachToPrevious = false;
+    effectiveNoSpaceBefore = true;
+  } else if (hyphenBreakBefore) {
+    // continues=true + noSpaceBefore=true: attached when unbroken, but the line may break here.
     effectiveNoSpaceBefore = true;
   }
 
@@ -569,7 +635,19 @@ bool ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
 
   // Already-bold text should stay fully bold; focus splitting would make its suffix regular later.
   if (!this->focusReadingEnabled || (baseStyle & EpdFontFamily::BOLD) != 0) {
-    pushToken(word, effectiveAttachToPrevious, effectiveNoSpaceBefore, /*focusBoundary=*/0, visibleTextOffset);
+    // Each piece after a dash run between letters stays attached but may start a new line.
+    ensureTokenCapacity(hyphenBreaks.empty() ? 0 : hyphenBreaks.size() + 1);
+    size_t tokenStart = 0;
+    uint32_t tokenVisibleOffset = visibleTextOffset;
+    for (const size_t breakOffset : hyphenBreaks) {
+      const std::string_view token(word.data() + tokenStart, breakOffset - tokenStart);
+      pushToken(token, tokenStart == 0 ? effectiveAttachToPrevious : true,
+                tokenStart == 0 ? effectiveNoSpaceBefore : true, /*focusBoundary=*/0, tokenVisibleOffset);
+      tokenVisibleOffset += countCodepoints(token);
+      tokenStart = breakOffset;
+    }
+    pushToken(std::string_view(word).substr(tokenStart), tokenStart == 0 ? effectiveAttachToPrevious : true,
+              tokenStart == 0 ? effectiveNoSpaceBefore : true, /*focusBoundary=*/0, tokenVisibleOffset);
     if (wordStartsRtl) {
       hasRtlWord = true;
     }
@@ -642,6 +720,10 @@ bool ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   bool inWordSegment = isWordCharacter(firstCp);
 
   bool isFirstSegment = true;
+  const auto isHyphenBreak = [&](const unsigned char* at) {
+    const auto offset = static_cast<size_t>(at - reinterpret_cast<const unsigned char*>(word.data()));
+    return std::binary_search(hyphenBreaks.begin(), hyphenBreaks.end(), offset);
+  };
 
   while (ptr < end) {
     const unsigned char* currentCpStart = ptr;
@@ -654,11 +736,10 @@ bool ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
       std::string_view segment(reinterpret_cast<const char*>(segmentStart), segmentLen);
 
       // Only the very first segment inherits the original attachToPrevious flag.
-      // Every subsequent segment glues seamlessly to the prefix. After a visible explicit-hyphen
-      // character, continues=true + noSpaceBefore=true records a breakable attachment: it may wrap,
-      // but when it stays on the line it receives kerning only, never a space or justification.
-      const bool breakAfterPrev =
-          !isFirstSegment && !words.empty() && endsWithBreakableHyphen(wordStore.view(words.back()));
+      // Every subsequent segment glues seamlessly to the prefix. After a dash run between letters,
+      // continues=true + noSpaceBefore=true records a breakable attachment: it may wrap, but when
+      // it stays on the line it receives kerning only, never a space or justification.
+      const bool breakAfterPrev = !isFirstSegment && isHyphenBreak(segmentStart);
       processSegment(segment, inWordSegment, isFirstSegment ? effectiveAttachToPrevious : true,
                      isFirstSegment ? effectiveNoSpaceBefore : breakAfterPrev);
 
@@ -672,8 +753,7 @@ bool ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   // Process the final remaining segment
   size_t segmentLen = end - segmentStart;
   std::string_view segment(reinterpret_cast<const char*>(segmentStart), segmentLen);
-  const bool breakAfterPrev =
-      !isFirstSegment && !words.empty() && endsWithBreakableHyphen(wordStore.view(words.back()));
+  const bool breakAfterPrev = !isFirstSegment && isHyphenBreak(segmentStart);
   processSegment(segment, inWordSegment, isFirstSegment ? effectiveAttachToPrevious : true,
                  isFirstSegment ? effectiveNoSpaceBefore : breakAfterPrev);
   if (wordStartsRtl) {

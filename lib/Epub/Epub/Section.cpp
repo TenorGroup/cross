@@ -70,6 +70,7 @@ namespace {
 //      Hangul words wrap at spaces (with hyphenation on they may also split at a
 //      line end) and justification no longer stretches between syllables.
 // v56: Preserve paragraph continuity and top spacing across soft flushes.
+// v58: Words split after a hyphen or dash run between letters ("foo—bar" -> "foo—" + "bar").
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects

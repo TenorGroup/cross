@@ -7,7 +7,7 @@
 
 // Keep the reader return-position key and section-cache format on the same
 // version. A cache format change must invalidate saved page labels too.
-inline constexpr uint8_t SECTION_FILE_VERSION = 57;
+inline constexpr uint8_t SECTION_FILE_VERSION = 58;
 
 // The resolved text-rendering configuration a reader hands to the layout
 // engine. Section-cache validation keys on every field: a section file built
