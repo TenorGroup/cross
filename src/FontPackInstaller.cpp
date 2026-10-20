@@ -501,8 +501,8 @@ bool FontPackInstaller::matchesInstalled(const char* root, const char* family, u
 bool FontPackInstaller::isPackFamily(const char* root, const char* family) {
   if (!root || !FontInstaller::isValidFamilyName(family)) return false;
   char path[96];
-  // .staging: an install cut between its two renames leaves the pack only there.
-  for (const char* name : {"pack.json", ".pack-ready", ".pack-ready.tmp", ".pack-ready.bak", ".staging/pack.json"}) {
+  // .staging: only the installer makes it, so an install cut at any point still marks the folder as the pack's.
+  for (const char* name : {"pack.json", ".pack-ready", ".pack-ready.tmp", ".pack-ready.bak", ".staging"}) {
     std::snprintf(path, sizeof(path), "%s/%s/%s", root, family, name);
     if (Storage.exists(path)) return true;
   }

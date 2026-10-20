@@ -550,6 +550,17 @@ TEST_F(FontPack, LocalPackNeverReplacesAFamilyNoPackMade) {
   EXPECT_TRUE(std::filesystem::exists(cardRoot / "fonts/Example.cpfontpack"));
 }
 
+TEST_F(FontPack, InstallCutBeforePackJsonStillRetriesOverItsStaging) {
+  // Power lost early in a first install: the folder holds only .staging with a few fonts, no pack.json yet.
+  std::filesystem::remove_all(cardRoot / "fonts/Example");
+  std::filesystem::create_directories(cardRoot / "fonts/Example/.staging");
+  std::ofstream(cardRoot / "fonts/Example/.staging/Example_12.cpfont", std::ios::binary) << "partial";
+  const auto bytes = archive(entries());
+  package();
+  EXPECT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack", bytes.size(), crc(bytes)), FontPackInstaller::Result::OK);
+  EXPECT_TRUE(FontPackInstaller::matchesInstalled("/fonts", "Example", bytes.size(), crc(bytes)));
+}
+
 TEST_F(FontPack, FailedFirstInstallLeavesNoFamilyFolder) {
   // An empty folder left behind would show in the store as a family of the user's, never offered again.
   std::filesystem::remove_all(cardRoot / "fonts/Example");
