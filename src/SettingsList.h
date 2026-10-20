@@ -104,6 +104,7 @@ inline SettingInfo buildFontFamilySetting(const SdCardFontRegistry* registry) {
       }
     }
     uglyfont::pickedByHand(SETTINGS.uiShellFontMemo);
+    SETTINGS.fontFallbackNotice = false;  // a font picked by hand: the notice about the old one is moot
   };
 
   return s;

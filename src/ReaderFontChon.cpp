@@ -58,6 +58,7 @@ bool apHo(GfxRenderer& renderer, const SdCardFontRegistry* registry, const int i
     SETTINGS.sdFontFamilyName[sizeof(SETTINGS.sdFontFamilyName) - 1] = '\0';
   }
   uglyfont::pickedByHand(SETTINGS.uiShellFontMemo);
+  SETTINGS.fontFallbackNotice = false;  // a font picked by hand: the notice about the old one is moot
   sdFontSystem.ensureLoaded(renderer);  // go font the cu, nap font moi, hoac ve font nap san
   return true;
 }
