@@ -228,6 +228,34 @@ TEST_F(FontPack, EachRecipeChecksItsOwnStrengthTable) {
     unchanged();
   }
 }
+// build_font_pack.py writes pack.json with sorted keys: "levels" comes before "recipe".
+std::vector<Entry> recipeLast(std::vector<Entry> files) {
+  std::string metadata(files.back().bytes.begin(), files.back().bytes.end());
+  const auto start = metadata.find(",\"recipe\":\"");
+  const auto end = metadata.find('"', start + 11) + 1;
+  const std::string recipe = metadata.substr(start, end - start);
+  metadata.erase(start, end - start);
+  metadata.insert(metadata.rfind('}'), recipe);
+  files.back().bytes = Bytes(metadata.begin(), metadata.end());
+  return files;
+}
+TEST_F(FontPack, PackWithTheRecipeAfterItsLevelsChecksTheRightTable) {
+  for (const bool v4 : {false, true}) {
+    SCOPED_TRACE(v4);
+    package(recipeLast(entries(1, false, false, false, false, 9, Fault::None, v4)));
+    EXPECT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack"), FontPackInstaller::Result::OK);
+  }
+  // A v5-even pack listing the earlier strengths is still refused when its recipe comes last.
+  auto files = recipeLast(entries());
+  std::string metadata(files.back().bytes.begin(), files.back().bytes.end());
+  const std::string from = std::to_string(packStrength(1)), to = std::to_string(packStrength(1, true));
+  const auto at = metadata.find("\"strength_26_6\":" + from + ",");
+  ASSERT_NE(at, std::string::npos);
+  metadata.replace(at + 16, from.size(), to);
+  files.back().bytes = Bytes(metadata.begin(), metadata.end());
+  package(files);
+  EXPECT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack"), FontPackInstaller::Result::INVALID_PACK);
+}
 TEST_F(FontPack, SixLevelPackFromTheEarlierReleaseStillInstalls) {
   package(entries(1, false, false, false, false, 6));
   ASSERT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack"), FontPackInstaller::Result::OK);

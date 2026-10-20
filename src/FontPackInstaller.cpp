@@ -96,6 +96,18 @@ struct Metadata {
   int32_t strength = 0;
   bool thin = false;  // recipe with the thin levels: 9 levels, weight-7 to weight-9 added
   bool even = false;  // recipe at the current strengths; the older two carry the legacy ones
+  // Each level's strength, checked once the whole file is read: the builder sorts pack.json's keys, so the
+  // levels come before the recipe that says which table they follow.
+  int32_t strengths[MAX_LEVEL + 1] = {};
+  bool strengthsMatch() const {
+    for (uint32_t index = 0; index <= MAX_LEVEL; ++index) {
+      if (!(levels & (1u << index))) continue;
+      const uint8_t stored = readerInk::publicFromPhysical(index + 1);
+      if (strengths[index] != (even ? readerInk::outlineStrength(stored) : readerInk::legacyOutlineStrength(stored)))
+        return false;
+    }
+    return true;
+  }
   char key[64] = {}, rootLayout[65] = {}, directory[16] = {};
   Item item;
   bool error = false, closed = false;
@@ -131,10 +143,11 @@ struct Metadata {
       if (state.level) std::snprintf(expected, sizeof(expected), "weight-%u", static_cast<unsigned>(state.level + 1));
       // A pack level is the physical weight minus 1: 0 the base file, 1..5 the +1..+5 files, 6..8 the -1..-3 files.
       const bool known = state.level <= MAX_LEVEL;
-      const uint8_t stored = readerInk::publicFromPhysical(state.level + 1);
-      const int32_t strength = state.even ? readerInk::outlineStrength(stored) : readerInk::legacyOutlineStrength(stored);
-      if (state.levelFields != 7 || !known || state.strength != strength || std::strcmp(expected, state.directory) || (state.levels & (1u << state.level))) state.error = true;
-      if (known) state.levels |= static_cast<uint16_t>(1u << state.level);
+      if (state.levelFields != 7 || !known || std::strcmp(expected, state.directory) || (state.levels & (1u << state.level))) state.error = true;
+      if (known) {
+        state.levels |= static_cast<uint16_t>(1u << state.level);
+        state.strengths[state.level] = state.strength;
+      }
       state.levelDepth = 0;
     }
     if (state.depth == state.signaturesDepth) state.signaturesDepth = 0;
@@ -295,7 +308,7 @@ bool manifest(HalFile& archive, Workspace& work, const char* wanted = nullptr, u
     }
     remaining -= count; resetTaskWatchdogIfSubscribed();
   }
-  return !parser.hasError() && !state.error && state.closed && state.roots == 1 && state.depth == 0 && state.rootFields == 15 && state.levels == (state.thin ? THIN_LEVELS : LEGACY_LEVELS) && state.entryCount == work.info.count - 1 && ~checksum == work.info.jsonCrc && (!wanted || state.matches == 1) && (!point || (hexHash(state.rootLayout) && !std::strcmp(state.rootLayout, work.layout)));
+  return !parser.hasError() && !state.error && state.closed && state.roots == 1 && state.depth == 0 && state.rootFields == 15 && state.levels == (state.thin ? THIN_LEVELS : LEGACY_LEVELS) && state.strengthsMatch() && state.entryCount == work.info.count - 1 && ~checksum == work.info.jsonCrc && (!wanted || state.matches == 1) && (!point || (hexHash(state.rootLayout) && !std::strcmp(state.rootLayout, work.layout)));
 }
 Result walk(HalFile& archive, Workspace& work, bool extract) {
   if (!archive.seekSet(0)) return Result::INVALID_PACK;
