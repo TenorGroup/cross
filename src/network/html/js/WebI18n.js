@@ -116,7 +116,7 @@ var TenorI18n = (function () {
       'fonts.err.unsupported': 'Máy này chưa hỗ trợ font TTF hoặc OTF.',
       'fonts.err.tooMany': 'Chọn tối đa {count} tệp mỗi lần.',
       'fonts.err.duplicate': 'Hai tệp trùng tên sau khi chuẩn hóa: {file}.',
-      'fonts.convertHint': 'Máy này dùng font dạng .cpfont. Chọn tệp TTF hoặc OTF, trang web sẽ chuyển thành font .cpfont với các cỡ chữ từ 12 đến 24 và các mức độ đậm đã chọn bên dưới rồi gửi vào máy. Với mỗi kiểu (thường, đậm, nghiêng), chọn 1 tệp thuộc cùng bộ font.',
+      'fonts.convertHint': 'Máy này dùng font .cpfont. Chọn tệp TTF hoặc OTF, trang web sẽ chuyển thành font .cpfont với các cỡ chữ từ 12 đến 24 và các mức độ đậm bạn chọn bên dưới rồi gửi vào máy. Với mỗi kiểu chữ thường, đậm và nghiêng, hãy chọn một tệp thuộc cùng bộ font.',
       'fonts.weightsLabel': 'Độ đậm cần tạo:',
       'fonts.sendConfirm': 'Gửi {count} tệp ({size}) vào máy?',
       'fonts.replaceCpfont': 'Máy đã có bộ font "{family}" dạng .cpfont. Thay bằng tệp TTF/OTF này?',
