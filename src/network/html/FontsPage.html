@@ -553,7 +553,7 @@
       // A directory picker may include files from multiple family subfolders.
       // Reject that up front: otherwise files[0]'s family is silently reused
       // for every upload, corrupting the install layout.
-      const family = familyForFiles(files);
+      let family = familyForFiles(files);
       if (!family) {
         setStatus('status-err', () => TenorI18n.t('fonts.multiFamily'));
         return;
@@ -586,6 +586,8 @@
           familiesState.families.find(f => !f.vector && f.name.toLowerCase() === family.toLowerCase());
         if (old) {
           if (!confirm(TenorI18n.t('fonts.replaceCpfont', { family: old.name }))) return;
+          // The reader keeps the old family selected and looks it up by exact name: the TTF goes in under it.
+          family = old.name;
           if (!await removeFamily(old.name, true).catch(() => false)) {
             setStatus('status-err', () => TenorI18n.t('fonts.deleteFailed', { family: old.name }));
             return;
