@@ -42,7 +42,9 @@ int main() {
   for (int old = 0; old < 6; ++old) assert(readerInk::fromSchema2(old) == old + 3);
   assert(readerInk::fromSchema2(6) == 3 && readerInk::fromSchema2(255) == 3 && readerInk::fromSchema2(-1) == 3);
   constexpr uint8_t physical[] = {9, 8, 7, 0, 2, 3, 4, 5, 6};
-  constexpr int32_t strength[] = {-48, -32, -16, 0, 16, 32, 48, 64, 96};
+  // v1.0.69 table (neighbours >= 5% apart in 2-bit coverage); packs to v1.0.68 keep the legacy one.
+  constexpr int32_t strength[] = {-48, -32, -18, 0, 25, 37, 63, 81, 96};
+  constexpr int32_t legacy[] = {-48, -32, -16, 0, 16, 32, 48, 64, 96};
   for (int stored = 0; stored < 9; ++stored) {
     assert(readerInk::physical(stored) == physical[stored]);
     assert(readerInk::publicFromPhysical(physical[stored]) == stored);
@@ -50,6 +52,7 @@ int main() {
     assert(readerInk::level(stored) == stored - 3);
 #ifndef READER_INK_V107_BASELINE
     assert(readerInk::outlineStrength(stored) == strength[stored]);
+    assert(readerInk::legacyOutlineStrength(stored) == legacy[stored]);
 #endif
   }
   assert(readerInk::publicFromPhysical(1) == 3);

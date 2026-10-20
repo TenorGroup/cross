@@ -31,7 +31,7 @@ std::vector<uint8_t> bitmap(TtfEpdFont& font, uint32_t cp, EpdFontFamily::Style 
 }
 
 TEST(TtfInk, NineStrengths) {
-  constexpr int32_t expected[] = {-48, -32, -16, 0, 16, 32, 48, 64, 96};
+  constexpr int32_t expected[] = {-48, -32, -18, 0, 25, 37, 63, 81, 96};  // v1.0.69 table
   for (int level = 0; level < 9; ++level) EXPECT_EQ(readerInk::outlineStrength(level), expected[level]);
   EXPECT_EQ(readerInk::outlineStrength(-1), 0);
   EXPECT_EQ(readerInk::outlineStrength(9), 0);

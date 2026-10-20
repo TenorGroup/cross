@@ -23,6 +23,7 @@ constexpr uint16_t MAX_ENTRIES = 128;
 constexpr uint32_t RECEIPT_MAGIC = 0x31525046;  // FPR1, followed by size and CRC32.
 constexpr char RECIPE[] = "reader-outline-v3-ramp";        // 6 levels, base and +1..+5
 constexpr char RECIPE_THIN[] = "reader-outline-v4-thin";   // 9 levels, the 3 thin ones added
+constexpr char RECIPE_EVEN[] = "reader-outline-v5-even";   // 9 levels at readerInk::OUTLINE_STRENGTHS (v1.0.69)
 constexpr uint32_t MAX_LEVEL = 8;
 constexpr uint16_t LEGACY_LEVELS = 0x3f, THIN_LEVELS = 0x1ff;
 std::atomic_flag installing = ATOMIC_FLAG_INIT;
@@ -94,6 +95,7 @@ struct Metadata {
   uint32_t level = 0;
   int32_t strength = 0;
   bool thin = false;  // recipe with the thin levels: 9 levels, weight-7 to weight-9 added
+  bool even = false;  // recipe at the current strengths; the older two carry the legacy ones
   char key[64] = {}, rootLayout[65] = {}, directory[16] = {};
   Item item;
   bool error = false, closed = false;
@@ -129,7 +131,9 @@ struct Metadata {
       if (state.level) std::snprintf(expected, sizeof(expected), "weight-%u", static_cast<unsigned>(state.level + 1));
       // A pack level is the physical weight minus 1: 0 the base file, 1..5 the +1..+5 files, 6..8 the -1..-3 files.
       const bool known = state.level <= MAX_LEVEL;
-      if (state.levelFields != 7 || !known || state.strength != readerInk::outlineStrength(readerInk::publicFromPhysical(state.level + 1)) || std::strcmp(expected, state.directory) || (state.levels & (1u << state.level))) state.error = true;
+      const uint8_t stored = readerInk::publicFromPhysical(state.level + 1);
+      const int32_t strength = state.even ? readerInk::outlineStrength(stored) : readerInk::legacyOutlineStrength(stored);
+      if (state.levelFields != 7 || !known || state.strength != strength || std::strcmp(expected, state.directory) || (state.levels & (1u << state.level))) state.error = true;
       if (known) state.levels |= static_cast<uint16_t>(1u << state.level);
       state.levelDepth = 0;
     }
@@ -160,6 +164,7 @@ struct Metadata {
       if (state.rootFields & bit) state.error = true;
       if (bit == 1) { if (!is(state.family)) state.error = true; }
       else if (is(RECIPE_THIN)) state.thin = true;
+      else if (is(RECIPE_EVEN)) state.thin = state.even = true;
       else if (!is(RECIPE)) state.error = true;
       state.rootFields |= bit;
     } else if (state.depth == state.itemDepth) {

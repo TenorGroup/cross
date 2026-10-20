@@ -23,9 +23,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'lib/EpdFont/scripts'))
 import fontconvert_sdcard as converter
 
-RECIPE = 'reader-outline-v4-thin'
+RECIPE = 'reader-outline-v5-even'
 # Pack level n lives in weight-(n + 1): 0 the base file, 1..5 the levels +1..+5, 6..8 the thin levels -1..-3.
-STRENGTHS = (0, 16, 32, 48, 64, 96, -16, -32, -48)
+# readerInk::OUTLINE_STRENGTHS (src/ReaderInkWeight.h) in that order.
+STRENGTHS = (0, 25, 37, 63, 81, 96, -18, -32, -48)
 STYLE_NAMES = ('regular', 'bold', 'italic', 'bolditalic')
 ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 

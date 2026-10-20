@@ -28,9 +28,10 @@ class InkStrengthContractTests(unittest.TestCase):
         self.assertIsNotNone(table)
         stored = tuple(int(value.strip()) for value in table.group(1).split(','))
         # Stored level 3 is "0"; the firmware keeps -3..+5, the pack keeps 0, +1..+5, then -1, -2, -3.
-        self.assertEqual(stored, (-48, -32, -16, 0, 16, 32, 48, 64, 96))
+        # v1.0.69: steps chosen so neighbours stay >= 5% apart in 2-bit coverage (dev/dam/phu2bit).
+        self.assertEqual(stored, (-48, -32, -18, 0, 25, 37, 63, 81, 96))
         self.assertEqual(pack.STRENGTHS, stored[3:] + tuple(reversed(stored[:3])))
-        self.assertEqual(pack.RECIPE, 'reader-outline-v4-thin')
+        self.assertEqual(pack.RECIPE, 'reader-outline-v5-even')
 
 
 class FontPackTests(unittest.TestCase):
@@ -156,13 +157,14 @@ class FontPackTests(unittest.TestCase):
                 pack.assert_same_layout(base, data)
                 ink[pack.STRENGTHS[level]] = pack.ink_coverage(data)
             ink[pack.STRENGTHS[1]] = pack.ink_coverage(archive.read('weight-2/Small_12.cpfont'))
+        thin1, plus1 = pack.STRENGTHS[6], pack.STRENGTHS[1]
         self.assertLess(ink[-48], ink[-32])
-        self.assertLess(ink[-32], ink[-16])
-        self.assertLess(ink[-16], ink[0])
-        self.assertLess(ink[0], ink[16])
+        self.assertLess(ink[-32], ink[thin1])
+        self.assertLess(ink[thin1], ink[0])
+        self.assertLess(ink[0], ink[plus1])
         # The three thin steps are about as wide as the +1 step is: not one tiny nudge, not a collapse.
         self.assertGreater(ink[-48] / ink[0], 0.5)
-        self.assertLess(ink[-16] / ink[0], 0.95)
+        self.assertLess(ink[thin1] / ink[0], 0.95)
 
     def test_a_thin_level_with_more_ink_than_the_base_is_rejected(self):
         original = pack.weights.RasterSource.glyph
@@ -249,7 +251,7 @@ class FontPackTests(unittest.TestCase):
 
         def corrupted(source, codepoint, strength):
             glyph, bitmap = original(source, codepoint, strength)
-            if strength == 32:
+            if strength == pack.STRENGTHS[2]:
                 changed = list(glyph)
                 changed[2] += 1
                 return tuple(changed), bitmap

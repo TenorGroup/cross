@@ -89,24 +89,31 @@ Bytes archive(std::vector<Entry> entries) {
   return output;
 }
 // A pack level is the physical weight minus 1: 0 the base file, 1..5 the +1..+5 files, 6..8 the -1..-3 files.
-int packStrength(int level) {
-  return readerInk::outlineStrength(readerInk::publicFromPhysical(level + 1));
+// Recipes v3-ramp and v4-thin (to v1.0.68) carry the earlier strengths, v5-even the current table.
+int packStrength(int level, bool legacy = false) {
+  const uint8_t stored = readerInk::publicFromPhysical(level + 1);
+  return legacy ? readerInk::legacyOutlineStrength(stored) : readerInk::outlineStrength(stored);
 }
 enum class Fault { None, ThinStrengthSign, ThinDirectory, ThinLevelMissing, NineLevelsOldRecipe, SixLevelsThinRecipe };
 std::vector<Entry> entries(uint8_t raster = 1, bool badSha = false, bool badLayout = false,
                            bool oldRecipe = false, bool oldStrengths = false, int levels = 9,
-                           Fault fault = Fault::None) {
+                           Fault fault = Fault::None, bool v4 = false) {
   std::vector<Entry> result;
   const auto signature = layout(font(raster));
   std::string metadata = "{\"format\":1,\"cpfont_version\":4,\"family\":\"Example\","
                          "\"recipe\":\"";
   const bool thinRecipe = fault == Fault::SixLevelsThinRecipe || (levels == 9 && fault != Fault::NineLevelsOldRecipe);
-  metadata += oldRecipe ? "reader-outline-v2-step32" : thinRecipe ? "reader-outline-v4-thin" : "reader-outline-v3-ramp";
+  metadata += oldRecipe     ? "reader-outline-v2-step32"
+              : !thinRecipe ? "reader-outline-v3-ramp"
+              : v4          ? "reader-outline-v4-thin"
+                            : "reader-outline-v5-even";
+  const bool legacy = v4 || !thinRecipe;
   metadata += "\",\"levels\":[";
   for (int level = 0; level < levels; ++level) {
     if (level) metadata += ',';
     const int strength = oldStrengths ? level * 32
-                         : fault == Fault::ThinStrengthSign && level == 6 ? -packStrength(level) : packStrength(level);
+                         : fault == Fault::ThinStrengthSign && level == 6 ? -packStrength(level, legacy)
+                                                                          : packStrength(level, legacy);
     const std::string directory = fault == Fault::ThinDirectory && level == 6 ? "weight-6"
                                   : level ? "weight-" + std::to_string(level + 1) : "";
     metadata += "{\"level\":" + std::to_string(level) + ",\"strength_26_6\":" + std::to_string(strength) +
@@ -195,6 +202,30 @@ TEST_F(FontPack, NineLevelPackInstallsEveryWeightDirectoryIncludingTheThinOnes) 
     const auto expected = font(1 + weight - 1);
     EXPECT_EQ(read(("/fonts/Example/weight-" + std::to_string(weight) + "/Example_14.cpfont").c_str()),
               std::string(expected.begin(), expected.end()));
+  }
+}
+TEST_F(FontPack, NineLevelPackFromV1068StillInstallsWithItsOwnStrengths) {
+  package(entries(1, false, false, false, false, 9, Fault::None, /*v4=*/true));
+  ASSERT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack"), FontPackInstaller::Result::OK);
+  EXPECT_TRUE(Storage.exists("/fonts/Example/weight-9/Example_14.cpfont"));
+}
+TEST_F(FontPack, EachRecipeChecksItsOwnStrengthTable) {
+  // A v4-thin pack listing the current strengths, or a v5-even one listing the earlier ones, is not one the
+  // builder wrote.
+  for (const bool v4 : {false, true}) {
+    SCOPED_TRACE(v4);
+    auto files = entries(1, false, false, false, false, 9, Fault::None, v4);
+    ASSERT_EQ(files.back().name, "pack.json");
+    std::string metadata(files.back().bytes.begin(), files.back().bytes.end());
+    const std::string from = v4 ? std::to_string(packStrength(1, true)) : std::to_string(packStrength(1));
+    const std::string to = v4 ? std::to_string(packStrength(1)) : std::to_string(packStrength(1, true));
+    const auto at = metadata.find("\"strength_26_6\":" + from + ",");
+    ASSERT_NE(at, std::string::npos);
+    metadata.replace(at + 16, from.size(), to);
+    files.back().bytes = Bytes(metadata.begin(), metadata.end());
+    package(files);
+    EXPECT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack"), FontPackInstaller::Result::INVALID_PACK);
+    unchanged();
   }
 }
 TEST_F(FontPack, SixLevelPackFromTheEarlierReleaseStillInstalls) {

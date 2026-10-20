@@ -290,6 +290,10 @@ class SettingsActivity final : public UiTabListActivity {
 
  public:
   static std::string settingValueText(const SettingInfo& setting);
+  // The reader weight as chosen, and, when the loaded font draws another level (a pack without that
+  // weight file), the level it uses: "+3 (using +1)".
+  // `labels` holds the readerInk::LEVEL_COUNT level names.
+  static std::string inkWeightText(uint8_t chosenLevel, const StrId* labels);
   // Whether a row of the catalog is listed on its tab (the Home key's own rows and, with a Home key, the
   // long-press menu row are not). The one rule for this screen and the touch shell's settings page.
   static bool listedAsRow(const SettingInfo& setting);

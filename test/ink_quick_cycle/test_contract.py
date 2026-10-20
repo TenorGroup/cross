@@ -217,9 +217,8 @@ int main() {
             subprocess.run([str(binary)], check=True)
 
     def test_row_keeps_requested_label_with_root_only_nine_levels(self):
-        self.assertIn(
-            "INK_WEIGHT_IDS[readerInk::clamp(SETTINGS.readerInkWeight)]", self.value
-        )
+        # The chosen level's label stays; inkWeightText adds the level the font draws when it differs.
+        self.assertIn("SettingsActivity::inkWeightText(SETTINGS.readerInkWeight, INK_WEIGHT_IDS)", self.value)
         self.assertNotIn(
             "!readerInk::available(SETTINGS.readerInkWeight, sdFontSystem.availableWeightMask())",
             self.render,

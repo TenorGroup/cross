@@ -1032,6 +1032,9 @@ std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
     if (setting.valuePtr == &CrossPointSettings::readerInkWeight && sdFontSystem.needsNotoPack()) {
       return std::string(I18N.get(enumLabels[value])) + " (" + tr(STR_DOWNLOAD) + " Noto)";
     }
+    if (setting.valuePtr == &CrossPointSettings::readerInkWeight && enumLabels.size() == readerInk::LEVEL_COUNT) {
+      return inkWeightText(value, enumLabels.data());
+    }
     return I18N.get(enumLabels[value]);
   }
   if (setting.type == SettingType::ENUM && setting.valueGetter) {
@@ -1059,6 +1062,15 @@ std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
   }
   if (setting.type == SettingType::ACTION && setting.stringGetter) return setting.stringGetter();
   return "";
+}
+
+std::string SettingsActivity::inkWeightText(const uint8_t chosenLevel, const StrId* labels) {
+  const uint8_t chosen = readerInk::clamp(chosenLevel);
+  const uint8_t used = sdFontSystem.effectiveWeight();
+  if (used == chosen) return I18N.get(labels[chosen]);
+  char text[48];
+  std::snprintf(text, sizeof(text), tr(STR_READER_INK_USING), I18N.get(labels[chosen]), I18N.get(labels[used]));
+  return text;
 }
 
 void SettingsActivity::buildScreen(UiScreen& screen) {

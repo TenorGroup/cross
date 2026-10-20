@@ -917,7 +917,7 @@ void TextSettingsActivity::confirmStyleRow(const int row) {
 std::string TextSettingsActivity::styleValueText(int row) {
   switch (static_cast<StyleRow>(row)) {
     case StyleRow::InkWeight:
-      return I18N.get(INK_WEIGHT_IDS[readerInk::clamp(SETTINGS.readerInkWeight)]);
+      return SettingsActivity::inkWeightText(SETTINGS.readerInkWeight, INK_WEIGHT_IDS);
     case StyleRow::FocusReading:
       return I18N.get(DROP_CAP_IDS[readerSpacing::clampDropCapMode(SETTINGS.dropCapMode)]);
     case StyleRow::Hyphenation:

@@ -17,7 +17,13 @@ inline constexpr uint8_t SCHEMA_VERSION = 3;
 inline constexpr uint8_t LEVEL_COUNT = 9;
 inline constexpr uint8_t ZERO = 3;
 inline constexpr uint8_t PACK_POSITIVE_LEVELS = 6;  // pack levels 0..5: the base file and +1..+5
-inline constexpr int32_t OUTLINE_STRENGTHS[LEVEL_COUNT] = {-48, -32, -16, 0, 16, 32, 48, 64, 96};
+// Outline strength per stored level, in 1/64 px. The 2-bit coverage rises in stairs where an edge crosses the
+// 25/50/75% quantiser thresholds, so equal steps of 16 left some neighbours under 5% apart (BeVietnamPro 0 to +1
+// at 14 pt: 4.5%). These values keep every pair of neighbours at least 5% apart in coverage for NotoSans,
+// NotoSerif, BeVietnamPro and Literata from 12 to 22 pt (dev/dam/phu2bit, v1.0.69). Packs built with the earlier
+// table (recipes v3-ramp and v4-thin) carry LEGACY_OUTLINE_STRENGTHS and still install.
+inline constexpr int32_t OUTLINE_STRENGTHS[LEVEL_COUNT] = {-48, -32, -18, 0, 25, 37, 63, 81, 96};
+inline constexpr int32_t LEGACY_OUTLINE_STRENGTHS[LEVEL_COUNT] = {-48, -32, -16, 0, 16, 32, 48, 64, 96};
 
 constexpr uint8_t clamp(const int value) {
   return value >= 0 && value < LEVEL_COUNT ? static_cast<uint8_t>(value) : ZERO;
@@ -44,6 +50,7 @@ constexpr uint8_t physical(const int value) {
 }
 
 constexpr int32_t outlineStrength(const int value) { return OUTLINE_STRENGTHS[clamp(value)]; }
+constexpr int32_t legacyOutlineStrength(const int value) { return LEGACY_OUTLINE_STRENGTHS[clamp(value)]; }
 
 constexpr uint8_t publicFromPhysical(const int physicalLevel) {
   if (physicalLevel >= 2 && physicalLevel <= 6) return static_cast<uint8_t>(physicalLevel + 2);
