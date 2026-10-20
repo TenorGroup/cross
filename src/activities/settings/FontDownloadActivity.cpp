@@ -1129,6 +1129,7 @@ void FontDownloadActivity::onDeleteConfirmationResult(const ActivityResult& resu
     state_ = ERROR;
     errorMessage_ = tr(STR_FONT_DELETE_FAILED);
   } else {
+    RenderLock lock(*this);  // the render task reads these rows
     sdFontSystem.markRegistryDirty();
     family.installed = false;
     family.chosen = false;

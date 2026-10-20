@@ -146,6 +146,8 @@ class FontPack : public testing::Test {
     cutDuringStage = cutAfterBackup = failPromotion = false; Storage.available = 1ULL << 30;
     failBackupCleanup = failPackCleanup = false;
     std::ofstream(cardRoot / "fonts/Example/old.txt", std::ios::binary) << "original family";
+    // The old family came from a pack: a folder no pack made is the user's and is never replaced.
+    std::ofstream(cardRoot / "fonts/Example/pack.json", std::ios::binary) << "{}";
   }
   void TearDown() override { std::filesystem::remove_all(cardRoot); }
   void package(std::vector<Entry> payload = entries()) {
@@ -535,6 +537,17 @@ TEST_F(FontPack, ReceiptStaysWithOldFamilyAcrossInterruptedInstall) {
     EXPECT_FALSE(FontPackInstaller::matchesInstalled("/fonts", "Example", bytes.size(), crc(bytes)));
     unchanged();
   }
+}
+
+TEST_F(FontPack, LocalPackNeverReplacesAFamilyNoPackMade) {
+  // fonts/Example holds only the user's own files: a pack of that name copied to the card stays there and the
+  // user's folder is untouched.
+  std::filesystem::remove(cardRoot / "fonts/Example/pack.json");
+  const auto bytes = archive(entries());
+  package();
+  EXPECT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack"), FontPackInstaller::Result::INVALID_NAME);
+  EXPECT_TRUE(std::filesystem::exists(cardRoot / "fonts/Example/old.txt"));
+  EXPECT_TRUE(std::filesystem::exists(cardRoot / "fonts/Example.cpfontpack"));
 }
 
 TEST_F(FontPack, FailedFirstInstallLeavesNoFamilyFolder) {

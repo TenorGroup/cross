@@ -414,6 +414,13 @@ FontPackInstaller::Result FontPackInstaller::install(const char* path, uint32_t 
   if (!work) return Result::IO_ERROR;
   copyText(work->family, sizeof(work->family), path + 7, std::strlen(path + 7) - 11);
   if (!recoverFamily(work->family)) return Result::IO_ERROR;
+  // A folder of that name that no pack made holds the user's own fonts: a pack never replaces it. The package
+  // stays on the card (checked before any read, so a retry at each boot costs nothing).
+  for (const char* root : {"/fonts", "/.fonts"}) {
+    char folder[64];
+    std::snprintf(folder, sizeof(folder), "%s/%s", root, work->family);
+    if (Storage.exists(folder) && !isPackFamily(root, work->family)) return Result::INVALID_NAME;
+  }
   HalFile archive;
   if (!Storage.openFileForRead("FONTPACK", path, archive)) return Result::IO_ERROR;
   if (verifiedSize && archive.fileSize64() != verifiedSize) return Result::INVALID_PACK;
@@ -443,12 +450,12 @@ FontPackInstaller::Result FontPackInstaller::install(const char* path, uint32_t 
   std::snprintf(work->backup, sizeof(work->backup), "%s.old", work->destination);
   // A first install that fails must not leave an empty family folder: the store would read it as the user's.
   const bool fresh = !Storage.exists(work->destination);
-  if (Storage.exists(work->staging) && !Storage.removeDir(work->staging)) return Result::IO_ERROR;
-  if (!Storage.mkdir(work->staging)) return Result::IO_ERROR;
   const auto discard = [&](const Result failed) {
     Storage.removeDir(fresh ? work->destination : work->staging);
     return failed;
   };
+  if (Storage.exists(work->staging) && !Storage.removeDir(work->staging)) return Result::IO_ERROR;
+  if (!Storage.mkdir(work->staging)) return discard(Result::IO_ERROR);
   result = walk(archive, *work, true);
   archive.close();
   if (result != Result::OK) return discard(result);
@@ -494,7 +501,8 @@ bool FontPackInstaller::matchesInstalled(const char* root, const char* family, u
 bool FontPackInstaller::isPackFamily(const char* root, const char* family) {
   if (!root || !FontInstaller::isValidFamilyName(family)) return false;
   char path[96];
-  for (const char* name : {"pack.json", ".pack-ready", ".pack-ready.tmp", ".pack-ready.bak"}) {
+  // .staging: an install cut between its two renames leaves the pack only there.
+  for (const char* name : {"pack.json", ".pack-ready", ".pack-ready.tmp", ".pack-ready.bak", ".staging/pack.json"}) {
     std::snprintf(path, sizeof(path), "%s/%s/%s", root, family, name);
     if (Storage.exists(path)) return true;
   }
