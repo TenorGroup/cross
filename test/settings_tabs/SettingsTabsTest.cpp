@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "activities/settings/SettingsTabs.h"
+#include "components/HomeSettingsLayout.h"
 
 namespace {
 
@@ -34,15 +35,53 @@ TEST(SettingsTabs, TamTheCoBanPhimVaNgu) {
 }
 
 // Motion sensor is the ninth tab, last by ID so a board without the sensor drops it and
-// no stored ID moves; it shows right after Controls.
+// no stored ID moves; it shows with the System group, right after Keyboard.
 TEST(SettingsTabs, MotionSensorIsTheLastId) {
   EXPECT_EQ(settingstabs::TAB_COUNT, 9);
   EXPECT_EQ(static_cast<int>(Tab::MOTION), 8);
   EXPECT_EQ(settingstabs::tenThe(Tab::MOTION), StrId::STR_CAT_MOTION);
   const auto& order = settingstabs::DEFAULT_ORDER;
-  const auto controls = std::find(order.begin(), order.end(), static_cast<uint8_t>(Tab::CONTROLS));
-  ASSERT_NE(controls, order.end());
-  EXPECT_EQ(*(controls + 1), static_cast<uint8_t>(Tab::MOTION));
+  const auto keyboard = std::find(order.begin(), order.end(), static_cast<uint8_t>(Tab::KEYBOARD));
+  ASSERT_NE(keyboard, order.end());
+  EXPECT_EQ(*(keyboard + 1), static_cast<uint8_t>(Tab::MOTION));
+}
+
+// The groups a board shows, in the default order: the stored IDs below `count`.
+std::vector<int> shownDefault(const int count) {
+  std::vector<int> groups;
+  for (const auto id : settingstabs::DEFAULT_ORDER)
+    if (id < count) groups.push_back(id);
+  return groups;
+}
+
+// One Settings page for every device, in X4 Pro's order and names (founder 20/10/2026): Connections, Display,
+// Reader, Controls | System, Device, Keyboard, Motion | Sleep, Other, About & updates, under three titles. Home
+// rows are Connections (0), the groups (1..n) and About & updates (n + 1). A board without the motion sensor has
+// the same page without that row.
+TEST(SettingsTabs, OneOrderEveryDevice) {
+  for (const bool motion : {true, false}) {
+    const auto groups = shownDefault(motion ? 9 : 8);
+    const std::vector<int> want = motion ? std::vector<int>{0, 1, 2, 3, 4, 5, 8, 7, 6}
+                                         : std::vector<int>{0, 1, 2, 3, 4, 5, 7, 6};
+    EXPECT_EQ(groups, want);
+    const int rows = static_cast<int>(groups.size()) + 2;
+    std::vector<StrId> headings;
+    for (int row = 0; row < rows; ++row) headings.push_back(homesettings::heading(groups, row));
+    std::vector<StrId> titled(rows, StrId::STR_NONE_OPT);
+    titled[0] = StrId::STR_READER_TAB_READING;
+    titled[4] = StrId::STR_CAT_SYSTEM;
+    titled[motion ? 8 : 7] = StrId::STR_CAT_OTHER;
+    EXPECT_EQ(headings, titled) << (motion ? "with" : "without") << " the motion sensor";
+    EXPECT_EQ(homesettings::heading(groups, -1), StrId::STR_NONE_OPT);
+    EXPECT_EQ(homesettings::heading(groups, rows), StrId::STR_NONE_OPT);
+  }
+}
+
+// An order the user chose keeps its rows, untitled: the titles name the default groups only.
+TEST(SettingsTabs, ChosenOrderStaysUntitled) {
+  const std::vector<int> chosen{0, 7, 1, 2, 3, 4, 5, 6};
+  for (int row = 0; row < static_cast<int>(chosen.size()) + 2; ++row)
+    EXPECT_EQ(homesettings::heading(chosen, row), StrId::STR_NONE_OPT) << row;
 }
 
 TEST(SettingsTabs, TheNaoCungCoNhan) {

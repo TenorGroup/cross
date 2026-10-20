@@ -188,7 +188,6 @@ class HomeActivity final : public UiTabListActivity {
   bool lastFolderRow = false;  // mucTheNho[0] is the last folder of File
   bool restoringNavigation = false;
   void rebuildRows(bool readFolder = true);
-  bool buildSettingsGroups(UiScreen& screen);
   static void settingsRow(void* context, uint16_t index, freeink::ui::ListItem& item);
 
   // Rows of the active tab. Rebuilt when the tab changes, never per repaint.
@@ -197,7 +196,6 @@ class HomeActivity final : public UiTabListActivity {
   std::vector<std::string> favoriteKeys;
   std::vector<std::string> favoriteValues;
   std::vector<int> settingsGroups;
-  homesettings::Order settingsOrder;
   std::string settingsTransferLabel;
   Tab activeTabId = Tab::RECENT;
 

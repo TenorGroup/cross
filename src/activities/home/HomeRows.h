@@ -26,7 +26,7 @@ struct Favorites {
 };
 Favorites favorites();
 
-// The Settings page below "Send files": one row per group this board shows, in the user's order.
+// The Settings page below Connections: one row per group this board shows, in the stored order.
 struct SettingsGroups {
   std::vector<int> ids;
   std::vector<std::string> labels;

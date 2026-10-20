@@ -6,9 +6,26 @@ static void reset() { menucustom::data=menucustom::State{}; menucustom::loaded=f
 int main() {
   bool ok=true;
   reset(); menucustom::load();
-  const std::array<uint8_t,9> defaults={0,7,1,2,8,3,4,5,6};
+  // X4 Pro's order on every device: Display, Reader, Controls, System, Device, Keyboard, Motion, Sleep, Other.
+  const std::array<uint8_t,9> defaults={0,1,2,3,4,5,8,7,6};
   ok &= check(menucustom::state().order[1]==defaults,"fresh default order");
   const char* path="/.crosspoint/menu-customization.json";
+  // v1.0.68 saved its default order with every pin: read back, it is no choice and becomes the new default.
+  Storage.files[path]=R"({"version":1,"tabs":{"settings":[0,7,1,2,8,3,4,5,6]},"pins":["settings/sleepScreen"]})";
+  reset(); menucustom::load();
+  ok &= check(menucustom::state().order[1]==defaults && menucustom::state().pinCount==1,"old default order reads as the new default");
+  // The same order without the motion sensor's ID (a file older than that tab) is the old default too.
+  Storage.files[path]=R"({"version":1,"tabs":{"settings":[0,7,1,2,3,4,5,6]},"pins":[]})";
+  reset(); menucustom::load();
+  ok &= check(menucustom::state().order[1]==defaults,"old default order without Motion reads as the new default");
+  // An order the user moved is kept as it was.
+  Storage.files[path]=R"({"version":1,"tabs":{"settings":[0,1,2,7,8,3,4,5,6]},"pins":[]})";
+  reset(); menucustom::load();
+  const std::array<uint8_t,9> chosen={0,1,2,7,8,3,4,5,6};
+  ok &= check(menucustom::state().order[1]==chosen,"a chosen order is kept");
+  ok &= check(menucustom::save(),"save the chosen order");
+  reset(); menucustom::load();
+  ok &= check(menucustom::state().order[1]==chosen,"a chosen order survives save and reload");
   Storage.files[path]=R"({"version":1,"tabs":{"settings":[6,3,0,5,1,4,2]},"pins":["settings/sleepScreen","settings/wakeButtons","settings/frontlightRestoreOnWake","settings/sleepTimeoutMinutes"]})";
   reset(); menucustom::load();
   const std::array<uint8_t,9> legacy={6,3,0,5,1,4,2,7,8};

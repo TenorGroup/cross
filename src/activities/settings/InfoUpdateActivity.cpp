@@ -22,7 +22,7 @@ constexpr StrId ROW_LABELS[] = {StrId::STR_ABOUT, StrId::STR_DISPLAY_CHIP, StrId
                                 StrId::STR_SD_FIRMWARE_UPDATE};
 }  // namespace
 
-bool infoupdate::shown() { return tenorchrome::kTouchShell && !shell::isUgly(); }
+bool infoupdate::shown() { return !shell::isUgly(); }
 
 bool infoupdate::holds(const Action action, const bool chip) {
   if (!shown()) return false;

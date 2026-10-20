@@ -4,11 +4,11 @@
 #include "SettingsTabs.h"
 #include "activities/UiListActivity.h"
 
-// X4 Pro (founder 06/10): About, the panel chip and both updates on one screen of their own, opened from the
-// Settings root's "About & updates" row. One rule for where these rows live: the Settings tabs leave them out,
-// a pin of one opens this screen.
+// About, the panel chip and both updates on one screen of their own (X4 Pro, founder 06/10; every device since
+// 20/10/2026), opened from the Settings root's "About & updates" row. One rule for where these rows live: the
+// Settings tabs leave them out, a pin of one opens this screen.
 namespace infoupdate {
-// The X4 Pro Settings root: 3 titled groups and this screen (the Tenor touch shell; the ugly shell keeps its own).
+// The tenor/cross Settings root lists this screen (the ugly shell keeps the rows on its tabs).
 bool shown();
 // True when `action` lives on this screen and not on a Settings tab. The read-only chip row (no action) asks
 // with SettingAction::None and `chip` set.

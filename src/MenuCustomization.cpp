@@ -36,6 +36,8 @@ bool read(const char* path) {
     }
     data.normalize(g, COUNTS[g]);
   }
+  for (const auto& old : settingstabs::OLD_DEFAULT_ORDERS)
+    if (data.order[1] == old) data.order[1] = settingstabs::DEFAULT_ORDER;
   data.pinCount = 0;
   for (auto v : doc["pins"].as<JsonArrayConst>()) {
     if (data.pinCount >= MAX_PINS) break;

@@ -57,7 +57,7 @@ struct SettingsActivity {
   std::string favoriteKey(int) const;
   int focusFavorite(const std::string&);
 };
-// The X4 Pro About & updates screen (InfoUpdateActivity) holds no rows on these boards.
+// The About & updates screen (InfoUpdateActivity) is a boundary here: its rows stay on their tabs.
 namespace infoupdate { inline bool holds(settingstabs::Action, bool = false) { return false; } }
 #include "Methods.inc"
 #include "HomeSettings.inc"
@@ -186,8 +186,8 @@ int main(int argc, char** argv) {
   web.server->output.clear(); web.handleGetSettings();
   ok &= check(before==web.server->output,"grouping and pin route leave web JSON byte identical");
   HomeSettings home; home.build();
-  // Motion sensor follows Controls, and only with the sensor.
-  const std::vector<int> desired=imu?std::vector<int>{0,7,1,2,8,3,4,5,6}:std::vector<int>{0,7,1,2,3,4,5,6};
+  // X4 Pro's order on every device; Motion sensor follows Keyboard, and only with the sensor.
+  const std::vector<int> desired=imu?std::vector<int>{0,1,2,3,4,5,8,7,6}:std::vector<int>{0,1,2,3,4,5,7,6};
   ok &= check(home.settingsGroups==desired && home.rowLabels.size()==desired.size()+1,"Home exposes the default ordered groups plus file transfer");
   StrId labels[9]{};
   ok &= check(settingstabs::dongCuaTheCaiDat(labels,9)==9,"Home label helper includes nine groups");
