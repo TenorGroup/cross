@@ -44,6 +44,7 @@
 #include <XteinkDetect.h>
 #include <builtinFonts/all.h>
 
+#include <HeapFloor.h>
 #include <Memory.h>
 #ifdef TENOR_TTF_PROBE
 #include <TtfProbe.h>
@@ -2237,17 +2238,48 @@ void loop() {
         // Summary only: a per-block dump over serial tripped the watchdog.
         multi_heap_info_t info;
         heap_caps_get_info(&info, MALLOC_CAP_INTERNAL);
-        logSerial.printf("HEAP_INFO:free=%u,alloc=%u,largest=%u,min=%u,blocks_alloc=%u,blocks_free=%u,loop_stack_free=%u\n",
-                         static_cast<unsigned>(info.total_free_bytes), static_cast<unsigned>(info.total_allocated_bytes),
-                         static_cast<unsigned>(info.largest_free_block), static_cast<unsigned>(info.minimum_free_bytes),
-                         static_cast<unsigned>(info.allocated_blocks), static_cast<unsigned>(info.free_blocks),
-                         static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
+        logSerial.printf(
+            "HEAP_INFO:free=%u,alloc=%u,largest=%u,min=%u,blocks_alloc=%u,blocks_free=%u,loop_stack_free=%u,"
+            "floor_refusals=%u,up=%lu\n",
+            static_cast<unsigned>(info.total_free_bytes), static_cast<unsigned>(info.total_allocated_bytes),
+            static_cast<unsigned>(info.largest_free_block), static_cast<unsigned>(info.minimum_free_bytes),
+            static_cast<unsigned>(info.allocated_blocks), static_cast<unsigned>(info.free_blocks),
+            static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)),
+            static_cast<unsigned>(heapfloor::refusals.load()), millis());
 #ifdef TENOR_UI_ACCEPTANCE
         logSerial.printf("STACK_INFO:render_free=%u,ble_start_min_free=%u,ble_busy=%d,ble_initializing=%d\n",
                          static_cast<unsigned>(activityManager.renderStackHighWaterMark()),
                          static_cast<unsigned>(bleturner::startStackLeft()),
                          bleturner::status().starting || bleturner::status().running || bleturner::status().stopping,
                          bleturner::status().starting);
+#endif
+#ifdef TENOR_PRESS_PROBE
+      } else if (cmd.startsWith("HEAP_SPIKE ")) {
+        // CMD:HEAP_SPIKE <bytes> <ms>: takes a block through the heap floor's door and holds it, so the
+        // journey suite can prove a step that crosses the floor turns red (tools/hanh-trinh).
+        const String arg = cmd.substring(11);
+        const int space = arg.indexOf(' ');
+        const size_t bytes = static_cast<size_t>(arg.toInt());
+        void* block = heapfloor::take(bytes, "probe-spike");
+        if (block) {
+          delay(space > 0 ? arg.substring(space + 1).toInt() : 0);
+          free(block);
+        }
+        logSerial.printf("HEAP_SPIKE:bytes=%u,taken=%d\n", static_cast<unsigned>(bytes), block ? 1 : 0);
+      } else if (cmd == "HEAP_LOW START" || cmd == "HEAP_LOW STOP") {
+        // CMD:HEAP_LOW START/STOP: the lowest free internal heap between the two, whoever allocated it and
+        // however briefly (ESP-IDF's local-minimum monitor). The largest block has no such monitor.
+        multi_heap_info_t info;
+        heap_caps_get_info(&info, MALLOC_CAP_INTERNAL);
+        if (cmd == "HEAP_LOW START") {
+          heap_caps_monitor_local_minimum_free_size_stop();
+          const bool ok = heap_caps_monitor_local_minimum_free_size_start() == ESP_OK;
+          logSerial.printf("HEAP_LOW:start=%d,free=%u\n", ok ? 1 : 0, static_cast<unsigned>(info.total_free_bytes));
+        } else {
+          heap_caps_monitor_local_minimum_free_size_stop();
+          logSerial.printf("HEAP_LOW:min_free=%u,free=%u\n", static_cast<unsigned>(info.minimum_free_bytes),
+                           static_cast<unsigned>(info.total_free_bytes));
+        }
 #endif
 #endif
       } else if (cmd == "NETWORK") {
