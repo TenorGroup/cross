@@ -282,6 +282,7 @@ add_test(NAME heap_floor COMMAND heap_floor)
 add_test(NAME heap_floor_gate COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/../scripts/cong_san.py)
 
 add_test(NAME WebHtmlStripJs COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/web_html_strip/test_strip_js.py)
+add_test(NAME WebHtmlStripTokens COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/web_html_strip/test_strip_tokens.py)
 # Needs node on the host (like the freetype and numpy tests need theirs).
 add_test(NAME WebFontFamilyNames COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/web_font_family/test_font_family.py)
 add_test(NAME UiTextRules COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/ui_text_rules/check.py)
