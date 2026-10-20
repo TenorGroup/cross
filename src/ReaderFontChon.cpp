@@ -18,7 +18,6 @@ int soHo(const SdCardFontRegistry* registry) {
 
 std::string tenHo(const SdCardFontRegistry* registry, const int index) {
   if (index < 0 || index >= soHo(registry)) return "";
-  if (index == CrossPointSettings::NOTOSERIF) return I18N.get(StrId::STR_NOTO_SERIF);
   if (index == CrossPointSettings::NOTOSANS) return I18N.get(StrId::STR_NOTO_SANS);
   return registry->getFamilies()[index - CrossPointSettings::BUILTIN_FONT_COUNT].name;
 }

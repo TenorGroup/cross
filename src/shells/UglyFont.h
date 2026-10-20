@@ -8,16 +8,18 @@
 // font is still the one the shell chose. The memo says what was given way: 0 nothing yet, 1 the built-in font,
 // 2 the shipped card font, 3 the user's own font (left alone until the shell is left). While the shell holds the
 // font, an empty name means Shantell went away (deleted, or failed to load), since a font picked by hand sets 3.
+// With one built-in face (v1.0.69) an empty name is the default; a file from before that stored Noto Sans picked
+// on purpose comes in with memo 3 (CrossPointSettings::fromJson).
 namespace uglyfont {
 
 constexpr char FAMILY[] = "ShantellSans";
 constexpr char SHIPPED[] = "Bokerlam";  // CrossPointSettings::sdFontFamilyName's default
 
 template <size_t N>
-void take(char (&name)[N], const bool builtinDefault, uint8_t& memo, const bool familyOnCard) {
+void take(char (&name)[N], uint8_t& memo, const bool familyOnCard) {
   if (memo == 0) {
     const bool shipped = std::strcmp(name, SHIPPED) == 0;
-    if (name[0] != '\0' ? !shipped : !builtinDefault) {
+    if (name[0] != '\0' && !shipped) {
       memo = 3;
     } else if (familyOnCard) {
       memo = shipped ? 2 : 1;
@@ -25,9 +27,7 @@ void take(char (&name)[N], const bool builtinDefault, uint8_t& memo, const bool 
       name[N - 1] = '\0';
     }
   } else if (memo < 3 && name[0] == '\0') {
-    if (!builtinDefault) {
-      memo = 3;  // Noto Sans was picked (v1.0.67 saved that without the 3)
-    } else if (familyOnCard) {
+    if (familyOnCard) {
       std::strncpy(name, FAMILY, N - 1);
       name[N - 1] = '\0';
     }

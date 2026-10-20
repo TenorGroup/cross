@@ -145,7 +145,9 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["frontButtonRight"] = frontButtonRight;
   // Font family and size - both use dynamic getter/setters in SettingsList (the
   // option lists depend on the SD font registry), so the generic loop skips them.
-  doc["fontFamily"] = fontFamily;
+  // Always the stored Noto Sans number: older firmware reading this file finds its own Noto Sans.
+  doc["fontFamily"] = STORED_NOTOSANS;
+  doc["fontFamilyVersion"] = FONT_FAMILY_VERSION;
   doc["fontSize"] = fontPointSize;
   // Hold-Select function - list position differs from the number on a board without an IMU, so the
   // row in SettingsList is dynamic and the generic loop skips it. Saved as the number.
@@ -478,8 +480,10 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   fontPointSize = storedFontSize;
 
   // Font family - uses dynamic getter/setter in SettingsList so the generic loop skips it.
-  const uint8_t storedFontFamily = doc["fontFamily"] | (uint8_t)0;
-  fontFamily = clamp(storedFontFamily, BUILTIN_FONT_COUNT, 0);
+  // One built-in face since v1.0.69; the stored number only says what the file meant (see the header).
+  const uint8_t storedFontFamily = doc["fontFamily"] | STORED_NOTOSANS;
+  const bool fileBeforeSerifLeft = doc["fontFamilyVersion"].isNull();
+  fontFamily = NOTOSANS;
   // Hold-Select function - dynamic row too. A number this board does not offer (the tilt toggle without an IMU,
   // or one from a newer file) keeps the default, as the generic loop's clamp did.
   const uint8_t storedLongPress = doc["longPressMenuFunction"] | longPressMenuFunction;
@@ -505,14 +509,16 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   const char* sfn = doc["sdFontFamilyName"] | "";
   if (sfn != sdFontFamilyName) strncpy(sdFontFamilyName, sfn, sizeof(sdFontFamilyName) - 1);
   sdFontFamilyName[sizeof(sdFontFamilyName) - 1] = '\0';
-  if (storedFontFamily == LEGACY_OPENDYSLEXIC && sdFontFamilyName[0] == '\0') {
-    fontFamily = NOTOSERIF;
-    strncpy(sdFontFamilyName, "OpenDyslexic", sizeof(sdFontFamilyName) - 1);
-    sdFontFamilyName[sizeof(sdFontFamilyName) - 1] = '\0';
-    needsResave = true;
-  } else if (storedFontFamily >= BUILTIN_FONT_COUNT) {
-    needsResave = true;
+  // CrossPoint #4022: the built-in serif becomes the card's NotoSerif. A name already saved is the user's
+  // card font and wins; SdCardFontSystem::begin() falls back to the card's NotoSerif when that family is gone
+  // and this file had the serif under it (the v1.0.68 default, Bokerlam over Noto Serif).
+  legacySerifFallback = storedFontFamily == LEGACY_NOTOSERIF;
+  if (sdFontFamilyName[0] == '\0' &&
+      (storedFontFamily == LEGACY_NOTOSERIF || storedFontFamily == LEGACY_OPENDYSLEXIC)) {
+    copyToField(sdFontFamilyName, storedFontFamily == LEGACY_NOTOSERIF ? "NotoSerif" : "OpenDyslexic",
+                sizeof(sdFontFamilyName));
   }
+  if (storedFontFamily != STORED_NOTOSANS || fileBeforeSerifLeft) needsResave = true;
   // Dictionary folder name - uses dynamic getter/setter in SettingsList, load manually
   copyToField(dictionaryName, doc["dictionaryName"] | "", sizeof(dictionaryName));
 
@@ -559,6 +565,14 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   // truong nao bi mat.
   if (!bleturner::readJson(ble, doc)) {
     needsResave = true;
+  }
+
+  // tenor/ugly (uglyfont::take): with one built-in face an empty name is the default the shell may replace.
+  // Before v1.0.69 an empty name with Noto Sans stored was Noto Sans picked on purpose, so the shell
+  // records it as the user's own font once, for a file from before (v1.0.67 saved it without the 3).
+  if (fileBeforeSerifLeft && storedFontFamily == STORED_NOTOSANS && sdFontFamilyName[0] == '\0' &&
+      uiShellFontMemo < 3) {
+    uiShellFontMemo = 3;
   }
 
   // Last on purpose: every fold above has already read its stamp, so a value set here is
@@ -740,7 +754,9 @@ float CrossPointSettings::getReaderLineCompression() const {
   // revisiting there.
   if (lineSpacing >= readerSpacing::LEVEL_COUNT)
     return readerSpacing::lineFactor(readerSpacing::clampLineLevel(lineSpacing));
-  const float base = (sdFontFamilyName[0] == '\0' && fontFamily == NOTOSANS) ? 0.95f : 1.00f;
+  // The built-in Noto Sans sets tighter than the card fonts (a reader moved from the built-in serif to the
+  // card's NotoSerif keeps the 1.00 the serif had).
+  const float base = sdFontFamilyName[0] == '\0' ? 0.95f : 1.00f;
   return base + readerSpacing::lineFactorOffset(lineSpacing);
 }
 
@@ -792,16 +808,15 @@ int CrossPointSettings::getReaderFontId() const {
   // in the page render loop) so rendering is correct even before it has run.
   const uint8_t pt =
       snapToNearestPointSize(BUILTIN_READER_POINT_SIZES, std::size(BUILTIN_READER_POINT_SIZES), fontPointSize);
-  const bool sans = (fontFamily == NOTOSANS);
   switch (pt) {
     case 12:
-      return sans ? NOTOSANS_12_FONT_ID : NOTOSERIF_12_FONT_ID;
+      return NOTOSANS_12_FONT_ID;
     case 16:
-      return sans ? NOTOSANS_16_FONT_ID : NOTOSERIF_16_FONT_ID;
+      return NOTOSANS_16_FONT_ID;
     case 18:
-      return sans ? NOTOSANS_18_FONT_ID : NOTOSERIF_18_FONT_ID;
+      return NOTOSANS_18_FONT_ID;
     case 14:
     default:
-      return sans ? NOTOSANS_14_FONT_ID : NOTOSERIF_14_FONT_ID;
+      return NOTOSANS_14_FONT_ID;
   }
 }

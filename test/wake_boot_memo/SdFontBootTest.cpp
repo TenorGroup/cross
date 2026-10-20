@@ -40,6 +40,7 @@ class SdFontBoot : public ::testing::Test {
     hostDiscoveries = 0;
     hostCjk = false;
     hostSettings = CrossPointSettings{};
+    Storage.cardRead = true;
     putOnCard(family("Bokerlam", {8, 10, 12, 14, 16, 18}));
     putOnCard(family("Other", {14}, false));
     std::strcpy(hostSettings.sdFontFamilyName, "Bokerlam");
@@ -172,6 +173,42 @@ TEST_F(SdFontBoot, FamilyGoneFromTheCardIsClearedAsBefore) {
   boot(ESP_RST_DEEPSLEEP, wake, r2);
   EXPECT_EQ(hostDiscoveries, 1);
   EXPECT_EQ(hostSettings.sdFontFamilyName[0], '\0');
+}
+
+// No card read at boot: the saved family may be on it, so the name stays.
+TEST_F(SdFontBoot, FamilyIsKeptWhenNoCardWasRead) {
+  SdCardFontSystem system;
+  GfxRenderer renderer;
+  hostCatalog.clear();
+  hostCardFiles.clear();
+  Storage.cardRead = false;
+  boot(ESP_RST_POWERON, system, renderer);
+  EXPECT_EQ(std::string(hostSettings.sdFontFamilyName), "Bokerlam");
+  EXPECT_FALSE(hostSettings.fontFallbackNotice);
+}
+
+// v1.0.69 (CrossPoint #4022): a file from before had the built-in Noto Serif under its family. With the family
+// gone, the card's NotoSerif takes its place; without one the reader says once that the font changed.
+TEST_F(SdFontBoot, OldSerifFallbackTakesTheCardsNotoSerif) {
+  SdCardFontSystem system;
+  GfxRenderer renderer;
+  hostCatalog.erase(hostCatalog.begin());
+  putOnCard(family("NotoSerif", {12, 14, 16, 18}, false));
+  hostSettings.legacySerifFallback = true;
+  boot(ESP_RST_POWERON, system, renderer);
+  EXPECT_EQ(std::string(hostSettings.sdFontFamilyName), "NotoSerif");
+  EXPECT_EQ(hostLoads.back(), "/fonts/NotoSerif/NotoSerif-SD_14.cpfont");
+  EXPECT_FALSE(hostSettings.fontFallbackNotice);
+}
+
+TEST_F(SdFontBoot, OldSerifFallbackWithoutNotoSerifSaysSoOnce) {
+  SdCardFontSystem system;
+  GfxRenderer renderer;
+  hostCatalog.erase(hostCatalog.begin());
+  hostSettings.legacySerifFallback = true;
+  boot(ESP_RST_POWERON, system, renderer);
+  EXPECT_EQ(hostSettings.sdFontFamilyName[0], '\0');
+  EXPECT_TRUE(hostSettings.fontFallbackNotice);
 }
 
 TEST_F(SdFontBoot, MemoOfAnotherFamilyIsNotUsed) {

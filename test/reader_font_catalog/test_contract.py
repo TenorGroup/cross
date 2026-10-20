@@ -55,9 +55,9 @@ def compiled_catalog_check(repo: Path) -> None:
 #include <string>
 #include <vector>
 
-enum class StrId { STR_NOTO_SERIF, STR_NOTO_SANS };
+enum class StrId { STR_NOTO_SANS };
 struct I18nStub {
-  const char* get(StrId id) const { return id == StrId::STR_NOTO_SERIF ? "Noto Serif" : "Noto Sans"; }
+  const char* get(StrId) const { return "Noto Sans"; }
 } I18N;
 struct SdCardFontFamilyInfo { std::string name; };
 class SdCardFontRegistry {
@@ -67,9 +67,8 @@ class SdCardFontRegistry {
   const std::vector<SdCardFontFamilyInfo>& getFamilies() const { return families; }
 };
 struct CrossPointSettings {
-  static constexpr int BUILTIN_FONT_COUNT = 2;
-  static constexpr int NOTOSERIF = 0;
-  static constexpr int NOTOSANS = 1;
+  static constexpr int BUILTIN_FONT_COUNT = 1;
+  static constexpr int NOTOSANS = 0;
 };
 ''' + header + source[begin:end] + r'''
 }
@@ -80,20 +79,20 @@ void check(const SdCardFontRegistry* registry, const std::vector<std::string>& e
   for (int i = 0; i < fontdoc::soHo(registry); ++i) {
     assert(fontdoc::tenHo(registry, i) == expected[i]);
     assert(fontdoc::tenHo(registry, i) == list[i].ten);
-    assert(list[i].builtin == (i < 2));
+    assert(list[i].builtin == (i < 1));
     assert(list[i].chiSo == i);
   }
   for (int invalid : {INT_MIN, -1, fontdoc::soHo(registry), INT_MAX})
     assert(fontdoc::tenHo(registry, invalid).empty());
 }
 int main() {
-  const std::vector<std::string> builtin = {"Noto Serif", "Noto Sans"};
+  const std::vector<std::string> builtin = {"Noto Sans"};
   check(nullptr, builtin);
   SdCardFontRegistry registry;
   check(&registry, builtin);
   // Deliberately unsorted, with a long name: preserve registry order verbatim.
   registry.families = {{"Zulu"}, {"Alpha family with a long SD name"}, {"Middle"}};
-  check(&registry, {"Noto Serif", "Noto Sans", "Zulu", "Alpha family with a long SD name", "Middle"});
+  check(&registry, {"Noto Sans", "Zulu", "Alpha family with a long SD name", "Middle"});
 }
 '''
     with tempfile.TemporaryDirectory(prefix="host-", dir=Path(__file__).resolve().parent) as directory:

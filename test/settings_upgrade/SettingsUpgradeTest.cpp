@@ -166,6 +166,9 @@ int runOlderFile() {
   // key itself has no successor of the same name, so it is excluded from the generic
   // sweep and checked here with the new key's expected value instead.
   skip.push_back("focusReadingEnabled");
+  // fontFamily 0 (the built-in Noto Serif before v1.0.69) is saved as 1 with the card font by name:
+  // checked below, and in full by the noto-serif-card mode.
+  skip.push_back("fontFamily");
 
   // Keys with no mapping in the current schema at all (verified empirically: absent
   // from toJson() output, and confirmed unrelated to this merge by re-running this same
@@ -181,6 +184,8 @@ int runOlderFile() {
 
   const JsonDocument after = saved();
   ok = roundTripsExcept(before, after, skip, "older file") && ok;
+  ok = expect(after["fontFamily"] == 1 && after["sdFontFamilyName"] == before["sdFontFamilyName"],
+              "older file: the stored serif becomes 1, its card font name kept") && ok;
 
   // Not skipped, and worth calling out: backShortToFileBrowser=0 now round-trips (it did
   // NOT before this merge - a pre-existing Tenor bug, a v.push_back() missing from a prior
@@ -566,6 +571,75 @@ int runGlobalStatusBarMatrix() {
   return ok ? 0 : 1;
 }
 
+// v1.0.69 (CrossPoint #4022): Noto Serif left the firmware. The stored number keeps its old meaning on read
+// (0 serif, 1 sans, 2 OpenDyslexic) and every save writes 1 with fontFamilyVersion; the built-in serif becomes
+// the card's NotoSerif by name, a saved card font wins, and tenor/ugly keeps a Noto Sans picked before.
+int runNotoSerifCard() {
+  // What reaches the card: the saved document as text, read back (saved() points into SETTINGS).
+  const auto written = [] {
+    std::string text;
+    serializeJson(saved(), text);
+    JsonDocument doc;
+    deserializeJson(doc, text);
+    return doc;
+  };
+  JsonDocument base = readFixture("settings-v1.0.19.json");
+  base.remove("fontFamilyVersion");
+  const auto load = [&](JsonDocument doc) {
+    // A boot starts from the struct defaults (the constructor is private: reset what this case reads).
+    std::strcpy(SETTINGS.sdFontFamilyName, "Bokerlam");
+    SETTINGS.uiShellFontMemo = 0;
+    settings_test_io::setNextRead(doc);
+    return SETTINGS.loadFromFile();
+  };
+  bool ok = true;
+  JsonDocument doc = base;
+  doc["fontFamily"] = 0;
+  doc["sdFontFamilyName"] = "";
+  ok = expect(load(doc) && std::strcmp(SETTINGS.sdFontFamilyName, "NotoSerif") == 0,
+              "old serif with no card font becomes the card's NotoSerif") && ok;
+  ok = expect(SETTINGS.fontFamily == CrossPointSettings::NOTOSANS && SETTINGS.legacySerifFallback,
+              "and the built-in left is Noto Sans") && ok;
+  ok = expect(saved()["fontFamily"] == 1 && saved()["fontFamilyVersion"] == 1, "saved as Noto Sans, stamped") && ok;
+  doc["sdFontFamilyName"] = "Bokerlam";
+  ok = expect(load(doc) && std::strcmp(SETTINGS.sdFontFamilyName, "Bokerlam") == 0 && SETTINGS.legacySerifFallback,
+              "old serif under Bokerlam keeps Bokerlam, NotoSerif as its fallback") && ok;
+  doc["fontFamily"] = 1;
+  doc["sdFontFamilyName"] = "";
+  ok = expect(load(doc) && SETTINGS.sdFontFamilyName[0] == '\0' && !SETTINGS.legacySerifFallback,
+              "old sans stays the built-in Noto Sans") && ok;
+  doc["fontFamily"] = 2;
+  ok = expect(load(doc) && std::strcmp(SETTINGS.sdFontFamilyName, "OpenDyslexic") == 0, "old OpenDyslexic by name") &&
+       ok;
+  doc.remove("fontFamily");
+  doc["fontFamilyVersion"] = 1;
+  ok = expect(load(doc) && SETTINGS.sdFontFamilyName[0] == '\0' && !SETTINGS.legacySerifFallback,
+              "a missing number is Noto Sans") && ok;
+  // Saved Noto Sans, restarted: nothing migrates back.
+  doc = written();
+  ok = expect(load(doc) && SETTINGS.sdFontFamilyName[0] == '\0' && SETTINGS.uiShellFontMemo == 0,
+              "a v1.0.69 file with Noto Sans loads as saved") && ok;
+  // tenor/ugly: Noto Sans picked before v1.0.69 (empty name, 1 stored, no stamp) is the user's own font.
+  for (const int memo : {0, 1, 2}) {
+    doc = base;
+    doc["fontFamily"] = 1;
+    doc["sdFontFamilyName"] = "";
+    doc["uiShellFontMemo"] = memo;
+    ok = expect(load(doc) && SETTINGS.uiShellFontMemo == 3, "old Noto Sans pick is memo 3") && ok;
+    doc = written();
+    doc["uiShellFontMemo"] = memo;
+    ok = expect(load(doc) && SETTINGS.uiShellFontMemo == memo, "the rule runs once: a stamped file keeps its memo") &&
+         ok;
+  }
+  doc = base;
+  doc["fontFamily"] = 0;
+  doc["sdFontFamilyName"] = "";
+  doc["uiShellFontMemo"] = 1;
+  ok = expect(load(doc) && SETTINGS.uiShellFontMemo == 1, "an old serif file keeps the shell's memo") && ok;
+  std::printf("settings_upgrade=noto-serif-card:%s\n", ok ? "GREEN" : "RED");
+  return ok ? 0 : 1;
+}
+
 int main(int argc, char** argv) {
   if (argc != 2) return 2;
   const std::string mode = argv[1];
@@ -605,5 +679,6 @@ int main(int argc, char** argv) {
   if (mode == "tips") return runTips();
   if (mode == "button-hints") return runButtonHints();
   if (mode == "global-status-matrix") return runGlobalStatusBarMatrix();
+  if (mode == "noto-serif-card") return runNotoSerifCard();
   return 2;
 }

@@ -84,7 +84,7 @@ anchor_landing = 'void EpubReaderActivity::anchorLanding() {\n' + render[anchor_
 start = render.index('    Page::beginLoad();') if '    Page::beginLoad();' in render else render.index('    auto p = section->loadPage(section->currentPage);')
 end = render.index('    currentPageVisibleOffset = p->visibleTextOffset;', start)
 page_load = ('void EpubReaderActivity::loadPageForRender() {\n'
-             ' auto showPendingSyncSaveError=[]{};\n' + render[start:end] + '\n}')
+             ' auto showPendingPopup=[]{};\n' + render[start:end] + '\n}')
 # Constants and state declarations come from the real header, avoiding a second policy.
 declarations = []
 for line in header.splitlines():

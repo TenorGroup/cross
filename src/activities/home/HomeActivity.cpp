@@ -2224,9 +2224,9 @@ void HomeActivity::drawRecentCard() {
   }
   const int shown = shownRecent();
   loadCardStats(shown);  // uses the existing per-book record cache before geometry is measured
-  const int serifFont = SETTINGS.uiTextSize == 1   ? NOTOSERIF_14_FONT_ID
-                        : SETTINGS.uiTextSize == 2 ? NOTOSERIF_16_FONT_ID
-                                                   : NOTOSERIF_12_FONT_ID;
+  const int excerptFont = SETTINGS.uiTextSize == 1   ? NOTOSANS_14_FONT_ID
+                        : SETTINGS.uiTextSize == 2 ? NOTOSANS_16_FONT_ID
+                                                   : NOTOSANS_12_FONT_ID;
   HomeCardInput in;
   in.screenWidth = renderer.getScreenWidth();
   in.top = coverTileTop() - 4;  // Chrome owns the touch top inset.
@@ -2243,7 +2243,7 @@ void HomeActivity::drawRecentCard() {
   in.titleLineHeight = renderer.getLineHeight(UI_TITLE_FONT_ID);  // the cover is sized for the title's own face
   in.titleLines = 2;
   in.authorLineHeight = renderer.getLineHeight(UI_10_FONT_ID);
-  in.excerptLineHeight = renderer.getLineHeight(serifFont);
+  in.excerptLineHeight = renderer.getLineHeight(excerptFont);
   in.rowLineHeight = renderer.getLineHeight(UI_10_FONT_ID);
   std::vector<std::string> otherTitleLines;
   if (recentBooks.size() > 1) {
@@ -2355,7 +2355,7 @@ void HomeActivity::drawRecentCard() {
     card.excerptLines = std::clamp((bottom - card.excerptY) / in.excerptLineHeight, 0, 1);
   }
   const bool cjkExcerpt = homeExcerptUsesUiFont(excerpt.c_str());
-  const int quoteFont = excerpt.empty() ? SMALL_FONT_ID : cjkExcerpt ? UI_12_FONT_ID : serifFont;
+  const int quoteFont = excerpt.empty() ? SMALL_FONT_ID : cjkExcerpt ? UI_12_FONT_ID : excerptFont;
   const auto quoteStyle = excerpt.empty() || cjkExcerpt ? EpdFontFamily::REGULAR : EpdFontFamily::ITALIC;
   if (!tenorchrome::kTouchShell && !shell::isUgly()) {
     int lineY = card.titleY;
@@ -2947,8 +2947,8 @@ idlework::Step HomeActivity::coverStep(const idlework::Job& job, const idlework:
 HomeRecentLayout HomeActivity::recentLayout() {
   const int shown = shownRecent();
   const auto size = shown >= 0 ? cardCoverSize(shown) : CoverSize{};
-  const int serif = SETTINGS.uiTextSize == 1 ? NOTOSERIF_14_FONT_ID
-                    : SETTINGS.uiTextSize == 2 ? NOTOSERIF_16_FONT_ID : NOTOSERIF_12_FONT_ID;
+  const int excerptFace = SETTINGS.uiTextSize == 1 ? NOTOSANS_14_FONT_ID
+                    : SETTINGS.uiTextSize == 2 ? NOTOSANS_16_FONT_ID : NOTOSANS_12_FONT_ID;
   // The X3 body starts at the screen layout's top and ends over the information line, as its Stats card does.
   int top = coverTileTop() - 4;
   int bottom = tenorchrome::footBackTop(renderer.getScreenHeight()) - 8;
@@ -2960,7 +2960,7 @@ HomeRecentLayout HomeActivity::recentLayout() {
   }
   return homeRecentLayout(stylesAvailable(), SETTINGS.homeStyle, renderer.getScreenWidth(), top, bottom,
                           renderer.getLineHeight(UI_TITLE_FONT_ID), renderer.getLineHeight(UI_10_FONT_ID),
-                          renderer.getLineHeight(SMALL_FONT_ID), renderer.getLineHeight(serif),
+                          renderer.getLineHeight(SMALL_FONT_ID), renderer.getLineHeight(excerptFace),
                           shown, static_cast<int>(recentBooks.size()), size.width, size.height, shelfFirst);
 }
 
@@ -3442,9 +3442,9 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
   line(progressFont, f.text.x, f.progressY + 22, f.text.w, fitted, EpdFontFamily::REGULAR);
   if (f.style == HomeRecentStyle::Shelf) {
     const bool cjk = homeExcerptUsesUiFont(quote.c_str());
-    const int serif = SETTINGS.uiTextSize == 1 ? NOTOSERIF_14_FONT_ID
-                      : SETTINGS.uiTextSize == 2 ? NOTOSERIF_16_FONT_ID : NOTOSERIF_12_FONT_ID;
-    const int font = excerpt.empty() ? SMALL_FONT_ID : cjk ? UI_12_FONT_ID : serif;
+    const int excerptFace = SETTINGS.uiTextSize == 1 ? NOTOSANS_14_FONT_ID
+                      : SETTINGS.uiTextSize == 2 ? NOTOSANS_16_FONT_ID : NOTOSANS_12_FONT_ID;
+    const int font = excerpt.empty() ? SMALL_FONT_ID : cjk ? UI_12_FONT_ID : excerptFace;
     const auto style = excerpt.empty() || cjk ? EpdFontFamily::REGULAR : EpdFontFamily::ITALIC;
     renderer.drawText(font, 24, f.excerptY, renderer.truncatedText(font, quote.c_str(), renderer.getScreenWidth() - 48, style).c_str(), true, style);
     if (f.shelfCount) renderer.drawText(UI_10_FONT_ID, 24, f.shelfHeadingY, tr(STR_RECENT_OTHER_BOOK));

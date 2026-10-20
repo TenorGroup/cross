@@ -2928,7 +2928,13 @@ void EpubReaderActivity::renderBook() {
   // Read before the layout below settles it: a turn stepped past the pages laid out so far.
   const bool turnPastLaidOut = pageAwaitsLayout();
 
-  const auto showPendingSyncSaveError = [this]() {
+  const auto showPendingPopup = [this]() {
+    // Once, over the first page read after the saved family went with the built-in Noto Serif.
+    if (SETTINGS.fontFallbackNotice) {
+      SETTINGS.fontFallbackNotice = false;
+      GUI.drawPopup(renderer, tr(STR_READER_FONT_FELL_BACK));
+      return;
+    }
     if (!pendingSyncSaveError) return;
     pendingSyncSaveError = false;
     GUI.drawPopup(renderer, tr(STR_SAVE_PROGRESS_FAILED));
@@ -3385,7 +3391,7 @@ void EpubReaderActivity::renderBook() {
     renderer.displayBuffer();
     automaticPageTurnActive = false;
     pendingQuoteEdit.clear();
-    showPendingSyncSaveError();
+    showPendingPopup();
     return;
   }
 
@@ -3401,7 +3407,7 @@ void EpubReaderActivity::renderBook() {
     renderer.displayBuffer();
     automaticPageTurnActive = false;
     pendingQuoteEdit.clear();
-    showPendingSyncSaveError();
+    showPendingPopup();
     return;
   }
 
@@ -3435,7 +3441,7 @@ void EpubReaderActivity::renderBook() {
         renderer.drawCenteredText(UI_12_FONT_ID, 300, tr(STR_PAGE_LOAD_ERROR), true, EpdFontFamily::BOLD);
         renderer.displayBuffer();
         pendingQuoteEdit.clear();
-        showPendingSyncSaveError();
+        showPendingPopup();
         return;
       }
       // Retry transient reads and allocation failures against the existing cache.
@@ -3454,7 +3460,7 @@ void EpubReaderActivity::renderBook() {
         section.reset();
       }
       requestUpdate();
-      showPendingSyncSaveError();
+      showPendingPopup();
       return;
     }
     pageLoadRetryCount = 0;
@@ -3510,7 +3516,7 @@ void EpubReaderActivity::renderBook() {
     saveProgressIfMoved();
   }
 
-  showPendingSyncSaveError();
+  showPendingPopup();
 
   if (pendingScreenshot) {
     pendingScreenshot = false;
@@ -4675,7 +4681,7 @@ std::string EpubReaderActivity::textRowName(int row) const {
 }
 
 std::string EpubReaderActivity::textRowValue(int row) const {
-  static constexpr StrId kFamily[] = {StrId::STR_NOTO_SERIF, StrId::STR_NOTO_SANS};
+  static constexpr StrId kFamily[] = {StrId::STR_NOTO_SANS};
   row = textRowId(row);
   if (const auto info = catalogTextRow(row)) return SettingsActivity::settingValueText(*info);
   switch (row) {

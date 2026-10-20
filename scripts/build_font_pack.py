@@ -301,7 +301,7 @@ def main():
     parser.add_argument('--pnum', action='store_true')
     parser.add_argument('--line-factor', type=float, default=1.2)
     parser.add_argument('--force-autohint', action='store_true')
-    parser.add_argument('--builtin-family', choices=('notoserif', 'notosans'))
+    parser.add_argument('--builtin-family', choices=('notosans',))
     args = parser.parse_args()
     fonts = {style: str(getattr(args, name)) for style, name in enumerate(STYLE_NAMES) if getattr(args, name)}
     fallbacks = {style: str(getattr(args, 'fallback_' + name)) for style, name in enumerate(STYLE_NAMES)

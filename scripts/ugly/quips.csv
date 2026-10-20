@@ -156,7 +156,6 @@ STR_UGLY_QUIP_MENUSTYLE_LIST,Trình đọc,Kiểu menu đọc = Danh sách,Danh 
 STR_UGLY_QUIP_MENUSTYLE_TOOLBAR,Trình đọc,Kiểu menu đọc = Thanh công cụ,Thanh công cụ. Làm như dân văn phòng.,Toolbar. Very office worker.,
 STR_UGLY_QUIP_DICT_NONE,Trình đọc,Từ điển = Không (chỉ hiện khi thẻ có thư mục /dictionaries),Khỏi từ điển. Tự tin quá ha.,"No dictionary. Confident, huh?",
 STR_UGLY_QUIP_DICT_SET,Trình đọc,Từ điển = 1 từ điển trên thẻ,Có %s rồi. Hết cớ bỏ ngang.,Got %s now. No excuses left.,%s = tên thư mục từ điển
-STR_UGLY_QUIP_FONT_SERIF,Cài đặt văn bản (trong Trình đọc),Font chữ = Noto Serif,Serif. Làm như đọc văn học.,Serif. Acting literary.,
 STR_UGLY_QUIP_FONT_SANS,Cài đặt văn bản (trong Trình đọc),Font chữ = Noto Sans,Sans. Đọc sách như đọc tin nhắn.,Sans. Reading a book like a text.,
 STR_UGLY_QUIP_FONT_SD,Cài đặt văn bản (trong Trình đọc),Font chữ = phông chép trên thẻ,"Phông %s. Tự chép vào, sĩ ghê.",%s. Installed it yourself? Fancy.,%s = tên họ phông
 STR_UGLY_QUIP_FSIZE_TINY_1,Cài đặt văn bản (trong Trình đọc),Cỡ chữ trình đọc = 8 tới 10 pt (chỉ phông vector),Chữ bé như kiến. Khoe mắt tốt hả?,Ant-sized. Showing off your eyes?,

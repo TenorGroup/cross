@@ -2,9 +2,11 @@
 #include <cstdint>
 #include <cstring>
 struct CrossPointSettings {
-  enum { NOTOSERIF = 0, NOTOSANS = 1 };
-  uint8_t fontFamily = NOTOSERIF;
+  enum { NOTOSANS = 0 };
+  uint8_t fontFamily = NOTOSANS;
   char sdFontFamilyName[64] = "";
+  bool legacySerifFallback = false;
+  bool fontFallbackNotice = false;
   uint8_t fontPointSize = 14;
   uint8_t readerInkWeight = 0;
   int (*sdFontIdResolver)(void*, const char*, uint8_t) = nullptr;

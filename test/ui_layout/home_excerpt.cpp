@@ -14,9 +14,9 @@
 #include <builtinFonts/geist_12_regular.h>
 #include <builtinFonts/geist_14_regular.h>
 #include <builtinFonts/geist_16_regular.h>
-#include <builtinFonts/notoserif_12_italic.h>
-#include <builtinFonts/notoserif_14_italic.h>
-#include <builtinFonts/notoserif_16_italic.h>
+#include <builtinFonts/notosans_12_italic.h>
+#include <builtinFonts/notosans_14_italic.h>
+#include <builtinFonts/notosans_16_italic.h>
 
 bool contains(const EpdFontData& font, uint32_t cp) {
   for (uint32_t i = 0; i < font.intervalCount; ++i)
@@ -283,7 +283,7 @@ void measuredSixRows() {
   const uint64_t minutes[] = {654, 999 * 60 + 59, UINT32_MAX};
   const int x3Top[] = {125, 137, 147}, x3Rule[] = {717, 671, 656};
   const int touchRule[] = {665, 647, 631};
-  const EpdFontData* serif[] = {&notoserif_12_italic, &notoserif_14_italic, &notoserif_16_italic};
+  const EpdFontData* serif[] = {&notosans_12_italic, &notosans_14_italic, &notosans_16_italic};
   for (bool touch : {false, true}) {
     for (int tier = 0; tier < 3; ++tier) {
       const bool secondary = !touch && tier == 2;
@@ -367,7 +367,7 @@ void measuredSixRows() {
 }
 
 int main() {
-  const EpdFontData* serif[] = {&notoserif_12_italic, &notoserif_14_italic, &notoserif_16_italic};
+  const EpdFontData* serif[] = {&notosans_12_italic, &notosans_14_italic, &notosans_16_italic};
   const EpdFontData* ui[] = {&geist_12_regular, &geist_14_regular, &geist_16_regular};
   const char* quote = "阅读时间和最近读过的书";
   assert(!homeExcerptUsesUiFont("Những ngày bình yên. Quiet reading."));

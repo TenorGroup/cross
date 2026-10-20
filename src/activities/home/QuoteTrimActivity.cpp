@@ -19,9 +19,9 @@
 
 namespace {
 
-// The words in Noto Serif 16, the two status lines in the UI subtitle tier and the help
+// The words in Noto Sans 16, the two status lines in the UI subtitle tier and the help
 // in the caption tier (mockup E2); all of them live in flash.
-constexpr int WORD_FONT_ID = NOTOSERIF_16_FONT_ID;
+constexpr int WORD_FONT_ID = NOTOSANS_16_FONT_ID;
 constexpr int STATUS_FONT_ID = UI_10_FONT_ID;
 constexpr int HELP_FONT_ID = SMALL_FONT_ID;
 

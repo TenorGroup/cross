@@ -51,13 +51,13 @@ using quotetext::tidyEllipsis;
 
 namespace {
 
-// Mockup D2's faces, all in flash: the title in Noto Serif 12 italic, the three lines under
+// Mockup D2's faces, all in flash: the title in Noto Sans 12 italic, the three lines under
 // it in the UI subtitle tier, the position in the header in the UI body tier.
-constexpr int TITLE_FONT_ID = NOTOSERIF_12_FONT_ID;
+constexpr int TITLE_FONT_ID = NOTOSANS_12_FONT_ID;
 constexpr int META_FONT_ID = UI_10_FONT_ID;
 constexpr int POSITION_FONT_ID = UI_12_FONT_ID;
 // The delete confirmation quotes the words in the list's own face (mockup M2).
-constexpr int EXCERPT_FONT_ID = NOTOSERIF_14_FONT_ID;
+constexpr int EXCERPT_FONT_ID = NOTOSANS_14_FONT_ID;
 constexpr int NOTE_FONT_ID = UI_10_FONT_ID;
 
 // A book title of 170 characters exists on a real card: two lines, then an ellipsis.
@@ -191,8 +191,8 @@ quotedetail::Metrics QuoteDetailActivity::metrics() const {
   }
   m.glyphWidth = QUOTE_MARK_GLYPH_WIDTH;
   m.glyphHeight = QUOTE_MARK_GLYPH_HEIGHT;
-  m.lineHeight18 = static_cast<int16_t>(renderer.getLineHeight(NOTOSERIF_18_FONT_ID));
-  m.lineHeight16 = static_cast<int16_t>(renderer.getLineHeight(NOTOSERIF_16_FONT_ID));
+  m.lineHeight18 = static_cast<int16_t>(renderer.getLineHeight(NOTOSANS_18_FONT_ID));
+  m.lineHeight16 = static_cast<int16_t>(renderer.getLineHeight(NOTOSANS_16_FONT_ID));
   return m;
 }
 
@@ -240,19 +240,19 @@ void QuoteDetailActivity::show(const int newIndex) {
     const int step = metaStep();
     const int metaCount = visitX3Meta(false);
     const auto body = endsWithCloseQuote(quote.text) ? quote.text : quote.text + CLOSE_QUOTE;
-    auto largeLines = renderer.wrappedText(NOTOSERIF_18_FONT_ID, body.c_str(), width, BODY_MAX_LINES);
+    auto largeLines = renderer.wrappedText(NOTOSANS_18_FONT_ID, body.c_str(), width, BODY_MAX_LINES);
     size18 = quotedetail::bodyTop(m) + static_cast<int>(largeLines.size()) * m.lineHeight18 + 8 + metaCount * step <=
              m.bandBottom;
     lines = size18 ? std::move(largeLines)
-                   : renderer.wrappedText(NOTOSERIF_16_FONT_ID, body.c_str(), width, BODY_MAX_LINES);
+                   : renderer.wrappedText(NOTOSANS_16_FONT_ID, body.c_str(), width, BODY_MAX_LINES);
     layoutX3Pages();
     return;
   }
 
   // The opening mark is the glyph above the words; the closing one rides on the last word.
   const std::string body = endsWithCloseQuote(quote.text) ? quote.text : quote.text + CLOSE_QUOTE;
-  auto lines18 = renderer.wrappedText(NOTOSERIF_18_FONT_ID, body.c_str(), width, BODY_MAX_LINES);
-  auto lines16 = renderer.wrappedText(NOTOSERIF_16_FONT_ID, body.c_str(), width, BODY_MAX_LINES);
+  auto lines18 = renderer.wrappedText(NOTOSANS_18_FONT_ID, body.c_str(), width, BODY_MAX_LINES);
+  auto lines16 = renderer.wrappedText(NOTOSANS_16_FONT_ID, body.c_str(), width, BODY_MAX_LINES);
   const auto fontChoice =
       quotedetail::chooseFont(static_cast<int>(lines18.size()), static_cast<int>(lines16.size()), m);
   size18 = fontChoice.useSize18;
@@ -280,7 +280,7 @@ std::string QuoteDetailActivity::chapterFor(const int width) {
 void QuoteDetailActivity::logShown() const {
 #ifdef SIMULATOR
   if (ids.empty()) return;
-  LOG_DBG("QTS", "Quote detail %d/%d %016llx: Noto Serif %d, page %d/%d", index + 1, static_cast<int>(ids.size()),
+  LOG_DBG("QTS", "Quote detail %d/%d %016llx: Noto Sans %d, page %d/%d", index + 1, static_cast<int>(ids.size()),
           static_cast<unsigned long long>(ids[index]), size18 ? 18 : 16, quotePage + 1, pages);
 #endif
 }
@@ -544,7 +544,7 @@ void QuoteDetailActivity::drawQuote() {
     }
     return;
   }
-  const int font = size18 ? NOTOSERIF_18_FONT_ID : NOTOSERIF_16_FONT_ID;
+  const int font = size18 ? NOTOSANS_18_FONT_ID : NOTOSANS_16_FONT_ID;
   const int lineHeight = size18 ? m.lineHeight18 : m.lineHeight16;
   const int x = quotedetail::bodyX0(m);
   const bool lastPage = quotePage + 1 >= pages;
@@ -746,7 +746,7 @@ void QuoteDetailActivity::drawX3Content() const {
     int lineTop = top;
     const int lineHeight = size18 ? area.lineHeight18 : area.lineHeight16;
     for (int line = first; line < end; ++line) {
-      renderer.drawText(size18 ? NOTOSERIF_18_FONT_ID : NOTOSERIF_16_FONT_ID, quotedetail::bodyX0(area), lineTop,
+      renderer.drawText(size18 ? NOTOSANS_18_FONT_ID : NOTOSANS_16_FONT_ID, quotedetail::bodyX0(area), lineTop,
                         lines[line].c_str());
       lineTop += lineHeight;
     }

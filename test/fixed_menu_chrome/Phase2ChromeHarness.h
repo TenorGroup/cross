@@ -18,12 +18,12 @@ int moreBelowChevronTopY(const GfxRenderer& renderer) { return renderer.getScree
 namespace x3readerchrome {
 // PHASE2_PATH_FUNCTIONS
 }
-constexpr int BODY_FONT_ID = NOTOSERIF_16_FONT_ID;
+constexpr int BODY_FONT_ID = NOTOSANS_16_FONT_ID;
 constexpr int NUMBER_FONT_ID = UI_12_FONT_ID;
 constexpr int DATE_FONT_ID = SMALL_FONT_ID;
 constexpr int SOURCE_TITLE_FONT_ID = UI_12_FONT_ID;
-constexpr int TITLE_FONT_ID = NOTOSERIF_12_FONT_ID;
-constexpr int WORD_FONT_ID = NOTOSERIF_16_FONT_ID;
+constexpr int TITLE_FONT_ID = NOTOSANS_12_FONT_ID;
+constexpr int WORD_FONT_ID = NOTOSANS_16_FONT_ID;
 constexpr int UGLY_META_STEP = 32;
 constexpr int FOOTER_GAP = 8, GLYPH_TOP_GAP = 56, HINTS_CLEARANCE = 16, CHEVRON_CLEARANCE = 6, TOP_GAP = 60;
 int quotesHeaderBottom() { return 90; }

@@ -13,6 +13,9 @@
 #include <TtfEpdFont.h>
 #include <esp_heap_caps.h>
 
+#include <cstdio>
+#include <cstring>
+
 #include <array>
 #include <iterator>
 
@@ -71,6 +74,12 @@ void snapFontPointSizeTo(const uint8_t availablePointSize) {
   if (availablePointSize == 0 || availablePointSize == SETTINGS.fontPointSize) return;
   LOG_DBG("SDFS", "Font size %u unavailable, snapping to %u", SETTINGS.fontPointSize, availablePointSize);
   SETTINGS.fontPointSize = availablePointSize;
+  SETTINGS.saveToFile();
+}
+
+// The saved reader family becomes `family`, persisted.
+void copyToSettingsName(const char* family) {
+  std::snprintf(SETTINGS.sdFontFamilyName, sizeof(SETTINGS.sdFontFamilyName), "%s", family);
   SETTINGS.saveToFile();
 }
 
@@ -141,9 +150,30 @@ void SdCardFontSystem::beginImpl(GfxRenderer& renderer) {
       family = registry_.findFamily(saved);
       loaded = family && loadSelected(renderer, *family);
     }
-    if (!family) {
-      LOG_DBG("SDFS", "SD font family not found on card: %s (clearing)", saved);
-      SETTINGS.clearSdFontFamily();
+    if (!family && !Storage.ready()) {
+      // No card read: the saved family may well be on it. The built-in face draws meanwhile.
+      LOG_INF("SDFS", "SD font family %s kept: card not ready", saved);
+    } else if (!family) {
+      // A file from before v1.0.69 had the built-in Noto Serif under the saved family; the card's
+      // NotoSerif takes its place (CrossPoint #4022). Without one the reader says once that the font changed.
+      const auto* serif = SETTINGS.legacySerifFallback && std::strcmp(saved, "NotoSerif") != 0
+                              ? registry_.findFamily("NotoSerif")
+                              : nullptr;
+      if (serif) {
+        LOG_INF("SDFS", "SD font family not found on card: %s (NotoSerif in its place)", saved);
+        copyToSettingsName("NotoSerif");
+#if CROSSPOINT_VECTOR_FONTS
+        if (serif->vector) {
+          loadTtfFamily(*serif, renderer, false);
+          return;
+        }
+#endif
+        if (!loadSelected(renderer, *serif)) SETTINGS.clearSdFontFamily();
+      } else {
+        LOG_DBG("SDFS", "SD font family not found on card: %s (clearing)", saved);
+        SETTINGS.fontFallbackNotice = SETTINGS.legacySerifFallback;
+        SETTINGS.clearSdFontFamily();
+      }
     } else if (!loaded) {
       LOG_ERR("SDFS", "Failed to load SD font family: %s (clearing)", saved);
       SETTINGS.clearSdFontFamily();
@@ -289,8 +319,10 @@ void SdCardFontSystem::ensureLoadedImpl(GfxRenderer& renderer) {
     snapFontPointSizeTo(snapToNearestPointSize(BUILTIN_READER_POINT_SIZES, std::size(BUILTIN_READER_POINT_SIZES),
                                                SETTINGS.fontPointSize));
     const auto level = readerInk::clamp(SETTINGS.readerInkWeight);
-    const char* notoFamily = SETTINGS.fontFamily == CrossPointSettings::NOTOSERIF ? "NotoSerif" : "NotoSans";
-    if (level == readerInk::ZERO || SETTINGS.fontFamily > CrossPointSettings::NOTOSANS) {
+    // The card's NotoSans weight pack draws the built-in face at the other levels (Noto Serif is a card
+    // font since v1.0.69 and takes its weight through loadSelected like any other).
+    const char* notoFamily = "NotoSans";
+    if (level == readerInk::ZERO) {
       if (!currentFamily.empty()) manager_.unloadAll(renderer);
       return;
     }

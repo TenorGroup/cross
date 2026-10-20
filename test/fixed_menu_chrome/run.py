@@ -157,12 +157,12 @@ fixture = fixture.replace(function(fixture, 'void drawText('), r'''  void drawTe
     }
   }''')
 if args.phase2:
-    fixture = '#include <builtinFonts/notoserif_16_regular.h>\n#include <builtinFonts/notoserif_18_regular.h>\n' + fixture
+    fixture = '#include <builtinFonts/notosans_16_regular.h>\n#include <builtinFonts/notosans_18_regular.h>\n' + fixture
     fixture = fixture.replace("if (!std::strchr(text, '|')) return wrappedTextProduction",
                               'if (true) return wrappedTextProduction')
     fixture = fixture.replace('return id == UI_12_FONT_ID ? bodyFontData().advanceY : font().advanceY;',
-        'return id == NOTOSERIF_16_FONT_ID ? notoserif_16_regular.advanceY : '
-        'id == NOTOSERIF_18_FONT_ID ? notoserif_18_regular.advanceY : '
+        'return id == NOTOSANS_16_FONT_ID ? notosans_16_regular.advanceY : '
+        'id == NOTOSANS_18_FONT_ID ? notosans_18_regular.advanceY : '
         'id == UI_12_FONT_ID ? bodyFontData().advanceY : font().advanceY;')
 fixture = fixture.replace('tenorButtonSymbols = true;',
                           'tenorButtonSymbols = true; bool tipsEnabled = true;')

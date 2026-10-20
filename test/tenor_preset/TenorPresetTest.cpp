@@ -106,6 +106,9 @@ bool othersKept(const JsonDocument& before, const JsonDocument& after, const cha
     const char* key = kv.key().c_str();
     if (inSetup(key) || isStamp(key)) continue;
     if (std::string(key) == "uiTheme") continue;  // retired in v1.0.52: read from nowhere, written nowhere
+    // v1.0.69 writes fontFamily as the stored Noto Sans number and names the old built-in serif as the card's
+    // NotoSerif (CrossPoint #4022); test/settings_upgrade noto-serif-card covers both.
+    if (std::string(key) == "fontFamily" || std::string(key) == "sdFontFamilyName") continue;
     if (after[key] != kv.value()) {
       std::string was, now;
       serializeJson(kv.value(), was);

@@ -1280,7 +1280,7 @@ void SleepActivity::renderQuoteSleepScreen() const {
 
   // The body at the largest size the whole quote fits at, cut at the smallest otherwise.
   // Built-in flash fonts only: nothing here is measured with a font on the card.
-  static constexpr int BODY_FONTS[] = {NOTOSERIF_18_FONT_ID, NOTOSERIF_16_FONT_ID, NOTOSERIF_14_FONT_ID};
+  static constexpr int BODY_FONTS[] = {NOTOSANS_18_FONT_ID, NOTOSANS_16_FONT_ID, NOTOSANS_14_FONT_ID};
   constexpr int SIZES = sizeof(BODY_FONTS) / sizeof(BODY_FONTS[0]);
   int heights[SIZES];
   for (int i = 0; i < SIZES; i++) heights[i] = renderer.getLineHeight(BODY_FONTS[i]);
@@ -1305,7 +1305,7 @@ void SleepActivity::renderQuoteSleepScreen() const {
 
   // Bottom row: title (at most three lines) and place, beside the cover or from the margin.
   const int textX = hasCover ? MARGIN_X + COVER_W + COVER_TEXT_GAP : MARGIN_X;
-  constexpr int TITLE_FONT = NOTOSERIF_12_FONT_ID;
+  constexpr int TITLE_FONT = NOTOSANS_12_FONT_ID;
   const std::string shownTitle = booktitle::display(quote.title);
   if (fcm && !quote.title.empty()) fcm->prewarmCache(TITLE_FONT, shownTitle.c_str(), 1u << EpdFontFamily::ITALIC);
   auto title = quote.title.empty() ? std::vector<std::string>{}

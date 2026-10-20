@@ -26,12 +26,12 @@
 namespace {
 
 // Every face on these screens lives in flash (see the class comment): the quote body in
-// Noto Serif 14, the numbers and book rows in the UI body tier, the top row in the UI
+// Noto Sans 14, the numbers and book rows in the UI body tier, the top row in the UI
 // subtitle tier, the book rows' date line in the caption tier. The place line under a quote
 // takes the subtitle tier where it fits (placeFont()). The book title over the place line is
 // bold (mockup A1), and the caption tier has no bold at the smallest UI size, so the title
 // takes the subtitle tier's bold.
-constexpr int BODY_FONT_ID = NOTOSERIF_14_FONT_ID;
+constexpr int BODY_FONT_ID = NOTOSANS_14_FONT_ID;
 constexpr int NUMBER_FONT_ID = UI_12_FONT_ID;
 constexpr int TOP_ROW_FONT_ID = UI_10_FONT_ID;
 constexpr int SOURCE_TITLE_FONT_ID = UI_10_FONT_ID;
@@ -45,7 +45,7 @@ int hand(const GfxRenderer& r, const int fontId, const int x, const int y, const
 // Left inset and right reserve of the header row (components/TenorMenuChrome.cpp).
 constexpr int HEADER_SIDE = 18;
 
-// Part of a quote a list block keeps to wrap, per preview line: a line of Noto Serif 14 holds
+// Part of a quote a list block keeps to wrap, per preview line: a line of Noto Sans 14 holds
 // well under this even in Vietnamese, whose marked letters take two or three bytes each. The
 // whole quote is read in the detail view from the card again.
 constexpr size_t PREVIEW_BYTES_PER_LINE = 100;

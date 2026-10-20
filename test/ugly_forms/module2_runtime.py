@@ -27,7 +27,7 @@ enums=['STATUS_BAR_PROGRESS_BAR','STATUS_BAR_PROGRESS_BAR_THICKNESS','STATUS_BAR
 base='\n'.join(extract(cps,'enum '+e)+';' for e in enums)
 base+='\n'+extract(cps,'struct StatusBarSpec')+';\n'
 base+='\n'.join(re.findall(r'static constexpr uint8_t SCREEN_MARGIN_[A-Z]+ = [^;]+;',cps))
-base+='\nenum {NOTOSERIF=0,NOTOSANS=1,BUILTIN_FONT_COUNT=2};\n'
+base+='\nenum {NOTOSANS=0,BUILTIN_FONT_COUNT=1};\n'
 base+='\n'.join('uint8_t '+n+'=0;' for n in ['fontFamily','fontPointSize','lineSpacing','letterSpacing','wordSpacing','extraParagraphSpacing','paragraphAlignment','screenMargin','paragraphIndent','dropCapMode','hyphenationEnabled','embeddedStyle','textAntiAliasing','readerInkWeight','statusBarChapterPageCount','statusBarBookProgressPercentage','statusBarProgressBar','statusBarProgressBarThickness','statusBarTitle','xtcStatusBarMode','statusBarClock','readerStatusBarMode','statusBarItemsMode','clockFormat'])
 base+='\nchar sdFontFamilyName[64]{};\nStatusBarSpec statusBarSpec() const;void adoptReaderStatusItems();bool readerStatusBarHidden() const{return readerStatusBarMode==READER_STATUS_BAR_OFF;}bool migrate(JsonDoc doc);\n'
 (a.output/'SettingsFields.inc').write_text(base)

@@ -2,7 +2,7 @@
 #include <FontCacheManager.h>
 #include <FontDecompressor.h>
 #include <gtest/gtest.h>
-#include <builtinFonts/notoserif_16_regular.h>
+#include <builtinFonts/notosans_16_regular.h>
 #include <builtinFonts/geist_10_regular.h>
 
 #include <cstring>
@@ -28,7 +28,7 @@ uint32_t applications(const Stats& stats) {
 }
 
 struct BuiltinInk : testing::Test {
-  EpdFont font{&notoserif_16_regular};
+  EpdFont font{&notosans_16_regular};
   EpdFont plain{&geist_10_regular};
   std::map<int, EpdFontFamily> families{{7, EpdFontFamily(&font)}, {8, EpdFontFamily(&plain)},
                                       {9, EpdFontFamily(&font)}};

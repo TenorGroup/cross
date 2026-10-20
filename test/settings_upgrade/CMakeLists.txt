@@ -74,6 +74,7 @@ add_test(NAME SettingsUpgradeNoResidentCatalog COMMAND SettingsUpgradeTest no-re
 add_test(NAME SettingsUpgradeTips COMMAND SettingsUpgradeTest tips)
 add_test(NAME SettingsUpgradeButtonHints COMMAND SettingsUpgradeTest button-hints)
 add_test(NAME SettingsUpgradeGlobalStatusMatrix COMMAND SettingsUpgradeTest global-status-matrix)
+add_test(NAME SettingsUpgradeNotoSerifCard COMMAND SettingsUpgradeTest noto-serif-card)
 
 get_target_property(home_sources SettingsUpgradeTest SOURCES)
 get_target_property(home_includes SettingsUpgradeTest INCLUDE_DIRECTORIES)

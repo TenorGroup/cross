@@ -129,9 +129,16 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     SIDE_BUTTON_LAYOUT_COUNT
   };
 
-  // Font family options (built-in fonts only; SD card fonts use sdFontFamilyName)
-  enum FONT_FAMILY { NOTOSERIF = 0, NOTOSANS = 1, FONT_FAMILY_COUNT };
+  // Font family options (built-in fonts only; SD card fonts use sdFontFamilyName). Noto Serif left the
+  // firmware in v1.0.69 (CrossPoint #4022) and is a card font now. The number in settings.json is kept
+  // apart from the list position: files before v1.0.69 stored 0 for Noto Serif and 1 for Noto Sans, and
+  // every file since stores STORED_NOTOSANS.
+  enum FONT_FAMILY { NOTOSANS = 0, FONT_FAMILY_COUNT };
+  static constexpr uint8_t LEGACY_NOTOSERIF = 0;
+  static constexpr uint8_t STORED_NOTOSANS = 1;
   static constexpr uint8_t LEGACY_OPENDYSLEXIC = 2;
+  // settings.json carries fontFamilyVersion from v1.0.69; a file without it was written before.
+  static constexpr uint8_t FONT_FAMILY_VERSION = 1;
   static constexpr uint8_t BUILTIN_FONT_COUNT = FONT_FAMILY_COUNT;
   // Reader font size is a point size, not an enum slot - see fontPointSize.
   // Legacy 1.4-and-earlier files stored a 0..3 SMALL/MEDIUM/LARGE/EXTRA_LARGE
@@ -472,7 +479,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t frontButtonLeft = FRONT_HW_LEFT;
   uint8_t frontButtonRight = FRONT_HW_RIGHT;
   // Reader font settings
-  uint8_t fontFamily = NOTOSERIF;
+  uint8_t fontFamily = NOTOSANS;
   // Point size of the reader font. Only sizes the active family actually ships
   // are selectable; SdCardFontSystem::ensureLoaded() snaps this to the nearest
   // available size (and persists the snap) whenever the family changes.
@@ -555,6 +562,11 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // A settings file that already exists wins over this - loadFromFile() reads the stored
   // name (blank included), so nobody's saved font choice gets overwritten by an upgrade.
   char sdFontFamilyName[64] = "Bokerlam";
+  // RAM only: the file read was written before v1.0.69 with the built-in Noto Serif as the fallback
+  // under the saved name. SdCardFontSystem::begin() then takes the card's NotoSerif when the saved family
+  // is gone, and otherwise says once that the reader font changed (fontFallbackNotice).
+  bool legacySerifFallback = false;
+  bool fontFallbackNotice = false;
   // Dictionary folder name under /dictionaries (empty = no dictionary)
   char dictionaryName[32] = "";
   // Show hidden files/directories (starting with '.') in the file browser (0 = hidden, 1 = show)

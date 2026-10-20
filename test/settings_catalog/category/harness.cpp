@@ -135,9 +135,10 @@ static bool dynamicLifetime() {
   // to point at overwritten storage. ASan additionally checks heap lifetime.
   std::vector<std::string> churn(4096, std::string(97, 'X'));
   bool ok = true;
-  family.valueSetter(129);
-  ok &= check(family.valueGetter() == 129, "font getter owns registry names after destruction");
-  ok &= check(family.enumStringValues[129] == fontName, "font render label owns memory");
+  constexpr uint8_t last = CrossPointSettings::BUILTIN_FONT_COUNT + 127;  // the 128th card family
+  family.valueSetter(last);
+  ok &= check(family.valueGetter() == last, "font getter owns registry names after destruction");
+  ok &= check(family.enumStringValues[last] == fontName, "font render label owns memory");
   ok &= check(std::string(SETTINGS.sdFontFamilyName) == fontName, "font setter owns registry names");
   size.valueSetter(2);
   ok &= check(SETTINGS.fontPointSize == 18 && size.valueGetter() == 2, "font size callbacks own options");
@@ -146,8 +147,9 @@ static bool dynamicLifetime() {
   ok &= check(dictionary.valueGetter() == 48, "dictionary callbacks own names");
   ok &= check(dictionary.enumStringValues[48] == dictionaryName, "dictionary render label owns memory");
   ok &= check(std::string(SETTINGS.dictionaryName) == dictionaryName.substr(0, sizeof(SETTINGS.dictionaryName)-1), "dictionary setter preserved name");
-  family.valueSetter(1);
-  ok &= check(family.valueGetter() == 1 && SETTINGS.sdFontFamilyName[0] == '\0', "font live selection resets SD state");
+  family.valueSetter(CrossPointSettings::NOTOSANS);  // the one built-in face
+  ok &= check(family.valueGetter() == CrossPointSettings::NOTOSANS && SETTINGS.sdFontFamilyName[0] == '\0',
+              "font live selection resets SD state");
   dictionary.valueSetter(0);
   ok &= check(dictionary.valueGetter() == 0 && SETTINGS.dictionaryName[0] == '\0', "dictionary live None selection");
   return ok;

@@ -31,8 +31,7 @@ void takeUglyFont(CrossPointSettings& settings) {
   // 14 pt file, so an empty or half-copied folder does not count.
   const bool onCard = Storage.exists("/fonts/ShantellSans/ShantellSans_14.cpfont") ||
                       Storage.exists("/.fonts/ShantellSans/ShantellSans_14.cpfont");
-  uglyfont::take(settings.sdFontFamilyName, settings.fontFamily == CrossPointSettings::NOTOSERIF,
-                 settings.uiShellFontMemo, onCard);
+  uglyfont::take(settings.sdFontFamilyName, settings.uiShellFontMemo, onCard);
 }
 
 // The sleep screen follows the shell and the settings are saved.

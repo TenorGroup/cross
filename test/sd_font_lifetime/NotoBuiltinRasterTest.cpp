@@ -2,10 +2,10 @@
 #include <HalStorage.h>
 #include <GfxRenderer.h>
 #include <SdCardFont.h>
-#include <builtinFonts/notoserif_14_regular.h>
-#include <builtinFonts/notoserif_14_bold.h>
-#include <builtinFonts/notoserif_14_italic.h>
-#include <builtinFonts/notoserif_14_bolditalic.h>
+#include <builtinFonts/notosans_14_regular.h>
+#include <builtinFonts/notosans_14_bold.h>
+#include <builtinFonts/notosans_14_italic.h>
+#include <builtinFonts/notosans_14_bolditalic.h>
 
 #include <cstdlib>
 #include <fstream>
@@ -25,10 +25,10 @@ int main(int argc, char** argv) {
   std::ifstream input(argv[1], std::ios::binary);
   require(input.good(), "cpfont fixture readable");
   Storage.files["/Noto.cpfont"] = std::vector<uint8_t>(std::istreambuf_iterator<char>(input), {});
-  const EpdFont regular(&notoserif_14_regular);
-  const EpdFont bold(&notoserif_14_bold);
-  const EpdFont italic(&notoserif_14_italic);
-  const EpdFont boldItalic(&notoserif_14_bolditalic);
+  const EpdFont regular(&notosans_14_regular);
+  const EpdFont bold(&notosans_14_bold);
+  const EpdFont italic(&notosans_14_italic);
+  const EpdFont boldItalic(&notosans_14_bolditalic);
   const EpdFontFamily builtin(&regular, &bold, &italic, &boldItalic);
   SdCardFont font;
   require(font.load("/Noto.cpfont"), "production loader accepts Noto fixture");
@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
   require(renderer.getLineHeight(777) == 40, "builtin line height preserved");
   renderer.removeFont(777);
   renderer.insertFont(777, builtin);
-  require(renderer.getFontMap().at(777).getData() == &notoserif_14_regular, "builtin face restored");
+  require(renderer.getFontMap().at(777).getData() == &notosans_14_regular, "builtin face restored");
   auto& bytes = Storage.files.at("/Noto.cpfont");
   const auto original = bytes;
   const auto offset = static_cast<uint32_t>(bytes[56]) | static_cast<uint32_t>(bytes[57]) << 8 |

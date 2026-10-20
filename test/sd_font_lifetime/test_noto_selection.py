@@ -22,7 +22,7 @@ class NotoSelection(unittest.TestCase):
 #include <cassert>
 #include <cstdint>
 #include <string>
-struct CrossPointSettings { enum {NOTOSERIF=0,NOTOSANS=1}; };
+struct CrossPointSettings { enum {NOTOSANS=0}; };
 struct Settings {
  uint8_t fontFamily=0,fontPointSize=14,readerInkWeight=3;
  char sdFontFamilyName[32]="";
@@ -50,7 +50,7 @@ struct Manager {
  bool loadBuiltinFamily(const Family&,Renderer& renderer,uint8_t point,uint8_t requested,int target) {
    ++calls;unloadAll(renderer);
    if(!matching)return false;
-   current=SETTINGS.fontFamily==0?"NotoSerif":"NotoSans";
+   current="NotoSans";
    size=point;weight=requested;id=target;builtin=true;return true;
  }
 };
@@ -59,7 +59,8 @@ struct System {
  uint8_t loadedInkLevel_=0;
  bool notoPackMissing_=false,present=true;
  Family family;
- const Family* familyNamed(const char*){return present?&family:nullptr;}
+ std::string asked;
+ const Family* familyNamed(const char* name){asked=name;return present?&family:nullptr;}
  bool walkIfCatalogKept(){return false;}
  void apply(Renderer& renderer,bool registryWasDirty=false) {
   notoPackMissing_=false;
@@ -91,10 +92,8 @@ int main(){
  SETTINGS.readerInkWeight=8;system.apply(renderer);
  const int calls=system.manager_.calls;system.apply(renderer);
  assert(system.manager_.calls==calls);
- SETTINGS.fontFamily=1;system.apply(renderer);
- assert(system.manager_.current=="NotoSans" && system.manager_.id==SETTINGS.getReaderFontId());
- SETTINGS.fontFamily=2;system.apply(renderer);
- assert(!system.manager_.isBuiltinRaster());
+ // One built-in face since v1.0.69: its weight pack is the card's NotoSans (NotoSerif is a card family).
+ assert(system.asked=="NotoSans" && system.manager_.current=="NotoSans" && system.manager_.id==SETTINGS.getReaderFontId());
 }
 '''
         with tempfile.TemporaryDirectory() as directory:

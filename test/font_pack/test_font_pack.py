@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import build_font_pack as pack
 
-FONT_ROOT = ROOT / 'lib/EpdFont/builtinFonts/source/NotoSerif'
+FONT_ROOT = ROOT / 'lib/EpdFont/builtinFonts/source/NotoSans'
 
 
 class InkStrengthContractTests(unittest.TestCase):
@@ -38,7 +38,7 @@ class FontPackTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory(prefix='font-pack-test-', dir=ROOT.parent)
         cls.directory = Path(cls.temporary.name)
-        cls.fonts = {0: str(FONT_ROOT / 'NotoSerif-Regular.ttf')}
+        cls.fonts = {0: str(FONT_ROOT / 'NotoSans-Regular.ttf')}
         cls.intervals = pack.builtin_intervals()
         cls.output = cls.directory / 'Small.cpfontpack'
         with contextlib.redirect_stderr(io.StringIO()):
@@ -279,7 +279,7 @@ class FontPackTests(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()):
             pack.converter.generate_cpfont_multistyle(self.fonts, 12, pack.builtin_intervals(),
                                                       str(reference), pnum=True)
-        rows = pack.compare_builtin(reference.read_bytes(), 'notoserif', 12)
+        rows = pack.compare_builtin(reference.read_bytes(), 'notosans', 12)
         self.assertGreater(rows[0]['compared'], 1000)
         self.assertEqual(rows[0]['mismatches'], 0)
         self.assertEqual(rows[0]['missing'], [])

@@ -5,9 +5,8 @@
 namespace {
 struct Reader {
   char name[64] = "Bokerlam";
-  bool builtinDefault = true;
   uint8_t memo = 0;
-  void enter(bool onCard) { uglyfont::take(name, builtinDefault, memo, onCard); }
+  void enter(bool onCard) { uglyfont::take(name, memo, onCard); }
   void leave() { uglyfont::give(name, memo); }
   void pick(const char* family) {  // the user picks a font by hand ("" is a built-in one)
     std::strcpy(name, family);
@@ -44,7 +43,7 @@ TEST(UglyFont, UsersOwnFontIsNeverTaken) {
   EXPECT_STREQ(own.name, "Literata");
   Reader sans;
   sans.name[0] = '\0';
-  sans.builtinDefault = false;  // Noto Sans picked on purpose
+  sans.memo = 3;  // Noto Sans picked on purpose before v1.0.69 (CrossPointSettings::fromJson sets the 3)
   sans.enter(true);
   EXPECT_STREQ(sans.name, "");
 }
@@ -108,8 +107,7 @@ TEST(UglyFont, ABuiltinFontPickedByHandStaysWhateverHappensToShantell) {
 TEST(UglyFont, NotoSansPickedInsideTheShellBeforeThisVersionStays) {
   Reader r;  // what v1.0.67 saved after Noto Sans was picked inside the shell
   r.name[0] = '\0';
-  r.builtinDefault = false;
-  r.memo = 2;
+  r.memo = 3;  // v1.0.69 reads that file with memo 3 (test/settings_upgrade noto-serif-card)
   r.enter(true);
   EXPECT_STREQ(r.name, "");
   EXPECT_EQ(r.memo, 3);
