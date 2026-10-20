@@ -4,6 +4,7 @@
 #include <HeapFloor.h>
 #include <Logging.h>
 #include <StreamingJsonParser.h>
+#include <esp_rom_crc.h>
 #include <mbedtls/sha256.h>
 
 #include <algorithm>
@@ -416,6 +417,17 @@ FontPackInstaller::Result FontPackInstaller::install(const char* path, uint32_t 
   HalFile archive;
   if (!Storage.openFileForRead("FONTPACK", path, archive)) return Result::IO_ERROR;
   if (verifiedSize && archive.fileSize64() != verifiedSize) return Result::INVALID_PACK;
+  // A pack copied to the card or sent from the web page has no catalog identity: take it from its own bytes,
+  // so the store sees the same pack as installed instead of offering it again.
+  uint32_t receiptSize = verifiedSize, receiptCrc = verifiedCrc;
+  if (!verifiedSize && archive.fileSize64() <= MAX_PACK_BYTES) {
+    receiptSize = static_cast<uint32_t>(archive.fileSize64());
+    for (int count; (count = archive.read(work->buffer, sizeof(work->buffer))) > 0;) {
+      receiptCrc = esp_rom_crc32_le(receiptCrc, work->buffer, static_cast<uint32_t>(count));
+      resetTaskWatchdogIfSubscribed();
+    }
+    if (!archive.seekSet(0)) return Result::IO_ERROR;
+  }
   auto result = walk(archive, *work, false);
   if (result != Result::OK || !manifest(archive, *work)) return Result::INVALID_PACK;
   uint64_t freeBytes = 0; uint32_t clusterBytes = 0;
@@ -429,20 +441,30 @@ FontPackInstaller::Result FontPackInstaller::install(const char* path, uint32_t 
   }
   std::snprintf(work->staging, sizeof(work->staging), "%s/.staging", work->destination);
   std::snprintf(work->backup, sizeof(work->backup), "%s.old", work->destination);
+  // A first install that fails must not leave an empty family folder: the store would read it as the user's.
+  const bool fresh = !Storage.exists(work->destination);
   if (Storage.exists(work->staging) && !Storage.removeDir(work->staging)) return Result::IO_ERROR;
   if (!Storage.mkdir(work->staging)) return Result::IO_ERROR;
+  const auto discard = [&](const Result failed) {
+    Storage.removeDir(fresh ? work->destination : work->staging);
+    return failed;
+  };
   result = walk(archive, *work, true);
   archive.close();
-  if (result != Result::OK) { Storage.removeDir(work->staging); return result; }
+  if (result != Result::OK) return discard(result);
   std::snprintf(work->path, sizeof(work->path), "%s/.pack-ready.tmp", work->staging);
-  HalFile marker;
-  const uint32_t receipt[] = {RECEIPT_MAGIC, verifiedSize, verifiedCrc};
-  if (!Storage.openFileForWrite("FONTPACK", work->path, marker) ||
-      marker.write(reinterpret_cast<const uint8_t*>(receipt), sizeof(receipt)) != sizeof(receipt) ||
-      !marker.sync() || !marker.close()) return Result::IO_ERROR;
+  const uint32_t receipt[] = {RECEIPT_MAGIC, receiptSize, receiptCrc};
+  bool written;
+  {
+    HalFile marker;  // closed before a discard removes its folder
+    written = Storage.openFileForWrite("FONTPACK", work->path, marker) &&
+              marker.write(reinterpret_cast<const uint8_t*>(receipt), sizeof(receipt)) == sizeof(receipt) &&
+              marker.sync() && marker.close();
+  }
+  if (!written) return discard(Result::IO_ERROR);
   char readyPath[96];
   std::snprintf(readyPath, sizeof(readyPath), "%s/.pack-ready", work->staging);
-  if (!Storage.rename(work->path, readyPath)) return Result::IO_ERROR;
+  if (!Storage.rename(work->path, readyPath)) return discard(Result::IO_ERROR);
   if (!Storage.rename(work->destination, work->backup)) return Result::IO_ERROR;
   std::snprintf(work->path, sizeof(work->path), "%s/.staging", work->backup);
   if (!Storage.rename(work->path, work->destination)) {
@@ -466,6 +488,15 @@ bool FontPackInstaller::matchesInstalled(const char* root, const char* family, u
     return Storage.openFileForRead("FONTPACK", path, file) && file.fileSize64() == sizeof(receipt) &&
            readExact(file, receipt, sizeof(receipt)) && receipt[0] == RECEIPT_MAGIC &&
            receipt[1] == size && receipt[2] == crc;
+  }
+  return false;
+}
+bool FontPackInstaller::isPackFamily(const char* root, const char* family) {
+  if (!root || !FontInstaller::isValidFamilyName(family)) return false;
+  char path[96];
+  for (const char* name : {"pack.json", ".pack-ready", ".pack-ready.tmp", ".pack-ready.bak"}) {
+    std::snprintf(path, sizeof(path), "%s/%s/%s", root, family, name);
+    if (Storage.exists(path)) return true;
   }
   return false;
 }

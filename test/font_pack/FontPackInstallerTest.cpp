@@ -537,13 +537,27 @@ TEST_F(FontPack, ReceiptStaysWithOldFamilyAcrossInterruptedInstall) {
   }
 }
 
-TEST_F(FontPack, ReceiptRejectsShortWrongAndUnverifiedRecords) {
+TEST_F(FontPack, FailedFirstInstallLeavesNoFamilyFolder) {
+  // An empty folder left behind would show in the store as a family of the user's, never offered again.
+  std::filesystem::remove_all(cardRoot / "fonts/Example");
+  const auto bytes = archive(entries());
+  package();
+  failWriteOffset = 0;
+  EXPECT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack", bytes.size(), crc(bytes)), FontPackInstaller::Result::IO_ERROR);
+  failWriteOffset = static_cast<size_t>(-1);
+  EXPECT_FALSE(std::filesystem::exists(cardRoot / "fonts/Example"));
+}
+
+TEST_F(FontPack, ReceiptRejectsShortWrongRecordsAndNamesLocalInstallsByTheirBytes) {
   const auto bytes = archive(entries());
   package();
   EXPECT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack", bytes.size() + 1, crc(bytes)), FontPackInstaller::Result::INVALID_PACK);
   unchanged();
+  // Installed from the card or the web page: the receipt carries the pack's own size and CRC, so the store
+  // sees this very pack as installed and any other bytes as an update.
   ASSERT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack"), FontPackInstaller::Result::OK);
-  EXPECT_FALSE(FontPackInstaller::matchesInstalled("/fonts", "Example", bytes.size(), crc(bytes)));
+  EXPECT_TRUE(FontPackInstaller::matchesInstalled("/fonts", "Example", bytes.size(), crc(bytes)));
+  EXPECT_FALSE(FontPackInstaller::matchesInstalled("/fonts", "Example", bytes.size(), crc(bytes) ^ 1));
   for (const std::string& value : {std::string(11, 'x'), std::string(12, 'x'), std::string(13, 'x')}) {
     { std::ofstream marker(cardRoot / "fonts/Example/.pack-ready", std::ios::binary); marker << value; }
     EXPECT_FALSE(FontPackInstaller::matchesInstalled("/fonts", "Example", bytes.size(), crc(bytes)));

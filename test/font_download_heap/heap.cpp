@@ -105,6 +105,7 @@ struct FontPackInstaller {
   static bool matchesInstalled(const char* root, const char*, uint32_t bytes, uint32_t checksum) {
     return root && bytes == size && checksum == crc;
   }
+  static bool isPackFamily(const char* root, const char*) { return root; }  // the heap runs install from packs
 };
 struct FontInstaller {
   static constexpr size_t MAX_FONT_PATH_SIZE = 256;

@@ -11,6 +11,7 @@ class FontPackInstaller {
     installedSize = size; installedCrc = crc; return installCallback(path);
   }
   static bool matchesInstalled(const char* root, const char* family, uint32_t size, uint32_t crc);
+  static bool isPackFamily(const char* root, const char* family);
   static bool isPackFilename(const char* name) {
     if (!name) return false;
     const std::string path(name);

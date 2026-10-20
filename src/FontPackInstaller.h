@@ -10,6 +10,8 @@ class FontPackInstaller {
   // Supply catalog identity only after the download has passed its size and CRC check.
   static Result install(const char* path, uint32_t verifiedSize = 0, uint32_t verifiedCrc = 0);
   static bool matchesInstalled(const char* root, const char* family, uint32_t size, uint32_t crc);
+  // The family folder came from a pack (its pack.json or receipt is there), not from the user's own files.
+  static bool isPackFamily(const char* root, const char* family);
   static bool recover(const char* family);
   static unsigned scan();
   static size_t workingSetBytes();
