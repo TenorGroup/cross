@@ -215,9 +215,11 @@ inline void displayBaseWithRefreshCycle(const GfxRenderer& renderer, int& pagesU
 // Kept as a template to avoid std::function overhead; instantiated once per reader type.
 template <typename RenderFn, typename ContextFn>
 void renderAntiAliased(GfxRenderer& renderer, RenderFn&& renderFn, ContextFn&& contextFn) {
-  if (!shouldRunTextGrayscale(contextFn()) ||
-      !hasGrayscaleHeapFloor(ESP.getFreeHeap(), ESP.getMaxAllocHeap())) {
-    LOG_INF("READER", "GRAY_SKIPPED policy_or_heap_floor");
+  const char* grayNotRun = !shouldRunTextGrayscale(contextFn())                                  ? "text_policy"
+                           : !hasGrayscaleHeapFloor(ESP.getFreeHeap(), ESP.getMaxAllocHeap()) ? "heap_floor"
+                                                                                               : nullptr;
+  if (grayNotRun) {
+    LOG_INF("READER", "GRAY_SKIPPED %s", grayNotRun);
     if (renderer.grayscaleCapabilities().base == HalDisplay::GrayscaleBase::Combined)
       renderer.cleanupGrayscaleWithFrameBuffer();
     return;

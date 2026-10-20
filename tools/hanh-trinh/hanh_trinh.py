@@ -24,11 +24,11 @@ MAY = {
     'x4c': {'port': '/dev/cu.usbmodem1101', 'w': 800, 'h': 480, 'floor': False},
     'x4pro': {'port': '/dev/cu.usbmodem1C2904243F2C2', 'w': 800, 'h': 480, 'floor': False},
 }
-SACH = {'x3': '/v1015/v1015-thu-30.epub', 'x4c': '/v1066-dai.epub', 'x4pro': '/v1053-thu-30.epub'}
+SACH = {'x3': '/v1015/v1015-thu-30.epub', 'x4c': '/v1069-thu-30.epub', 'x4pro': '/v1053-thu-30.epub'}
 # The fixed card font every run reads with, so .68 and .69 compare (FONT_TEST sets it in RAM; it is the
 # font each unit already uses).
-FONT = {'x3': 'Bokerlam 18 0', 'x4c': 'Bokerlam 14 0', 'x4pro': 'Bookerly 14 0'}
-ANH = '/v1069-hanh-trinh.bmp'
+FONT = {'x3': 'Bokerlam 18 0', 'x4c': 'Literata 14 0', 'x4pro': 'Bookerly 14 0'}
+ANH = {'x3': '/v1069-hanh-trinh.bmp', 'x4c': '/v1068-3994.bmp', 'x4pro': '/v1068-3994.bmp'}
 FREE_FLOOR, LARGEST_FLOOR = 10240, 8180
 MOC_LECH = 1024
 
@@ -46,7 +46,7 @@ def chang(may):
         ('dung-lai', ['CLEAR_BOOK_CACHE ' + s, 'OPEN_BOOK ' + s, 'wait:12', 'PRESS NEXT 80 15 1000'], 8, 'EpubReader', 'dung-lai'),
         ('ra-home-2', ['HOME'], 5, 'Home', None),
         ('cai-dat', ['SETTINGS_READER'], 4, 'Settings', None),
-        ('anh-ngu', ['OPEN_BOOK ' + ANH, 'wait:6', 'PRESS CONFIRM 80 1 300'], 5, 'Confirmation', 'hop-co-chu'),
+        ('anh-ngu', ['OPEN_BOOK ' + ANH[may], 'wait:6', 'PRESS CONFIRM 80 1 300'], 5, 'Confirmation', 'hop-co-chu'),
         ('huy-anh', ['PRESS BACK 150 1 300'], 5, None, None),
         ('home-cuoi', ['HOME'], 4, 'Home', None),
     ]
@@ -215,7 +215,7 @@ def chay(may, out, chon=None, moc=None, spike=None):
         if not ev_ok: loi.append('su kien')
         floor_lines = [l for l in moi if '[HEAP_FLOOR]' in l]
         if floor_lines: loi.append(f'HEAP_FLOOR x{len(floor_lines)}')
-        gray_heap = [l for l in moi if re.search(r'GRAY_SKIPPED (heap_floor|scratch_oom|policy_or_heap_floor|bw_store_oom)', l)]
+        gray_heap = [l for l in moi if re.search(r'GRAY_SKIPPED (heap_floor|scratch_oom|bw_store_oom)', l)]
         if gray_heap: loi.append(f'xam bi tu choi vi heap x{len(gray_heap)}')
         if cfg['floor'] and (low is None or low < FREE_FLOOR): loi.append(f'HEAP_LOW min_free={low}')
         if truoc and sau and sau['up'] < truoc['up']: loi.append('may khoi dong lai trong chang')

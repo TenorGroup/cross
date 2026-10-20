@@ -4190,8 +4190,10 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     }
   } else {
     if (needsAnyGrayscale) {
-      if (grayStopReason() || !hasGrayscaleHeapFloor(ESP.getFreeHeap(), ESP.getMaxAllocHeap())) {
-        LOG_INF("ERS", "GRAY_SKIPPED policy_or_heap_floor");
+      const char* grayNotRun = grayStopReason();
+      if (!grayNotRun && !hasGrayscaleHeapFloor(ESP.getFreeHeap(), ESP.getMaxAllocHeap())) grayNotRun = "heap_floor";
+      if (grayNotRun) {
+        LOG_INF("ERS", "GRAY_SKIPPED %s", grayNotRun);
         if (absoluteImageGrayscale) renderer.setRenderMode(GfxRenderer::BW);
         return;
       }
