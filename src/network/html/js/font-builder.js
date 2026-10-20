@@ -12,7 +12,6 @@
   // readerInk::OUTLINE_STRENGTHS (src/ReaderInkWeight.h) for the levels -3..+5, in 1/64 px.
   const STRENGTHS = [-48, -32, -18, 0, 25, 37, 63, 81, 96];
   const DEFAULT_LEVELS = [0, 1, 2, 3];
-  const CATALOG = ['atkinsonhyperlegiblenext', 'bevietnampro', 'bokerlam', 'geist', 'literata', 'livvic', 'notosans', 'notoserif', 'shantellsans'];
   // Glyphs are drawn 4x and averaged down: the area coverage FreeType computes, free of the browser's text
   // gamma, and a stroke a quarter pixel wide still lands on whole pixels. The averaging loop assumes 4.
   const SCALE = 4;
@@ -250,9 +249,8 @@
     // The reader draws a family from its regular style: a lone bold or italic file becomes the regular one.
     if (!fonts.some(f => f.style === 0)) fonts.sort((a, b) => a.style - b.style)[0].style = 0;
     const base = fonts.find(f => f.style === 0);
-    let family = (base.name || files[0].name.replace(/\.[^.]+$/, '')).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 29) || 'MyFont';
-    // A name the font catalog also uses would show there as installed, and an update would replace it.
-    if (CATALOG.includes(family.toLowerCase())) family += '-2';  // FAT names ignore case
+    // The font's own name: a store download never replaces a family no pack made (FontPackInstaller::isPackFamily).
+    const family = (base.name || files[0].name.replace(/\.[^.]+$/, '')).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 31) || 'MyFont';
     const missing = Math.max(...fonts.map(f => [...VIET_ALL].filter(c => !f.cmap.has(c)).length));
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = Math.ceil(SIZES[SIZES.length - 1] * 150 / 72 * 4) * SCALE;

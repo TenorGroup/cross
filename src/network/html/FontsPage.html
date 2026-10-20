@@ -443,8 +443,10 @@
       }
       const family = built.family;
       const known = hasFamily(family);
-      if (known) {
-        setStatus('status-err', () => TenorI18n.t('fonts.err.familyExists', { family: family }));
+      // Unknown (the list did not load) is refused too: the files would land in a family already on the card.
+      if (known !== false) {
+        setStatus('status-err', () => known === null ? TenorI18n.t('fonts.loadFailed')
+                                                    : TenorI18n.t('fonts.err.familyExists', { family: family }));
         return;
       }
       const bytes = built.files.reduce((sum, f) => sum + f.blob.size, 0);
