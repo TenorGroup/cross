@@ -2240,12 +2240,13 @@ void loop() {
         heap_caps_get_info(&info, MALLOC_CAP_INTERNAL);
         logSerial.printf(
             "HEAP_INFO:free=%u,alloc=%u,largest=%u,min=%u,blocks_alloc=%u,blocks_free=%u,loop_stack_free=%u,"
-            "floor_refusals=%u,up=%lu\n",
+            "floor_refusals=%u,floor_failures=%u,up=%lu\n",
             static_cast<unsigned>(info.total_free_bytes), static_cast<unsigned>(info.total_allocated_bytes),
             static_cast<unsigned>(info.largest_free_block), static_cast<unsigned>(info.minimum_free_bytes),
             static_cast<unsigned>(info.allocated_blocks), static_cast<unsigned>(info.free_blocks),
             static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)),
-            static_cast<unsigned>(heapfloor::refusals.load()), millis());
+            static_cast<unsigned>(heapfloor::refusals.load()), static_cast<unsigned>(heapfloor::failures.load()),
+            millis());
 #ifdef TENOR_UI_ACCEPTANCE
         logSerial.printf("STACK_INFO:render_free=%u,ble_start_min_free=%u,ble_busy=%d,ble_initializing=%d\n",
                          static_cast<unsigned>(activityManager.renderStackHighWaterMark()),

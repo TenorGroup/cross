@@ -69,6 +69,9 @@ constexpr bool stands(const size_t bytes, const size_t freeAfter, const size_t l
 // Blocks the door has refused since boot. A step that sees the count move while it ran knows its
 // failure was the heap's, and comes back later instead of counting a failure.
 inline std::atomic<uint32_t> refusals{0};
+// Blocks from 4 KB up the heap could not give at all, through the door. Kept apart from refusals so a
+// step's retry rule above does not change; the journey suite reads both.
+inline std::atomic<uint32_t> failures{0};
 
 #if defined(ESP_PLATFORM) && !defined(SIMULATOR)
 // malloc(bytes) through the door; release with free().
@@ -76,7 +79,10 @@ void* take(size_t bytes, const char* who);
 // Reads the heap left after `block` (just allocated) and answers stands(); a refusal is logged with
 // `who`. A block outside internal RAM (PSRAM) always stands.
 bool judge(size_t bytes, const void* block, const char* who);
+// Counts and logs an allocation of `bytes` that came back null.
+void failed(size_t bytes, const char* who);
 #else
+inline void failed(size_t, const char*) {}
 // Host tests and the simulator have no heap to keep.
 inline bool judge(size_t, const void*, const char*) { return true; }
 inline void* take(const size_t bytes, const char*) { return malloc(bytes); }
@@ -88,7 +94,8 @@ std::unique_ptr<T> array(const size_t count, const char* who) {
   static_assert(std::is_array<T>::value && std::extent<T>::value == 0, "array<T[]>");
   using Elem = std::remove_extent_t<T>;
   std::unique_ptr<T> p(new (std::nothrow) Elem[count]());
-  if (p && !judge(count * sizeof(Elem), p.get(), who)) p.reset();
+  if (!p) failed(count * sizeof(Elem), who);
+  else if (!judge(count * sizeof(Elem), p.get(), who)) p.reset();
   return p;
 }
 
@@ -97,7 +104,8 @@ template <typename T, typename... Args>
 std::unique_ptr<T> make(const char* who, Args&&... args) {
   static_assert(!std::is_array<T>::value, "make<T>");
   std::unique_ptr<T> p(new (std::nothrow) T(std::forward<Args>(args)...));
-  if (p && !judge(sizeof(T), p.get(), who)) p.reset();
+  if (!p) failed(sizeof(T), who);
+  else if (!judge(sizeof(T), p.get(), who)) p.reset();
   return p;
 }
 

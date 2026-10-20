@@ -40,7 +40,7 @@ def chang(may):
         ('mo-sach', ['OPEN_BOOK ' + s], 9, 'EpubReader', 'vi-tri'),
         ('lat-40', ['PRESS NEXT 80 40 350'], 24, None, 'tien'),
         ('lui-40', ['PRESS PREV 80 40 350'], 24, None, 've-cho-cu'),
-        ('xam', ['PRESS NEXT 80 6 3000'], 6, None, 'xam'),
+        ('xam', ['PRESS NEXT 80 6 3000'], 21, None, 'xam'),
         ('ra-home', ['HOME'], 5, 'Home', None),
         ('dung-lai', ['CLEAR_BOOK_CACHE ' + s, 'OPEN_BOOK ' + s, 'wait:12', 'PRESS NEXT 80 15 1000'], 8, 'EpubReader', 'dung-lai'),
         ('ra-home-2', ['HOME'], 5, 'Home', None),
@@ -98,14 +98,21 @@ class Cong:
             self.s.close(); time.sleep(2); self.mo(); self.s.write(('CMD:' + cmd + '\n').encode())
         self.pump(cho)
 
-    def heap(self):
+    def hoi(self, cmd, pattern, tries=3):
+        """Sends cmd until a line matches pattern (the unit may be busy drawing); the match or None."""
         start = len(self.lines)
-        for _ in range(3):
-            self.gui('HEAP_INFO')
-            for l in self.lines[start:]:
-                m = re.search(r'HEAP_INFO:(.*)', l)
-                if m: return {k: int(v) for k, v in (kv.split('=') for kv in m.group(1).split(','))}
+        for _ in range(tries):
+            self.gui(cmd)
+            for _ in range(8):
+                for l in self.lines[start:]:
+                    m = re.search(pattern, l)
+                    if m: return m
+                self.pump(0.5)
         return None
+
+    def heap(self):
+        m = self.hoi('HEAP_INFO', r'HEAP_INFO:(.*)')
+        return {k: int(v) for k, v in (kv.split('=') for kv in m.group(1).split(','))} if m else None
 
     def chup(self, path, w, h):
         self.pump(0.3)
@@ -183,16 +190,16 @@ def chay(may, out, chon=None, moc=None, spike=None):
         for cmd in cmds:
             if cmd.startswith('wait:'): c.pump(float(cmd[5:]))
             else: c.gui(cmd)
-        if spike == ten and truoc:
-            # Take all but 6 KB of the heap: the door refuses it, the step must turn red.
-            c.gui(f"HEAP_SPIKE {max(truoc['free'] - 6144, 4096)} 5")
         c.pump(cho)
+        if spike == ten:
+            # Take the largest block as the heap is now: what is left is under the floor, so the door
+            # refuses it and the step must turn red.
+            now = c.heap()
+            c.gui(f"HEAP_SPIKE {max(now['largest'] - 64, 4096)} 5" if now else 'HEAP_SPIKE 4096 5', 2)
         low = None
         if cfg['floor']:
-            c.gui('HEAP_LOW STOP')
-            for l in c.lines[start:]:
-                m = re.search(r'HEAP_LOW:min_free=(\d+)', l)
-                if m: low = int(m.group(1))
+            m = c.hoi('HEAP_LOW STOP', r'HEAP_LOW:min_free=(\d+)', tries=1)
+            low = int(m.group(1)) if m else None
         sau = c.heap()
         im = c.chup(os.path.join(out, ten + '.png'), cfg['w'], cfg['h'])
         moi = c.lines[start:]
@@ -208,8 +215,8 @@ def chay(may, out, chon=None, moc=None, spike=None):
         if cfg['floor'] and (low is None or low < FREE_FLOOR): loi.append(f'HEAP_LOW min_free={low}')
         if truoc and sau and sau['up'] < truoc['up']: loi.append('may khoi dong lai trong chang')
         if truoc and sau:
-            if sau['floor_refusals'] != truoc['floor_refusals']:
-                loi.append(f"floor_refusals {truoc['floor_refusals']}->{sau['floor_refusals']}")
+            for k in ('floor_refusals', 'floor_failures'):
+                if sau.get(k) != truoc.get(k): loi.append(f"{k} {truoc.get(k)}->{sau.get(k)}")
             if cfg['floor'] and (sau['free'] < FREE_FLOOR or sau['largest'] < LARGEST_FLOOR):
                 loi.append('duoi san')
             m = moc.get(ten)

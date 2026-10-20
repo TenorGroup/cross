@@ -21,8 +21,17 @@ bool judge(const size_t bytes, const void* block, const char* who) {
   return false;
 }
 
+void failed(const size_t bytes, const char* who) {
+  if (bytes < kBigBytes) return;
+  failures.fetch_add(1, std::memory_order_relaxed);
+  LOG_INF("HEAP_FLOOR", "oom who=%s bytes=%u free=%u largest=%u", who, static_cast<unsigned>(bytes),
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+          static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
+}
+
 void* take(const size_t bytes, const char* who) {
   void* p = std::malloc(bytes);
+  if (!p) failed(bytes, who);
   if (p && !judge(bytes, p, who)) {
     std::free(p);
     return nullptr;
