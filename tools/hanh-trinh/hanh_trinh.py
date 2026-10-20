@@ -9,7 +9,8 @@ commands, then judges:
     paint marks under the floor), gray layers refused for the heap, and on X3 the lowest free heap of the
     step from HEAP_LOW (any allocation, however short; the largest block has no such monitor);
   - no restart inside the step (HEAP_INFO `up` keeps growing);
-  - with --moc: free heap at the step's end no more than 1,024 B under the baseline's.
+  - with --moc on a full run: free heap at the step's end no more than 1,024 B under the baseline's; the
+    sleep-image box keeps at least half the baseline's black.
 States: XANH, DO, MANG (Wi-Fi never joined), CHUP_HONG (screenshot failed), THIEU (no heap reading).
 The run is green only when every chosen step ran and is XANH; any other state exits 1.
 Needs pyserial and Pillow. --spike <step> sends HEAP_SPIKE inside that step: that step must turn DO.
@@ -145,7 +146,7 @@ def vi_tri(lines):
     return None
 
 
-def su_kien(kiem, moi, im, nho):
+def su_kien(kiem, moi, im, nho, moc=None):
     """(ok, note) of a step's own event."""
     if kiem == 'vi-tri':
         p = vi_tri(moi); nho['dau'] = p
@@ -169,8 +170,11 @@ def su_kien(kiem, moi, im, nho):
     if kiem == 'hop-co-chu':
         # The sleep-image confirmation box must carry text in its upper half (cc4e5581 left it blank).
         if im is None: return False, 'khong co anh'
-        w, h = im.size; n = den(im, (w // 6, h * 36 // 100, w * 5 // 6, h * 44 // 100))
-        return n > 200, f'den vung chu={n}'
+        # Against the baseline the box keeps at least half its black (the outline alone is about a quarter);
+        # without one only an empty region fails.
+        w, h = im.size; n = den(im, (w // 6, h * 36 // 100, w * 5 // 6, h * 44 // 100)); nho['den'] = n
+        if moc and moc.get('den'): return n * 2 >= moc['den'], f"den vung chu={n}, moc {moc['den']}"
+        return n > 200, f'den vung chu={n} (chua so moc)'
     return True, ''
 
 
@@ -204,7 +208,8 @@ def chay(may, out, chon=None, moc=None, spike=None):
         im = c.chup(os.path.join(out, ten + '.png'), cfg['w'], cfg['h'])
         moi = c.lines[start:]
         vao = [m.group(1) for l in moi for m in [re.search(r'\[HEAP\] enter (\w+)', l)] if m]
-        ev_ok, ghi = su_kien(kiem, moi, im, nho)
+        nho.pop('den', None)
+        ev_ok, ghi = su_kien(kiem, moi, im, nho, moc.get(ten))
         loi = []
         if man and man not in vao: loi.append(f'khong vao {man}')
         if not ev_ok: loi.append('su kien')
@@ -220,14 +225,15 @@ def chay(may, out, chon=None, moc=None, spike=None):
             if cfg['floor'] and (sau['free'] < FREE_FLOOR or sau['largest'] < LARGEST_FLOOR):
                 loi.append('duoi san')
             m = moc.get(ten)
-            if m and m.get('sau') and sau['free'] < m['sau']['free'] - MOC_LECH:
+            # The heap at a step depends on every step before it: compare only full runs.
+            if chon is None and m and m.get('sau') and sau['free'] < m['sau']['free'] - MOC_LECH:
                 loi.append(f"thap hon moc {m['sau']['free'] - sau['free']} B")
         wifi_fail = any(re.search(r'WIFI.*(join|connect).*(fail|timeout)', l, re.I) for l in moi)
         if not (truoc and sau): trang = 'THIEU'
         elif im is None and not loi: trang = 'CHUP_HONG'
         elif loi and wifi_fail and not floor_lines: trang = 'MANG'
         else: trang = 'DO' if loi else 'XANH'
-        rows.append({'chang': ten, 'trang': trang, 'vao': vao, 'can': man, 'truoc': truoc, 'sau': sau, 'low': low,
+        rows.append({'chang': ten, 'trang': trang, 'vao': vao, 'can': man, 'truoc': truoc, 'sau': sau, 'low': low, 'den': nho.get('den'),
                      'loi': loi, 'ghi': ghi})
         h = f"free {sau['free']} largest {sau['largest']} low {low} refusals {sau['floor_refusals']}" if sau else '-'
         print(f'{ten:10s} {trang:9s} {h} {"; ".join(loi)} {ghi}', flush=True)
@@ -251,6 +257,7 @@ def tu_kiem():
     assert su_kien('ve-cho-cu', lines[:1], None, nho)[0]
     assert not su_kien('xam', ['PAINT_GRAY_DONE'] * 6 + ['[ERS] GRAY_SKIPPED heap_floor free=1'], None, {})[0]
     assert su_kien('xam', ['PAINT_GRAY_DONE'] * 6, None, {})[0]
+    assert not su_kien('hop-co-chu', [], Image.new('1', (100, 100), 1), {}, {'den': 10})[0]
     assert not su_kien('dung-lai', ['CLEAR_BOOK_CACHE:/x,removed=1', 'Failed to stream item'] + lines, None, {})[0]
     print('tu kiem: ok')
 
