@@ -30,7 +30,8 @@ the manual SD card copy method below.
    it, with the reader weight levels ticked on the page (0, +1, +2 and +3 unless changed)
    in `weight-N/` folders like a store pack; it shows the total size first. Letters the
    font lacks are drawn by the browser from the font's own marks or from a fallback font,
-   and the page says how many.
+   and the page says how many. On a device with external RAM a TTF for a family that is
+   on the card as `.cpfont` replaces those files once you agree, so the family becomes vector.
 
 ### Option 3: Manual SD card copy
 

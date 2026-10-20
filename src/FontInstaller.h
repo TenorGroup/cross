@@ -109,8 +109,10 @@ class FontInstaller {
   static bool buildFontPath(const char* family, const char* filename, char* outBuf, size_t outBufSize);
 
   /// Delete a family directory and all .cpfont files in it.
-  /// If the deleted family is the active reader font, clears the setting.
-  Error deleteFamily(const char* familyName);
+  /// If the deleted family is the active reader font, clears the setting, unless
+  /// `replacing`: the same family name is about to arrive again (the fonts page
+  /// swapping a .cpfont family for its TTF).
+  Error deleteFamily(const char* familyName, bool replacing = false);
 
   /// Re-run registry discovery to pick up new/removed fonts.
   void refreshRegistry();

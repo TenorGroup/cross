@@ -400,6 +400,18 @@ TEST_F(FontInstallerTest, DeleteFamilyRemovesTheCompletePathFromBothRoots) {
   EXPECT_STREQ(SETTINGS.sdFontFamilyName, "");  // the active family is gone
 }
 
+TEST_F(FontInstallerTest, DeleteFamilyForAReplacementKeepsItSelected) {
+  // The fonts page swaps a .cpfont family for its TTF under the same name: the reader keeps it.
+  Storage.present = true;
+  setActiveFamily("MyFam");
+  SdCardFontRegistry registry;
+  FontInstaller installer(registry);
+
+  ASSERT_EQ(installer.deleteFamily("MyFam", true), FontInstaller::Error::OK);
+  EXPECT_EQ(Storage.calls.size(), 4u);
+  EXPECT_STREQ(SETTINGS.sdFontFamilyName, "MyFam");
+}
+
 TEST_F(FontInstallerTest, DeleteFamilyKeepsAnotherActiveFamily) {
   Storage.present = true;
   setActiveFamily("Other");

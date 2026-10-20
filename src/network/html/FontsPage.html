@@ -291,16 +291,21 @@
       renderFamilies();
     }
 
+    // replace: the family comes back right away (a TTF for a .cpfont family), so the device keeps it selected.
+    async function removeFamily(name, replace) {
+      const res = await fetch(TenorI18n.apiUrl('/api/fonts/delete'), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(replace ? {family: name, replace: true} : {family: name})
+      });
+      return res.ok;
+    }
+
     async function deleteFamily(name) {
       if (!confirm(TenorI18n.t('fonts.deleteConfirm', { family: name }))) return;
       setStatus('', () => TenorI18n.t('fonts.deleting', { family: name }));
       try {
-        const res = await fetch(TenorI18n.apiUrl('/api/fonts/delete'), {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({family: name})
-        });
-        if (res.ok) {
+        if (await removeFamily(name, false)) {
           setStatus('status-ok', () => TenorI18n.t('fonts.deleted', { family: name }));
         } else {
           setStatus('status-err', () => TenorI18n.t('fonts.deleteFailed', { family: name }));
@@ -574,6 +579,18 @@
           }
           await convertAndSend(vec);
           return;
+        }
+        // The device draws a family from its .cpfont files while it has any: a TTF for that family
+        // replaces them, once the user agrees.
+        const old = vec.length && familiesState && familiesState.families &&
+          familiesState.families.find(f => !f.vector && f.name.toLowerCase() === family.toLowerCase());
+        if (old) {
+          if (!confirm(TenorI18n.t('fonts.replaceCpfont', { family: old.name }))) return;
+          if (!await removeFamily(old.name, true).catch(() => false)) {
+            setStatus('status-err', () => TenorI18n.t('fonts.deleteFailed', { family: old.name }));
+            return;
+          }
+          wasNew = true;
         }
         for (const file of files) {
           const index = uploaded + 1;

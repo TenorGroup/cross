@@ -2569,7 +2569,8 @@ void CrossPointWebServer::handleFontDelete() {
 
   const char* familyName = doc["family"];
   FontInstaller installer(sdFontSystem.registry());
-  auto result = installer.deleteFamily(familyName);
+  // "replace": the page is swapping the family's .cpfont files for its TTF, so the reader keeps it selected.
+  auto result = installer.deleteFamily(familyName, doc["replace"] | false);
 
   if (result == FontInstaller::Error::OK) {
     sdFontSystem.markRegistryDirty();

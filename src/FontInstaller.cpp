@@ -232,7 +232,7 @@ bool FontInstaller::buildVectorFontPath(const char* family, const char* filename
   return joinFontPath(family, filename, outBuf, outBufSize);
 }
 
-FontInstaller::Error FontInstaller::deleteFamily(const char* familyName) {
+FontInstaller::Error FontInstaller::deleteFamily(const char* familyName, const bool replacing) {
   if (!isValidFamilyName(familyName)) {
     return Error::INVALID_FAMILY_NAME;
   }
@@ -266,7 +266,7 @@ FontInstaller::Error FontInstaller::deleteFamily(const char* familyName) {
   (void)removedAny;
 
   // If this was the active font, clear the setting
-  if (strcmp(SETTINGS.sdFontFamilyName, familyName) == 0) {
+  if (!replacing && strcmp(SETTINGS.sdFontFamilyName, familyName) == 0) {
     SETTINGS.clearSdFontFamily();
     LOG_DBG("FONT", "Cleared active SD font (deleted family: %s)", familyName);
   }

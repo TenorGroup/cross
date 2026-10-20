@@ -324,6 +324,9 @@ curl -X POST \
   http://tenor-cross.local/api/fonts/delete
 ```
 
+With `"replace": true` the family stays the selected reader font: the fonts page
+sends it this way when a TTF replaces the family's `.cpfont` files.
+
 Successful response:
 
 ```json
