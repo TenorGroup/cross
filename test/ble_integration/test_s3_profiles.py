@@ -35,17 +35,16 @@ class S3Profiles(unittest.TestCase):
                 self.assertEqual(option(section, "board_build.arduino.memory_type"), "dio_opi")
                 self.assertEqual(option(section, "custom_sdkconfig"), "")
                 deps = option(section, "lib_deps")
-                for dep in option("base", "lib_deps").splitlines() + option("ble_hid_beta", "lib_deps").splitlines():
+                for dep in option("base", "lib_deps").splitlines() + option("ble_page_turner", "lib_deps").splitlines():
                     if dep.strip():
                         self.assertIn(dep.strip(), deps)
                 flags = option(section, "build_flags").split()
-                for flag in option("ble_hid_beta", "build_flags").split():
+                for flag in option("ble_page_turner", "build_flags").split():
                     self.assertIn(flag, flags)
                 self.assertIn("-DFREEINK_DEVICE_" + device + "=1", flags)
                 self.assertIn("-DFREEINK_CAP_USB_MSC=1", flags)
-                # German patterns: the X4 Pro carries them again since v1.0.69 (Noto Serif left the image);
-                # the X4 Classic Bluetooth beta image still has no room for them.
-                self.assertEqual("-DTENOR_HYPH_NO_DE" in flags, board == "x4c")
+                # German patterns: every Bluetooth image carries them since v1.0.69 (Noto Serif left the image).
+                self.assertNotIn("-DTENOR_HYPH_NO_DE", flags)
                 # v1.0.59: an X4 Pro image without the cable channel (the TENOR-CABLE-V1 board-tag field) is
                 # refused by the unit's own SD_FLASH. The X4 Classic takes images over the chip's USB download
                 # mode (tools/nap.py route "rom") and its envs carry no such flag.
@@ -57,25 +56,30 @@ class S3Profiles(unittest.TestCase):
                 for plain in (board, "x3-ble", "gh_release", board + "-gh_release"):
                     # Every release build carries German hyphenation (the X4 Pro again since v1.0.69).
                     self.assertNotIn("-DTENOR_HYPH_NO_DE", option("env:" + plain, "build_flags").split())
-                for plain in (board, "x3-ble", "gh_release") + ((board + "-gh_release",) if board == "x4c" else ()):
-                    self.assertNotIn("scripts/s3_nimble_psram.h", option("env:" + plain, "build_flags").split())
+                # The plain board env has no Bluetooth; the C3 Bluetooth envs include the header, which does
+                # nothing there because they have no PSRAM (test_psram_header).
+                self.assertNotIn("scripts/s3_nimble_psram.h", option("env:" + board, "build_flags").split())
+                for c3 in ("x3-ble", "gh_release", "gh_release_rc"):
+                    c3_flags = option("env:" + c3, "build_flags").split()
+                    self.assertIn("scripts/s3_nimble_psram.h", c3_flags)
+                    self.assertNotIn("-DBOARD_HAS_PSRAM", c3_flags)
                 self.assertIn("-DBOARD_HAS_PSRAM", flags)
                 self.assertNotIn("-DFREEINK_DEVICE_X3=1", flags)
                 self.assertNotIn("-DTENOR_PRESS_PROBE", flags)
-                # v1.0.65: the X4 Pro release and rc images carry the Bluetooth page turner, as upstream CrossPoint
-                # does. The X4 Classic's 0x640000 slot cannot hold it.
+                # The release and rc images carry the Bluetooth page turner, as upstream CrossPoint does: the X4 Pro
+                # since v1.0.65, the X4 Classic since v1.0.69, in the 0x640000 slot of CrossPoint's partition table
+                # (no slot override: the 128 KiB headroom gate checks that table).
                 if board == "x4c":
                     for release in (board + "-gh_release", board + "-gh_release_rc"):
-                        self.assertNotIn("-DFREEINK_CAP_BLE_HID_HOST=1", option("env:" + release, "build_flags").split())
-                    continue
+                        self.assertEqual(option("env:" + release, "custom_app_slot_bytes"), "")
                 for release in (board + "-gh_release", board + "-gh_release_rc"):
                     released = option("env:" + release, "build_flags").split()
-                    for flag in option("ble_hid_beta", "build_flags").split():
+                    for flag in option("ble_page_turner", "build_flags").split():
                         self.assertIn(flag, released, release)
                     self.assertEqual(released[released.index("-include") + 1], "scripts/s3_nimble_psram.h")
                     self.assertNotIn("-DTENOR_PRESS_PROBE", released)
                     self.assertNotIn("-DTENOR_HYPH_NO_DE", released)
-                    for dep in option("ble_hid_beta", "lib_deps").splitlines():
+                    for dep in option("ble_page_turner", "lib_deps").splitlines():
                         if dep.strip():
                             self.assertIn(dep.strip(), option("env:" + release, "lib_deps"))
 
@@ -120,23 +124,42 @@ class S3Profiles(unittest.TestCase):
             self.assertNotIn("-DTENOR_PROBE_LITE", option("env:" + other, "build_flags").split(), other)
 
     def test_psram_header(self):
-        """The header lands after sdkconfig.h and flips NimBLE's allocator to PSRAM, tagging the build."""
+        """The header lands after sdkconfig.h and, on a board with PSRAM only, flips NimBLE's allocator to
+        PSRAM and tags the build. Every Bluetooth env includes it (the [ble_page_turner] section), the X3 too."""
         header = (ROOT / "scripts" / "s3_nimble_psram.h").read_text()
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            (root / "sdkconfig.h").write_text(
-                "#pragma once\n#define CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_INTERNAL 1\n"
-                "#define CONFIG_NIMBLE_MEM_ALLOC_MODE_INTERNAL CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_INTERNAL\n")
-            (root / "psram.h").write_text(header)
-            result = subprocess.run(
-                ["cc", "-E", "-dM", "-x", "c", "-I" + str(root), "-include", str(root / "psram.h"), "-"],
-                input='#include "sdkconfig.h"\n', text=True, capture_output=True, check=True)
-        macros = {line.split()[1]: line.split(maxsplit=2)[2] if len(line.split()) > 2 else ""
-                  for line in result.stdout.splitlines() if line.startswith("#define ")}
-        self.assertEqual(macros.get("CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL"), "1")
-        self.assertNotIn("CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_INTERNAL", macros)
-        self.assertEqual(macros.get("FREEINK_BLE_STACK_IN_PSRAM"), "1")
+
+        def macros(*defines):
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "sdkconfig.h").write_text(
+                    "#pragma once\n#define CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_INTERNAL 1\n"
+                    "#define CONFIG_NIMBLE_MEM_ALLOC_MODE_INTERNAL CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_INTERNAL\n")
+                (root / "psram.h").write_text(header)
+                result = subprocess.run(
+                    ["cc", "-E", "-dM", "-x", "c", *defines, "-I" + str(root), "-include", str(root / "psram.h"),
+                     "-"], input='#include "sdkconfig.h"\n', text=True, capture_output=True, check=True)
+            return {line.split()[1]: line.split(maxsplit=2)[2] if len(line.split()) > 2 else ""
+                    for line in result.stdout.splitlines() if line.startswith("#define ")}
+
+        s3 = macros("-DBOARD_HAS_PSRAM")
+        self.assertEqual(s3.get("CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL"), "1")
+        self.assertNotIn("CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_INTERNAL", s3)
+        self.assertEqual(s3.get("FREEINK_BLE_STACK_IN_PSRAM"), "1")
+        c3 = macros()
+        self.assertEqual(c3.get("CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_INTERNAL"), "1")
+        self.assertNotIn("CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL", c3)
+        self.assertNotIn("FREEINK_BLE_STACK_IN_PSRAM", c3)
+
+    def test_c3_sdkconfig_text_is_pinned(self):
+        """The C3 envs' custom_sdkconfig text keys the framework libraries every tree on a machine shares
+        (scripts/patch_pioarduino_cache.py). A change rebuilds them, so it is made on purpose: build the local
+        x3-libs env first, then update c3_sdkconfig.txt. The X3 release, rc and x3-ble ask for the same text."""
+        pinned = (ROOT / "test" / "ble_integration" / "c3_sdkconfig.txt").read_text().strip()
+        for env in ("gh_release", "gh_release_rc", "x3-ble"):
+            self.assertEqual(option("env:" + env, "custom_sdkconfig").strip(), pinned, env)
 
 
 if __name__ == "__main__":
+    unittest.main()
+
     unittest.main()
