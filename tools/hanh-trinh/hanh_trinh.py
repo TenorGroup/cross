@@ -28,9 +28,16 @@ SACH = {'x3': '/v1015/v1015-thu-30.epub', 'x4c': '/v1069-thu-30.epub', 'x4pro': 
 # The fixed card font every run reads with, so .68 and .69 compare (FONT_TEST sets it in RAM; it is the
 # font each unit already uses).
 FONT = {'x3': 'Bokerlam 18 0', 'x4c': 'Literata 14 0', 'x4pro': 'Bookerly 14 0'}
+# The sleep-image box's text rows, as fractions of the portrait frame (y from, y to): the button units
+# centre the box, the X4 Pro's touch sheet sits on the bottom edge.
+HOP = {'x3': (0.36, 0.44), 'x4c': (0.36, 0.44), 'x4pro': (0.67, 0.79)}
 ANH = {'x3': '/v1069-hanh-trinh.bmp', 'x4c': '/v1068-3994.bmp', 'x4pro': '/v1068-3994.bmp'}
 FREE_FLOOR, LARGEST_FLOOR = 10240, 8180
 MOC_LECH = 1024
+# Steps whose heap is still moving when read (the reader caches pages behind the last turn): the same
+# .68 image ended mo-sach 1,764 B and lat-40 3,884 B apart over two runs, the settled steps <= 368 B.
+# The floor checks still apply to them; the baseline comparison does not.
+CHUA_LANG = {'mo-sach', 'lat-40'}
 
 
 def chang(may):
@@ -112,7 +119,8 @@ class Cong:
         return None
 
     def heap(self):
-        m = self.hoi('HEAP_INFO', r'HEAP_INFO:(.*)')
+        # Whole lines only: the X4 Pro's CDC port drops bytes when the log is busy.
+        m = self.hoi('HEAP_INFO', r'HEAP_INFO:(free=\d+,.*,up=\d+)$', tries=5)
         return {k: int(v) for k, v in (kv.split('=') for kv in m.group(1).split(','))} if m else None
 
     def chup(self, path, w, h):
@@ -146,7 +154,7 @@ def vi_tri(lines):
     return None
 
 
-def su_kien(kiem, moi, im, nho, moc=None):
+def su_kien(kiem, moi, im, nho, moc=None, hop=HOP['x3']):
     """(ok, note) of a step's own event."""
     if kiem == 'vi-tri':
         p = vi_tri(moi); nho['dau'] = p
@@ -172,7 +180,7 @@ def su_kien(kiem, moi, im, nho, moc=None):
         if im is None: return False, 'khong co anh'
         # Against the baseline the box keeps at least half its black (the outline alone is about a quarter);
         # without one only an empty region fails.
-        w, h = im.size; n = den(im, (w // 6, h * 36 // 100, w * 5 // 6, h * 44 // 100)); nho['den'] = n
+        w, h = im.size; n = den(im, (w // 6, int(h * hop[0]), w * 5 // 6, int(h * hop[1]))); nho['den'] = n
         if moc and moc.get('den'): return n * 2 >= moc['den'], f"den vung chu={n}, moc {moc['den']}"
         return n > 200, f'den vung chu={n} (chua so moc)'
     return True, ''
@@ -181,7 +189,8 @@ def su_kien(kiem, moi, im, nho, moc=None):
 def chay(may, out, chon=None, moc=None, spike=None):
     os.makedirs(out, exist_ok=True)
     cfg = MAY[may]; c = Cong(cfg['port'], out); c.pump(2)
-    for cmd in ('HOME', 'SET textAntiAliasing=1', 'FONT_TEST ' + FONT[may]):
+    # TXTIMEOUT: the CDC ports drop bytes at the release's 1 ms write timeout (cut HEAP_INFO lines).
+    for cmd in ('TXTIMEOUT 200', 'HOME', 'SET textAntiAliasing=1', 'FONT_TEST ' + FONT[may]):
         c.gui(cmd, 3)
     if not any(l.startswith('FONT_TEST:family=') for l in c.lines):
         raise SystemExit('FONT_TEST khong chay: font co dinh khong co tren the?')
@@ -209,7 +218,7 @@ def chay(may, out, chon=None, moc=None, spike=None):
         moi = c.lines[start:]
         vao = [m.group(1) for l in moi for m in [re.search(r'\[HEAP\] enter (\w+)', l)] if m]
         nho.pop('den', None)
-        ev_ok, ghi = su_kien(kiem, moi, im, nho, moc.get(ten))
+        ev_ok, ghi = su_kien(kiem, moi, im, nho, moc.get(ten), HOP[may])
         loi = []
         if man and man not in vao: loi.append(f'khong vao {man}')
         if not ev_ok: loi.append('su kien')
@@ -226,7 +235,7 @@ def chay(may, out, chon=None, moc=None, spike=None):
                 loi.append('duoi san')
             m = moc.get(ten)
             # The heap at a step depends on every step before it: compare only full runs.
-            if chon is None and m and m.get('sau') and sau['free'] < m['sau']['free'] - MOC_LECH:
+            if chon is None and ten not in CHUA_LANG and m and m.get('sau') and sau['free'] < m['sau']['free'] - MOC_LECH:
                 loi.append(f"thap hon moc {m['sau']['free'] - sau['free']} B")
         wifi_fail = any(re.search(r'WIFI.*(join|connect).*(fail|timeout)', l, re.I) for l in moi)
         if not (truoc and sau): trang = 'THIEU'
