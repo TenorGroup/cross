@@ -43,8 +43,9 @@ class S3Profiles(unittest.TestCase):
                     self.assertIn(flag, flags)
                 self.assertIn("-DFREEINK_DEVICE_" + device + "=1", flags)
                 self.assertIn("-DFREEINK_CAP_USB_MSC=1", flags)
-                # The beta image has no room for the German patterns.
-                self.assertIn("-DTENOR_HYPH_NO_DE", flags)
+                # German patterns: the X4 Pro carries them again since v1.0.69 (Noto Serif left the image);
+                # the X4 Classic Bluetooth beta image still has no room for them.
+                self.assertEqual("-DTENOR_HYPH_NO_DE" in flags, board == "x4c")
                 # v1.0.59: an X4 Pro image without the cable channel (the TENOR-CABLE-V1 board-tag field) is
                 # refused by the unit's own SD_FLASH. The X4 Classic takes images over the chip's USB download
                 # mode (tools/nap.py route "rom") and its envs carry no such flag.
@@ -53,11 +54,10 @@ class S3Profiles(unittest.TestCase):
                 self.assertIn("-include", flags)
                 self.assertIn("scripts/s3_nimble_psram.h", flags)
                 self.assertEqual(flags[flags.index("-include") + 1], "scripts/s3_nimble_psram.h")
+                for plain in (board, "x3-ble", "gh_release", board + "-gh_release"):
+                    # Every release build carries German hyphenation (the X4 Pro again since v1.0.69).
+                    self.assertNotIn("-DTENOR_HYPH_NO_DE", option("env:" + plain, "build_flags").split())
                 for plain in (board, "x3-ble", "gh_release") + ((board + "-gh_release",) if board == "x4c" else ()):
-                    # German hyphenation is out of every X4 Pro build since v1.0.61 (flash headroom); the X4 Classic
-                    # and C3 builds keep it outside the Bluetooth beta.
-                    self.assertEqual("-DTENOR_HYPH_NO_DE" in option("env:" + plain, "build_flags").split(),
-                                     plain.startswith("x4pro"))
                     self.assertNotIn("scripts/s3_nimble_psram.h", option("env:" + plain, "build_flags").split())
                 self.assertIn("-DBOARD_HAS_PSRAM", flags)
                 self.assertNotIn("-DFREEINK_DEVICE_X3=1", flags)
@@ -74,7 +74,7 @@ class S3Profiles(unittest.TestCase):
                         self.assertIn(flag, released, release)
                     self.assertEqual(released[released.index("-include") + 1], "scripts/s3_nimble_psram.h")
                     self.assertNotIn("-DTENOR_PRESS_PROBE", released)
-                    self.assertIn("-DTENOR_HYPH_NO_DE", released)
+                    self.assertNotIn("-DTENOR_HYPH_NO_DE", released)
                     for dep in option("ble_hid_beta", "lib_deps").splitlines():
                         if dep.strip():
                             self.assertIn(dep.strip(), option("env:" + release, "lib_deps"))
@@ -86,8 +86,8 @@ class S3Profiles(unittest.TestCase):
             self.assertIn(flag, flags)
         self.assertNotIn("-DTENOR_UI_ACCEPTANCE", flags)
         self.assertIn("scripts/s3_nimble_psram.h", flags)
-        self.assertIn("-DTENOR_HYPH_NO_DE", flags)
-        # Without German the probe fits with every language, so it carries the same strings as the beta.
+        self.assertNotIn("-DTENOR_HYPH_NO_DE", flags)
+        # The probe carries the same languages and strings as the release.
         self.assertEqual(option("env:x4pro-ble-probe", "custom_i18n_builtin_langs"),
                          option("env:x4pro-ble", "custom_i18n_builtin_langs"))
         self.assertIn("-DARDUINO_USB_MODE=0", flags)
