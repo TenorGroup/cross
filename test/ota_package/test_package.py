@@ -199,6 +199,23 @@ class PackageTest(unittest.TestCase):
         ready = self.root / 'out/firmware/stable.json.ready'
         self.assertEqual(len(json.loads(ready.read_text())['assets']), 2)
 
+    def test_three_boards_package_together(self):
+        # v1.0.69: the X4 Classic asks the update page for tenor-cross-x4c.bin (OtaUpdater.cpp).
+        c3 = image(version='v1.0.69')
+        pro = image(version='v1.0.69', chip=9, tag=X4PRO_TAG)
+        x4c = image(version='v1.0.69', chip=9, tag=b'CROSSPOINT-BOARD-V1:x4c;')
+        self.binary.write_bytes(c3)
+        (self.root / 'pro.bin').write_bytes(pro)
+        (self.root / 'x4c.bin').write_bytes(x4c)
+        subprocess.run([sys.executable, str(REPO / 'scripts/package_tenor_ota.py'), str(self.binary),
+                        str(self.root / 'out'), '--x4pro-binary', str(self.root / 'pro.bin'),
+                        '--x4c-binary', str(self.root / 'x4c.bin')], check=True, capture_output=True, text=True)
+        assets = json.loads((self.root / 'out/firmware/stable.json.ready').read_text())['assets']
+        self.assertEqual([a['name'] for a in assets],
+                         ['tenor-cross-x3-x4.bin', 'tenor-cross-x4pro.bin', 'tenor-cross-x4c.bin'])
+        self.assertEqual(assets[2]['digest'], 'sha256:' + hashlib.sha256(x4c).hexdigest())
+        with self.assertRaisesRegex(ValueError, 'x4c board tag'):
+            ota.verified_application(self.root / 'pro.bin', 9, 'x4c')
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package verified X3/X4 and optional X4 Pro applications for cross.tenor.vn."""
+"""Package verified X3/X4 and optional X4 Pro and X4 Classic applications for cross.tenor.vn."""
 import argparse
 import hashlib
 import json
@@ -88,10 +88,12 @@ def verified_application(binary, chip, board):
     return data, version, hashlib.sha256(data).hexdigest()
 
 
-def package(binary, output, x4pro_binary=None):
+def package(binary, output, x4pro_binary=None, x4c_binary=None):
     images = [(binary, 'x3-x4', 5, 'x4')]
     if x4pro_binary is not None:
         images.append((x4pro_binary, 'x4pro', 9, 'x4pro'))
+    if x4c_binary is not None:
+        images.append((x4c_binary, 'x4c', 9, 'x4c'))
     verified = [(source, suffix, *verified_application(source, chip, board))
                 for source, suffix, chip, board in images]
     version = verified[0][3]
@@ -126,5 +128,6 @@ if __name__ == '__main__':
     cli.add_argument('binary', type=Path)
     cli.add_argument('output', type=Path)
     cli.add_argument('--x4pro-binary', type=Path, help='Matching ESP32-S3 X4 Pro application')
+    cli.add_argument('--x4c-binary', type=Path, help='Matching ESP32-S3 X4 Classic application')
     args = cli.parse_args()
-    package(args.binary, args.output, args.x4pro_binary)
+    package(args.binary, args.output, args.x4pro_binary, args.x4c_binary)
