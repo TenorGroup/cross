@@ -178,7 +178,6 @@ class SettingsActivity final : public UiTabListActivity {
   const int theBanDau;  // the mo san, do nguoi goi dat
   int settingsCount = 0;
   int pendingSiblingIndex = -1;
-  bool releaseListsForFontDownload_ = false;
 
   // Per-category settings derived from shared list + device-only actions
   std::vector<SettingInfo> displaySettings;

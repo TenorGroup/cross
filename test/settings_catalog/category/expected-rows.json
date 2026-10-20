@@ -16,7 +16,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -102,7 +101,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -189,7 +187,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -276,7 +273,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -364,7 +360,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -450,7 +445,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -537,7 +531,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -624,7 +617,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -711,7 +703,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -781,7 +772,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -852,7 +842,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -923,7 +912,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -995,7 +983,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -1065,7 +1052,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -1136,7 +1122,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -1207,7 +1192,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -1276,7 +1260,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -1347,7 +1330,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -1419,7 +1401,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -1491,7 +1472,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -1564,7 +1544,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -1635,7 +1614,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -1707,7 +1685,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
@@ -1779,7 +1756,6 @@
     ],
     [
       "STR_TEXT_SETTINGS:11:",
-      "STR_MANAGE_FONTS:10:",
       "STR_ORIENTATION:0:orientation",
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",

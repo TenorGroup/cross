@@ -146,7 +146,6 @@ CHILD(WifiSelectionActivity);
 CHILD(ClearCacheActivity);
 CHILD(OtaUpdateActivity);
 CHILD(SdFirmwareUpdateActivity);
-CHILD(FontDownloadActivity);
 CHILD(LanguageSelectActivity);
 CHILD(KeyboardLayoutsActivity);
 CHILD(ClockSettingsActivity);
@@ -206,7 +205,6 @@ struct SettingsActivity : UiListActivity {
   void prepareFormQuip(int, int) {}
   void bindForm() {}
   bool fromHomeGroup = false;
-  bool releaseListsForFontDownload_ = false;
   unsigned finished = 0, home = 0, updates = 0, rebuilds = 0;
   bool uiApplyOk = true;
   uint8_t uiSizeSeenDuringApply = 255;
@@ -407,8 +405,7 @@ int main() {
     ok &= failureShown(activity, "dynamic enum callback save failure visible");
     ++scenarios;
   }
-  for (SettingAction action : {SettingAction::RemapFrontButtons, SettingAction::DeviceName,
-                              SettingAction::DownloadFonts, SettingAction::Language}) {
+  for (SettingAction action : {SettingAction::RemapFrontButtons, SettingAction::DeviceName, SettingAction::Language}) {
     SettingsActivity activity;
     row(activity, SettingInfo::Action(StrId::STR_DEVICE_NAME, action));
     persistOk = false; activity.toggleCurrentSetting();

@@ -28,7 +28,6 @@
 #include "ClockSettingsActivity.h"
 #include "CrossPointSettings.h"
 #include "MenuTiltInput.h"
-#include "FontDownloadActivity.h"
 #include "HomeButtonSettingsActivity.h"
 #include "InfoUpdateActivity.h"
 #include "KOReaderSettingsActivity.h"
@@ -172,7 +171,7 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
   if (BoardConfig::hasHomeKey()) ++rowCounts[static_cast<int>(settingstabs::Tab::CONTROLS)];
   ++rowCounts[static_cast<int>(settingstabs::Tab::SYSTEM)];
   ++rowCounts[static_cast<int>(settingstabs::Tab::DEVICE)];
-  rowCounts[static_cast<int>(settingstabs::Tab::READER)] += 3 + (!dictionaries.empty() ? 1 : 0);
+  rowCounts[static_cast<int>(settingstabs::Tab::READER)] += 2 + (!dictionaries.empty() ? 1 : 0);
   for (size_t tab = 0; tab < rowCounts.size(); ++tab)
     danhSachCuaThe(static_cast<settingstabs::Tab>(tab)).reserve(rowCounts[tab]);
 
@@ -225,8 +224,6 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
   systemSettings.insert(files, SettingInfo::Action(StrId::STR_CLOCK, SettingAction::ClockSettings));
   readerSettings.insert(readerSettings.begin(),
                         SettingInfo::Action(StrId::STR_TEXT_SETTINGS, SettingAction::TextSettings));
-  readerSettings.insert(readerSettings.begin() + 1,
-                        SettingInfo::Action(StrId::STR_MANAGE_FONTS, SettingAction::DownloadFonts));
   readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
   // Read only, last on Device: the panel chip, for a photo sent with an ink report.
   if (!infoupdate::holds(SettingAction::None, /*chip=*/true)) {
@@ -279,36 +276,11 @@ void SettingsActivity::onPause() {
   form_.invalidate();
   formPaintReady_.store(false);
   formCount_ = 0;
-  if (!releaseListsForFontDownload_) return;
-  // ActivityManager holds RenderLock and has already saved navigation. The
-  // download child owns its data, so these descriptors and rows can be rebuilt
-  // on return. Other children can retain descriptor pointers and keep them.
-#ifdef ESP_PLATFORM
-  const uint32_t before = ESP.getFreeHeap();
-#endif
-  closeRouting();
-  currentSettings = nullptr;
-  settingsCount = 0;
-  std::vector<fui::ListItem>().swap(rowItems_);
-  std::vector<std::string>().swap(rowValues_);
-  for (int tab = 0; tab < settingstabs::TAB_COUNT; ++tab) {
-    std::vector<SettingInfo>().swap(danhSachCuaThe(static_cast<settingstabs::Tab>(tab)));
-  }
-#ifdef ESP_PLATFORM
-  const uint32_t after = ESP.getFreeHeap();
-  LOG_INF("SETTINGS", "Font download rows released=%u heap=%u largest=%u", after >= before ? after - before : 0u,
-          after, ESP.getMaxAllocHeap());
-#endif
 }
 
 void SettingsActivity::onResume() {
   // ActivityManager owns RenderLock here.
-  if (releaseListsForFontDownload_) {
-    rebuildSettingsLists(true);
-    releaseListsForFontDownload_ = false;
-  } else if (shell::isUgly()) {
-    bindForm();
-  }
+  if (shell::isUgly()) bindForm();
 }
 
 bool SettingsActivity::handleHomeGesture() {
@@ -862,13 +834,6 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::SdFirmwareUpdate:
         startActivityForResult(std::make_unique<SdFirmwareUpdateActivity>(renderer, mappedInput), resultHandler);
         break;
-      case SettingAction::DownloadFonts:
-        releaseListsForFontDownload_ = true;
-        startActivityForResult(std::make_unique<FontDownloadActivity>(renderer, mappedInput),
-                               [this](const ActivityResult&) {
-                                 saveSettings();
-                               });
-        break;
       case SettingAction::TextSettings:
         startActivityForResult(std::make_unique<TextSettingsActivity>(renderer, mappedInput, &sdFontSystem.registry(),
                                                                       TextSettingsActivity::Tab::Family),
@@ -920,6 +885,7 @@ void SettingsActivity::toggleCurrentSetting() {
           LOG_ERR("SETTINGS", "OOM: AboutActivity");
         }
         break;
+      case SettingAction::DownloadFonts:  // in Connections now; no Settings row opens it
       case SettingAction::None:
         // Do nothing
         break;

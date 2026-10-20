@@ -35,7 +35,7 @@ subprocess.run([args.cxx, '-std=c++17', '-Wall', '-Wextra', '-Werror',
                 '-o', str(binary)], check=True)
 cases = ['valid', 'new', 'aborted', 'query-error', 'pass', 'recovery', 'no-touch', 'mark-error',
          'create-error', 'start-error', 'hung-paint', 'valid-race', 'silent-large-book',
-         'wake-large-book', 'valid-wake-book']
+         'wake-large-book', 'valid-wake-book', 'silent-transfer']
 results = []
 for case in cases:
     proc = subprocess.run([str(binary), case], text=True, capture_output=True)

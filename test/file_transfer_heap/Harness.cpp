@@ -79,8 +79,7 @@ class CrossPointWebServerActivity : public Activity {
   void requestUpdate() {}
   // The chooser (and the Wi-Fi it leads to) or the test's direct join: the radio comes after either.
   void onNetworkModeSelected(NetworkMode) { noteRadio("join with the catalog held"); }
-  template <typename A, typename F>
-  void startActivityForResult(std::unique_ptr<A>, F&&) { noteRadio("chooser with the catalog held"); }
+  void chooseMode() { noteRadio("chooser with the catalog held"); }
 };
 
 #include "production-onenter.inc"

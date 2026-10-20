@@ -284,7 +284,9 @@ constexpr uint32_t SILENT_REBOOT_TARGET_HOME = 0;
 constexpr uint32_t SILENT_REBOOT_TARGET_READER = 1;
 constexpr uint32_t SILENT_REBOOT_TARGET_SETTINGS = 2;
 constexpr uint32_t SILENT_REBOOT_TARGET_OTA = 3;
-constexpr uint32_t SILENT_REBOOT_TARGET_MAX = SILENT_REBOOT_TARGET_OTA;
+// Connections (the File Transfer hub): the font store's Wi-Fi restart comes back to the list it was opened from.
+constexpr uint32_t SILENT_REBOOT_TARGET_TRANSFER = 4;
+constexpr uint32_t SILENT_REBOOT_TARGET_MAX = SILENT_REBOOT_TARGET_TRANSFER;
 constexpr uint32_t SILENT_REBOOT_LIGHT_ON = cardrescue::PAYLOAD_LIGHT_ON;
 
 // How the device is coming back to life, resolved once at boot. Both resume
@@ -362,16 +364,27 @@ static void silentRestartTo(const uint32_t target, const char* targetName) {
   ESP.restart();
 }
 
-void silentRestart() {
+// Probe KEEP_HEAP: a Wi-Fi exit turns the radio off instead of restarting, so a run can read the heap it left.
+static bool probeKeptHeap() {
 #ifdef TENOR_PRESS_PROBE
   if (!deepSleepInProgress && probeKeepHeap) {
     WiFi.mode(WIFI_OFF);
     delay(100);
     LOG_INF("PROBE", "Wi-Fi off without restart heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    return;
+    return true;
   }
 #endif
+  return false;
+}
+
+void silentRestart() {
+  if (probeKeptHeap()) return;
   silentRestartTo(SILENT_REBOOT_TARGET_HOME, "home");
+}
+
+void silentRestartToFileTransfer() {
+  if (probeKeptHeap()) return;
+  silentRestartTo(SILENT_REBOOT_TARGET_TRANSFER, "transfer");
 }
 
 void silentRestartToReader() { silentRestartTo(SILENT_REBOOT_TARGET_READER, "reader"); }
@@ -1071,6 +1084,9 @@ void setup() {
   } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_SETTINGS) {
     // Back out of the WiFi rows and the user is where they left off, not on Home.
     activityManager.goToSettings();
+  } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_TRANSFER) {
+    // Out of the font store's Wi-Fi: back on the Connections list it was opened from.
+    activityManager.goToFileTransfer();
   } else if (resume == BootResume::Silent) {
     // target == home (or reader with no open book): land on home - don't fall
     // through to the wake-into-book branch below.

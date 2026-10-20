@@ -70,6 +70,7 @@ class CrossPointWebServerActivity final : public Activity {
   void renderUgly() const;
   void renderWifiIndicator(int subHeaderTop) const;
 
+  void chooseMode();
   void onNetworkModeSelected(NetworkMode mode);
   void onWifiSelectionComplete(bool connected);
   void leave();

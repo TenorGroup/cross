@@ -48,8 +48,8 @@ void logFontDownloadHeap(const char* stage) {
 }
 #endif
 
-FontDownloadActivity::FontDownloadActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-    : UiListActivity("FontDownload", renderer, mappedInput), fontInstaller_(sdFontSystem.registry()) {}
+FontDownloadActivity::FontDownloadActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const bool toBook)
+    : UiListActivity("FontDownload", renderer, mappedInput), fontInstaller_(sdFontSystem.registry()), toBook_(toBook) {}
 
 bool FontDownloadActivity::installDownloadedPack(const char* path, uint32_t size, uint32_t crc) {
   const auto workspace = FontPackInstaller::workingSetBytes();
@@ -150,7 +150,7 @@ void FontDownloadActivity::onExit() {
     if (WiFi.getMode() != WIFI_MODE_NULL) {
       WiFi.disconnect(false);
       delay(30);
-      silentRestart();
+      toBook_ ? silentRestartToReader() : silentRestartToFileTransfer();
     }
   }
 

@@ -12,38 +12,24 @@
 namespace fui = freeink::ui;
 
 namespace {
-constexpr StrId menuItems[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
-    StrId::STR_JOIN_NETWORK,
-    StrId::STR_CALIBRE_WIRELESS,
-    StrId::STR_CREATE_HOTSPOT,
-#if FREEINK_CAP_USB_MSC
-    StrId::STR_USB_DRIVE,
-#endif
-#if !FREEINK_DEVICE_X3
-    StrId::STR_WEBDAV_PULL,
-#endif
+// One row a mode, in screen order. The row's actionValue carries its mode: the rows a board has (USB, WebDAV)
+// shift the indices, so an index is never a mode.
+struct Row {
+  NetworkMode mode;
+  StrId label, description;
+  UIIcon icon;
 };
-constexpr StrId menuDescs[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
-    StrId::STR_JOIN_DESC,
-    StrId::STR_CALIBRE_DESC,
-    StrId::STR_HOTSPOT_DESC,
+constexpr Row ROWS[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
+    {NetworkMode::JOIN_NETWORK, StrId::STR_JOIN_NETWORK, StrId::STR_JOIN_DESC, UIIcon::Wifi},
+    {NetworkMode::CONNECT_CALIBRE, StrId::STR_CALIBRE_WIRELESS, StrId::STR_CALIBRE_DESC, UIIcon::Library},
+    {NetworkMode::CREATE_HOTSPOT, StrId::STR_CREATE_HOTSPOT, StrId::STR_HOTSPOT_DESC, UIIcon::Hotspot},
 #if FREEINK_CAP_USB_MSC
-    StrId::STR_USB_DRIVE_DESC,
+    {NetworkMode::USB_DRIVE, StrId::STR_USB_DRIVE, StrId::STR_USB_DRIVE_DESC, UIIcon::Usb},
 #endif
 #if !FREEINK_DEVICE_X3
-    StrId::STR_WEBDAV_PULL_DESC,
+    {NetworkMode::WEB_DAV, StrId::STR_WEBDAV_PULL, StrId::STR_WEBDAV_PULL_DESC, UIIcon::Wifi},
 #endif
-};
-constexpr UIIcon menuIcons[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
-    UIIcon::Wifi,
-    UIIcon::Library,
-    UIIcon::Hotspot,
-#if FREEINK_CAP_USB_MSC
-    UIIcon::Usb,
-#endif
-#if !FREEINK_DEVICE_X3
-    UIIcon::Wifi,
-#endif
+    {NetworkMode::FONT_STORE, StrId::STR_MANAGE_FONTS, StrId::STR_MANAGE_FONTS_SUB, UIIcon::Text},
 };
 }  // namespace
 
@@ -52,10 +38,10 @@ NetworkModeSelectionActivity::NetworkModeSelectionActivity(GfxRenderer& renderer
   // Entirely static, so built once here rather than every buildScreen() call.
   for (int i = 0; i < MENU_ITEM_COUNT; i++) {
     fui::ListItem item;
-    item.label = I18N.get(menuItems[i]);
-    item.subtitle = I18N.get(menuDescs[i]);
-    item.icon = listIconFor(menuIcons[i], 32);  // subtitle rows carry the larger icon
-    item.actionValue = static_cast<int16_t>(i);
+    item.label = I18N.get(ROWS[i].label);
+    item.subtitle = I18N.get(ROWS[i].description);
+    item.icon = listIconFor(ROWS[i].icon, 32);  // subtitle rows carry the larger icon
+    item.actionValue = static_cast<int16_t>(ROWS[i].mode);
     rowItems_[i] = item;
   }
 }
@@ -65,12 +51,13 @@ int NetworkModeSelectionActivity::listCount() const { return MENU_ITEM_COUNT; }
 const char* NetworkModeSelectionActivity::headerTitle() const { return tr(STR_FILE_TRANSFER); }
 
 void NetworkModeSelectionActivity::activateIndex(const int index) {
+  if (index < 0 || index >= MENU_ITEM_COUNT) return;
   // Selection leaves this screen; a lingering flash would gray an unrelated
   // element on the next render.
   app.clearTapFlash();
   nav.selected = index;
 
-  onModeSelected(static_cast<NetworkMode>(index));
+  onModeSelected(static_cast<NetworkMode>(rowItems_[index].actionValue));
 }
 
 void NetworkModeSelectionActivity::buildScreen(UiScreen& screen) {

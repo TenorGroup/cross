@@ -33,7 +33,9 @@ inline bool preventsAutoSleep(const Phase phase) {
 class FontDownloadActivity final : public UiListActivity {
  public:
   tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Reading; }
-  explicit FontDownloadActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
+  // `toBook`: opened from a book (through Connections), so the Wi-Fi restart on the way out reopens the book;
+  // otherwise it reopens Connections, where the store lives.
+  explicit FontDownloadActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool toBook = false);
 
 #ifdef FREEINK_TLS_AUDIT
   void setAuditDownload() { auditDownload_ = true; }
@@ -147,6 +149,7 @@ class FontDownloadActivity final : public UiListActivity {
   const char* failureReason_ = nullptr;
   uint32_t requiredMb_ = 0;
   bool runtimeStarted_ = false;
+  const bool toBook_;
   static constexpr unsigned long TERMINAL_IDLE_TIMEOUT_MS = 5UL * 60UL * 1000UL;
   unsigned long terminalStateSince_ = 0;
   bool terminalIdleTimerStarted_ = false;

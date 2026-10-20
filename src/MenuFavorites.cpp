@@ -11,6 +11,7 @@
 #include "SettingsList.h"
 #include "shells/ugly/UglyLevel.h"
 #include "activities/settings/ClockSettingsActivity.h"
+#include "activities/settings/FontDownloadActivity.h"
 #include "activities/settings/InfoUpdateActivity.h"
 #include "activities/settings/KOReaderSettingsActivity.h"
 #include "activities/settings/OpdsServerListActivity.h"
@@ -169,6 +170,8 @@ std::string value(const std::string& key, const SdCardFontRegistry* registry) {
 std::unique_ptr<UiListActivity> open(const std::string& key, GfxRenderer& renderer, MappedInputManager& input) {
   const char* canonical = menucustom::canonicalPinKey(key.c_str());
   if (canonical != key.c_str()) return open(canonical, renderer, input);
+  // Get fonts left the Reader tab for Connections (20/10/2026): its pin opens the store itself.
+  if (key == "action/10") return makeUniqueNoThrow<FontDownloadActivity>(renderer, input);
   const auto* item = find(key);
   std::unique_ptr<UiListActivity> result;
   bool activate = true;

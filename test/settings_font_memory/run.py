@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile production settings cache lifecycle and launch branch with an allocator probe."""
+"""Compile the font store's release of the shared settings catalog with an allocator probe."""
 import argparse
 import hashlib
 import json
@@ -26,7 +26,6 @@ def method(text, signature):
         i += 1
     return text[start:i] + '\n'
 
-source = (r / 'src/activities/settings/SettingsActivity.cpp').read_text()
 catalog = (r / 'src/SettingsList.h').read_text()
 release_signature = 'inline void releaseBaseSettingsList()'
 if release_signature not in catalog:
@@ -36,7 +35,6 @@ elif a.catalog_release_noop:
 (out / 'SettingsList.h').write_text(catalog)
 (out / 'CrossPointSettings.cpp').write_text((r / 'src/CrossPointSettings.cpp').read_text())
 header = (r / 'src/activities/settings/SettingsActivity.h').read_text()
-base = (r / 'src/activities/Activity.h').read_text()
 (out / 'activities/settings').mkdir(parents=True, exist_ok=True)
 descriptor = header[header.index('enum class SettingType'):header.index('class SettingsActivity final')]
 (out / 'activities/settings/SettingsActivity.h').write_text(
@@ -50,21 +48,6 @@ descriptor = header[header.index('enum class SettingType'):header.index('class S
     '#else\n'
     'constexpr bool kTouchShell = false;\n'
     '#endif\n}\n' + descriptor)
-methods = ''.join(method(source, sig) for sig in [
-    'std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe',
-    'bool SettingsActivity::listedAsRow(',
-    'void SettingsActivity::rebuildSettingsLists(',
-    'void SettingsActivity::rebuildRowItems()'])
-for name in ['onPause', 'onResume']:
-    signature = 'void SettingsActivity::' + name + '()'
-    if signature in source:
-        methods += method(source, signature)
-    else:
-        inherited = method(base, 'virtual void ' + name + '()')
-        methods += inherited.replace('virtual void ', 'void SettingsActivity::', 1)
-branch = source.split('case SettingAction::DownloadFonts:', 1)[1].split('case SettingAction::TextSettings:', 1)[0]
-methods += 'void SettingsActivity::launchFontDownload() {\n' + branch.rsplit('break;', 1)[0] + '}\n'
-(out / 'Methods.inc').write_text(methods)
 font_source = (r / 'src/activities/settings/FontDownloadActivity.cpp').read_text()
 (out / 'PostWifiMethods.inc').write_text(method(font_source, 'void FontDownloadActivity::onWifiSelectionComplete'))
 # Reuse the established hardware/storage boundaries, not its SettingsActivity test double.

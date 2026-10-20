@@ -96,7 +96,7 @@ struct SettingsActivity {
   void bindForm() {}
   void rebuildSettingsLists(bool lockHeld = false);
 };
-// The X4 Pro About & updates screen (InfoUpdateActivity) holds no rows on these boards.
+// The About & updates screen (InfoUpdateActivity) is a boundary here: its rows stay on their tabs.
 namespace infoupdate { inline bool holds(settingstabs::Action, bool = false) { return false; } }
 #include "CategoryMethods.inc"
 #include "StatusItems.inc"
@@ -270,8 +270,11 @@ int main(int argc, char** argv) {
   std::printf("],\"retained_rows\":%zu,\"retained_capacity\":%zu}", total, capacity);
   if (enforce) ok &= check(firstLargest < catalog.size()*sizeof(SettingInfo), "no full-catalog allocation while building category UI");
   const auto& readers = activity.readerSettings;
-  ok &= check(readers[0].action == SettingAction::TextSettings && readers[1].action == SettingAction::DownloadFonts,
-              "reader text and font actions preserve leading order");
+  // Get fonts lives in Connections (20/10/2026): Text settings leads the tab alone.
+  ok &= check(readers[0].action == SettingAction::TextSettings &&
+                  std::none_of(readers.begin(), readers.end(),
+                               [](const SettingInfo& row) { return row.action == SettingAction::DownloadFonts; }),
+              "reader tab leads with text settings and holds no fonts row");
   if (hasDictionaries) {
     // Every theme ends the reader tab with the status bar action, right after the dictionary.
     const auto dictionaryIndex = readers.size() - 2;

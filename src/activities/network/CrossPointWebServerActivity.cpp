@@ -27,6 +27,7 @@
 #include "UIFontTiers.h"
 #include "WifiSelectionActivity.h"
 #include "activities/network/CalibreConnectActivity.h"
+#include "activities/settings/FontDownloadActivity.h"
 #if !FREEINK_DEVICE_X3
 #include "activities/network/WebDavPullActivity.h"
 #endif
@@ -222,7 +223,11 @@ void CrossPointWebServerActivity::onEnter() {
   }
 #endif
 
-  // Launch network mode selection subactivity
+  chooseMode();
+}
+
+// The Connections list, opened on entry and again whenever a mode hands back without a session to show.
+void CrossPointWebServerActivity::chooseMode() {
   LOG_DBG("WEBACT", "Launching NetworkModeSelectionActivity...");
   startActivityForResult(std::make_unique<NetworkModeSelectionActivity>(renderer, mappedInput),
                          [this](const ActivityResult& result) {
@@ -307,6 +312,15 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
   }
 #endif
 
+  if (mode == NetworkMode::FONT_STORE) {
+    // The store runs over this screen (settings catalog and SD font caches already released on entry). Its Wi-Fi
+    // restarts the unit on the way out, into this list or the book it was opened from; backed out before Wi-Fi,
+    // it comes straight back here.
+    startActivityForResult(std::make_unique<FontDownloadActivity>(renderer, mappedInput, !returnBook.empty()),
+                           [this](const ActivityResult&) { chooseMode(); });
+    return;
+  }
+
 #if !FREEINK_DEVICE_X3
   if (mode == NetworkMode::WEB_DAV) {
     activityManager.replaceActivity(std::make_unique<WebDavPullActivity>(renderer, mappedInput));
@@ -318,19 +332,11 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
   isApMode = (mode == NetworkMode::CREATE_HOTSPOT);
 
   if (mode == NetworkMode::CONNECT_CALIBRE) {
-    startActivityForResult(
-        std::make_unique<CalibreConnectActivity>(renderer, mappedInput), [this](const ActivityResult& result) {
-          state = WebServerActivityState::MODE_SELECTION;
-
-          startActivityForResult(std::make_unique<NetworkModeSelectionActivity>(renderer, mappedInput),
-                                 [this](const ActivityResult& result) {
-                                   if (result.isCancelled) {
-                                     leave();
-                                   } else {
-                                     onNetworkModeSelected(std::get<NetworkModeResult>(result.data).mode);
-                                   }
-                                 });
-        });
+    startActivityForResult(std::make_unique<CalibreConnectActivity>(renderer, mappedInput),
+                           [this](const ActivityResult&) {
+                             state = WebServerActivityState::MODE_SELECTION;
+                             chooseMode();
+                           });
     return;
   }
 
@@ -374,15 +380,7 @@ void CrossPointWebServerActivity::onWifiSelectionComplete(const bool connected) 
   } else {
     // User cancelled - go back to mode selection
     state = WebServerActivityState::MODE_SELECTION;
-
-    startActivityForResult(std::make_unique<NetworkModeSelectionActivity>(renderer, mappedInput),
-                           [this](const ActivityResult& result) {
-                             if (result.isCancelled) {
-                               leave();
-                             } else {
-                               onNetworkModeSelected(std::get<NetworkModeResult>(result.data).mode);
-                             }
-                           });
+    chooseMode();
   }
 }
 
