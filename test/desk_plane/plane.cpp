@@ -23,6 +23,7 @@ struct HalMemory {
   }
 };
 namespace heapfloor {
+[[maybe_unused]] void failed(size_t, const char*) {}
 [[maybe_unused]] bool judge(size_t, const void*, const char*) { ++judged; return floorAllowed; }
 template <typename T> std::unique_ptr<T> array(size_t size, const char*) {
   return scratch ? std::unique_ptr<T>(new uint8_t[size]) : nullptr;

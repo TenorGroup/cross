@@ -27,6 +27,7 @@ mock='''
 static const char* deniedTag="";
 static int refuseJudgeAt=0, judgeCalls=0, takeCalls=0, deniedCalls=0;
 namespace testfloor {
+inline void failed(size_t,const char*) {}
 inline bool judge(size_t,const void*,const char*) {return ++judgeCalls != refuseJudgeAt;}
 inline void* take(size_t n,const char* tag) {
   ++takeCalls;

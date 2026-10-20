@@ -84,6 +84,7 @@ bool refused = false;
 EspClass ESP;
 // The heap floor door (built as on the device, ESP_PLATFORM): records each name, refuses one on demand.
 namespace heapfloor {
+void failed(size_t, const char*) {}
 bool judge(size_t bytes, const void*, const char* who) {
   doors.insert(who);
   if (refuseWho && std::strcmp(who, refuseWho) == 0) { refused = true; return false; }

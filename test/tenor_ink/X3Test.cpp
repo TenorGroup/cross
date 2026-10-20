@@ -57,6 +57,7 @@ int capture(JPEGDRAW* d) {
 }
 // The heap floor door on the device reads the internal heap after the block; here it reads the stub.
 namespace heapfloor {
+void failed(size_t, const char*) {}
 bool judge(size_t bytes, const void*, const char* who) {
   if (measuring) { doors.insert(who); if (bytes >= kBigBytes) bigJudged.insert(bytes); }
   if (measuring && refuseWho && std::strcmp(who, refuseWho) == 0) { refused = true; return false; }

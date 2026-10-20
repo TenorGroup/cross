@@ -13,6 +13,7 @@
 
 EspClass ESP;
 namespace heapfloor {
+void failed(size_t, const char*) {}
 bool judge(size_t, const void*, const char*) { return true; }
 void* take(size_t n, const char*) { return std::malloc(n); }
 }  // namespace heapfloor

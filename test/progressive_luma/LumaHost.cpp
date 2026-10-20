@@ -28,6 +28,7 @@ const char* name(const progluma::Result r) {
 }  // namespace
 
 namespace heapfloor {
+void failed(size_t, const char*) {}
 bool judge(size_t, const void*, const char* who) { return !refuseWho || std::strcmp(who, refuseWho) != 0; }
 void* take(size_t bytes, const char*) { return std::malloc(bytes); }
 }  // namespace heapfloor

@@ -6,6 +6,7 @@
 #undef ESP_PLATFORM
 namespace heapfloor {
 inline bool refuseRuby = false;
+inline void failed(size_t, const char*) {}
 inline bool judge(size_t bytes, const void*, const char* who) {
   if (refuseRuby && strncmp(who, "ruby-", 5) == 0) return false;
   const auto heap = HalMemory::getDefaultHeap();
