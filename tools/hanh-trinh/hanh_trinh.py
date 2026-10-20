@@ -46,8 +46,10 @@ def chang(may):
     return [
         ('home', ['HOME'], 4, 'Home', None),
         ('mo-sach', ['OPEN_BOOK ' + s], 9, 'EpubReader', 'vi-tri'),
-        ('lat-40', ['PRESS NEXT 80 40 350'], 24, None, 'tien'),
-        ('lui-40', ['PRESS PREV 80 40 350'], 24, None, 've-cho-cu'),
+        # Held 150 ms: an 80 ms synthetic press can fall between two polls while the unit is busy just after
+        # a boot (v1.0.69: 39 of 40 applied once on the X3 and once on the X4 Pro, every detected turn applied).
+        ('lat-40', ['PRESS NEXT 150 40 350'], 26, None, 'tien'),
+        ('lui-40', ['PRESS PREV 150 40 350'], 26, None, 've-cho-cu'),
         ('xam', ['PRESS NEXT 80 6 3000'], 21, None, 'xam'),
         ('ra-home', ['HOME'], 5, 'Home', None),
         ('dung-lai', ['CLEAR_BOOK_CACHE ' + s, 'OPEN_BOOK ' + s, 'wait:12', 'PRESS NEXT 80 15 1000'], 8, 'EpubReader', 'dung-lai'),
