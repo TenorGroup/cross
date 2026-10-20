@@ -285,6 +285,10 @@ add_test(NAME WebHtmlStripJs COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SO
 add_test(NAME WebHtmlStripTokens COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/web_html_strip/test_strip_tokens.py)
 # Needs node on the host (like the freetype and numpy tests need theirs).
 add_test(NAME WebFontFamilyNames COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/web_font_family/test_font_family.py)
+add_test(NAME WebFontWeightLayout COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/web_font_weights/test_layout.py)
+# Real Chrome against build_font_pack.py: skipped unless playwright-core is on NODE_PATH and Chrome is installed.
+add_test(NAME WebFontWeightParity COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/web_font_weights/test_parity.py)
+set_tests_properties(WebFontWeightParity PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 300)
 add_test(NAME UiTextRules COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/ui_text_rules/check.py)
 
 add_executable(sheet_radio_plan sheet_radio_plan/SheetRadioPlanTest.cpp)

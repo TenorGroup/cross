@@ -301,7 +301,8 @@ curl -X POST \
 ```
 
 The handler validates the family name, `.cpfont` filename, and `CPFONT` magic
-bytes before accepting the file.
+bytes before accepting the file. An optional `weight` field (1 to 9, sent before
+`file`) stores a `.cpfont` in the family's `weight-N/` folder, as a store pack does.
 
 Successful response:
 

@@ -167,6 +167,7 @@
         <button type="submit" class="btn btn-primary" id="submitBtn" data-i18n="fonts.submit">Gửi font</button>
       </form>
       <p id="ttfHint" class="family-meta" style="margin: 12px 0 0;"></p>
+      <p id="weightPick" class="family-meta" style="margin: 8px 0 0;" hidden><span data-i18n="fonts.weightsLabel">Độ đậm cần tạo:</span></p>
       <p id="pickedInfo" class="family-meta" style="margin: 8px 0 0;"></p>
       <div id="uploadBar"><i></i></div>
       <div id="status"></div>
@@ -388,7 +389,20 @@
     // Only PSRAM builds render .ttf/.otf; elsewhere the page turns them into .cpfont
     // (/js/font-builder.js) before sending.
     function applyVectorSupport() {
+      document.getElementById('weightPick').hidden = vectorSupported;
       renderHint();
+    }
+
+    // Reader weight levels the conversion builds, as the device names them. 0 is the base file, always built.
+    for (let level = -3; level <= 5; level++) {
+      const label = document.createElement('label');
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.value = level;
+      box.checked = level >= 0 && level <= 3;
+      box.disabled = level === 0;
+      label.append(' ', box, level > 0 ? '+' + level : String(level));
+      document.getElementById('weightPick').appendChild(label);
     }
 
     function renderHint() {
@@ -408,14 +422,15 @@
       });
     }
 
-    // TTF/OTF on a board without vector fonts: build the four .cpfont sizes here and
-    // send them as one family, the way a picked .cpfont folder goes.
+    // TTF/OTF on a board without vector fonts: build the .cpfont sizes and the picked weights
+    // here and send them as one family, weights into their weight-N folders.
     async function convertAndSend(vec) {
       setStatus('', () => TenorI18n.t('fonts.converting'));
+      const levels = [...document.querySelectorAll('#weightPick input:checked')].map(box => Number(box.value));
       let built;
       try {
         await loadFontBuilder();
-        built = await TenorFontBuilder.build(vec, fraction => setBar(fraction));
+        built = await TenorFontBuilder.build(vec, fraction => setBar(fraction), levels);
       } catch (e) {
         const key = 'fonts.err.convert.' + (e && e.message);
         setStatus('status-err', () => TenorI18n.t(key) === key ? TenorI18n.t('fonts.unknownError') : TenorI18n.t(key));
@@ -427,12 +442,19 @@
         setStatus('status-err', () => TenorI18n.t('fonts.err.familyExists', { family: family }));
         return;
       }
+      const bytes = built.files.reduce((sum, f) => sum + f.blob.size, 0);
+      if (!confirm(TenorI18n.t('fonts.sendConfirm', { count: built.files.length, size: formatSize(bytes) }))) {
+        statusState = null;
+        renderStatus();
+        return;
+      }
       for (let i = 0; i < built.files.length; i++) {
         const f = built.files[i];
-        setStatus('', () => TenorI18n.t('fonts.uploading', { index: i + 1, total: built.files.length, file: f.name }));
-        const data = await sendFont(family, f.blob, f.name, setBar);
+        const path = (f.weight ? 'weight-' + f.weight + '/' : '') + f.name;
+        setStatus('', () => TenorI18n.t('fonts.uploading', { index: i + 1, total: built.files.length, file: path }));
+        const data = await sendFont(family, f.blob, f.name, setBar, f.weight);
         if (!data.ok) {
-          setStatus('status-err', () => partialNote(TenorI18n.t('fonts.uploadFailedFile', { file: f.name, message: failureText(data) }),
+          setStatus('status-err', () => partialNote(TenorI18n.t('fonts.uploadFailedFile', { file: path, message: failureText(data) }),
             family, known === false, i, built.files.length));
           await loadFonts();
           return;
@@ -455,7 +477,8 @@
       renderPicked();
     }));
 
-    function sendFont(family, file, name, onProgress) {
+    // weight: the weight-N folder of a converted variant (sent before the file, the device reads it first).
+    function sendFont(family, file, name, onProgress, weight) {
       return new Promise(resolve => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', TenorI18n.apiUrl('/api/fonts/upload'));
@@ -468,6 +491,7 @@
         xhr.onerror = () => resolve({ networkError: true });
         const formData = new FormData();
         formData.append('family', family);
+        if (weight) formData.append('weight', weight);
         formData.append('file', file, name);
         xhr.send(formData);
       });

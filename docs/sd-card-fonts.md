@@ -26,9 +26,11 @@ the manual SD card copy method below.
 3. Navigate to the **Fonts** tab
 4. Upload `.cpfont` files, a `.cpfontpack`, or `.ttf`/`.otf` files. On a device
    without external RAM (X3, X4) the page converts a TTF or OTF to `.cpfont` in the
-   browser (12, 14, 16 and 18 pt, one file per style of the same font) before sending
-   it. Letters the font lacks are drawn by the browser from the font's own marks or
-   from a fallback font, and the page says how many.
+   browser (12 to 24 pt in steps of 2, one file per style of the same font) before sending
+   it, with the reader weight levels ticked on the page (0, +1, +2 and +3 unless changed)
+   in `weight-N/` folders like a store pack; it shows the total size first. Letters the
+   font lacks are drawn by the browser from the font's own marks or from a fallback font,
+   and the page says how many.
 
 ### Option 3: Manual SD card copy
 

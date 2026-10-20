@@ -1,14 +1,21 @@
 // Converts TTF/OTF files to .cpfont v4 in the browser for boards that cannot
 // render vector fonts. Mirrors lib/EpdFont/scripts/fontconvert_sdcard.py:
-// 150 DPI, the "builtin" intervals, 2-bit glyphs from 4-bit coverage, hmtx
-// advances in 12.4 fixed point. No kerning or ligatures.
+// 150 DPI, the "builtin" intervals, 2-bit glyphs from area coverage (a // 64),
+// FreeType's advances in 12.4 fixed point. No kerning or ligatures. Reader
+// weights follow the store packs (scripts/build_font_pack.py): every edge moves
+// by half the level's outline strength, the glyph stays centred and the layout
+// stays the base file's. test/web_font_weights holds the parity check.
 (function (root) {
   'use strict';
-  const SIZES = [12, 14, 16, 18];
+  // Even sizes like the store packs; an SD family offers the reader exactly the sizes it has.
+  const SIZES = [12, 14, 16, 18, 20, 22, 24];
+  // readerInk::OUTLINE_STRENGTHS (src/ReaderInkWeight.h) for the levels -3..+5, in 1/64 px.
+  const STRENGTHS = [-48, -32, -18, 0, 25, 37, 63, 81, 96];
+  const DEFAULT_LEVELS = [0, 1, 2, 3];
   const CATALOG = ['atkinsonhyperlegiblenext', 'bevietnampro', 'bokerlam', 'geist', 'literata', 'livvic', 'notosans', 'notoserif', 'shantellsans'];
-  // Browser text coverage is darker than FreeType's; this curve matches the ink of the Python build.
-  const GAMMA = 1.5;
-  const LUT = new Uint8Array(256).map((_, a) => Math.round(255 * Math.pow(a / 255, GAMMA)) >> 4);
+  // Glyphs are drawn 4x and averaged down: the area coverage FreeType computes, free of the browser's text
+  // gamma, and a stroke a quarter pixel wide still lands on whole pixels. The averaging loop assumes 4.
+  const SCALE = 4;
   const BUILTIN = [[0x0000, 0x007F], [0x0080, 0x00FF], [0x0100, 0x017F], [0x01A0, 0x01A1], [0x01AF, 0x01B0],
     [0x01C4, 0x021F], [0x0300, 0x036F], [0x0400, 0x04FF], [0x1EA0, 0x1EF9], [0x2000, 0x206F], [0x20A0, 0x20CF],
     [0x2070, 0x209F], [0x2190, 0x21FF], [0x2200, 0x22FF], [0xFB00, 0xFB06], [0xFFFD, 0xFFFD]];
@@ -92,6 +99,22 @@
     return found[16] || found[1] || '';
   }
 
+  // The folder a level's file lives in (readerInk::physical): weight-2..6 for +1..+5, weight-7..9 for -1..-3.
+  function weightDir(level) {
+    return level > 0 ? level + 1 : level < 0 ? 6 - level : 0;
+  }
+
+  // A stroke |s|/64 px wide moves every edge by |s|/128 px, as FT_Outline_EmboldenXY(s) then
+  // FT_Outline_Translate(-s/2) do; erasing with it thins the glyph by as much.
+  function draw(ctx, ch, x, y, strength) {
+    ctx.fillText(ch, x, y);
+    if (!strength) return;
+    ctx.lineWidth = Math.abs(strength) * SCALE / 64;
+    if (strength < 0) ctx.globalCompositeOperation = 'destination-out';
+    ctx.strokeText(ch, x, y);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
   function styleOf(font) {
     return (font.weight >= 600 ? 1 : 0) + (font.italic ? 2 : 0);
   }
@@ -106,10 +129,21 @@
     };
   }
 
-  function rasterStyle(font, family, px, ctx) {
-    ctx.font = px + 'px "' + family + '"';
-    const intervals = [], glyphs = [];
-    let bitmapSize = 0, maxInkTop = 0;
+  // FreeType's linearHoriAdvance at 150 DPI in 12.4, as fontconvert_sdcard.py stores it: the 26.6 ppem is
+  // rounded before the 16.16 scale is taken (FT_Request_Metrics), so px * units / upem is 1/16 off at times.
+  function advance(font, pt, units) {
+    const scale = Math.floor((Math.floor((pt * 64 * 150 + 36) / 72) * 65536 + (font.upem >> 1)) / font.upem);
+    return Math.floor((Math.floor((units * scale + 32) / 64) + 2048) / 4096);
+  }
+
+  // One style at one size for every level in `levels` (level 0 first). Each level shares the base file's
+  // intervals, advances and line metrics, maxInkTop included, so the reader lays a page out the same at
+  // every weight (build_font_pack.py assert_same_layout).
+  function rasterStyle(font, family, pt, ctx, levels) {
+    const px = pt * 150 / 72, S = SCALE;
+    ctx.font = px * S + 'px "' + family + '"';
+    const intervals = [], out = levels.map(() => ({ glyphs: [], bitmapSize: 0 }));
+    let maxInkTop = 0;
     // The font's own glyphs in the reader's range, plus every Vietnamese letter and U+FFFD even when the
     // font lacks them: the browser then composes the letter from the font's marks or takes a system font,
     // so no letter is dropped on the reader.
@@ -122,42 +156,51 @@
     }
     // Each range costs the reader a few bytes of RAM per style; the fonts measured need about 75.
     if (intervals.length > 256) throw new Error('tooManyRanges');
-    const canvas = ctx.canvas, ox = Math.ceil(px), oy = Math.ceil(px * 2);
+    // Pen and crop boxes sit on whole output pixels; 3 px of margin holds the +5 stroke (0.75 px a side).
+    const canvas = ctx.canvas, ox = Math.ceil(px) * S, oy = Math.ceil(px * 2) * S, cols = canvas.width / S, rows = canvas.height / S;
     for (const [a, b] of intervals) {
       for (let c = a; c <= b; c++) {
         const gid = font.cmap.get(c);
         // The soft hyphen is invisible in a browser but the reader draws it at a break.
         const ch = c === 0xAD ? '-' : String.fromCodePoint(c);
         const m = ctx.measureText(ch);
-        const adv = gid === undefined ? m.width : font.advances[Math.min(gid, font.advances.length - 1)] * px / font.upem;
-        const x0 = Math.max(0, Math.floor(ox - m.actualBoundingBoxLeft) - 2), y0 = Math.max(0, Math.floor(oy - m.actualBoundingBoxAscent) - 2);
-        const x1 = Math.min(canvas.width, Math.ceil(ox + m.actualBoundingBoxRight) + 2), y1 = Math.min(canvas.height, Math.ceil(oy + m.actualBoundingBoxDescent) + 2);
-        let w = 0, h = 0, left = 0, top = 0, packed = new Uint8Array(0);
-        if (x1 > x0 && y1 > y0 && /\S/.test(ch)) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.fillText(ch, ox, oy);
-          const img = ctx.getImageData(x0, y0, x1 - x0, y1 - y0), W = x1 - x0, H = y1 - y0, d = img.data;
-          let minX = W, minY = H, maxX = -1, maxY = -1;
-          for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (LUT[d[(y * W + x) * 4 + 3]] >= 4) {
-            if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
-          }
-          if (maxX >= 0) {
-            w = maxX - minX + 1; h = maxY - minY + 1;
-            if (w > 255 || h > 255) throw new Error('tooLarge');
-            left = x0 + minX - ox; top = oy - (y0 + minY);
-            packed = new Uint8Array(Math.ceil(w * h / 4));
-            for (let i = 0; i < w * h; i++) {
-              const g = LUT[d[((minY + Math.floor(i / w)) * W + minX + i % w) * 4 + 3]];
-              packed[i >> 2] |= (g >= 12 ? 3 : g >= 8 ? 2 : g >= 4 ? 1 : 0) << (6 - (i & 3) * 2);
+        const adv = gid === undefined ? Math.round(m.width / S * 16) : advance(font, pt, font.advances[Math.min(gid, font.advances.length - 1)]);
+        const x0 = Math.max(0, Math.floor((ox - m.actualBoundingBoxLeft) / S) - 3), y0 = Math.max(0, Math.floor((oy - m.actualBoundingBoxAscent) / S) - 3);
+        const x1 = Math.min(cols, Math.ceil((ox + m.actualBoundingBoxRight) / S) + 3), y1 = Math.min(rows, Math.ceil((oy + m.actualBoundingBoxDescent) / S) + 3);
+        const W = x1 - x0, H = y1 - y0, WS = W * S;
+        for (let k = 0; k < levels.length; k++) {
+          let w = 0, h = 0, left = 0, top = 0, packed = new Uint8Array(0);
+          if (W > 0 && H > 0 && /\S/.test(ch)) {
+            ctx.clearRect(x0 * S, y0 * S, WS, H * S);
+            draw(ctx, ch, ox, oy, STRENGTHS[levels[k] + 3]);
+            // Alpha is the top byte of each little-endian RGBA word; four words make one output pixel's row.
+            const d = new Uint32Array(ctx.getImageData(x0 * S, y0 * S, WS, H * S).data.buffer), sum = new Uint16Array(W * H);
+            for (let y = 0, i = 0; y < H * S; y++) {
+              const row = (y >> 2) * W;
+              for (let x = 0; x < W; x++, i += 4) sum[row + x] += (d[i] >>> 24) + (d[i + 1] >>> 24) + (d[i + 2] >>> 24) + (d[i + 3] >>> 24);
             }
-            if (top > maxInkTop) maxInkTop = top;
+            // FreeType's 0..255 coverage over 64: the 16 samples of a pixel add up to 16 x 255.
+            for (let i = 0; i < sum.length; i++) sum[i] = Math.min(3, sum[i] >> 10);
+            let minX = W, minY = H, maxX = -1, maxY = -1;
+            for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (sum[y * W + x]) {
+              if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
+            }
+            if (maxX >= 0) {
+              w = maxX - minX + 1; h = maxY - minY + 1;
+              if (w > 255 || h > 255) throw new Error('tooLarge');
+              left = x0 + minX - ox / S; top = oy / S - (y0 + minY);
+              packed = new Uint8Array(Math.ceil(w * h / 4));
+              for (let i = 0; i < w * h; i++) packed[i >> 2] |= sum[(minY + Math.floor(i / w)) * W + minX + i % w] << (6 - (i & 3) * 2);
+              if (k === 0 && top > maxInkTop) maxInkTop = top;
+            }
           }
+          out[k].glyphs.push({ w, h, adv, left, top, packed, offset: out[k].bitmapSize });
+          out[k].bitmapSize += packed.length;
         }
-        glyphs.push({ w, h, adv: Math.round(adv * 16), left, top, packed, offset: bitmapSize });
-        bitmapSize += packed.length;
       }
     }
-    return Object.assign({ intervals, glyphs, bitmapSize, maxInkTop }, lineMetrics(font, px));
+    const metrics = Object.assign({ intervals, maxInkTop }, lineMetrics(font, px));
+    return out.map(o => Object.assign(o, metrics));
   }
 
   function writeCpfont(styles) {
@@ -186,8 +229,11 @@
     return out;
   }
 
-  // files: File[] (1 to 4 styles of one family). Returns {family, files: [{name, blob}], missing}.
-  async function build(files, onProgress) {
+  // files: File[] (1 to 4 styles of one family); levels: reader levels -3..+5 to build, the base 0 always.
+  // Returns {family, files: [{name, weight, blob}], missing}: weight is the file's weight-N folder, 0 for
+  // the family folder. Base files come first, so a send cut short still leaves whole sizes.
+  async function build(files, onProgress, levels) {
+    levels = [0, ...new Set((levels || DEFAULT_LEVELS).filter(l => l !== 0 && STRENGTHS[l + 3] !== undefined))];
     const fonts = [];
     for (const f of files) {
       const buf = await f.arrayBuffer();
@@ -209,7 +255,7 @@
     if (CATALOG.includes(family.toLowerCase())) family += '-2';  // FAT names ignore case
     const missing = Math.max(...fonts.map(f => [...VIET_ALL].filter(c => !f.cmap.has(c)).length));
     const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = Math.ceil(SIZES[SIZES.length - 1] * 150 / 72 * 4);
+    canvas.width = canvas.height = Math.ceil(SIZES[SIZES.length - 1] * 150 / 72 * 4) * SCALE;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = '#000';
@@ -218,17 +264,17 @@
     const probe = ctx.getImageData(0, 0, 16, 16).data;
     for (let i = 0; i < 256; i++) if (probe[i * 4 + 3] !== ((i & 15) < 8 && i < 128 ? 255 : 0)) throw new Error('noisyCanvas');
     ctx.clearRect(0, 0, 16, 16);
-    const out = [];
+    const out = levels.map(() => []);
     for (let i = 0; i < SIZES.length; i++) {
-      const styles = {};
-      for (const font of fonts) styles[font.style] = rasterStyle(font, font.face, SIZES[i] * 150 / 72, ctx);
-      out.push({ name: family + '_' + SIZES[i] + '.cpfont', blob: new Blob([writeCpfont(styles)]) });
+      const styles = levels.map(() => ({}));
+      for (const font of fonts) rasterStyle(font, font.face, SIZES[i], ctx, levels).forEach((s, k) => { styles[k][font.style] = s; });
+      levels.forEach((level, k) => out[k].push({ name: family + '_' + SIZES[i] + '.cpfont', weight: weightDir(level), blob: new Blob([writeCpfont(styles[k])]) }));
       if (onProgress) onProgress((i + 1) / SIZES.length);
       await new Promise(r => setTimeout(r, 0));
     }
     fonts.forEach(f => document.fonts.forEach(face => { if (face.family === f.face) document.fonts.delete(face); }));
-    return { family, files: out, missing };
+    return { family, files: out.flat(), missing };
   }
 
-  root.TenorFontBuilder = { build, parse, writeCpfont, SIZES };
+  root.TenorFontBuilder = { build, parse, writeCpfont, rasterStyle, weightDir, SIZES, STRENGTHS, DEFAULT_LEVELS };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -2363,6 +2363,11 @@ void CrossPointWebServer::handleFontUploadData() {
 
       String filename = upload.filename;
       filename.replace(' ', '_');
+      // A weight variant the fonts page converted comes with weight=N and lands in weight-N/, the folder a
+      // store pack gives it; isValidCpfontRelativePath below takes only weight-1..9.
+      const String weight = server->arg("weight");
+      if (!weight.isEmpty() && filename.endsWith(".cpfont"))
+        filename = "weight-" + weight + "/" + filename;
       // Validate filename: rejects path traversal (../, /, \) and enforces
       // a .cpfont basename of alphanumeric + hyphen + underscore. Without
       // this an attacker could supply "../../.crosspoint/settings.json" as
@@ -2381,7 +2386,7 @@ void CrossPointWebServer::handleFontUploadData() {
           fontUpload.code = "name";
           break;
         }
-      } else if (!fontUpload.pack && !FontInstaller::isValidCpfontFilename(filename.c_str())) {
+      } else if (!fontUpload.pack && !FontInstaller::isValidCpfontRelativePath(filename.c_str())) {
         LOG_ERR("WEB", "Invalid font filename: %s", filename.c_str());
         break;
       }
@@ -2406,7 +2411,10 @@ void CrossPointWebServer::handleFontUploadData() {
 
       // Create a temporary FontInstaller for directory creation
       FontInstaller installer(sdFontSystem.registry());
-      if (!(fontUpload.pack ? (Storage.exists("/fonts") || Storage.mkdir("/fonts")) : installer.ensureFamilyDir(family.c_str()))) {
+      const bool dirReady = fontUpload.pack     ? (Storage.exists("/fonts") || Storage.mkdir("/fonts"))
+                            : fontUpload.vector ? installer.ensureFamilyDir(family.c_str())
+                                                : installer.ensureFontDir(family.c_str(), filename.c_str());
+      if (!dirReady) {
         LOG_ERR("WEB", "Failed to create font family dir");
         fontUpload.code = "write";
         break;
