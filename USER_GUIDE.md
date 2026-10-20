@@ -259,9 +259,10 @@ The Settings screen allows you to configure the device's behavior. There are a f
 
 - **Reader Font Family**: Choose the font used for reading:
   
-  - "Noto Serif" (default) - Google's serif font
-  - "Noto Sans" - Google's sans-serif font
-  - Installed SD card families
+  - "Noto Sans" - Google's sans-serif font, the one font built into the firmware
+  - Installed SD card families. Bokerlam is the default when it is on the card. Noto Serif is a card font since
+    v1.0.69: get it from the font store. A device that read in the built-in Noto Serif before v1.0.69 moves to the
+    card's NotoSerif when it is installed, and otherwise to Noto Sans with a one-time notice.
 
 - **Reader Font Size**: Choose a point size. Built-in and direct TTF/OTF/TTC fonts offer 12, 14, 16, and 18 pt. A `.cpfont` family offers the sizes installed for that family.
 
