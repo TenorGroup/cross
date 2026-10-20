@@ -1092,15 +1092,18 @@ void UiListActivity::restoreNavigation(const MenuNavigationState& state) {
 
 void UiListActivity::reserveFixedMenuContent(UiScreen& screen) {
   if (tenorchrome::x3ScreenLayoutEnabled() && ownsX3Chrome() && !shell::uglyParts()) return;
-  if (shell::uglyParts() && tenorchrome::x3ScreenLayoutEnabled()) {
+  if (tenorchrome::x3ScreenLayoutEnabled() && tabBandDrawn && !shell::uglyParts()) return;
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    // The X3 layout keeps its bar at the foot and nothing over the body: a list keeps to the body, its first row
+    // under the status strip or at the top of the glass, never under the empty band of the old top tabs
+    // (contentTop(), y 129 at the small size). Only shrinks: content a screen put above its list keeps its place.
     const auto body = tenorchrome::x3ScreenLayout(renderer).bodyRect;
     if (screen.body().y < body.y) screen.takeTop(static_cast<int16_t>(body.y - screen.body().y));
     if (screen.body().bottom() > body.bottom())
       screen.takeBottom(static_cast<int16_t>(screen.body().bottom() - body.bottom()));
     return;
   }
-  if (tabBandDrawn && tenorchrome::x3ScreenLayoutEnabled()) return;
-  const int top = tabBandDrawn ? tenorchrome::contentTopUnderTabs() : tenorchrome::contentTop();
+  const int top = tenorchrome::contentTop();
   if (tenorchrome::enabled() && screen.body().y < top) screen.takeTop(static_cast<int16_t>(top - screen.body().y));
   // Touch: the rows stop above the round back button at the foot, where a screen has one.
   if (!tabBandDrawn && tenorchrome::wantsFootBack(name.c_str())) {

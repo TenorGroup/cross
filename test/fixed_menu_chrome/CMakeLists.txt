@@ -45,3 +45,6 @@ foreach(shell touch ugly)
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run.py"
             --shell "${shell}" --work "${CMAKE_CURRENT_BINARY_DIR}/${shell}")
 endforeach()
+add_test(NAME FixedMenuChrome.ListBody
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/list_body.py"
+          --work "${CMAKE_CURRENT_BINARY_DIR}/list-body")
