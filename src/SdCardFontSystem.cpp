@@ -265,6 +265,10 @@ bool SdCardFontSystem::loadSelected(GfxRenderer& renderer, const SdCardFontFamil
                           ? FontPackInstaller::lineFactor(root, family.name.c_str())
                           : 0.0f;
     SETTINGS.sdPackLineFactor = packLineFactor_;
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("FONT", "PACK_LINE_FACTOR family=%s factor=%.2f compression=%.2f", family.name.c_str(), packLineFactor_,
+            SETTINGS.getReaderLineCompression());
+#endif
   }
   snapFontPointSizeTo(manager_.currentPointSize());
   sdfontmemo::save(family, bootMemo);
