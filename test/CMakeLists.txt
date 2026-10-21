@@ -170,6 +170,7 @@ add_subdirectory(font_installer)
 add_subdirectory(font_manifest)
 add_subdirectory(font_download_heap)
 add_subdirectory(font_download_progress)
+add_subdirectory(font_store_names)
 add_subdirectory(font_download_pack)
 
 # Library-local host suites live next to the code they test; the binary directory

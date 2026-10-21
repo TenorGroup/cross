@@ -630,7 +630,10 @@ else:
                 if 'bool inStoreCatalog(' in state_source:
                     # file-local display-name helper the font screens call ("BeVietnamPro" -> "Be Vietnam Pro")
                     fixture += ('\n#include <cctype>\n#include <cstring>\n#include "FontStoreCatalog.h"\nnamespace {\n' +
-                                state_source[state_source.index('bool inStoreCatalog('):state_source.index('}  // namespace')] +
+                                state_source[state_source.index('bool inStoreCatalog('):
+                                             state_source.index('// The store font\'s name in its own letters')] +
+                                state_source[state_source.index('std::string displayName('):
+                                             state_source.index('}  // namespace')] +
                                 '}\n')
                 for method in functions:
                     fixture += '\n' + function(state_source, f'{name}::{method}(')

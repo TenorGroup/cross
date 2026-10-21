@@ -11,7 +11,8 @@ source = (root / 'src/activities/settings/FontDownloadActivity.cpp').read_text()
 method = source.split('std::string FontDownloadActivity::x3InfoText() const {', 1)[1]
 method = 'std::string FontDownloadActivity::x3InfoText() const {' + method.split('\nvoid FontDownloadActivity::renderX3State()', 1)[0]
 # The production display-name helper (store folder name -> "Be Vietnam Pro"), taken as text, not re-typed.
-helper = source[source.index('bool inStoreCatalog('):source.index('}  // namespace')]
+helper = (source[source.index('bool inStoreCatalog('):source.index('// The store font\'s name in its own letters')] +
+          source[source.index('std::string displayName('):source.index('}  // namespace')])
 unit = r'''
 #include <cassert>
 #include <cctype>

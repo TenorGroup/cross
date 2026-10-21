@@ -24,6 +24,7 @@
 #include "SdCardFontSystem.h"
 #include "FontPackInstaller.h"
 #include "FontStoreCatalog.h"
+#include "FontStoreNames.h"
 #include "ReaderInkWeight.h"
 #include "CrossPointSettings.h"
 #include "SettingsList.h"
@@ -31,6 +32,7 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/settings/FontDownloadTransfer.h"
 #include "activities/settings/FontDownloadHeap.h"
+#include "components/UIScale.h"
 #include "components/UITheme.h"
 #include "components/SettledListRender.h"
 #include "fontIds.h"
@@ -49,6 +51,15 @@ bool inStoreCatalog(const char* name) {
   for (size_t i = 0; i < fontstore::PACK_COUNT; ++i)
     if (std::strcmp(name, fontstore::PACKS[i].name) == 0) return true;
   return false;
+}
+// The store font's name in its own letters at the UI text size; null for a font of the reader's own and in the ugly
+// shell, whose list keeps the words of the rows.
+const fui::LabelImage* nameImage(const char* name) {
+  if (shell::uglyParts()) return nullptr;
+  for (size_t i = 0; i < fontstore::PACK_COUNT; ++i)
+    if (std::strcmp(name, fontstore::PACKS[i].name) == 0)
+      return &fontstore::NAME_IMAGES[normalizedUiTextSize(SETTINGS.uiTextSize)][i];
+  return nullptr;
 }
 std::string displayName(const char* name) {
   if (!inStoreCatalog(name)) return name;
@@ -1310,6 +1321,7 @@ void FontDownloadActivity::buildScreen(UiScreen& screen) {
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
   props.valueInset = 8;               // air between the status and the row edge
+  props.labelAscent = renderer.getFontAscenderSize(uiScaleSpec().bodyFontId);  // name pictures stand on the baseline
   syncListViewport(screen, props);
   screen.list(props);
 }
@@ -1533,8 +1545,12 @@ void FontDownloadActivity::rebuildFamilyRowItems() {
       item.label = rowLabels_[i].c_str();
     } else {
       const auto& family = families_[familyIndexFromList(i)];
-      rowNames_[i] = displayName(str(family.name));
-      item.label = rowNames_[i].c_str();
+      // Only a font not on the card: a folder of the reader's own with a store name reads "Installed" in words.
+      if (!family.installed) item.labelImage = nameImage(str(family.name));
+      if (!item.labelImage) {
+        rowNames_[i] = displayName(str(family.name));
+        item.label = rowNames_[i].c_str();
+      }
       if (family.description != 0) {
         item.subtitle = str(family.description);
       } else if (!family.installed || family.hasUpdate) {
