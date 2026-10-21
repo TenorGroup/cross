@@ -110,6 +110,14 @@ int main() {{
     require("focusedTool = kTextTool;" in text_zone and "openOverlay(Overlay::Text);" in text_zone,
             "The Text gesture must keep the overlay path")
 
+    # The text settings row of the toolbar menu (Favorites, More) opens the Text panel the first time too, not the
+    # stand-alone settings screen that only handed back to the panel when it closed (v1.0.70).
+    more = function(reader_source, "void EpubReaderActivity::activateMoreRow(")
+    case = more[more.index("case MA::TEXT_SETTINGS:"):]
+    case = case[:case.index("default:")]
+    require("openOverlay(Overlay::Text)" in case and "return;" in case,
+            "The text settings row of the toolbar menu must open the Text panel")
+
     print("text settings touch geometry and reader flow: PASS")
 
 
