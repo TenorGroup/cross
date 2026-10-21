@@ -64,7 +64,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_WAKE_NOTICE:0:wakeNotice",
       "STR_SLEEP_BW_REFRESH:0:sleepBwFold",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
@@ -150,7 +150,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_WAKE_NOTICE:0:wakeNotice",
       "STR_SLEEP_BW_REFRESH:0:sleepBwFold",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
@@ -236,7 +236,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_WAKE_NOTICE:0:wakeNotice",
       "STR_SLEEP_BW_REFRESH:0:sleepBwFold",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
@@ -323,7 +323,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_WAKE_NOTICE:0:wakeNotice",
       "STR_SLEEP_BW_REFRESH:0:sleepBwFold",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
@@ -408,7 +408,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_WAKE_NOTICE:0:wakeNotice",
       "STR_SLEEP_BW_REFRESH:0:sleepBwFold",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
@@ -494,7 +494,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_WAKE_NOTICE:0:wakeNotice",
       "STR_SLEEP_BW_REFRESH:0:sleepBwFold",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
@@ -580,7 +580,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_WAKE_NOTICE:0:wakeNotice",
       "STR_SLEEP_BW_REFRESH:0:sleepBwFold",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
@@ -667,7 +667,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_WAKE_NOTICE:0:wakeNotice",
       "STR_SLEEP_BW_REFRESH:0:sleepBwFold",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
@@ -751,7 +751,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -821,7 +821,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -891,7 +891,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -962,7 +962,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -1031,7 +1031,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -1101,7 +1101,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -1171,7 +1171,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -1242,7 +1242,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -1311,7 +1311,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
@@ -1382,7 +1382,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
@@ -1453,7 +1453,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
@@ -1525,7 +1525,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
@@ -1595,7 +1595,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
@@ -1666,7 +1666,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
@@ -1737,7 +1737,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
@@ -1809,7 +1809,7 @@
       "STR_SLEEP_COVER_MODE:0:sleepScreenCoverMode",
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
-      "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],

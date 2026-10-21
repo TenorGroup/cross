@@ -62,10 +62,19 @@
 namespace fui = freeink::ui;
 
 SettingsActivity::SettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const int theBanDau,
-                                   const bool fromHomeGroup)
+                                   const bool fromHomeGroup, std::string startKey)
     : UiTabListActivity("Settings", renderer, mappedInput, /*wantsTouchLongPress=*/tenorchrome::kTouchShell),
       fromHomeGroup(fromHomeGroup),
-      theBanDau(theBanDau >= 0 && theBanDau < settingstabs::TAB_COUNT ? theBanDau : 0) {}
+      theBanDau(theBanDau >= 0 && theBanDau < settingstabs::TAB_COUNT ? theBanDau : 0),
+      startKey(std::move(startKey)) {}
+
+bool SettingsActivity::wakePlace(WakePlace& place) const {
+  place.kind = WakeKind::SettingsTab;
+  place.tab = static_cast<int16_t>(selectedCategoryIndex);
+  const int row = ringPos() - 1;
+  if (row >= 0 && row < settingsCount && (*currentSettings)[row].key) place.name = (*currentSettings)[row].key;
+  return true;
+}
 
 std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe(const settingstabs::Tab tab) {
   switch (tab) {
@@ -191,7 +200,8 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
       displaySettings.insert(afterLabels == displaySettings.end() ? afterLabels : afterLabels + 1,
                              buildTenorClockPlacementSetting(setting));
     } else if (listedAsRow(setting)) {
-      danhSachCuaThe(static_cast<settingstabs::Tab>(tab)).push_back(setting);
+      danhSachCuaThe(static_cast<settingstabs::Tab>(tab))
+          .push_back(setting.valuePtr == &CrossPointSettings::wakeTarget ? buildWakeTargetSetting(setting) : setting);
     }
   }
   // This descriptor and its closures own the copied dictionary names across
@@ -259,6 +269,11 @@ void SettingsActivity::onEnter() {
 
   if (shell::isUgly()) ugly::ensureFonts(renderer);
   rebuildSettingsLists(true);
+  // A wake reopens the row it left, found by its key; gone (a row that comes and goes with a setting): the first.
+  const auto wanted = std::find_if(currentSettings->begin(), currentSettings->end(),
+                                   [this](const SettingInfo& s) { return s.key && startKey == s.key; });
+  if (!startKey.empty() && wanted != currentSettings->end())
+    activeNav().selected = static_cast<int>(wanted - currentSettings->begin()) + 1;
   dapXuongNhom();
 }
 

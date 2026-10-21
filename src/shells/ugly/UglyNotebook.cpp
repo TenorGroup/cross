@@ -477,7 +477,8 @@ void Notebook::turnRows(const int direction) {
 void Notebook::openGroup(const int id) {
   std::vector<SettingInfo> list;
   for (const auto& s : getBaseSettingsList())
-    if (deviceSettingsTab(s) == id && SettingsActivity::listedAsRow(s)) list.push_back(s);
+    if (deviceSettingsTab(s) == id && SettingsActivity::listedAsRow(s))
+      list.push_back(s.valuePtr == &CrossPointSettings::wakeTarget ? buildWakeTargetSetting(s) : s);
   Rows fresh;
   for (const auto& s : list) {
     fresh.labels.emplace_back(I18N.get(s.nameId));

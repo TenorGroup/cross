@@ -172,11 +172,11 @@ int main(int argc, char** argv) {
   for(const auto& [key,n]:occurrences) ok &= check(n==1,"each visible row has exactly one tab");
   const char* moved[]={"sleepScreen","sleepScreenCoverMode","sleepScreenCoverFilter","quickResumeSleepScreen","sleepTimeoutMinutes"};
   for(const char* key:moved) ok &= check(routes[std::string("settings/")+key]==7,"moved sleep row resolves to tab ID7");
-  ok &= check(ugly ? routes["settings/uglyStartScreen"]==7 && !routes.count("settings/wakeIntoBook")
-                  : routes["settings/wakeIntoBook"]==7 && !routes.count("settings/uglyStartScreen"),
-              "the shell has exactly one start row in Sleep");
-  ok &= check(activity.focusFavorite(ugly ? "settings/wakeIntoBook" : "settings/uglyStartScreen")<0,
-              "a hidden start row pin stays hidden");
+  ok &= check(routes["settings/wakeTarget"]==7 && !routes.count("settings/wakeIntoBook") &&
+                  !routes.count("settings/uglyStartScreen"),
+              "both shells have the one On wake row in Sleep");
+  ok &= check(activity.focusFavorite("settings/wakeIntoBook")<0 && activity.focusFavorite("settings/uglyStartScreen")<0,
+              "a pin of one of the two rows it replaced stays hidden");
   ok &= check(ugly ? routes["settings/uglyRootScreen"]==0 : !routes.count("settings/uglyRootScreen"),
               "the Root row belongs to Display only in ugly");
   ok &= check(!routes.count("settings/wakeButtons"),"retired wakeButtons row is gone on every board");
@@ -200,21 +200,22 @@ int main(int argc, char** argv) {
   ok &= check(activity.focusFavorite("settings/wakeButtons")<0,"an old wakeButtons pin resolves to no row");
   result["catalog"]=catalog.size(); result["checks"]=checks;
   JsonDocument webDoc; deserializeJson(webDoc, before); result["web"]=webDoc;
-  bool hasWake=false, hasStart=false, hasRoot=false;
+  bool retiredRows=false, hasRoot=false;
+  int wakeRows=0;
   int tipsRows=0;
   for (JsonObjectConst row : webDoc.as<JsonArrayConst>()) {
     const std::string key=row["key"] | "";
-    if(key=="wakeIntoBook") hasWake=true;
+    if(key=="wakeTarget") {
+      ++wakeRows;
+      ok &= check(row["value"].as<int>()==CrossPointSettings::DEFAULT_WAKE_TARGET,
+                  "web On wake defaults to the default wake target");
+    }
+    if(key=="wakeIntoBook" || key=="uglyStartScreen") retiredRows=true;
     if(key=="tipsEnabled") {
       ++tipsRows;
       ok &= check(row["category"]=="STR_CAT_DISPLAY" && row["name"]=="STR_TIPS" &&
                   row["type"]=="toggle" && row["value"].as<int>()==1,
                   "web exposes the independent Display tips toggle, enabled by default");
-    }
-    if(key=="uglyStartScreen") {
-      hasStart=true;
-      ok &= check(row["value"].as<int>()==CrossPointSettings::UGLY_START_ROOT,
-                  "web start screen defaults to Root");
     }
     if(key=="uglyRootScreen") {
       hasRoot=true;
@@ -228,7 +229,7 @@ int main(int argc, char** argv) {
   ok &= check(hasTips ? routes.count("settings/tipsEnabled")==1 && routes.at("settings/tipsEnabled")==0
                      : !routes.count("settings/tipsEnabled"),
               "tips pin follows the visible Display row");
-  ok &= check(ugly ? hasStart && !hasWake : hasWake && !hasStart,"web has exactly one start row for the shell");
+  ok &= check(wakeRows==1 && !retiredRows,"web has exactly one On wake row, for both shells");
   std::string output; serializeJson(result,output); std::puts(output.c_str());
   return ok?0:1;
 }

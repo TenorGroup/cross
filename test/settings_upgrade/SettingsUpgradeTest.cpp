@@ -408,7 +408,7 @@ int runUglyStart() {
   bool ok = expect(SETTINGS.loadFromFile(), "old ugly settings load");
   ok = expect(saved()["uglyStartScreen"].is<uint8_t>() && saved()["uglyStartScreen"] == 1,
               "a file without uglyStartScreen defaults to Root") && ok;
-  ok = expect(SETTINGS.startScreen(true) == CrossPointSettings::UGLY_START_ROOT &&
+  ok = expect(SETTINGS.effectiveWakeTarget(true) == CrossPointSettings::WAKE_HOME &&
                   SETTINGS.uglyRootScreen == CrossPointSettings::UGLY_ROOT_DIARY,
               "legacy ugly settings use Diary as Root") && ok;
   for (uint8_t choice = 0; choice < 4; ++choice) {
@@ -421,8 +421,11 @@ int runUglyStart() {
                 "legacy start choice migrates") && ok;
     ok = expect(saved()["uglyRootScreen"].is<uint8_t>() && saved()["uglyRootScreen"] == expectedRoot,
                 "legacy Diary and Desk choices select Root") && ok;
-    ok = expect(SETTINGS.startScreen(true) == expectedStart, "migrated value selects its start screen") && ok;
-    ok = expect(SETTINGS.startScreen(false) == CrossPointSettings::UGLY_START_ROOT,
+    const uint8_t expectedTarget = expectedStart == CrossPointSettings::UGLY_START_BOOK     ? CrossPointSettings::WAKE_BOOK
+                                   : expectedStart == CrossPointSettings::UGLY_START_RECENT ? CrossPointSettings::WAKE_RECENT
+                                                                                            : CrossPointSettings::WAKE_HOME;
+    ok = expect(SETTINGS.effectiveWakeTarget(true) == expectedTarget, "migrated value selects its wake target") && ok;
+    ok = expect(SETTINGS.effectiveWakeTarget(false) == CrossPointSettings::WAKE_HOME,
                 "a blocked boot goes to Root") && ok;
   }
   before["uglyStartScreen"] = 255;
@@ -439,17 +442,126 @@ int runUglyStart() {
                   "all Root and Start combinations round trip") && ok;
     }
   }
-  SETTINGS.uglyStartScreen = CrossPointSettings::UGLY_START_BOOK;
-  ok = expect(SETTINGS.startScreen(false) == CrossPointSettings::UGLY_START_ROOT,
-              "a cold boot after panic with ugly Book selected goes to Root") && ok;
+  SETTINGS.wakeTarget = CrossPointSettings::WAKE_RESUME;
+  ok = expect(SETTINGS.effectiveWakeTarget(false) == CrossPointSettings::WAKE_HOME,
+              "a cold boot after panic with ugly Resume selected goes to Root") && ok;
   SETTINGS.uiShell = 0;
-  SETTINGS.uglyStartScreen = CrossPointSettings::UGLY_START_ROOT;
+  ok = expect(SETTINGS.effectiveWakeTarget(false) == CrossPointSettings::WAKE_RESUME,
+              "cross takes its wake target on every start") && ok;
+  SETTINGS.wakeTarget = CrossPointSettings::WAKE_HOME;
   SETTINGS.uglyRootScreen = CrossPointSettings::UGLY_ROOT_DESK;
   ok = expect(saved()["uglyStartScreen"] == 1 && saved()["uglyRootScreen"] == 1,
               "cross still saves ugly Root and Start choices") && ok;
   const auto& catalog = getBaseSettingsList();
   ok = expect(std::string(catalog.back().key) == "uglyRootScreen", "the Root catalog entry is appended") && ok;
   std::printf("settings_upgrade=ugly-start:%s\n", ok ? "GREEN" : "RED");
+  return ok ? 0 : 1;
+}
+
+// "On wake" (wakeTarget) replaced wakeIntoBook (cross) and uglyStartScreen (ugly): a file without it is
+// read once with the choice of the shell in use, whatever the other shell held.
+int runWakeMigration() {
+  struct Row {
+    const char* file;
+    uint8_t target;
+    bool resaves;
+  };
+  using S = CrossPointSettings;
+  const Row rows[] = {
+      {"settings-v1.0.71-wake-cross-book.json", S::WAKE_BOOK, true},
+      {"settings-v1.0.71-wake-cross-home.json", S::WAKE_HOME, true},
+      {"settings-v1.0.71-wake-ugly-book.json", S::WAKE_BOOK, true},
+      {"settings-v1.0.71-wake-ugly-recent.json", S::WAKE_RECENT, true},
+      {"settings-v1.0.71-wake-ugly-root.json", S::WAKE_HOME, true},
+      {"settings-v1.0.71-wake-ugly-junk.json", S::WAKE_HOME, true},
+      {"settings-v1.0.71-wake-has-target.json", S::WAKE_RESUME, false},
+      {"settings-v1.0.71-wake-bad-target.json", S::DEFAULT_WAKE_TARGET, false},
+  };
+  bool ok = true;
+  for (const Row& row : rows) {
+    settings_test_io::setNextRead(readFixture(row.file));
+    const int before = settings_test_io::writes;
+    ok = expect(SETTINGS.loadFromFile(), row.file) && ok;
+    const JsonDocument after = saved();
+    if (!expect(after["wakeTarget"].is<uint8_t>() && after["wakeTarget"] == row.target, row.file)) {
+      std::printf("  wakeTarget now %d\n", after["wakeTarget"].isNull() ? -1 : after["wakeTarget"].as<int>());
+      ok = false;
+    }
+    ok = expect(!row.resaves || settings_test_io::writes > before, "a file without wakeTarget is resaved") && ok;
+    // A second load of what was saved has nothing left to migrate.
+    settings_test_io::setNextRead(after);
+    ok = expect(SETTINGS.loadFromFile() && saved()["wakeTarget"] == row.target, "the saved file reads back the same") && ok;
+  }
+  std::printf("settings_upgrade=wake-migration:%s\n", ok ? "GREEN" : "RED");
+  return ok ? 0 : 1;
+}
+
+// A build from before wakeTarget reads wakeIntoBook and uglyStartScreen from the file this one writes.
+int runWakeDowngrade() {
+  using S = CrossPointSettings;
+  struct Row {
+    uint8_t target, wakeIntoBook, uglyStart;
+  };
+  const Row rows[] = {{S::WAKE_HOME, 0, S::UGLY_START_ROOT},
+                      {S::WAKE_BOOK, 1, S::UGLY_START_BOOK},
+                      {S::WAKE_RESUME, 1, S::UGLY_START_BOOK},
+                      {S::WAKE_RECENT, 0, S::UGLY_START_RECENT}};
+  bool ok = true;
+  for (const Row& row : rows) {
+    SETTINGS.wakeTarget = row.target;
+    const JsonDocument out = saved();
+    ok = expect(out["wakeTarget"] == row.target, "wakeTarget is written") && ok;
+    ok = expect(out["wakeIntoBook"] == row.wakeIntoBook, "wakeIntoBook follows wakeTarget") && ok;
+    ok = expect(out["uglyStartScreen"] == row.uglyStart, "uglyStartScreen follows wakeTarget") && ok;
+  }
+  std::printf("settings_upgrade=wake-downgrade:%s\n", ok ? "GREEN" : "RED");
+  return ok ? 0 : 1;
+}
+
+// The row: three choices on cross, four on ugly; the menu order is not the stored order.
+int runWakeRow() {
+  using S = CrossPointSettings;
+  bool ok = true;
+  const auto* registered = [] () -> const SettingInfo* {
+    for (const auto& info : getBaseSettingsList())
+      if (info.valuePtr == &CrossPointSettings::wakeTarget) return &info;
+    return nullptr;
+  }();
+  ok = expect(registered && std::string(registered->key) == "wakeTarget", "the catalog holds the wakeTarget row") && ok;
+  ok = expect(getBaseSettingsList().size() > 0 && !([] {
+                for (const auto& info : getBaseSettingsList())
+                  if (info.key && (std::string(info.key) == "wakeIntoBook" || std::string(info.key) == "uglyStartScreen"))
+                    return true;
+                return false;
+              }()),
+              "the two rows it replaced are gone") && ok;
+  if (!registered) return 1;
+  for (uint8_t shell = 0; shell < 2; ++shell) {
+    SETTINGS.uiShell = shell;
+    const SettingInfo row = buildWakeTargetSetting(*registered);
+    const bool ugly = shell == 1;
+    ok = expect(row.enumLabels().size() == (ugly ? 4u : 3u), "three choices on cross, four on ugly") && ok;
+    ok = expect(row.enumLabels()[0] == StrId::STR_WAKE_RESUME, "Resume leads the menu") && ok;
+    ok = expect(row.enumLabels()[1] == StrId::STR_UGLY_START_BOOK, "the book is second") && ok;
+    ok = expect(row.enumLabels().back() == (ugly ? StrId::STR_UGLY_START_RECENT : StrId::STR_WAKE_HOME),
+                "the home screen (Recent page on ugly) is last") && ok;
+    ok = expect(ugly == (row.enumLabels().size() > 3 && row.enumLabels()[2] == StrId::STR_UGLY_ROOT_SCREEN),
+                "only ugly lists its root screen") && ok;
+    for (uint8_t position = 0; position < row.enumLabels().size(); ++position) {
+      row.valueSetter(position);
+      ok = expect(row.valueGetter() == position, "each position reads back") && ok;
+    }
+    row.valueSetter(S::WAKE_RESUME);
+    SETTINGS.wakeTarget = S::WAKE_RESUME;
+    ok = expect(row.valueGetter() == 0, "Resume is the first position") && ok;
+    row.valueSetter(1);
+    ok = expect(SETTINGS.wakeTarget == S::WAKE_BOOK, "the second position stores Book") && ok;
+    SETTINGS.wakeTarget = S::WAKE_HOME;
+    ok = expect(row.valueGetter() == 2, "Home reads as the root screen on ugly and as Recent on cross") && ok;
+    row.valueSetter(row.enumLabels().size() - 1);
+    ok = expect(SETTINGS.wakeTarget == S::WAKE_RECENT, "the last position stores Recent") && ok;
+  }
+  std::printf("settings_upgrade=wake-row:%s\n", ok ? "GREEN" : "RED");
   return ok ? 0 : 1;
 }
 
@@ -684,6 +796,9 @@ int main(int argc, char** argv) {
   if (mode == "tap-zones") return runTapZones();
   if (mode == "reader-pins") return runReaderPins();
   if (mode == "no-resident-catalog") return runNoResidentCatalog();
+  if (mode == "wake-migration") return runWakeMigration();
+  if (mode == "wake-downgrade") return runWakeDowngrade();
+  if (mode == "wake-row") return runWakeRow();
   if (mode == "tips") return runTips();
   if (mode == "button-hints") return runButtonHints();
   if (mode == "global-status-matrix") return runGlobalStatusBarMatrix();

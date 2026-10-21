@@ -15,6 +15,7 @@
 #include "MenuNavigationMemory.h"
 #include "RenderLock.h"
 #include "util/ScreenshotInfo.h"
+#include "util/WakePlace.h"
 #include "shells/ugly/UglyIcons.h"
 
 class Activity {
@@ -52,6 +53,10 @@ class Activity {
   virtual bool remembersNavigation() const { return false; }
   virtual void captureNavigation(MenuNavigationState&) const {}
   virtual void restoreNavigation(const MenuNavigationState&) {}
+
+  // Fills where this screen stands, for "On wake" = pick up where I left off. False (the default): a
+  // wake cannot reopen this screen, ActivityManager::captureWakePlace asks the one under it.
+  virtual bool wakePlace(WakePlace&) const { return false; }
 
   virtual void render(RenderLock&&) {}
   virtual bool renderIdleUpdate() { return false; }

@@ -23,6 +23,12 @@ class Notebook final : public Screen {
   Notebook(GfxRenderer& renderer, MappedInputManager& mappedInput, homerows::Page page)
       : Screen("UglyNotebook", renderer, mappedInput), page(page), want(page) {}
   void onEnter() override;
+  // The page only: the pages are the Home tabs in the same order, and the circle starts at the top.
+  bool wakePlace(WakePlace& place) const override {
+    place.kind = WakeKind::HomeTab;
+    place.tab = static_cast<int16_t>(page);
+    return true;
+  }
   void render(RenderLock&&) override;
   uint64_t uglyIconPageKey() override {
 #if FREEINK_DEVICE_X4PRO

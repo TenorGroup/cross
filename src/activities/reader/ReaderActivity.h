@@ -137,6 +137,12 @@ class ReaderActivity : public Activity {
  public:
   ~ReaderActivity() override = default;
   std::string navigationMemoryKey() const override { return name + ":" + bookPath; }
+  bool wakePlace(WakePlace& place) const override {
+    if (preview) return false;
+    place.kind = WakeKind::Book;
+    place.path = bookPath;
+    return true;
+  }
 
   // Queue one external direction for this reader generation. The reader loop
   // applies render/menu guards, counts the accepted turn and requests repaint.

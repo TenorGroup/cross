@@ -150,6 +150,12 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["fontFamilyVersion"] = FONT_FAMILY_VERSION;
   if (fontFallbackNotice) doc["fontFallbackNotice"] = 1;
   doc["fontSize"] = fontPointSize;
+  // The two keys wakeTarget replaced, for a build that predates it (it ignores the new key).
+  const bool opensBook = wakeTarget == WAKE_BOOK || wakeTarget == WAKE_RESUME;
+  doc["wakeIntoBook"] = opensBook ? 1 : 0;
+  doc["uglyStartScreen"] = opensBook                  ? UGLY_START_BOOK
+                           : wakeTarget == WAKE_RECENT ? UGLY_START_RECENT
+                                                       : UGLY_START_ROOT;
   // Hold-Select function - list position differs from the number on a board without an IMU, so the
   // row in SettingsList is dynamic and the generic loop skips it. Saved as the number.
   doc["longPressMenuFunction"] = longPressMenuFunction;
@@ -269,6 +275,10 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
                                      ? doc["uglyStartScreen"].as<uint8_t>()
                                      : static_cast<uint8_t>(UGLY_START_ROOT);
   needsResave |= migrateUglyRoot(!doc["uglyRootScreen"].isNull(), storedUglyStart);
+  if (doc["wakeTarget"].isNull()) {
+    migrateWakeTarget(doc["wakeIntoBook"].as<int>() == 1);
+    needsResave = true;
+  }
 
   if (doc["uiTextSize"].isNull()) {
     uiTextSize = UI_TEXT_SMALL;

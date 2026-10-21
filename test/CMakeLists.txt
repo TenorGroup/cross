@@ -133,6 +133,7 @@ add_subdirectory(reading_habits)
 add_subdirectory(finish_estimate)
 
 add_subdirectory(wake_book)
+add_subdirectory(wake_place)
 add_subdirectory(first_paint)
 add_subdirectory(touch_scroll)
 add_subdirectory(file_search_reveal)

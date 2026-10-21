@@ -939,6 +939,15 @@ void FileBrowserActivity::captureNavigation(MenuNavigationState& state) const {
   state.location = basepath;
   if (nav.selected >= kSearchRows && nav.selected < listCount()) state.selection = entryForVisibleRow(nav.selected);
 }
+bool FileBrowserActivity::wakePlace(WakePlace& place) const {
+  if (mode != Mode::Books) return false;
+  MenuNavigationState state;
+  captureNavigation(state);
+  place.kind = WakeKind::Files;
+  place.path = state.location;
+  place.name = state.selection;
+  return true;
+}
 void FileBrowserActivity::restoreNavigation(const MenuNavigationState& state) {
   if (mode != Mode::Books || state.location.empty()) return;
   RenderLock lock(*this);

@@ -38,6 +38,15 @@ class HomeActivity final : public UiTabListActivity {
   void onEnter() override;
   void restoreNavigation(const MenuNavigationState& state) override;
   void captureNavigation(MenuNavigationState& state) const override;
+  bool wakePlace(WakePlace& place) const override {
+    place.kind = WakeKind::HomeTab;
+    MenuNavigationState state;
+    captureNavigation(state);
+    place.tab = static_cast<int16_t>(activeTab());
+    place.row = static_cast<int16_t>(ringPos());
+    place.name = state.selection;
+    return true;
+  }
   void onExit() override;
   void onPause() override;
   void onResume() override;

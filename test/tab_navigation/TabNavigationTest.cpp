@@ -773,40 +773,47 @@ TEST(SettingsClockAdapter, ExplicitSelectionWritesOnlyExistingRightOrLeftEnums) 
   SETTINGS.statusBarClock = original;
 }
 
-TEST(SettingsJsonRoundTrip, WakeIntoBookPersistsAndClampsLikeEveryEnumKey) {
+TEST(SettingsJsonRoundTrip, WakeTargetPersistsAndClampsLikeEveryEnumKey) {
   auto& settings = SETTINGS;
-  const uint8_t original = settings.wakeIntoBook;
+  const uint8_t original = settings.wakeTarget;
+  const uint8_t originalShell = settings.uiShell;
+  settings.uiShell = 0;
 
-  // Key absent from an older file: the struct default stands.
-  settings.wakeIntoBook = 0;
+  // Key absent from an older file: the choice the file made under the old key stands (here none: Home).
+  settings.wakeTarget = CrossPointSettings::WAKE_RESUME;
   {
     JsonDocument doc;
     ASSERT_TRUE(settings.fromJson(doc.as<JsonVariantConst>()));
-    EXPECT_EQ(settings.wakeIntoBook, 0);
+    EXPECT_EQ(settings.wakeTarget, CrossPointSettings::WAKE_HOME);
+    doc["wakeIntoBook"] = 1;
+    ASSERT_TRUE(settings.fromJson(doc.as<JsonVariantConst>()));
+    EXPECT_EQ(settings.wakeTarget, CrossPointSettings::WAKE_BOOK);
   }
 
   // A written value survives reading the file back and writing it out again.
   {
     JsonDocument doc;
-    doc["wakeIntoBook"] = 1;
+    doc["wakeTarget"] = CrossPointSettings::WAKE_RESUME;
+    doc["wakeIntoBook"] = 0;  // a stale old key does not win over the new one
     ASSERT_TRUE(settings.fromJson(doc.as<JsonVariantConst>()));
-    EXPECT_EQ(settings.wakeIntoBook, 1);
+    EXPECT_EQ(settings.wakeTarget, CrossPointSettings::WAKE_RESUME);
 
     JsonDocument saved;
     settings.toJson(saved);
-    EXPECT_EQ(saved["wakeIntoBook"] | uint8_t{255}, 1);
+    EXPECT_EQ(saved["wakeTarget"] | uint8_t{255}, CrossPointSettings::WAKE_RESUME);
   }
 
-  // Out-of-range value falls back to the default, the way every enum key does.
-  settings.wakeIntoBook = 0;
+  // Out-of-range value falls back to what the field held, the way every enum key does.
+  settings.wakeTarget = CrossPointSettings::WAKE_BOOK;
   {
     JsonDocument doc;
-    doc["wakeIntoBook"] = 7;
+    doc["wakeTarget"] = 7;
     ASSERT_TRUE(settings.fromJson(doc.as<JsonVariantConst>()));
-    EXPECT_EQ(settings.wakeIntoBook, 0);
+    EXPECT_EQ(settings.wakeTarget, CrossPointSettings::WAKE_BOOK);
   }
 
-  settings.wakeIntoBook = original;
+  settings.wakeTarget = original;
+  settings.uiShell = originalShell;
 }
 
 // A default clock represents a board whose RTC probe did not find hardware.

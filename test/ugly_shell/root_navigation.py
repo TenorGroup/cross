@@ -9,11 +9,12 @@ args = parser.parse_args()
 args.output.mkdir(parents=True, exist_ok=True)
 settings = (args.repo / 'src/CrossPointSettings.h').read_text()
 assert 'migrateUglyRoot(' in settings, 'RED: legacy startup has no root migration'
+wake = settings[settings.index('  enum WAKE_TARGET'):settings.index('  uint8_t wakeTarget = DEFAULT_WAKE_TARGET;') + len('  uint8_t wakeTarget = DEFAULT_WAKE_TARGET;')]
 fields = settings[settings.index('  enum UGLY_START_SCREEN'):settings.index('  // Whether a power-button wake')]
 program = '''#include <cassert>
 #include <cstdint>
 #include <cstdio>
-struct CrossPointSettings { FIELDS };
+struct CrossPointSettings { uint8_t uiShell = 1; WAKE FIELDS };
 int main() {
   int cases = 0;
   for (bool hasRoot : {false, true})
@@ -25,13 +26,17 @@ int main() {
         value.migrateUglyRoot(hasRoot, start);
         const int expectedRoot = !hasRoot && start == 3 ? 1 : !hasRoot && start == 1 ? 0 : root;
         assert(value.uglyRootIsDesk() == (expectedRoot == 1));
-        assert(value.startScreen(true) == (start == 0 ? 0 : start == 2 ? 2 : 1));
-        assert(value.startScreen(false) == 1);
+        value.migrateWakeTarget(false);
+        const int expectedTarget = start == 0 ? CrossPointSettings::WAKE_BOOK
+                                   : start == 2 ? CrossPointSettings::WAKE_RECENT : CrossPointSettings::WAKE_HOME;
+        assert(value.wakeTarget == expectedTarget);
+        assert(value.effectiveWakeTarget(true) == expectedTarget);
+        assert(value.effectiveWakeTarget(false) == CrossPointSettings::WAKE_HOME);
         ++cases;
       }
   std::printf("GREEN: %d root/startup/migration combinations\\n", cases);
 }
-'''.replace('FIELDS', fields).replace('#include <cassert>', '#include <cassert>\n#include <initializer_list>')
+'''.replace('WAKE FIELDS', wake + fields).replace('#include <cassert>', '#include <cassert>\n#include <initializer_list>')
 source = args.output / 'root.cpp'
 source.write_text(program)
 binary = args.output / 'root'

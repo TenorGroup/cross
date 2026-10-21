@@ -133,6 +133,7 @@ class FileBrowserActivity final : public UiListActivity {
   bool remembersNavigation() const override { return mode == Mode::Books; }
   std::string navigationMemoryKey() const override { return "FileBrowserEntry:" + entryPath; }
   void captureNavigation(MenuNavigationState& state) const override;
+  bool wakePlace(WakePlace& place) const override;
   void restoreNavigation(const MenuNavigationState& state) override;
   void onExit() override;
   void render(RenderLock&& lock) override;

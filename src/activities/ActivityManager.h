@@ -16,6 +16,7 @@
 #include "components/FrontlightGesture.h"
 #include "components/X3NavigationPath.h"
 #include "util/ScreenshotInfo.h"
+#include "util/WakePlace.h"
 
 class Activity;    // forward declaration
 namespace tenorchrome {
@@ -138,11 +139,16 @@ class ActivityManager {
   void goToUsbDrive();
   // theBanDau: the mo san cua man Cai dat. Man chinh bay cac nhom thanh dong nen no
   // goi thang vao dung the, khoi bat nguoi ta nhay the lai tu dau.
-  void goToSettings(int theBanDau = 0);
+  void goToSettings(int theBanDau = 0, std::string startKey = {});
   void goToFileBrowser(std::string path = {});
   void goToBrowser();
   void goToReader(std::string path, bool allowFastInitialRefresh = false);
   bool goToSleep(bool fromTimeout = false);
+  // Where the foremost screen that can be reopened stands (kind None: none), to keep across sleep.
+  // Screens that are busy or cannot be reopened are passed over for the one under them.
+  WakePlace captureWakePlace() const;
+  // Opens a place wakeplace::resolve() returned (not a book: goToReader does that).
+  void goToWakePlace(const WakePlace& place, bool cleanInitialRefresh);
   void goToBoot();
   void goToFullScreenMessage(std::string message, EpdFontFamily::Style style = EpdFontFamily::REGULAR);
   void goToCrashReport();

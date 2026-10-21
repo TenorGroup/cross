@@ -6,7 +6,7 @@
 // obfuscation, file serialization). This suite never touches those, so this
 // translation unit satisfies the linker for them and keeps the test pointed at
 // one subject. Nothing here changes what the settings code does with a
-// wakeIntoBook value.
+// wakeTarget value.
 
 #include "KOReaderCredentialStore.h"
 #include "ObfuscationUtils.h"

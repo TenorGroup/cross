@@ -109,6 +109,9 @@ bool othersKept(const JsonDocument& before, const JsonDocument& after, const cha
     // v1.0.69 writes fontFamily as the stored Noto Sans number and names the old built-in serif as the card's
     // NotoSerif (CrossPoint #4022); test/settings_upgrade noto-serif-card covers both.
     if (std::string(key) == "fontFamily" || std::string(key) == "sdFontFamilyName") continue;
+    // v1.0.72 writes wakeIntoBook and uglyStartScreen from wakeTarget, for a build that predates it; a blank card's
+    // wakeTarget is the new default (checked in runBlankCard), a card that held the old keys keeps their meaning.
+    if (std::string(key) == "wakeIntoBook" || std::string(key) == "uglyStartScreen") continue;
     if (after[key] != kv.value()) {
       std::string was, now;
       serializeJson(kv.value(), was);
@@ -144,6 +147,8 @@ int runBlankCard() {
   ok = expect(fresh["frontButtonBack"] == 0 && fresh["frontButtonConfirm"] == 1 && fresh["frontButtonLeft"] == 2 &&
                   fresh["frontButtonRight"] == 3 && fresh["sideButtonLayout"] == 0,
               "blank card button map stays the stock one") &&
+       ok;
+  ok = expect(fresh["wakeTarget"] == CrossPointSettings::DEFAULT_WAKE_TARGET, "blank card wakes by the default target") &&
        ok;
   ok = expect(fresh["tenorPresetVersion"] == 1, "blank card is stamped, so its first save is never moved again") && ok;
   // Only the thirteen moved: every other default matches the previous release's file

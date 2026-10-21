@@ -176,6 +176,7 @@ class SettingsActivity final : public UiTabListActivity {
   int selectedCategoryIndex = 0;  // Currently selected category
   const bool fromHomeGroup;
   const int theBanDau;  // the mo san, do nguoi goi dat
+  const std::string startKey;  // the key of the row a wake reopens the tab on; empty: the first
   int settingsCount = 0;
   int pendingSiblingIndex = -1;
 
@@ -315,7 +316,8 @@ class SettingsActivity final : public UiTabListActivity {
   std::string navigationMemoryKey() const override { return name + ":" + std::to_string(theBanDau); }
 
   explicit SettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, int theBanDau = 0,
-                            bool fromHomeGroup = false);
+                            bool fromHomeGroup = false, std::string startKey = {});
+  bool wakePlace(WakePlace& place) const override;
   void onEnter() override;
   void onPause() override;
   void onResume() override;

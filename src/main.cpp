@@ -114,6 +114,7 @@
 #include "util/ScreenshotUtil.h"
 #include "util/Timezones.h"
 #include "util/WakeBook.h"
+#include "util/WakePlace.h"
 
 #if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
 // The serial commands scan integers and words only. newlib's sscanf brings its float scanner and
@@ -530,6 +531,9 @@ static void sleepUntilPowerButton() {
 }
 
 static bool autoSleepBlockedUntilInput = false;
+#ifdef TENOR_PRESS_PROBE
+static bool probeKeepWakePlace = false;
+#endif
 
 // Enter deep sleep mode
 void enterDeepSleep(bool fromTimeout = false) {
@@ -551,7 +555,13 @@ void enterDeepSleep(bool fromTimeout = false) {
   // Commit to sleeping before goToSleep() runs the outgoing activity's onExit():
   // a WiFi activity would otherwise silentRestart() here and reboot instead.
   deepSleepInProgress = true;
+  // Where the screen stands, taken before goToSleep() takes the screens apart; the state write below keeps it.
+#ifdef TENOR_PRESS_PROBE
+  if (!probeKeepWakePlace)  // CMD:WAKE_PLACE_SET put a place there to be tried
+#endif
+    APP_STATE.wake = SETTINGS.wakeTarget == CrossPointSettings::WAKE_RESUME ? activityManager.captureWakePlace() : WakePlace{};
   const bool asleep = activityManager.goToSleep(fromTimeout);
+  if (!asleep) APP_STATE.wake = {};
   if (asleep) LOG_INF("SLP", "Timing image-ready=%lu ms", static_cast<unsigned long>(millis() - sleepStarted));
   // One write of the state, once the sleep screen is up: what that screen chose (the quote shown,
   // the picture) goes in this write instead of a second write of the same file of its own.
@@ -944,8 +954,10 @@ void setup() {
                                                    : BootResume::Splash;
   bool needsWakeRefresh = false;
   // A crash may have come from the book that was open: the next wake does not reopen it.
-  if (rebootedFromPanic && !APP_STATE.openEpubPath.empty()) {
+  // The place the sleep kept goes the same way: a screen that crashed is not reopened.
+  if (rebootedFromPanic && (!APP_STATE.openEpubPath.empty() || APP_STATE.wake.kind != WakeKind::None)) {
     APP_STATE.openEpubPath.clear();
+    APP_STATE.wake = {};
     APP_STATE.saveToFile();
   }
   bool normalColdBoot = !isSleepWake;
@@ -954,13 +966,30 @@ void setup() {
 #endif
   const bool normalUglyBoot = !recoveryFirmwareMode && !rebootedFromPanic && !updateBoot && !isSilentReboot &&
                               (isSleepWake || normalColdBoot);
-  const auto uglyStart = SETTINGS.startScreen(normalUglyBoot);
-  const bool bookSetting = shell::isUgly() ? uglyStart == CrossPointSettings::UGLY_START_BOOK : SETTINGS.wakeIntoBook;
-  const std::string wakeBook =
-      wakebook::bookToOpen(isSleepWake, bookSetting, APP_STATE.openEpubPath, RECENT_BOOKS.getBooks(),
-                           [](const std::string& path) { return Storage.exists(path.c_str()); },
-                           shell::isUgly() && normalUglyBoot && normalColdBoot);
+  const uint8_t wakeTarget = SETTINGS.effectiveWakeTarget(normalUglyBoot);
+  const auto onCard = [](const std::string& path) { return Storage.exists(path.c_str()); };
+  // "Pick up where I left off": the place the sleep kept, if it can still be reopened. Spent either way:
+  // the write that follows the first frame carries the cleared state to the card.
+  bool deepSleepReset = isSleepWake;  // not a power-on, a watchdog or a brownout: a place is not kept through those
+#ifndef SIMULATOR
+  deepSleepReset = isSleepWake && esp_reset_reason() == ESP_RST_DEEPSLEEP;
+#endif
+  const WakePlace wakePlace =
+      wakeTarget == CrossPointSettings::WAKE_RESUME
+          ? wakeplace::resolve(deepSleepReset, SETTINGS.uiShell, APP_STATE.wake, RECENT_BOOKS.getBooks(), onCard,
+                               [](const std::string& path) {
+                                 auto dir = Storage.open(path.c_str());
+                                 return dir && dir.isDirectory();
+                               })
+          : WakePlace{};
+  APP_STATE.wake = {};
+  std::string wakeBook =
+      wakebook::bookToOpen(isSleepWake, wakeTarget == CrossPointSettings::WAKE_BOOK, APP_STATE.openEpubPath,
+                           RECENT_BOOKS.getBooks(), onCard, shell::isUgly() && normalUglyBoot && normalColdBoot);
+  if (wakePlace.kind == WakeKind::Book) wakeBook = wakePlace.path;
   const bool wakeToBook = !wakeBook.empty();
+  // A screen other than Home or a book: its first frame is not Home's clean one.
+  const bool wakeToScreen = wakePlace.kind == WakeKind::Files || wakePlace.kind == WakeKind::SettingsTab;
 
   setupDisplayAndFonts(resume != BootResume::Splash, !updateBoot);
   renderer.setDiffOnlyPanel(gpio.deviceIsX3() && display.getController() == HalDisplay::Controller::UC8279);
@@ -1018,7 +1047,7 @@ void setup() {
   // (no window was waited out, so the notice would only delay Home). Off, nothing here runs.
   const bool wakeNotice = SETTINGS.wakeNotice != 0 && watchWakeHold && renderer.diffOnlyPanel() &&
                           SETTINGS.shortPwrBtn != CrossPointSettings::SLEEP && !recoveryFirmwareMode &&
-                          !rebootedFromPanic && !updateBoot && !wakeToBook;
+                          !rebootedFromPanic && !updateBoot && !wakeToBook && !wakeToScreen;
   // Not without the frame (what the glass shows is not known).
   if (wakeNotice && sleepFrameKept) {
 #ifdef TENOR_PRESS_PROBE
@@ -1042,7 +1071,12 @@ void setup() {
       // panel keeps showing the pre-reboot popup until that first paint lands.
       break;
     case BootResume::SplashlessWake:
-      if (recoveryFirmwareMode || rebootedFromPanic || wakeToBook) APP_STATE.saveToFile();
+      // Nothing is written before the first frame, whatever it shows: the flag and the spent place go to the card
+      // after it (cross Home does that itself, once its first frame is up).
+      if (recoveryFirmwareMode || rebootedFromPanic)
+        APP_STATE.saveToFile();
+      else if (wakeToBook || wakeToScreen || shell::isUgly())
+        activityManager.deferWrite(&saveAppState);
       needsWakeRefresh = true;
       break;
     case BootResume::Splash:
@@ -1109,8 +1143,13 @@ void setup() {
     // is fetched first, so the page about to be drawn is the right one. Whatever happens, the book opens.
     if (resume == BootResume::SplashlessWake) koautosync::pullOnWake(renderer, wakeBook, sleepFrameKept);
     activityManager.goToReader(wakeBook);
+  } else if (wakePlace.kind != WakeKind::None) {
+    // Cross Home's first frame cleans the kept sleep frame off the panel by itself; the other screens ask for it
+    // (a notebook page of tenor/ugly is not handed the flag).
+    if ((wakeToScreen || shell::isUgly()) && needsWakeRefresh) renderer.promoteNextRefresh(HalDisplay::FULL_REFRESH);
+    activityManager.goToWakePlace(wakePlace, needsWakeRefresh);
   } else {
-    const HomeMenuItem startHome = shell::isUgly() && uglyStart == CrossPointSettings::UGLY_START_RECENT
+    const HomeMenuItem startHome = shell::isUgly() && wakeTarget == CrossPointSettings::WAKE_RECENT
                                        ? HomeMenuItem::RECENTS
                                        : HomeMenuItem::RECENT_CONTINUE;
     activityManager.goHome(startHome, needsWakeRefresh);
@@ -1932,6 +1971,30 @@ void loop() {
         probeWakeSeconds = static_cast<uint32_t>(cmd.substring(11).toInt());
         probeWakeMagic = PROBE_WAKE_MAGIC;
         logSerial.printf("WAKE_TIMER:%u\n", static_cast<unsigned>(probeWakeSeconds));
+      } else if (cmd == "WAKE_PLACE") {
+        // CMD:WAKE_PLACE: the place state.json holds for the next wake, and the one a sleep now would keep.
+        const auto line = [](const char* which, const WakePlace& p) {
+          logSerial.printf("WAKE_PLACE:%s kind=%u shell=%u tab=%d row=%d path=%s name=%s\n", which,
+                           static_cast<unsigned>(p.kind), static_cast<unsigned>(p.shell), p.tab, p.row, p.path.c_str(),
+                           p.name.c_str());
+        };
+        line("state", APP_STATE.wake);
+        line("now", activityManager.captureWakePlace());
+      } else if (cmd.startsWith("WAKE_PLACE_SET ")) {
+        // CMD:WAKE_PLACE_SET <kind> <shell> <tab> <row> <path> <name> ("-" for empty): the place the next sleep
+        // keeps, in place of the screen's own, to try a book or folder that is gone or a kind from another build.
+        int kind = 0, shell = 0, tab = 0, row = 0;
+        char path[256] = "-", name[256] = "-";
+        SCAN_COMMAND(cmd.c_str() + 15, "%d %d %d %d %255s %255s", &kind, &shell, &tab, &row, path, name);
+        WakePlace& p = APP_STATE.wake;
+        p.kind = static_cast<WakeKind>(kind);
+        p.shell = static_cast<uint8_t>(shell);
+        p.tab = static_cast<int16_t>(tab);
+        p.row = static_cast<int16_t>(row);
+        p.path = strcmp(path, "-") ? path : "";
+        p.name = strcmp(name, "-") ? name : "";
+        probeKeepWakePlace = true;
+        logSerial.printf("WAKE_PLACE_SET:%d\n", kind);
       } else if (cmd.startsWith("KAS_MIN_SLEEP ")) {
         // CMD:KAS_MIN_SLEEP <s>: the wake pull counts a sleep of <s> seconds as long (0 = the 30 minute rule).
         koautosync::probeSetMinSleep(static_cast<uint32_t>(cmd.substring(14).toInt()));

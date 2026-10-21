@@ -73,7 +73,8 @@ namespace koautosync {
 template<class R> int pullOnWake(R&, const std::string&, bool) { return 0; }  // automatic sync is off here
 }
 struct { std::string openEpubPath = "/huge.epub"; } APP_STATE;
-int renderer = 0, mappedInputManager = 0, otaBoot = 0, transfers = 0, fontStores = 0;
+int mappedInputManager = 0, otaBoot = 0, transfers = 0, fontStores = 0;
+struct { template<class M> void promoteNextRefresh(M) const {} } renderer;
 struct SdFirmwareUpdateActivity { template<class... T> explicit SdFirmwareUpdateActivity(T...) {} };
 struct OtaUpdateActivity { template<class... T> explicit OtaUpdateActivity(T...) {} };
 template<class T, class... A> std::unique_ptr<T> makeUniqueNoThrow(A... args) {
@@ -90,6 +91,7 @@ struct {
   void goToSettings() {}
   void goToFileTransfer(bool openFontStore = false) { ++transfers; fontStores += openFontStore; }
   void goHome(HomeMenuItem tab = HomeMenuItem::NONE, bool = false) { home = tab; }
+  template<class P> void goToWakePlace(const P&, bool) {}
   void goToReader(const std::string&) { ++readers; advance(35000000); }
   void requestUpdateAndWait() { ++paints; advance(1000000); }
 } activityManager;

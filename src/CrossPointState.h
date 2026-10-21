@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <string>
 
+#include "util/WakePlace.h"
+
 class CrossPointState : public PersistableStore<CrossPointState> {
   CrossPointState() = default;
 
@@ -29,6 +31,9 @@ class CrossPointState : public PersistableStore<CrossPointState> {
   // Unix seconds when the machine last went to sleep with automatic KOReader sync on and a trusted
   // clock; 0 otherwise. The wake pull runs only after a long enough sleep (kosyncauto).
   uint32_t sleepStartedAt = 0;
+  // Where the machine stood when it went to sleep, for "On wake" = pick up where I left off. Set by the
+  // sleep path, spent (cleared) by the wake that uses it.
+  WakePlace wake;
 
   static const char* getFilePath() { return "/.crosspoint/state.json"; }
   void toJson(JsonDocument& doc) const;

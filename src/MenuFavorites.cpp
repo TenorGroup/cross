@@ -148,6 +148,8 @@ std::string value(const std::string& key, const std::vector<SettingInfo>& settin
       continue;
     // Favorites never copy credentials or other string values into their labels.
     if (info.type == SettingType::STRING) return "";
+    if (info.valuePtr == &CrossPointSettings::wakeTarget)
+      return SettingsActivity::settingValueText(buildWakeTargetSetting(info));
     return SettingsActivity::settingValueText(info);
   }
   return "";

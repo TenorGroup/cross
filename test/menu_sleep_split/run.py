@@ -132,12 +132,7 @@ for profile in ['c3', 'pro', 'persistence']:
                 baseline_case = case.removesuffix('-ugly')
                 old = json.loads((a.web_baseline/(baseline_case+'-web.json')).read_text())
                 if case.endswith('-ugly'):
-                    old = [row for row in old if row['key'] not in ('wakeIntoBook', 'tipsEnabled')]
-                    old.append({'category': 'STR_CAT_DISPLAY', 'key': 'uglyStartScreen',
-                                'name': 'STR_UGLY_START_SCREEN',
-                                'options': ['STR_UGLY_START_BOOK', 'STR_UGLY_ROOT_SCREEN',
-                                            'STR_UGLY_START_RECENT'],
-                                'type': 'enum', 'value': 1})
+                    old = [row for row in old if row['key'] != 'tipsEnabled']
                     old.append({'category': 'STR_CAT_DISPLAY', 'key': 'uglyRootScreen',
                                 'name': 'STR_UGLY_ROOT_SCREEN',
                                 'options': ['STR_UGLY_START_DIARY', 'STR_UGLY_START_DESK'],

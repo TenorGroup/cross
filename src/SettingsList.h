@@ -16,6 +16,7 @@
 #include <cstring>
 #include <iterator>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -241,6 +242,30 @@ inline SettingInfo buildTenorClockPlacementSetting(const SettingInfo& registered
   return setting;
 }
 
+// The "On wake" row: three choices on tenor/cross, four on tenor/ugly (which has a root screen of its
+// own). The menu order is not the stored order, and Home and Recent are one place on cross, so a Home
+// stored there reads as Recent.
+inline SettingInfo buildWakeTargetSetting(const SettingInfo& registered) {
+  using S = CrossPointSettings;
+  static constexpr uint8_t CROSS[] = {S::WAKE_RESUME, S::WAKE_BOOK, S::WAKE_RECENT};
+  static constexpr uint8_t UGLY[] = {S::WAKE_RESUME, S::WAKE_BOOK, S::WAKE_HOME, S::WAKE_RECENT};
+  const bool ugly = SETTINGS.uiShell == 1;
+  const std::span<const uint8_t> targets = ugly ? std::span<const uint8_t>(UGLY) : std::span<const uint8_t>(CROSS);
+  SettingInfo setting = registered;
+  setting.valuePtr = nullptr;
+  setting.enumValues = {StrId::STR_WAKE_RESUME, StrId::STR_UGLY_START_BOOK};
+  if (ugly) setting.enumValues.push_back(StrId::STR_UGLY_ROOT_SCREEN);
+  setting.enumValues.push_back(ugly ? StrId::STR_UGLY_START_RECENT : StrId::STR_WAKE_HOME);
+  setting.valueGetter = [targets]() -> uint8_t {
+    const auto at = std::find(targets.begin(), targets.end(), SETTINGS.wakeTarget);
+    return static_cast<uint8_t>(at == targets.end() ? targets.size() - 1 : at - targets.begin());
+  };
+  setting.valueSetter = [targets](const uint8_t position) {
+    SETTINGS.wakeTarget = targets[std::min<size_t>(position, targets.size() - 1)];
+  };
+  return setting;
+}
+
 inline SettingInfo buildGlobalStatusBarChoiceSetting() {
   return SettingInfo::DynamicEnum(
       StrId::STR_GLOBAL_STATUS_BAR_CHOICE,
@@ -389,8 +414,11 @@ inline void forEachBaseSetting(const std::function<void(SettingInfo&&)>& emit) {
     emit(SettingInfo::Enum(StrId::STR_QUICK_RESUME_TIMEOUT, &CrossPointSettings::quickResumeSleepScreen,
                           {StrId::STR_STATE_OFF, StrId::STR_STATE_ON}, "quickResumeSleepScreen",
                           StrId::STR_CAT_DISPLAY));
-    emit(SettingInfo::Enum(StrId::STR_WAKE_INTO_BOOK, &CrossPointSettings::wakeIntoBook,
-                          {StrId::STR_STATE_OFF, StrId::STR_STATE_ON}, "wakeIntoBook", StrId::STR_CAT_DISPLAY));
+    // Labels in stored order; the screen lists them in its own (buildWakeTargetSetting).
+    emit(SettingInfo::Enum(StrId::STR_WAKE_TARGET, &CrossPointSettings::wakeTarget,
+                          {StrId::STR_UGLY_ROOT_SCREEN, StrId::STR_UGLY_START_BOOK, StrId::STR_WAKE_RESUME,
+                           StrId::STR_UGLY_START_RECENT},
+                          "wakeTarget", StrId::STR_CAT_DISPLAY));
     emit(SettingInfo::Toggle(StrId::STR_WAKE_NOTICE, &CrossPointSettings::wakeNotice, "wakeNotice",
                                     StrId::STR_CAT_DISPLAY));
     emit(SettingInfo::Toggle(StrId::STR_SLEEP_BW_REFRESH, &CrossPointSettings::sleepBwFold, "sleepBwFold",
@@ -719,9 +747,6 @@ inline void forEachBaseSetting(const std::function<void(SettingInfo&&)>& emit) {
     // on next WiFi connect, which is useful when crossing time zones.
     emit(SettingInfo::Toggle(StrId::STR_CLOCK_SYNCED, &CrossPointSettings::clockHasBeenSynced, "clockHasBeenSynced",
                             StrId::STR_CUSTOMISE_STATUS_BAR));
-    emit(SettingInfo::Enum(StrId::STR_UGLY_START_SCREEN, &CrossPointSettings::uglyStartScreen,
-                          {StrId::STR_UGLY_START_BOOK, StrId::STR_UGLY_ROOT_SCREEN, StrId::STR_UGLY_START_RECENT},
-                          "uglyStartScreen", StrId::STR_CAT_DISPLAY));
     emit(SettingInfo::Enum(StrId::STR_UGLY_ROOT_SCREEN, &CrossPointSettings::uglyRootScreen,
                           {StrId::STR_UGLY_START_DIARY, StrId::STR_UGLY_START_DESK},
                           "uglyRootScreen", StrId::STR_CAT_DISPLAY));
@@ -806,10 +831,8 @@ inline bool settingHiddenOnThisBoard(const SettingInfo& s) {
 // there when needed. Return -1 for rows hidden in device categories.
 inline bool settingHiddenInShell(const SettingInfo& setting) {
   const bool ugly = SETTINGS.uiShell == 1;
-  return (ugly && setting.valuePtr == &CrossPointSettings::wakeIntoBook) ||
-         (ugly && setting.valuePtr == &CrossPointSettings::tipsEnabled) ||
-         (!ugly && (setting.valuePtr == &CrossPointSettings::uglyStartScreen ||
-                    setting.valuePtr == &CrossPointSettings::uglyRootScreen));
+  return (ugly && setting.valuePtr == &CrossPointSettings::tipsEnabled) ||
+         (!ugly && setting.valuePtr == &CrossPointSettings::uglyRootScreen);
 }
 
 // Motion rows stay in the saved file on a board with a sensor, and leave every list while this boot's
@@ -829,8 +852,7 @@ inline int deviceSettingsTab(const SettingInfo& setting) {
       setting.valuePtr == &CrossPointSettings::sleepScreenCoverMode ||
       setting.valuePtr == &CrossPointSettings::sleepScreenCoverFilter ||
       setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen ||
-      setting.valuePtr == &CrossPointSettings::wakeIntoBook ||
-      setting.valuePtr == &CrossPointSettings::uglyStartScreen ||
+      setting.valuePtr == &CrossPointSettings::wakeTarget ||
       setting.valuePtr == &CrossPointSettings::wakeNotice ||
       setting.valuePtr == &CrossPointSettings::sleepBwFold ||
       setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes ||

@@ -55,6 +55,7 @@ struct CheckedSleepFlag {
     return *this;
   }
 };
+struct WakePlace {};
 struct ActivityManager {
   enum class PendingAction { None, Replace };
   Renderer renderer;
@@ -71,6 +72,7 @@ struct ActivityManager {
   bool isForegroundActivityManagingTiltSensor() { return false; }
   uint32_t activityGeneration() { return 0; }
   bool preventAutoSleep() { return false; }
+  WakePlace captureWakePlace() const { return {}; }
   void requestUpdate() { requestedUpdate = true; }
   void replaceActivity(std::unique_ptr<Activity>&& next) {
     pendingActivity = std::move(next);
@@ -96,9 +98,11 @@ struct HalPowerManager { struct Lock {}; void setPowerSaving(bool) {} } powerMan
 struct CrossPointSettings {
   enum class SLEEP_SCREEN_MODE { QUICK_RESUME, TRANSPARENT_CUSTOM, TENOR, UGLY };
   enum class QUICK_RESUME_SLEEP_SCREEN { QUICK_RESUME_AFTER_TIMEOUT, NONE };
+  static constexpr uint8_t WAKE_RESUME = 2;
 };
 struct Settings {
   unsigned long getSleepTimeoutMs() const { return 60000; }
+  uint8_t wakeTarget = CrossPointSettings::WAKE_RESUME;
   uint8_t tiltPageTurn = 1;
   uint8_t orientation = 0;
   uint8_t tiltStrengthH = 1;
@@ -117,6 +121,7 @@ struct AppState {
   bool lastSleepFromReader = false;
   bool showBootScreen = true;
   uint32_t sleepStartedAt = 0;
+  WakePlace wake;
   void saveToFile() { events.push_back("state-save"); }
 } APP_STATE;
 struct GPIO {

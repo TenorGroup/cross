@@ -638,9 +638,13 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint16_t keyboardLayouts = 0;
   // Quick Resume: keep current content visible with moon icon instead of showing a static sleep screen.
   uint8_t quickResumeSleepScreen = QUICK_RESUME_NEVER;
-  // Wake straight back into the book that was open when deep sleep began,
-  // instead of returning to Home. 0 = off, 1 = on.
-  uint8_t wakeIntoBook = 0;
+  // What a wake from sleep opens (the "On wake" row). The values are stored: new ones go last.
+  // HOME is the Home screen of the shell (the diary or desk on tenor/ugly), RECENT its Recent page,
+  // BOOK the book that was open, RESUME the screen the machine slept on.
+  enum WAKE_TARGET : uint8_t { WAKE_HOME = 0, WAKE_BOOK = 1, WAKE_RESUME = 2, WAKE_RECENT = 3 };
+  // What a machine without a settings file wakes into: the one place to change it.
+  static constexpr uint8_t DEFAULT_WAKE_TARGET = WAKE_RESUME;
+  uint8_t wakeTarget = DEFAULT_WAKE_TARGET;
   // X3 UC8279: a wake to Home from a kept sleep frame draws the "Starting up" notice over the sleep
   // screen first (measured +270 ms to Home done). 0 = off (default), 1 = on.
   uint8_t wakeNotice = 0;
@@ -688,9 +692,20 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     return !hasRoot || oldRoot != uglyRootScreen || storedStart != uglyStartScreen;
   }
 
-  UGLY_START_SCREEN startScreen(const bool normalBoot) const {
-    if (!normalBoot || uglyStartScreen >= UGLY_START_SCREEN_COUNT) return UGLY_START_ROOT;
-    return static_cast<UGLY_START_SCREEN>(uglyStartScreen);
+  // Tenor/ugly honours the choice on a normal start only; any other start lands on its root.
+  uint8_t effectiveWakeTarget(const bool normalUglyBoot) const {
+    return uiShell == 1 && !normalUglyBoot ? static_cast<uint8_t>(WAKE_HOME) : wakeTarget;
+  }
+
+  // A file from before wakeTarget: what the shell in use chose carries over (the other shell's choice is
+  // not kept). uglyStartScreen has been through migrateUglyRoot by now.
+  void migrateWakeTarget(const bool wakeIntoBook) {
+    if (uiShell == 1)
+      wakeTarget = uglyStartScreen == UGLY_START_BOOK     ? WAKE_BOOK
+                   : uglyStartScreen == UGLY_START_RECENT ? WAKE_RECENT
+                                                          : WAKE_HOME;
+    else
+      wakeTarget = wakeIntoBook ? WAKE_BOOK : WAKE_HOME;
   }
 
   // Whether a power-button wake may boot. With Short Power Button = Sleep a tap

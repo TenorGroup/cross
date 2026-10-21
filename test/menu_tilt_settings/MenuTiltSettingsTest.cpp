@@ -451,7 +451,7 @@ int main(int argc, char** argv) {
   // v1.0.53 the touch back tap zone and tap zone tip rows, the persisted-only rows of tenor/ugly
   // (uiShellClockMemo, uglyBatteryHidden) and the clock shown once (uiShellClockOnce). v1.0.59 added Button hints.
   // v1.0.60 adds the File order row of Settings, System.
-  bool ok = expect(catalog.size() == (hasImu ? 112U : 100U), "X3 descriptor count");
+  bool ok = expect(catalog.size() == (hasImu ? 111U : 99U), "X3 descriptor count");
   const auto* homeStyle = findSetting(catalog, "homeStyle");
   ok &= expect(homeStyle && settingHiddenOnThisBoard(*homeStyle), "X3 hides the Home style descriptor");
   const SettingInfo* tips = findSetting(catalog, "tipsEnabled");
@@ -459,9 +459,9 @@ int main(int argc, char** argv) {
                   tips->nameId == StrId::STR_TIPS && tips->valuePtr == &CrossPointSettings::tipsEnabled &&
                   settings.tipsEnabled == 1,
               "Display has an independent tips toggle, enabled by default") && ok;
-  ok = expect(findSetting(catalog, "uglyStartScreen") && findSetting(catalog, "uglyRootScreen") &&
-                  findSetting(catalog, "wakeIntoBook"),
-              "base catalog keeps Root and startup descriptors before shell filtering") && ok;
+  ok = expect(findSetting(catalog, "uglyRootScreen") && findSetting(catalog, "wakeTarget") &&
+                  !findSetting(catalog, "uglyStartScreen") && !findSetting(catalog, "wakeIntoBook"),
+              "base catalog keeps the Root and On wake descriptors before shell filtering, and not the two it replaced") && ok;
   ok = expect(longPressValuesMatch(catalog, hasImu), "Confirm-hold list shows Reader menu and appends the new actions") &&
        ok;
   ok = longPressStoreKept(catalog, hasImu) && ok;

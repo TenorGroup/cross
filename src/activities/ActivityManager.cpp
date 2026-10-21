@@ -792,8 +792,8 @@ void ActivityManager::goToUsbDrive() {
 #endif
 }
 
-void ActivityManager::goToSettings(const int theBanDau) {
-  replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInput, theBanDau));
+void ActivityManager::goToSettings(const int theBanDau, std::string startKey) {
+  replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInput, theBanDau, false, std::move(startKey)));
 }
 
 void ActivityManager::goToFileBrowser(std::string path) {
@@ -873,6 +873,58 @@ bool ActivityManager::goToSleep(bool fromTimeout) {
     delay(10);
   }
   return currentActivity && currentActivity->name == "Sleep";
+}
+
+WakePlace ActivityManager::captureWakePlace() const {
+  WakePlace place;
+  const auto holds = [&place](const std::unique_ptr<Activity>& activity) {
+    return activity && !activity->preventAutoSleep() && activity->wakePlace(place);
+  };
+  if (!holds(currentActivity) &&
+      std::none_of(stackActivities.rbegin(), stackActivities.rend(), holds))
+    return {};
+  place.shell = SETTINGS.uiShell;
+  return place;
+}
+
+void ActivityManager::goToWakePlace(const WakePlace& place, const bool cleanInitialRefresh) {
+  // The Home cursor memory a visit to a tab would have left. Home reads it back when it opens, and while a screen
+  // opened from a tab is in front, homeMenuOrigin() reads it for the zone icon and the way back (the bar of the
+  // X4 Pro): so a wake into Settings or a folder leaves Home's tab behind it.
+  const auto seedHome = [&](const int tab, const int row, const std::string& selection) {
+    MenuNavigationState state;
+    state.count = HomeActivity::TAB_COUNT;
+    state.tab = state.committedTab = tab;
+    for (auto& cursor : state.cursors) cursor.selected = mappedInput.hasTouch() ? 0 : 1;
+    state.cursors[tab].selected = row;
+    state.selection = selection;
+    state.booksOpened = RECENT_BOOKS.opened();
+    navigationMemory.save("Home", state);
+  };
+  switch (place.kind) {
+    case WakeKind::HomeTab: {
+      seedHome(place.tab, place.row, place.name);
+      constexpr HomeMenuItem TABS[] = {HomeMenuItem::RECENTS, HomeMenuItem::FILE_BROWSER, HomeMenuItem::STATS_TAB,
+                                       HomeMenuItem::SETTINGS_MENU, HomeMenuItem::FAVORITES_TAB};
+      goHome(TABS[place.tab], cleanInitialRefresh);
+      break;
+    }
+    case WakeKind::Files: {
+      seedHome(1, mappedInput.hasTouch() ? 0 : 1, {});
+      MenuNavigationState state;
+      state.location = place.path;
+      state.selection = place.name;
+      navigationMemory.save("FileBrowserEntry:" + place.path, state);
+      goToFileBrowser(place.path);
+      break;
+    }
+    case WakeKind::SettingsTab:
+      seedHome(3, mappedInput.hasTouch() ? 0 : 1, {});
+      goToSettings(place.tab, place.name);
+      break;
+    default:
+      goHome(HomeMenuItem::RECENT_CONTINUE, cleanInitialRefresh);
+  }
 }
 
 void ActivityManager::goToBoot() { replaceActivity(std::make_unique<BootActivity>(renderer, mappedInput)); }
