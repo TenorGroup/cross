@@ -14,6 +14,7 @@
 #include <esp_rom_crc.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -28,7 +29,6 @@
 #include "SettingsList.h"
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
-#include "activities/util/ConfirmationActivity.h"
 #include "activities/settings/FontDownloadTransfer.h"
 #include "activities/settings/FontDownloadHeap.h"
 #include "components/UITheme.h"
@@ -41,6 +41,32 @@
 #include "shells/ugly/UglyNote.h"
 
 namespace fui = freeink::ui;
+
+namespace {
+// The store's fonts are named by their folder (BeVietnamPro); the reader sees "Be Vietnam Pro". A font of the
+// reader's own keeps the name it was given.
+bool inStoreCatalog(const char* name) {
+  for (size_t i = 0; i < fontstore::PACK_COUNT; ++i)
+    if (std::strcmp(name, fontstore::PACKS[i].name) == 0) return true;
+  return false;
+}
+std::string displayName(const char* name) {
+  if (!inStoreCatalog(name)) return name;
+  std::string out;
+  for (size_t i = 0; name[i]; ++i) {
+    const unsigned char c = static_cast<unsigned char>(name[i]);
+    if (i > 0) {
+      const unsigned char prev = static_cast<unsigned char>(name[i - 1]);
+      const unsigned char next = static_cast<unsigned char>(name[i + 1]);
+      const bool word = std::isupper(c) && (std::islower(prev) || std::isdigit(prev) ||
+                                            (std::isupper(prev) && next && std::islower(next)));
+      if (word || (std::isdigit(c) && !std::isdigit(prev))) out += ' ';
+    }
+    out += static_cast<char>(c);
+  }
+  return out;
+}
+}  // namespace
 
 #ifdef TENOR_PRESS_PROBE
 namespace {
@@ -152,6 +178,7 @@ void FontDownloadActivity::loadInstalledList() {
   for (const auto& family : families) {
     InstalledFont font;
     font.name = family.name;
+    font.inUse = fontIsLoaded(font.name);
     const char* root = SdCardFontRegistry::findFamilyRoot(font.name.c_str());
     if (root && FontPackInstaller::isPackFamily(root, font.name.c_str())) {
       for (size_t i = 0; i < fontstore::PACK_COUNT; ++i) {
@@ -163,7 +190,11 @@ void FontDownloadActivity::loadInstalledList() {
     }
     list.push_back(std::move(font));
   }
-  std::sort(list.begin(), list.end(), [](const InstalledFont& a, const InstalledFont& b) { return a.name < b.name; });
+  // The ones with a newer pack first, then the rest, each A to Z.
+  std::sort(list.begin(), list.end(), [](const InstalledFont& a, const InstalledFont& b) {
+    if (a.hasUpdate != b.hasUpdate) return a.hasUpdate;
+    return displayName(a.name.c_str()) < displayName(b.name.c_str());
+  });
   RenderLock lock(*this);
   installed_ = std::move(list);
   rowsDirty_ = true;
@@ -852,6 +883,10 @@ void FontDownloadActivity::buildFilteredIndices(const int groupListIndex) {
     for (int familyIndex = 0; familyIndex < static_cast<int>(families_.size()); familyIndex++) {
       if (!families_[familyIndex].installed) filteredIndices_.push_back(familyIndex);
     }
+    // A to Z, as the store list.
+    std::sort(filteredIndices_.begin(), filteredIndices_.end(), [this](const int a, const int b) {
+      return displayName(str(families_[a].name)) < displayName(str(families_[b].name));
+    });
     return;
   }
 
@@ -901,6 +936,12 @@ void FontDownloadActivity::updateDownloadProgress(size_t downloaded, size_t tota
   if (mappedInput.isPressed(MappedInputManager::Button::Back) ||
       mappedInput.wasPressed(MappedInputManager::Button::Back)) {
     cancelRequested_ = true;
+  }
+  int tapX = 0, tapY = 0;
+  if (tenorchrome::kTouchShell && !installingPack_ && mappedInput.wasScreenTapped(tapX, tapY)) {
+    const auto pill = touchPillRect();
+    if (tapX >= pill.x && tapX < pill.x + pill.width && tapY >= pill.y && tapY < pill.y + pill.height)
+      cancelRequested_ = true;
   }
   if (mappedInput.wasLongPressed(MappedInputManager::Button::Back, 1000) || mappedInput.wasHomeGesture()) {
     cancelRequested_ = true;
@@ -1182,6 +1223,10 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
 
 void FontDownloadActivity::activateSelected() {
   if (filteredIndices_.empty()) return;
+  if (isOwnFontRow(nav.selected)) {
+    showOwnFontHelp();
+    return;
+  }
   if (isDownloadAllRow(nav.selected) || isBottomDownloadRow(nav.selected)) {
     // Nothing switched on: the row only says to pick families (the whole store is hundreds of MB).
     if (chosenCount() == 0) return;
@@ -1283,6 +1328,7 @@ int FontDownloadActivity::storeRowCount() const { return static_cast<int>(instal
 void FontDownloadActivity::rebuildStoreRowItems() {
   const int listSize = storeRowCount();
   rowLabels_.assign(listSize, std::string());
+  rowNames_.assign(listSize, std::string());
   rowItems_.clear();
   rowItems_.reserve(listSize);
   for (int i = 0; i < listSize; i++) {
@@ -1292,12 +1338,14 @@ void FontDownloadActivity::rebuildStoreRowItems() {
       item.subtitle = tr(STR_ADD_NEW_FONTS_SUB);
       item.opensNext = true;
     } else if (i == listSize - 1) {
-      rowLabels_[i] = std::string(tr(STR_FILE_TRANSFER)) + " > " + tr(STR_JOIN_NETWORK) + tr(STR_OWN_FONT_HINT);
       item.label = tr(STR_OWN_FONT);
-      item.subtitle = rowLabels_[i].c_str();
+      item.subtitle = tr(STR_OWN_FONT_SUB);
+      item.opensNext = true;
     } else {
       const auto& font = installed_[i - 1];
-      item.label = font.name.c_str();
+      rowNames_[i] = displayName(font.name.c_str());
+      item.label = rowNames_[i].c_str();
+      if (font.inUse) item.subtitle = tr(STR_FONT_IN_USE);
       item.value = font.hasUpdate ? tr(STR_UPDATE_AVAILABLE) : tr(STR_INSTALLED);
     }
     item.actionValue = static_cast<int16_t>(i);
@@ -1311,26 +1359,42 @@ void FontDownloadActivity::activateStoreRow(const int index) {
     beginNetwork();
     return;
   }
-  if (index >= 1 && index <= static_cast<int>(installed_.size())) showInstalledMenu(index - 1);
+  if (index >= 1 && index <= static_cast<int>(installed_.size())) {
+    showInstalledMenu(index - 1);
+    return;
+  }
+  showOwnFontHelp();
 }
 
-// A font on the card: Delete, and Update when the store has a newer pack.
+// What a font of the reader's own needs to get in: a note, closed with Done.
+void FontDownloadActivity::showOwnFontHelp() {
+  const char* options[] = {tr(STR_DONE)};
+  rowMenu.show(tr(STR_OWN_FONT), tr(STR_OWN_FONT_HOWTO), options, 1, 0, [this](int) { requestUpdate(); });
+  requestUpdate();
+}
+
+// A font on the card: Delete, and Update when the store has a newer pack. Touch: a menu at the row; buttons: a box
+// with the font's name.
 void FontDownloadActivity::showInstalledMenu(const int installedIndex) {
   if (installedIndex < 0 || installedIndex >= static_cast<int>(installed_.size())) return;
   const bool update = installed_[installedIndex].hasUpdate;
-  const char* options[2];
-  int count = 0;
-  if (update) options[count++] = tr(STR_UPDATE);
-  options[count++] = tr(STR_ALERT_FONT_ACTION_LONG);
-  const std::string name = installed_[installedIndex].name;
-  rowMenu.show(tr(STR_FONT_BOX_TITLE), name.c_str(), options, count, -1, [this, installedIndex, update](const int choice) {
+  const auto choose = [this, installedIndex, update](const int choice) {
     if (installedIndex >= static_cast<int>(installed_.size())) return;
-    if (update && choice == 0) {
-      startUpdate(installed_[installedIndex].name);
-    } else {
-      promptDeleteInstalled(installedIndex);
-    }
-  });
+    if (update && choice == 0) startUpdate(installed_[installedIndex].name);
+    else promptDeleteInstalled(installedIndex);
+  };
+  if (tenorchrome::kTouchShell) {
+    static constexpr StrId BOTH[] = {StrId::STR_UPDATE, StrId::STR_ALERT_FONT_ACTION_LONG};
+    rowMenu.showAnchored(app.publishedRect(ACTION_ROW, static_cast<int16_t>(installedIndex + 1)),
+                         update ? BOTH : BOTH + 1, update ? 2 : 1, choose);
+  } else {
+    const char* options[2];
+    int count = 0;
+    if (update) options[count++] = tr(STR_UPDATE);
+    options[count++] = tr(STR_ALERT_FONT_ACTION_LONG);
+    const std::string name = displayName(installed_[installedIndex].name.c_str());
+    rowMenu.show(tr(STR_FONT_BOX_TITLE), name.c_str(), options, count, -1, choose);
+  }
   requestUpdate();
 }
 
@@ -1343,7 +1407,7 @@ void FontDownloadActivity::promptDeleteInstalled(const int installedIndex) {
   pendingDeleteName_ = installed_[installedIndex].name;
   // What the question must say besides "deleted from the card": a font in use restarts the unit, and a font of the
   // reader's own cannot be fetched again from the store.
-  std::string message = pendingDeleteName_ + " " + tr(STR_ALERT_FONT_MESSAGE_SUFFIX);
+  std::string message = displayName(pendingDeleteName_.c_str()) + " " + tr(STR_ALERT_FONT_MESSAGE_SUFFIX);
   if (fontIsLoaded(pendingDeleteName_)) {
     message += std::string(" ") + tr(STR_FONT_DELETE_NOTE_USED);
   } else {
@@ -1351,12 +1415,19 @@ void FontDownloadActivity::promptDeleteInstalled(const int installedIndex) {
     if (!root || !FontPackInstaller::isPackFamily(root, pendingDeleteName_.c_str()))
       message += std::string(" ") + tr(STR_FONT_DELETE_NOTE_OWN);
   }
-  startActivityForResult(
-      std::make_unique<ConfirmationActivity>(
-          renderer, mappedInput, std::string(tr(STR_DELETE)), pendingDeleteName_,
-          ConfirmationContent{tr(STR_ALERT_FONT_QUESTION), message,
-                              tr(STR_ALERT_FONT_ACTION_SHORT), tr(STR_ALERT_FONT_ACTION_LONG), "", true}),
-      [this](const ActivityResult& result) { onDeleteInstalledResult(result); });
+  // Cancel first, so the cursor starts on the safe answer; touch has the one action and a tap outside cancels.
+  const char* options[] = {tr(STR_CANCEL), tr(STR_ALERT_FONT_ACTION_SHORT)};
+  constexpr int skip = tenorchrome::kTouchShell ? 1 : 0;
+  rowMenu.show(tr(STR_ALERT_FONT_QUESTION), message.c_str(), options + skip, 2 - skip, -1, [this](const int choice) {
+    if (choice + skip == 1) {
+      ActivityResult confirmed;
+      onDeleteInstalledResult(confirmed);
+    } else {
+      pendingDeleteName_.clear();
+      requestUpdate();
+    }
+  });
+  requestUpdate();
 }
 
 // The font the reader draws with now (its own pack, or the pack standing in for a built-in face at a heavier
@@ -1417,6 +1488,7 @@ void FontDownloadActivity::rebuildGroupRowItems() {
 void FontDownloadActivity::rebuildFamilyRowItems() {
   const int listSize = listItemCount();
   rowLabels_.assign(listSize, std::string());
+  rowNames_.assign(listSize, std::string());
   rowItems_.clear();
   rowItems_.reserve(listSize);
   for (int i = 0; i < listSize; i++) {
@@ -1434,16 +1506,16 @@ void FontDownloadActivity::rebuildFamilyRowItems() {
         item.state = fui::StateDisabled;
       }
     } else if (isOwnFontRow(i)) {
-      // The way there, from the screens' own names, so a renamed screen cannot leave the hint stale.
-      rowLabels_[i] = std::string(tr(STR_FILE_TRANSFER)) + " > " + tr(STR_JOIN_NETWORK) + tr(STR_OWN_FONT_HINT);
       item.label = tr(STR_OWN_FONT);
-      item.subtitle = rowLabels_[i].c_str();
+      item.subtitle = tr(STR_OWN_FONT_SUB);
+      item.opensNext = true;
     } else if (isUpdateAllRow(i)) {
       rowLabels_[i] = std::string(tr(STR_UPDATE_ALL)) + " (" + formatSize(totalUpdateSize()) + ")";
       item.label = rowLabels_[i].c_str();
     } else {
       const auto& family = families_[familyIndexFromList(i)];
-      item.label = str(family.name);
+      rowNames_[i] = displayName(str(family.name));
+      item.label = rowNames_[i].c_str();
       if (family.description != 0) {
         item.subtitle = str(family.description);
       } else if (!family.installed || family.hasUpdate) {
@@ -1708,6 +1780,21 @@ void FontDownloadActivity::drawListHints() {
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
 
+// Touch: the one action of a transfer screen (Cancel while it runs, Retry after an error) as a pill, so the screen says
+// what a tap does. Its place is the same for the drawing and for the tap.
+fui::Rect FontDownloadActivity::touchPillRect() const {
+  const int w = 200, h = 64;
+  return fui::Rect{static_cast<int16_t>((renderer.getScreenWidth() - w) / 2),
+                   static_cast<int16_t>(renderer.getScreenHeight() - 190), static_cast<int16_t>(w), static_cast<int16_t>(h)};
+}
+
+void FontDownloadActivity::drawTouchPill(const char* text) const {
+  const auto r = touchPillRect();
+  renderer.drawRoundedRect(r.x, r.y, r.width, r.height, 2, r.height / 2, true);
+  renderer.drawCenteredText(UI_10_FONT_ID, r.y + (r.height - renderer.getLineHeight(UI_10_FONT_ID)) / 2, text, true,
+                            EpdFontFamily::BOLD);
+}
+
 void FontDownloadActivity::render(RenderLock&&) {
   if (rowMenu.processRender(renderer, mappedInput)) return;
   if (state_ == DOWNLOADING || (state_ == COMPLETE && batchResult_)) {
@@ -1772,25 +1859,31 @@ void FontDownloadActivity::render(RenderLock&&) {
     const auto rows = fontdownload::transferLayout(centerY, lineHeight, metrics.verticalSpacing,
                                                    metrics.progressBarHeight, BaseTheme::PROGRESS_LABEL_GAP);
     const int width = pageWidth - metrics.contentSidePadding * 2;
-    const auto name = renderer.truncatedText(UI_10_FONT_ID, str(family.name), width);
+    const auto name = renderer.truncatedText(UI_10_FONT_ID, displayName(str(family.name)).c_str(), width);
     renderer.drawCenteredText(UI_10_FONT_ID, rows.name, name.c_str());
     char status[128];
+    // Installing is a wait of its own: the bars would stand at 100% for it, which reads as done.
     if (installingPack_) {
       std::snprintf(status, sizeof(status), "%s", tr(STR_FONT_PACK_INSTALLING));
+      renderer.drawCenteredText(UI_10_FONT_ID, rows.status, status);
     } else {
       std::snprintf(status, sizeof(status), tr(STR_FONT_BATCH_DOWNLOADING),
                     formatSize(familyBytes).c_str(), formatSize(family.totalSize).c_str());
+      renderer.drawCenteredText(UI_10_FONT_ID, rows.status, status);
+      GUI.drawProgressBar(renderer, Rect{metrics.contentSidePadding, rows.bar1, width, metrics.progressBarHeight},
+                          std::min(currentPercent, 100u), 100);
+      // The total of several fonts is its own bar; one font has only its own.
+      if (batchRunning_ && batchFamilyCount_ > 1) {
+        std::snprintf(status, sizeof(status), tr(STR_FONT_BATCH_TOTAL), batchFamilyIndex_, batchFamilyCount_,
+                      totalPercent);
+        renderer.drawCenteredText(UI_10_FONT_ID, rows.total, status);
+        GUI.drawProgressBar(renderer, Rect{metrics.contentSidePadding, rows.bar2, width, metrics.progressBarHeight},
+                            std::min(totalPercent, 100u), 100);
+        const auto sizeText = formatSize(downloadedBytes) + " / " + formatSize(totalBytes);
+        renderer.drawCenteredText(UI_10_FONT_ID, rows.size, sizeText.c_str());
+      }
     }
-    renderer.drawCenteredText(UI_10_FONT_ID, rows.status, status);
-    GUI.drawProgressBar(renderer, Rect{metrics.contentSidePadding, rows.bar1, width, metrics.progressBarHeight},
-                        std::min(currentPercent, 100u), 100);
-    std::snprintf(status, sizeof(status), tr(STR_FONT_BATCH_TOTAL), batchRunning_ ? batchFamilyIndex_ : 1u,
-                  batchRunning_ ? batchFamilyCount_ : 1u, totalPercent);
-    renderer.drawCenteredText(UI_10_FONT_ID, rows.total, status);
-    GUI.drawProgressBar(renderer, Rect{metrics.contentSidePadding, rows.bar2, width, metrics.progressBarHeight},
-                        std::min(totalPercent, 100u), 100);
-    const auto sizeText = formatSize(downloadedBytes) + " / " + formatSize(totalBytes);
-    renderer.drawCenteredText(UI_10_FONT_ID, rows.size, sizeText.c_str());
+    if (tenorchrome::kTouchShell && !installingPack_) drawTouchPill(tr(STR_CANCEL));
     const auto labels = mappedInput.mapLabels(installingPack_ ? "" : tr(STR_CANCEL), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else if (state_ == COMPLETE) {
@@ -1825,6 +1918,7 @@ void FontDownloadActivity::render(RenderLock&&) {
     if (!errorMessage_.empty()) {
       renderer.drawCenteredText(UI_10_FONT_ID, centerY + metrics.verticalSpacing, errorMessage_.c_str());
     }
+    if (tenorchrome::kTouchShell) drawTouchPill(tr(STR_RETRY));
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_RETRY), "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   }
@@ -1858,7 +1952,7 @@ std::string FontDownloadActivity::x3InfoText() const {
   const auto totalBytes = batchRunning_ ? batchTotalBytes_ : family.totalSize;
   const auto downloadedBytes = batchRunning_ ? batchDownloadedBytes_ + fileProgress_ : familyBytes;
   const unsigned totalPercent = totalBytes ? static_cast<unsigned>(downloadedBytes * 100 / totalBytes) : 0;
-  std::string text = str(family.name);
+  std::string text = displayName(str(family.name));
   if (installingPack_) text += std::string("\n") + tr(STR_FONT_PACK_INSTALLING);
   std::snprintf(summary, sizeof(summary), tr(STR_FONT_BATCH_DOWNLOADING),
                 formatSize(familyBytes).c_str(), formatSize(family.totalSize).c_str());
@@ -1877,15 +1971,20 @@ void FontDownloadActivity::renderX3State() {
   const int lineHeight = renderer.getLineHeight(SMALL_FONT_ID);
   body.height -= lineHeight + 8;
   if (state_ == ERROR) body.height -= lineHeight + 8;
-  if (state_ == DOWNLOADING && fileTotal_ > 0) body.height -= metrics.progressBarHeight + 8;
+  const bool x3Bar = state_ == DOWNLOADING && fileTotal_ > 0 && !installingPack_;
+  if (x3Bar) body.height -= metrics.progressBarHeight + 8;
   const std::string text = x3InfoText();
   infoPages_ = x3settings::infoPageCount(renderer, text.c_str(), body);
   infoPage_ = std::clamp(infoPage_, 0, infoPages_ - 1);
   x3settings::drawInfoPage(renderer, text.c_str(), body, infoPage_);
-  if (state_ == DOWNLOADING && fileTotal_ > 0) {
+  if (x3Bar) {
     const auto& family = families_[downloadingFamilyIndex_];
     const auto bytes = uint64_t{familyDownloadedBytes_} + fileProgress_;
-    const unsigned percent = family.totalSize ? static_cast<unsigned>(bytes * 100 / family.totalSize) : 0;
+    // The one bar of this screen is the total when several fonts come, so it agrees with the words above it.
+    const bool batch = batchRunning_ && batchFamilyCount_ > 1;
+    const uint64_t done = batch ? batchDownloadedBytes_ + fileProgress_ : bytes;
+    const uint64_t whole = batch ? batchTotalBytes_ : family.totalSize;
+    const unsigned percent = whole ? static_cast<unsigned>(done * 100 / whole) : 0;
     GUI.drawProgressBar(renderer, Rect{metrics.contentSidePadding, body.bottom() + 8,
                                        renderer.getScreenWidth() - 2 * metrics.contentSidePadding, metrics.progressBarHeight},
                          std::min(percent, 100u), 100);

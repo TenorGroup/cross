@@ -105,8 +105,13 @@ class FontDownloadActivity final : public UiListActivity {
   struct InstalledFont {
     std::string name;
     bool hasUpdate = false;
+    bool inUse = false;  // the reader draws with it now
   };
   std::vector<InstalledFont> installed_;
+  std::vector<std::string> rowNames_;  // the names the rows show
+  void showOwnFontHelp();
+  freeink::ui::Rect touchPillRect() const;
+  void drawTouchPill(const char* text) const;
   // Set to a font's name when the store was opened to update that one font: it goes to the network, downloads it
   // and leaves, without the list of fonts to add.
   std::string updateTarget_;

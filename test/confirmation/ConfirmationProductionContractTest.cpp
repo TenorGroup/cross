@@ -81,21 +81,20 @@ TEST(ConfirmationProductionContract, ATimedQuestionIsCancelledFromTheLoop) {
 }
 
 TEST(ConfirmationProductionContract, AllFiveCrossCallersProvideTheirOwnedContent) {
-  constexpr std::array<const char*, 4> callers{
+  // The font store asks in its own pop-up box since v1.0.71 (one flow, one kind of box).
+  constexpr std::array<const char*, 3> callers{
       "src/activities/home/FileActions.cpp",  // the file browser and Home's File card ask through it
       "src/activities/home/HomeActivity.cpp",
-      "src/activities/settings/FontDownloadActivity.cpp",
       "src/activities/settings/SdFirmwareUpdateActivity.cpp",
   };
 
   size_t aggregates = 0;
   for (const auto* caller : callers) aggregates += countOf(readSource(caller), "ConfirmationContent{");
-  EXPECT_EQ(aggregates, 5U);
+  EXPECT_EQ(aggregates, 4U);
 
   EXPECT_NE(readSource(callers[0]).find("STR_ALERT_FILE_ACTION_LONG"), std::string::npos);
   EXPECT_NE(readSource(callers[1]).find("STR_ALERT_RECENT_TOUCH_MESSAGE"), std::string::npos);
-  EXPECT_NE(readSource(callers[2]).find("STR_ALERT_FONT_ACTION_LONG"), std::string::npos);
-  EXPECT_NE(readSource(callers[3]).find("STR_ALERT_FIRMWARE_ACTION_LONG"), std::string::npos);
+  EXPECT_NE(readSource(callers[2]).find("STR_ALERT_FIRMWARE_ACTION_LONG"), std::string::npos);
 }
 
 struct AlertCopy {
