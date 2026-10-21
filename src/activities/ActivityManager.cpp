@@ -770,11 +770,11 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
   }
 }
 
-void ActivityManager::goToFileTransfer() {
+void ActivityManager::goToFileTransfer(const bool openFontStore) {
   // Opened from a book, File transfer is a detour: it hands the reader back on
   // exit. The reader has already saved its position, it does so on every paint.
   std::string book = isReaderActivity() ? APP_STATE.openEpubPath : std::string();
-  replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput, std::move(book)));
+  replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput, std::move(book), openFontStore));
 }
 
 void ActivityManager::goToUsbDrive() {

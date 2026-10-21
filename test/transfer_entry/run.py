@@ -61,7 +61,7 @@ class TransferEntryContract(unittest.TestCase):
         self.assertRegex(self.chooser_launch(), r"result\.isCancelled\s*\)\s*\{\s*leave\(\)")
         # Only a session opened from a book carries a book back; Home and Settings
         # open it without one, so leave() ends on Home for them.
-        entry = function_body(self.manager, "void ActivityManager::goToFileTransfer()")
+        entry = function_body(self.manager, "void ActivityManager::goToFileTransfer(")
         self.assertIn("isReaderActivity() ? APP_STATE.openEpubPath : std::string()", entry)
         leave = function_body(self.activity, "void CrossPointWebServerActivity::leave()")
         self.assertRegex(leave, r"^[^{]*\{\s*if \(!returnBook\.empty\(\) &&")
@@ -108,15 +108,18 @@ class TransferEntryContract(unittest.TestCase):
         self.assertLess(enter.index("releaseBaseSettingsList()"), enter.index("chooseMode()"))
         self.assertLess(enter.index("releaseSdFontCaches()"), enter.index("chooseMode()"))
 
-    # The store's Wi-Fi restarts the unit on the way out: back into the book the hub came from, else the hub.
-    def test_font_store_restart_returns_to_hub_or_book(self):
+    # The store's Wi-Fi restarts the unit on the way out: back into the book the hub came from, else the store itself
+    # (a download or an update done: the list of fonts on the card, as it is now).
+    def test_font_store_restart_returns_to_store_or_book(self):
         exit_body = function_body(self.fonts, "void FontDownloadActivity::onExit()")
-        self.assertIn("toBook_ ? silentRestartToReader() : silentRestartToFileTransfer()", exit_body)
+        self.assertIn("toBook_ ? silentRestartToReader() : silentRestartToFontStore()", exit_body)
         self.assertNotRegex(exit_body, r"silentRestart\(\);")
         self.assertIn("bool toBook = false", self.fonts_header)
-        self.assertRegex(self.main, r"SILENT_REBOOT_TARGET_TRANSFER = 4;\s*constexpr uint32_t SILENT_REBOOT_TARGET_MAX = SILENT_REBOOT_TARGET_TRANSFER;")
-        transfer = function_body(self.main, "void silentRestartToFileTransfer()")
-        self.assertIn("silentRestartTo(SILENT_REBOOT_TARGET_TRANSFER", transfer)
+        self.assertRegex(self.main, r"SILENT_REBOOT_TARGET_FONTS = 5;\s*constexpr uint32_t SILENT_REBOOT_TARGET_MAX = SILENT_REBOOT_TARGET_FONTS;")
+        transfer = function_body(self.main, "void silentRestartToFontStore()")
+        self.assertIn("silentRestartTo(SILENT_REBOOT_TARGET_FONTS", transfer)
+        self.assertRegex(self.main, r"snapshotTarget == SILENT_REBOOT_TARGET_FONTS\) \{[^}]*activityManager\.goToFileTransfer\(/\*openFontStore=\*/true\);")
+        # The hub's own restart target still opens the hub.
         self.assertRegex(self.main, r"snapshotTarget == SILENT_REBOOT_TARGET_TRANSFER\) \{[^}]*activityManager\.goToFileTransfer\(\);")
 
     # Its old Reader row is gone; the pin "action/10" opens the store itself.

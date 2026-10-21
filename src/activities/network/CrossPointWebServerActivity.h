@@ -41,6 +41,7 @@ class CrossPointWebServerActivity final : public Activity {
   bool runtimeStarted = false;
   // Book this session was opened from; empty when opened outside a book.
   std::string returnBook;
+  bool openFontStore = false;  // opened out of a font store restart: go straight into the store
   // Set once the exit reopens returnBook, so a Wi-Fi restart boots into it.
   bool toBook = false;
 #ifdef TENOR_UI_ACCEPTANCE
@@ -85,8 +86,10 @@ class CrossPointWebServerActivity final : public Activity {
   void requestAutoJoinForTest() { autoJoinForTest = true; }
 #endif
   explicit CrossPointWebServerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                       std::string returnBook = {})
-      : Activity("CrossPointWebServer", renderer, mappedInput), returnBook(std::move(returnBook)) {}
+                                       std::string returnBook = {}, const bool openFontStore = false)
+      : Activity("CrossPointWebServer", renderer, mappedInput),
+        returnBook(std::move(returnBook)),
+        openFontStore(openFontStore) {}
   void onEnter() override;
   void onExit() override;
   void loop() override;

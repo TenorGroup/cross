@@ -4459,6 +4459,17 @@ static_assert(std::string_view(readermenu::TEXT_KEYS[5]) == "letterSpacing" &&
                   std::string_view(readermenu::TEXT_KEYS[6]) == "wordSpacing" &&
                   std::string_view(readermenu::TEXT_KEYS[7]) == "extraParagraphSpacing",
               "the spacing level rows");
+// The ink weight row lists the levels the font in use really has, never one it would draw as another.
+constexpr int kInkRow = 12;
+static_assert(std::string_view(readermenu::TEXT_KEYS[kInkRow]) == "readerInkWeight", "the ink weight row");
+std::vector<uint8_t> inkLevels() {
+  const uint16_t mask = sdFontSystem.availableWeightMask();
+  std::vector<uint8_t> levels;
+  for (uint8_t stored = 0; stored < readerInk::LEVEL_COUNT; ++stored)
+    if (readerInk::available(stored, mask)) levels.push_back(stored);
+  if (levels.empty()) levels.push_back(readerInk::ZERO);
+  return levels;
+}
 // The stored value of a row of values (ids 2 and on).
 uint8_t& textChoiceValue(const int row) {
   if (row == 2) return SETTINGS.lineSpacing;
@@ -4467,6 +4478,7 @@ uint8_t& textChoiceValue(const int row) {
   return SETTINGS.*(catalogTextRow(row)->valuePtr);
 }
 int textChoiceCount(const int row) {
+  if (row == kInkRow) return static_cast<int>(inkLevels().size());
   if (row == 2) {
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
     return readerSpacing::LINE_LEVEL_COUNT;
@@ -4499,6 +4511,13 @@ bool textRowOn(const int place) {
 int textChoiceInUse(const int row) {
   if (textChoiceCount(row) == 0) return -1;
   const uint8_t value = textChoiceValue(row);
+  if (row == kInkRow) {
+    const auto levels = inkLevels();
+    int best = 0;
+    for (int k = 0; k < static_cast<int>(levels.size()); ++k)
+      if (levels[k] <= readerInk::clamp(value)) best = k;  // the level in use, or the nearest one below it
+    return best;
+  }
   if (row == 2) {
     const uint8_t level = readerSpacing::clampLineLevel(value);
     for (int k = 0; k < textChoiceCount(row); ++k)
@@ -4520,6 +4539,10 @@ int textChoiceInUse(const int row) {
 }
 // The stored value of the value at `place`.
 uint8_t textChoiceStored(const int row, const int place) {
+  if (row == kInkRow) {
+    const auto levels = inkLevels();
+    return levels[std::clamp(place, 0, static_cast<int>(levels.size()) - 1)];
+  }
   if (row == 2) return kLineSpacingByPlace[place];
   if (spacingLevelRow(row)) return kSpacingByPlace[place];
   const auto info = catalogTextRow(row);
@@ -4535,6 +4558,7 @@ std::string textChoiceLabel(const int row, const int place) {
   if (row == 4) return I18N.get(kDropCapIds[place]);
   const auto info = catalogTextRow(row);
   if (!info) return "";
+  if (row == kInkRow) return I18N.get(info->enumLabels()[textChoiceStored(row, place)]);
   if (info->type == SettingType::TOGGLE) return place ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
   if (info->type == SettingType::VALUE) return std::to_string(textChoiceStored(row, place));
   return I18N.get(info->enumLabels()[place]);

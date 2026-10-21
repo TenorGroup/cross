@@ -10,6 +10,7 @@
 void silentRestart();            // home screen
 void silentRestartToReader();    // currently-open EPUB (APP_STATE.openEpubPath)
 void silentRestartToSettings();  // settings screen
+void silentRestartToFontStore();     // Tải font, inside Connections (out of a download or an update)
 void silentRestartToFileTransfer();  // Connections, the File Transfer hub (out of the font store)
 // The open book's card stopped answering (CardRescue.h): restart into the book with nothing
 // written first, since every write would wait out the dead card. Returns only if sleep won.

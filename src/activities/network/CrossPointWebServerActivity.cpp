@@ -223,6 +223,11 @@ void CrossPointWebServerActivity::onEnter() {
   }
 #endif
 
+  if (openFontStore) {
+    openFontStore = false;
+    onNetworkModeSelected(NetworkMode::FONT_STORE);
+    return;
+  }
   chooseMode();
 }
 

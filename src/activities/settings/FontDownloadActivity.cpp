@@ -197,7 +197,7 @@ void FontDownloadActivity::onExit() {
     if (networkUsed_ || WiFi.getMode() != WIFI_MODE_NULL) {
       WiFi.disconnect(false);
       delay(30);
-      toBook_ ? silentRestartToReader() : silentRestartToFileTransfer();
+      toBook_ ? silentRestartToReader() : silentRestartToFontStore();
     }
   }
 
@@ -788,12 +788,21 @@ int FontDownloadActivity::specialRowCount() const {
 
 bool FontDownloadActivity::isDownloadAllRow(int index) const { return showDownloadAllRow() && index == 0; }
 
+bool FontDownloadActivity::hasBottomDownloadRow() const { return !filteredIndices_.empty() && chosenCount() > 0; }
+
+// Just above the own-font row, which stays the last.
+bool FontDownloadActivity::isBottomDownloadRow(const int index) const {
+  return hasBottomDownloadRow() && index == listItemCount() - 2;
+}
+
 bool FontDownloadActivity::isUpdateAllRow(int index) const {
   return showUpdateAllRow() && index == (showDownloadAllRow() ? 1 : 0);
 }
 
 int FontDownloadActivity::listItemCount() const {
-  return filteredIndices_.empty() ? 0 : static_cast<int>(filteredIndices_.size()) + specialRowCount() + 1;
+  return filteredIndices_.empty()
+             ? 0
+             : static_cast<int>(filteredIndices_.size()) + specialRowCount() + (hasBottomDownloadRow() ? 1 : 0) + 1;
 }
 
 // The last row says how to add a font the store does not have; Up from the first row reaches it.
@@ -1173,7 +1182,7 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
 
 void FontDownloadActivity::activateSelected() {
   if (filteredIndices_.empty()) return;
-  if (isDownloadAllRow(nav.selected)) {
+  if (isDownloadAllRow(nav.selected) || isBottomDownloadRow(nav.selected)) {
     // Nothing switched on: the row only says to pick families (the whole store is hundreds of MB).
     if (chosenCount() == 0) return;
     currentFileIndex_ = 0;
@@ -1332,11 +1341,20 @@ void FontDownloadActivity::startUpdate(const std::string& name) {
 
 void FontDownloadActivity::promptDeleteInstalled(const int installedIndex) {
   pendingDeleteName_ = installed_[installedIndex].name;
+  // What the question must say besides "deleted from the card": a font in use restarts the unit, and a font of the
+  // reader's own cannot be fetched again from the store.
+  std::string message = pendingDeleteName_ + " " + tr(STR_ALERT_FONT_MESSAGE_SUFFIX);
+  if (fontIsLoaded(pendingDeleteName_)) {
+    message += std::string(" ") + tr(STR_FONT_DELETE_NOTE_USED);
+  } else {
+    const char* root = SdCardFontRegistry::findFamilyRoot(pendingDeleteName_.c_str());
+    if (!root || !FontPackInstaller::isPackFamily(root, pendingDeleteName_.c_str()))
+      message += std::string(" ") + tr(STR_FONT_DELETE_NOTE_OWN);
+  }
   startActivityForResult(
       std::make_unique<ConfirmationActivity>(
           renderer, mappedInput, std::string(tr(STR_DELETE)), pendingDeleteName_,
-          ConfirmationContent{tr(STR_ALERT_FONT_QUESTION),
-                              pendingDeleteName_ + " " + tr(STR_ALERT_FONT_MESSAGE_SUFFIX),
+          ConfirmationContent{tr(STR_ALERT_FONT_QUESTION), message,
                               tr(STR_ALERT_FONT_ACTION_SHORT), tr(STR_ALERT_FONT_ACTION_LONG), "", true}),
       [this](const ActivityResult& result) { onDeleteInstalledResult(result); });
 }
@@ -1403,9 +1421,10 @@ void FontDownloadActivity::rebuildFamilyRowItems() {
   rowItems_.reserve(listSize);
   for (int i = 0; i < listSize; i++) {
     fui::ListItem item;
-    if (isDownloadAllRow(i)) {
+    if (isDownloadAllRow(i) || isBottomDownloadRow(i)) {
       const int chosen = chosenCount();
       if (chosen) {
+        item.opensNext = true;  // pressable: the row that starts the download
         char label[96];
         std::snprintf(label, sizeof(label), tr(STR_DOWNLOAD_CHOSEN), chosen, formatSize(totalDownloadSize()).c_str());
         rowLabels_[i] = label;
@@ -1678,7 +1697,8 @@ void FontDownloadActivity::drawListHints() {
   const int familyIndex = familyIndexFromList(nav.selected);
   const bool toggles = familyIndex >= 0 && !families_[familyIndex].installed;
   const char* confirmLabel = !hasVisibleFamilies || isOwnFontRow(nav.selected) ||
-                                     (isDownloadAllRow(nav.selected) && chosenCount() == 0)
+                                     ((isDownloadAllRow(nav.selected) || isBottomDownloadRow(nav.selected)) &&
+                                  chosenCount() == 0)
                                  ? ""
                              : isUpdateAllRow(nav.selected) ? tr(STR_UPDATE)
                              : toggles                      ? tr(STR_TOGGLE)

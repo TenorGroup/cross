@@ -134,7 +134,7 @@ class ActivityManager {
   void replaceActivity(std::unique_ptr<Activity>&& newActivity);
 
   // goTo... functions are convenient wrapper for replaceActivity()
-  void goToFileTransfer();
+  void goToFileTransfer(bool openFontStore = false);
   void goToUsbDrive();
   // theBanDau: the mo san cua man Cai dat. Man chinh bay cac nhom thanh dong nen no
   // goi thang vao dung the, khoi bat nguoi ta nhay the lai tu dau.

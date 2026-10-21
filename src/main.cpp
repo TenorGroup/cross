@@ -286,7 +286,9 @@ constexpr uint32_t SILENT_REBOOT_TARGET_SETTINGS = 2;
 constexpr uint32_t SILENT_REBOOT_TARGET_OTA = 3;
 // Connections (the File Transfer hub): the font store's Wi-Fi restart comes back to the list it was opened from.
 constexpr uint32_t SILENT_REBOOT_TARGET_TRANSFER = 4;
-constexpr uint32_t SILENT_REBOOT_TARGET_MAX = SILENT_REBOOT_TARGET_TRANSFER;
+// Tải font inside Connections: the store's own Wi-Fi restart (a download or an update done) comes back to the store.
+constexpr uint32_t SILENT_REBOOT_TARGET_FONTS = 5;
+constexpr uint32_t SILENT_REBOOT_TARGET_MAX = SILENT_REBOOT_TARGET_FONTS;
 constexpr uint32_t SILENT_REBOOT_LIGHT_ON = cardrescue::PAYLOAD_LIGHT_ON;
 
 // How the device is coming back to life, resolved once at boot. Both resume
@@ -385,6 +387,11 @@ void silentRestart() {
 void silentRestartToFileTransfer() {
   if (probeKeptHeap()) return;
   silentRestartTo(SILENT_REBOOT_TARGET_TRANSFER, "transfer");
+}
+
+void silentRestartToFontStore() {
+  if (probeKeptHeap()) return;
+  silentRestartTo(SILENT_REBOOT_TARGET_FONTS, "fonts");
 }
 
 void silentRestartToReader() { silentRestartTo(SILENT_REBOOT_TARGET_READER, "reader"); }
@@ -1084,6 +1091,9 @@ void setup() {
   } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_SETTINGS) {
     // Back out of the WiFi rows and the user is where they left off, not on Home.
     activityManager.goToSettings();
+  } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_FONTS) {
+    // Back in the font store a download or an update left: the fonts on the card, as they are now.
+    activityManager.goToFileTransfer(/*openFontStore=*/true);
   } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_TRANSFER) {
     // Out of the font store's Wi-Fi: back on the Connections list it was opened from.
     activityManager.goToFileTransfer();

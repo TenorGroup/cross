@@ -223,6 +223,9 @@ class FontDownloadActivity final : public UiListActivity {
   bool showUpdateAllRow() const;
   int specialRowCount() const;
   bool isDownloadAllRow(int index) const;
+  // Once fonts are ticked the download row stands at the foot of the list too, so a long list needs no scrolling back.
+  bool hasBottomDownloadRow() const;
+  bool isBottomDownloadRow(int index) const;
   bool isUpdateAllRow(int index) const;
   int familyIndexFromList(int listIndex) const;
   int listItemCount() const;
