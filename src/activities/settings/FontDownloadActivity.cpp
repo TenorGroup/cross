@@ -212,7 +212,7 @@ void FontDownloadActivity::onWifiSelectionComplete(const bool success) {
     loadInstalledList();
     {
       RenderLock lock(*this);
-      nav.reset();
+      nav.selected = std::min(nav.selected.load(), storeRowCount() - 1);  // the cursor stays on the font it was on
       state_ = STORE_LIST;
       rowsDirty_ = true;
     }
