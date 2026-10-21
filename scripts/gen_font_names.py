@@ -13,15 +13,24 @@ Letters are cut the way the store packs cut the reader's letters at the default 
 recipe reader-outline-v5-even, level 0: lib/EpdFont/scripts/fontconvert_sdcard.py, FreeType FT_LOAD_RENDER at 150 dpi,
 proportional numerals, no kerning), then thresholded at 64/255: the pack keeps 2 bits, whose first level starts there
 (32 clots thin serifs, 128 breaks thin strokes). A picture is the shape of the letters, not the pixels of a book page.
+
+Each font is then sized so its x-height (the height of the lower-case x, the measure the eye reads a line of names
+by) equals the x-height of the UI face (Geist Regular, autohinted as the UI faces are) at the same text size:
+the point size is scaled by ui_x / font_x, font_x from the OS/2 sxHeight (the raster 'x' when the table has none),
+clamped to 0.85..1.20; then the size is nudged inside that range to the one whose raster 'x' lands on the UI
+x-height. A picture never gets taller than a name line of the UI (bodyLineHeight), so no row grows.
+A font whose factor hits the clamp ends short of the UI x-height; the test lists those.
 """
 import importlib.util
 import json
+import math
 import sys
 import tempfile
 from pathlib import Path
 
 import freetype
 import numpy as np
+from fontTools.ttLib import TTFont
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib' / 'EpdFont' / 'scripts'))
 from font_features import pnum_glyph_indices  # noqa: E402
@@ -29,6 +38,9 @@ from font_features import pnum_glyph_indices  # noqa: E402
 OUT = Path(__file__).resolve().parents[1] / 'src' / 'FontStoreNames.h'
 POINTS = (12, 14, 16)  # body point size of the three UI text sizes (uiTextSizeSpec in src/components/UIScale.h)
 THRESHOLD = 64
+GEIST = Path(__file__).resolve().parents[1] / 'lib' / 'EpdFont' / 'builtinFonts' / 'source' / 'Geist' / 'Geist-Regular.ttf'
+CLAMP = (0.85, 1.20)
+LINE_HEIGHTS = (33, 38, 43)  # bodyLineHeight of the three UI text sizes (uiTextSizeSpec): the height of a name line
 
 
 def display_name(name):
@@ -44,10 +56,46 @@ def display_name(name):
     return out
 
 
-def draw(path, text, pt):
+def x_rows(face, size64, flags=freetype.FT_LOAD_RENDER):
+    """Rows of ink (>= THRESHOLD) of the lower-case x at `size64` (26.6 points, 150 dpi)."""
+    face.set_char_size(size64, size64, 150, 150)
+    face.load_glyph(face.get_char_index(ord('x')), flags)
+    bm = face.glyph.bitmap
+    if not bm.rows:
+        return 0
+    cov = np.array(bm.buffer, dtype=np.uint8).reshape(bm.rows, bm.pitch)[:, :bm.width]
+    return int((cov.max(axis=1) >= THRESHOLD).sum())
+
+
+def ui_x_height(pt):
+    """x-height of the UI face at `pt`, as the firmware draws it (FreeType autohint, fontconvert.py)."""
+    return x_rows(freetype.Face(str(GEIST)), pt << 6, freetype.FT_LOAD_RENDER | freetype.FT_LOAD_FORCE_AUTOHINT)
+
+
+def font_x_height(path, face, pt):
+    """x-height in px at `pt`: OS/2 sxHeight, else the raster x."""
+    font = TTFont(str(path))
+    sx = getattr(font['OS/2'], 'sxHeight', 0)
+    return sx * pt * 150 / 72 / font['head'].unitsPerEm if sx else x_rows(face, pt << 6)
+
+
+def fit(path, text, pt, ui_x, cap):
+    """The size (26.6 points) that puts this font's x-height on `ui_x`: the point size scaled by ui_x / font_x within
+    CLAMP, then the one in that range whose raster x is nearest ui_x (ties: nearest the first estimate), never so large
+    that the picture is taller than `cap` (a name line)."""
+    face = freetype.Face(str(path))
+    want = min(max(ui_x / font_x_height(path, face, pt), CLAMP[0]), CLAMP[1]) * pt * 64
+    sizes = range(math.ceil(CLAMP[0] * pt * 64), int(CLAMP[1] * pt * 64) + 1)
+    for size64 in sorted(sizes, key=lambda s: (abs(x_rows(face, s) - ui_x), abs(s - want))):
+        if draw(path, text, pt, size64)[2] <= cap:
+            return size64, x_rows(face, size64)
+    raise SystemExit(f'{path}: no size keeps the picture under {cap} px')
+
+
+def draw(path, text, pt, size64=None):
     """(rows of bytes, width, height, rows from the top to the baseline) of `text`, cropped to its ink."""
     face = freetype.Face(str(path))
-    face.set_char_size(pt << 6, pt << 6, 150, 150)
+    face.set_char_size(size64 or pt << 6, size64 or pt << 6, 150, 150)
     numerals = pnum_glyph_indices(str(path))
     glyphs, pen = [], 0.0
     for ch in text:
@@ -76,19 +124,29 @@ def render(manifest, dung_dir):
     families = sorted(manifest['families'], key=lambda f: f['name'])
     names = [f['name'] for f in families]
     tiers = [[] for _ in POINTS]
+    xheights = [[] for _ in POINTS]  # raster x-height of each picture's font
+    scales = [[] for _ in POINTS]  # size of each picture / the UI point size, per mille
+    ui_x = [ui_x_height(pt) for pt in POINTS]
     with tempfile.TemporaryDirectory() as tmp:
+        regulars = []
         for name in names:
             fam = dung.FAMILIES[name]
             if 'files' in fam:
-                regular = fam['files'][0]
+                regulars.append(fam['files'][0])
             else:  # a variable font: the Regular instance, as the pack is built from
-                regular = dung.instance(fam['var'][0], 400, Path(tmp) / f'{name}.ttf', fam.get('patch'))
-            for tier, pt in zip(tiers, POINTS):
-                tier.append(draw(regular, display_name(name), pt))
+                regulars.append(dung.instance(fam['var'][0], 400, Path(tmp) / f'{name}.ttf', fam.get('patch')))
+        for t, pt in enumerate(POINTS):
+            cap = LINE_HEIGHTS[t]
+            for name, regular in zip(names, regulars):
+                size64, xh = fit(regular, display_name(name), pt, ui_x[t], cap)
+                tiers[t].append(draw(regular, display_name(name), pt, size64))
+                xheights[t].append(xh)
+                scales[t].append(round(1000 * size64 / (pt * 64)))
     lines = ['#pragma once', '', '#include <cstdint>', '', '#include "FontStoreCatalog.h"', '#include "components/lists/list.h"', '',
              '// Generated by scripts/gen_font_names.py from the font store manifest of this version. Do not edit.',
              '// The name of each pack of FontStoreCatalog.h in its own letters, 1 bit (rows of ceil(width / 8) bytes, MSB',
-             '// first, 1 = ink), at the three UI text sizes. Read straight from flash.',
+             '// first, 1 = ink), at the three UI text sizes. Read straight from flash. NAME_XHEIGHT_UI: the x-height of the UI',
+             '// face per size; NAME_XHEIGHT_n / NAME_SCALE_n (per mille): x-height of each picture and its size / UI size.',
              'namespace fontstore {', 'namespace fui = freeink::ui;',
              f'inline constexpr uint8_t NAME_POINTS[{len(POINTS)}] = {{{", ".join(map(str, POINTS))}}};']
     for t, tier in enumerate(tiers):
@@ -96,6 +154,10 @@ def render(manifest, dung_dir):
         lines.append(f'inline constexpr uint8_t NAME_BITS_{t}[{len(data)}] = {{')
         lines += ['    ' + ','.join(f'0x{b:02x}' for b in data[i:i + 24]) + ',' for i in range(0, len(data), 24)]
         lines.append('};')
+    lines.append(f'inline constexpr uint8_t NAME_XHEIGHT_UI[{len(POINTS)}] = {{{", ".join(map(str, ui_x))}}};')
+    for t in range(len(POINTS)):
+        lines.append(f'inline constexpr uint8_t NAME_XHEIGHT_{t}[] = {{{", ".join(map(str, xheights[t]))}}};')
+        lines.append(f'inline constexpr uint16_t NAME_SCALE_{t}[] = {{{", ".join(map(str, scales[t]))}}};')
     lines.append(f'inline constexpr const char* NAME_KEYS[] = {{{", ".join(json.dumps(n) for n in names)}}};')
     lines.append(f'inline constexpr uint32_t NAME_CRC32[] = {{{", ".join(str(f["files"][0]["crc32"]) + "u" for f in families)}}};')
     lines.append('inline constexpr fui::LabelImage NAME_IMAGES[][PACK_COUNT] = {')
