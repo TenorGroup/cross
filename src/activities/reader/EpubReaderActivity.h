@@ -75,6 +75,8 @@ class EpubReaderActivity final : public ReaderActivity {
   // The framebuffer holds exactly the page frame on the panel: set when renderBook ends on a
   // page, cleared when a paint begins and when another screen covers the reader. Under RenderLock.
   std::atomic<bool> pageFrameShown{false};
+  // openOverlay is waiting for the render lock to open the menu over the page (textGrayContext).
+  std::atomic<bool> sheetOpening{false};
   class BackgroundBuildFrameGuard {
    public:
     explicit BackgroundBuildFrameGuard(EpubReaderActivity& activity);
@@ -571,6 +573,8 @@ class EpubReaderActivity final : public ReaderActivity {
   bool yieldForRadio() override;
   // A sheet that kept the radio leaves the book in front for the radio (remote keys are dropped under it).
   bool coversPage() const override { return overlay != Overlay::None && !sheetKeptRadio; }
+  // The menu over the page polls the tilt sensor for its tabs (handleOverlayInput); the page turn is off meanwhile.
+  bool managesTiltSensor() const override { return overlay != Overlay::None; }
 
   ScreenshotInfo getScreenshotInfo() const override;
   CrossPointPosition getCurrentPosition() const;

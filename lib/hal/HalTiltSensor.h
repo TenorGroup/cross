@@ -195,6 +195,7 @@ class HalTiltSensor {
 #ifdef TENOR_PRESS_PROBE
   unsigned long _probeLogUntilMs = 0;
   unsigned long _probeTapLogUntilMs = 0;
+  uint8_t _probeInject = 0;
   void (*_probeFrameSink)(const Imu::RawFrame* frames, const bool* gaps, uint16_t count) = nullptr;
 #endif
 
@@ -294,6 +295,9 @@ class HalTiltSensor {
   // CMD:IMU_LOG <s> fast: blocks for `ms`, sampling at the chip's 224 Hz, then
   // restores the 28 Hz rate the firmware reads at.
   void probeFastLog(unsigned long ms);
+  // CMD:TILT_INJECT F|B: the next update raises one confirmed side flick, as the gyro would, if the
+  // horizontal channel is armed then. Tests where a flick goes, not the gyro.
+  void probeInjectFlick(const bool forward) { _probeInject = forward ? HELD_FORWARD : HELD_BACK; }
 #endif
 
   // Returns true once per tilt-forward gesture (next page direction).

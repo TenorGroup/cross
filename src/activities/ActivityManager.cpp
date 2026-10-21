@@ -617,7 +617,9 @@ void ActivityManager::loop() {
     }
   }
 
+#ifndef TENOR_DIAG_NO_SCROLL_HIDE  // a diagnostic build only: the scrollbar never hides itself (X4 Pro menu, v1.0.72)
   if (!requestedUpdate.load() && PageScrollbar::instance().needsIdleUpdate(mappedInput)) requestedUpdate = true;
+#endif
   if (requestedUpdate.exchange(false)) {
     // Using direct notification to signal the render task to update
     // Increment counter so multiple rapid calls won't be lost

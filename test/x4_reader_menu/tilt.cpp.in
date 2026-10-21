@@ -1,0 +1,338 @@
+// Tilt in the reader's menu: the production handleOverlayInput and menutilt::pollTabs against a fake sensor.
+// Built for the X4 Pro (its bar, no side buttons) and for the button boards, with the toolbar menu and the X3 bar.
+#include <FreeInkApp.h>
+#include <MenuTiltInput.h>
+#include <ReaderFontSizes.h>
+
+#include <algorithm>
+#include <atomic>
+#include <cstdio>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
+enum class StrId { STR_READER_TAB_FAVORITES, STR_TOOL_CONTENTS, STR_TOOL_TEXT, STR_TOOL_MORE };
+CrossPointSettings SETTINGS;
+HalTiltSensor halTiltSensor;
+namespace readermenu {
+@TABS@
+@TOOLS@
+inline constexpr int TOOL_COUNT = 4;
+inline constexpr int X3_TAB_COUNT = 5;
+inline constexpr unsigned long GIU_GHIM_MS = 1000;
+}  // namespace readermenu
+struct RenderLock {};
+namespace fontdoc {
+int soHo(SdCardFontRegistry*) { return 7; }
+}
+struct FontSystem {
+  SdCardFontRegistry data;
+  SdCardFontRegistry& registry() { return data; }
+};
+class MappedInputManager {
+ public:
+  enum class Button { Back, Left, Right, Up, Down, Confirm };
+  enum class SwipeDir { None, Up, Down };
+  bool wasReleased(Button) const { return false; }
+  bool isPressed(Button) const { return false; }
+  bool wasLongPressed(Button, unsigned long) const { return false; }
+  int getHeldTime() const { return 0; }
+  bool wasScreenTouchReleased() const { return false; }
+  SwipeDir wasSwipe() const { return SwipeDir::None; }
+  void resetHomeButtonInput() {}
+};
+struct Renderer {
+  int getScreenWidth() const { return 480; }
+  int getScreenHeight() const { return 800; }
+  int getOrientation() const { return 2; }
+  void restoreBwBuffer(bool) {}
+  bool storeBwBuffer() { return true; }
+};
+struct Toc {
+  int spineIndex = 0;
+  std::string anchor;
+};
+struct Epub {
+  Toc getTocItem(int) { return {}; }
+  int getSpineItemsCount() { return 10; }
+  int getTocItemsCount() { return 10; }
+};
+struct Popup {
+  bool on = false;
+  bool isActive() const { return on; }
+  template <class F>
+  void handleInput(MappedInputManager&, F) {}
+};
+struct ButtonNavigator {
+  static int previousIndex(int i, int n) { return (i + n - 1) % n; }
+  static int nextIndex(int i, int n) { return (i + 1) % n; }
+};
+struct ReaderToolbarUi {
+  static inline bool x3Bar = false;
+  static constexpr int kToolCount = readermenu::TOOL_COUNT;
+  static bool usesX3Bar() { return x3Bar; }
+  static int toolCount() { return x3Bar ? readermenu::X3_TAB_COUNT : readermenu::TOOL_COUNT; }
+@EVENTS@
+@ROUTED@
+  Routed route(const MappedInputManager&) { return {}; }
+  freeink::ui::ListNav nav_;
+  freeink::ui::ListNav& nav() { return nav_; }
+  int visibleRows() const { return 5; }
+  int scrollRows(const MappedInputManager&, int) const { return 0; }
+};
+namespace shell {
+bool isUgly() { return false; }
+}
+constexpr int kReaderTools = ReaderToolbarUi::kToolCount;
+constexpr int kTextRowCount = 5;
+int textChoiceCount(int) { return 5; }
+int textChoiceInUse(int) { return 0; }
+
+class EpubReaderActivity {
+ public:
+  enum class Overlay { None, Toolbar, Contents, Text, More, Favorites, Reading };
+  enum class TextDepth : uint8_t { Rows, Fonts, Spacing, PointSize, Pick };
+  Overlay overlay = Overlay::None;
+  TextDepth textDepth = TextDepth::Rows;
+  struct Pick {
+    std::vector<std::string> labels;
+  } pick;
+  Renderer renderer;
+  MappedInputManager mappedInput;
+  std::unique_ptr<ReaderToolbarUi> toolbarUi = std::make_unique<ReaderToolbarUi>();
+  Epub epubValue;
+  Epub* epub = &epubValue;
+  Popup overlayPopup;
+  FontSystem sdFontSystem;
+  std::vector<int> moreItems;
+  std::vector<uint8_t> favoriteRows;
+  int focusedTool = 0, panelIndex = 0, currentSpineIndex = 0, nextPageNumber = 0;
+  bool panelCursorShown = false, panelHoldJumped = false, overlayPageStored = true;
+  std::string pendingAnchor;
+  std::unique_ptr<int> section = std::make_unique<int>(1);
+  static constexpr int PANEL_HOLD_MS = 600, PANEL_HOLD_STEP = 5;
+  int spacingDraftPermille = 0;
+  bool spacingDragging = false;
+  std::string pointSizeDraft;
+  int opened = 0, redraws = 0, closed = 0;
+
+  void openOverlay(Overlay target) { overlay = target; textDepth = TextDepth::Rows; ++opened; }
+  void closeOverlayToPage() { overlay = Overlay::None; ++closed; }
+  void renderOverlay() { ++redraws; }
+  void settleOverlayRefresh() {}
+  void pushOverlayRefresh() {}
+  void paintOverlayPopup() {}
+  void requestUpdate() {}
+  void clearDeferredReposition() {}
+  void pushReturnPosition() {}
+  void discardOverlayPage() {}
+  void panelClosedLocked(bool, bool) {}
+  void redrawSheetLocked() {}
+  bool chapterTargetDiffers(int, const std::string&) const { return false; }
+  bool actionPanel() const { return overlay == Overlay::More; }
+  int panelActionRow(int row) const { return row < 0 ? static_cast<int>(moreItems.size()) : row; }
+  void activateMoreRow(int) {}
+  void activateFavoriteRow(int) {}
+  void togglePin(uint8_t) {}
+  uint8_t pinOfRow(int) const { return 0xFF; }
+  void showFavoriteActions(int) {}
+  void openTextRow(int) {}
+  void chooseFontFamily(int) {}
+  void leaveFontLevel() {}
+  void leavePick(bool) {}
+  void chooseTextValue(int, int) {}
+  void stepMenuPointSize(int) {}
+  void applyMenuPointSize(uint8_t) {}
+  void enterTextDepth(TextDepth) {}
+  uint8_t enteredPointSize() const { return 0; }
+  void handleOverlayInput();
+};
+@HANDLE@
+
+namespace {
+
+int failures = 0;
+const char* variant = "";
+
+void expect(const bool condition, const char* const scenario, const char* const detail) {
+  if (condition) return;
+  std::printf("FAIL %s: %s: %s\n", variant, scenario, detail);
+  ++failures;
+}
+
+using O = EpubReaderActivity::Overlay;
+using D = EpubReaderActivity::TextDepth;
+constexpr uint8_t kNormal = CrossPointTiltPageTurn::TILT_NORMAL;
+constexpr uint8_t kInverted = CrossPointTiltPageTurn::TILT_INVERTED;
+
+// The sensor was asked for the tab channel on, each time: mode of the tabs, the target active, and the orientation
+// the renderer has. A sensor asked for anything else (the page turn, or off) is one the menu let go of.
+bool tabChannelOnly(const uint8_t tabs, const size_t polls) {
+  const auto& calls = halTiltSensor.calls;
+  return calls.size() == polls && std::all_of(calls.begin(), calls.end(), [tabs](const HalTiltSensor::Call& call) {
+           return call.mode == tabs && call.active && call.orientation == 2;
+         });
+}
+
+// The sensor was asked once, for the page-turn channel with its target off (awake, flicks dropped).
+bool pageChannelAwakeOnly(const uint8_t page, const size_t polls) {
+  const auto& calls = halTiltSensor.calls;
+  return calls.size() == polls && std::all_of(calls.begin(), calls.end(), [page](const HalTiltSensor::Call& call) {
+           return call.mode == page && !call.active && call.orientation == 2;
+         });
+}
+
+void reset() {
+  SETTINGS = CrossPointSettings{};
+  halTiltSensor = HalTiltSensor{};
+}
+
+// One pass of the menu with a flick (`forward` or not) waiting in the sensor.
+void pass(EpubReaderActivity& reader, const bool flickForward, const bool flickBack = false) {
+  halTiltSensor.forward = flickForward;
+  halTiltSensor.back = flickBack;
+  reader.handleOverlayInput();
+}
+
+struct Tabs {
+  O before, next;  // from the Contents tab: the panel one tab before, and one tab after
+  int focused;     // the tab the Contents panel stands on
+};
+
+void tabsOn(const Tabs& tabs) {
+  reset();
+  SETTINGS.tiltTabNavigation = kInverted;
+  SETTINGS.tiltPageTurn = kNormal;
+  EpubReaderActivity reader;
+
+  // A panel: a flick goes to the panel next door, once.
+  reader.overlay = O::Contents;
+  reader.focusedTool = tabs.focused;
+  pass(reader, true);
+  expect(reader.overlay == tabs.next && reader.opened == 1, "tabs on", "a flick forward opens the panel after");
+  expect(tabChannelOnly(kInverted, 1), "tabs on", "the sensor is polled for the tabs, not the page turn");
+  pass(reader, false);
+  expect(reader.opened == 1, "tabs on", "no flick, no step");
+  reader.overlay = O::Contents;
+  reader.focusedTool = tabs.focused;
+  pass(reader, false, true);
+  expect(reader.overlay == tabs.before && reader.opened == 2, "tabs on", "a flick back opens the panel before");
+
+  // The toolbar (not on the X3 bar, which has none): a flick moves the focus as Left and Right do.
+  if (!ReaderToolbarUi::usesX3Bar()) {
+    reader.overlay = O::Toolbar;
+    reader.focusedTool = 1;
+    reader.opened = reader.redraws = 0;
+    pass(reader, true);
+    expect(reader.overlay == O::Toolbar && reader.focusedTool == 2 && reader.panelCursorShown && reader.redraws == 1 &&
+               reader.opened == 0,
+           "toolbar", "a flick forward moves the focus to the next tool and redraws, opening nothing");
+    pass(reader, false, true);
+    expect(reader.focusedTool == 1 && reader.redraws == 2, "toolbar", "a flick back moves it back");
+    reader.focusedTool = 0;
+    pass(reader, false, true);
+    expect(reader.focusedTool == ReaderToolbarUi::toolCount() - 1, "toolbar", "the focus wraps");
+  }
+}
+
+void secondLevelAndPopupTakeNoStep(const Tabs& tabs) {
+  reset();
+  SETTINGS.tiltTabNavigation = kInverted;
+  SETTINGS.tiltPageTurn = kNormal;
+  EpubReaderActivity reader;
+  reader.overlay = O::Text;
+  reader.focusedTool = tabs.focused;
+
+  // The font list: the flick is dropped, the channel stays on, and back at the rows the next flick steps.
+  reader.textDepth = D::Fonts;
+  pass(reader, true);
+  pass(reader, false, true);
+  expect(reader.opened == 0 && reader.overlay == O::Text, "fonts", "a flick at the second level steps no tab");
+  expect(tabChannelOnly(kInverted, 2), "fonts", "the sensor stays on the tab channel, never put down and woken");
+  reader.textDepth = D::Rows;
+  pass(reader, true);
+  expect(reader.opened == 1 && tabChannelOnly(kInverted, 3), "fonts", "back at the rows a flick steps a tab at once");
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+  reset();
+  SETTINGS.tiltTabNavigation = kInverted;
+  reader = EpubReaderActivity{};
+  reader.overlay = O::Text;
+  reader.textDepth = D::Pick;
+  reader.pick.labels = {"a", "b"};
+  pass(reader, true);
+  expect(reader.opened == 0 && tabChannelOnly(kInverted, 1), "pick", "a flick at a value list steps no tab");
+#endif
+
+  // A popup over a panel, and over the toolbar.
+  reset();
+  SETTINGS.tiltTabNavigation = kInverted;
+  SETTINGS.tiltPageTurn = kNormal;
+  reader = EpubReaderActivity{};
+  reader.overlay = O::Contents;
+  reader.focusedTool = tabs.focused;
+  reader.overlayPopup.on = true;
+  pass(reader, true);
+  pass(reader, false, true);
+  expect(reader.opened == 0 && reader.overlay == O::Contents, "popup", "a flick under a popup steps no tab");
+  expect(tabChannelOnly(kInverted, 2), "popup", "the sensor stays on the tab channel, never put down and woken");
+  reader.overlayPopup.on = false;
+  pass(reader, true);
+  expect(reader.opened == 1 && tabChannelOnly(kInverted, 3), "popup", "with the popup closed a flick steps a tab at once");
+  if (!ReaderToolbarUi::usesX3Bar()) {
+    reader.overlay = O::Toolbar;
+    reader.focusedTool = 1;
+    reader.overlayPopup.on = true;
+    pass(reader, true);
+    expect(reader.focusedTool == 1, "popup", "a flick under a popup over the toolbar moves no focus");
+  }
+}
+
+void tabsOffLeavesThePageChannelAwake(const Tabs& tabs) {
+  reset();
+  SETTINGS.tiltPageTurn = kNormal;  // tabs off, page turn on
+  EpubReaderActivity reader;
+  reader.overlay = O::Contents;
+  reader.focusedTool = tabs.focused;
+  pass(reader, true);
+  pass(reader, false, true);
+  expect(reader.opened == 0 && reader.overlay == O::Contents, "tabs off", "a flick steps no tab");
+  expect(pageChannelAwakeOnly(kNormal, 2), "tabs off",
+         "the sensor is kept for the page turn with its target off, and the tab poll is not called");
+  reader.overlayPopup.on = true;
+  pass(reader, true);
+  reader.overlayPopup.on = false;
+  reader.textDepth = D::Fonts;
+  pass(reader, true);
+  expect(pageChannelAwakeOnly(kNormal, 4) && reader.opened == 0, "tabs off", "a popup and the second level keep it so too");
+  if (!ReaderToolbarUi::usesX3Bar()) {
+    reader.textDepth = D::Rows;
+    reader.overlay = O::Toolbar;
+    reader.focusedTool = 1;
+    pass(reader, true);
+    expect(reader.focusedTool == 1 && pageChannelAwakeOnly(kNormal, 5), "tabs off", "the toolbar takes no flick either");
+  }
+}
+
+void runVariant(const char* const name, const bool x3Bar, const Tabs& tabs) {
+  variant = name;
+  ReaderToolbarUi::x3Bar = x3Bar;
+  tabsOn(tabs);
+  secondLevelAndPopupTakeNoStep(tabs);
+  tabsOffLeavesThePageChannelAwake(tabs);
+}
+
+}  // namespace
+
+int main() {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  runVariant("x4pro", false,
+             {O::Favorites, O::Text, static_cast<int>(readermenu::Tool::CONTENTS)});
+#else
+  runVariant("x4c-toolbar", false,
+             {O::Favorites, O::Text, static_cast<int>(readermenu::Tool::CONTENTS)});
+  runVariant("x3-bar", true, {O::Favorites, O::Reading, static_cast<int>(readermenu::Tab::POSITION)});
+#endif
+  std::printf("x4_reader_menu tilt: %d failed assertions\n", failures);
+  return failures == 0 ? 0 : 1;
+}

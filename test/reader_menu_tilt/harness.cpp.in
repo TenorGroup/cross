@@ -1,0 +1,290 @@
+#include <cstdio>
+
+#include <MenuTiltInput.h>
+
+static void updateTiltSensorForForegroundActivity(bool foregroundReader, bool foregroundActivityManagesTiltSensor);
+
+namespace {
+
+unsigned long fakeMillis = 0;
+
+struct FakeImuState {
+  float gx = 0.0f;
+  float ax = 0.0f;  // gravity: (0, 0, 1) is the device held as it was; a hand turned away leaves it
+  float az = 1.0f;
+  int wakeCalls = 0;
+  int sleepCalls = 0;
+} imu;
+
+int failures = 0;
+
+void expect(const bool condition, const char* const scenario, const char* const detail) {
+  if (condition) return;
+  std::printf("FAIL %s: %s\n", scenario, detail);
+  ++failures;
+}
+
+// The reader's menu as far as tilt goes: the two pieces of the reader's own text, compiled as written.
+struct MenuModel {
+  enum class Overlay { None, Toolbar, Text };
+  enum class TextDepth { Rows, Fonts };
+  struct Popup {
+    bool on = false;
+    bool isActive() const { return on; }
+  } overlayPopup;
+  struct Renderer {
+    uint8_t getOrientation() const { return SETTINGS.orientation; }
+  } renderer;
+  Overlay overlay = Overlay::None;
+  TextDepth textDepth = TextDepth::Rows;
+
+  @MENU_MANAGES@
+
+  // What handleOverlayInput takes from the sensor before it looks at a button.
+  menutilt::Step tiltOfThisPass() {
+    @MENU_TILT_BLOCK@
+    return tilt;
+  }
+};
+
+struct Screen {
+  uint32_t generation = 1;
+  bool reader = true;
+  bool menuOpen = false;
+  bool popup = false;  // a modal option picker over the menu
+  bool fonts = false;  // the second level of the Text panel
+};
+
+struct Counts {
+  int turnNext = 0, turnPrev = 0, tabNext = 0, tabPrev = 0;
+};
+
+// One pass of the main loop, then the screen in front: the page turn read of a reader (ReaderUtils), the menu's
+// own take of the sensor over it. The route and the screen note are main.cpp's own text.
+void pass(const Screen& screen, Counts& sum) {
+  MenuModel menu;
+  menu.overlay = screen.menuOpen ? MenuModel::Overlay::Toolbar : MenuModel::Overlay::None;
+  menu.overlayPopup.on = screen.popup;
+  menu.textDepth = screen.fonts ? MenuModel::TextDepth::Fonts : MenuModel::TextDepth::Rows;
+  const uint32_t generation = screen.generation;
+  const bool foregroundReader = screen.reader;
+  const bool foregroundActivityManagesTiltSensor = screen.reader ? menu.managesTiltSensor() : true;
+  @NOTE_SCREEN@
+  updateTiltSensorForForegroundActivity(foregroundReader, foregroundActivityManagesTiltSensor);
+  if (screen.reader && !screen.menuOpen) {
+    sum.turnNext += SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedForward();
+    sum.turnPrev += SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedBack();
+  } else if (screen.reader) {
+    const auto step = menu.tiltOfThisPass();
+    sum.tabNext += step.next;
+    sum.tabPrev += step.previous;
+  }
+}
+
+Counts runFor(const Screen& screen, const unsigned long ms) {
+  Counts sum;
+  for (const unsigned long end = fakeMillis + ms; fakeMillis < end;) {
+    fakeMillis += 50;
+    pass(screen, sum);
+  }
+  return sum;
+}
+
+void reset() {
+  fakeMillis = 0;
+  imu = FakeImuState{};
+  SETTINGS = CrossPointSettings{};
+  halTiltSensor = HalTiltSensor{};
+  halTiltSensor.begin();
+  expect(halTiltSensor.isAvailable(), "setup", "fake IMU must initialize");
+  imu = FakeImuState{};  // begin() stands the chip by once; the scenarios count from here
+}
+
+constexpr uint8_t kNormal = CrossPointTiltPageTurn::TILT_NORMAL;
+constexpr uint8_t kInverted = CrossPointTiltPageTurn::TILT_INVERTED;
+
+// A flick as a hand makes it: out at `rate` for `outMs`, then back to neutral.
+Counts flick(const Screen& screen, const float rate, const unsigned long outMs = 300, const unsigned long backMs = 300) {
+  imu.gx = rate;
+  Counts sum = runFor(screen, outMs);
+  imu.gx = 0.0f;
+  const Counts back = runFor(screen, backMs);
+  sum.turnNext += back.turnNext, sum.turnPrev += back.turnPrev, sum.tabNext += back.tabNext, sum.tabPrev += back.tabPrev;
+  return sum;
+}
+
+void aFlickInTheMenuStepsTheTabs() {
+  reset();
+  SETTINGS.tiltTabNavigation = kNormal;
+  const Screen menu{1, true, true};
+  imu.gx = 400.0f;
+  const Counts turned = runFor(menu, 700);
+  expect(turned.tabNext == 0 && turned.turnNext == 0, "menu-tab", "a hand that stays turned is no step");
+  imu.gx = 0.0f;
+  const Counts forward = runFor(menu, 200);
+  expect(forward.tabNext == 1 && forward.tabPrev == 0, "menu-tab", "a flick forward steps to the next tab once the hand is back");
+  expect(runFor(menu, 700).tabNext == 0, "menu-tab", "the step is taken once");
+  imu.gx = -400.0f;
+  runFor(menu, 200);
+  imu.gx = 0.0f;
+  const Counts back = runFor(menu, 200);
+  expect(back.tabPrev == 1 && back.tabNext == 0, "menu-tab", "a flick back steps to the tab before");
+  expect(imu.wakeCalls == 1, "menu-tab", "the sensor wakes once and stays awake under the menu");
+}
+
+void aFlickInTheMenuIsNoPageTurnWhenItClosesWithTabsOff() {
+  reset();
+  SETTINGS.tiltPageTurn = kNormal;
+  Screen book{1, true, false};
+  runFor(book, 700);  // reading: the sensor is up for the page turn
+  book.menuOpen = true;
+  runFor(book, 1500);
+  expect(halTiltSensor.isAwake() && imu.sleepCalls == 0, "menu-off-awake",
+         "tabs off, page turn on: the sensor is not put to sleep while the menu is open");
+  const Counts under = flick(book, 400.0f);
+  expect(under.tabNext == 0 && under.tabPrev == 0 && under.turnNext == 0, "menu-ghost", "tabs off: nothing moves under the menu");
+  book.menuOpen = false;
+  const Counts closed = runFor(book, 500);
+  expect(closed.turnNext == 0 && closed.turnPrev == 0, "menu-ghost", "closing the menu turns no page for a flick made under it");
+  expect(imu.sleepCalls == 0 && imu.wakeCalls == 1, "menu-off-awake", "the sensor never slept and woke over the menu's life");
+}
+
+void aTurnRightAfterTheMenuClosesIsNotLostWithTabsOff() {
+  reset();
+  SETTINGS.tiltPageTurn = kNormal;
+  Screen book{1, true, false};
+  runFor(book, 700);
+  book.menuOpen = true;
+  runFor(book, 3000);
+  book.menuOpen = false;
+  imu.gx = 400.0f;
+  const Counts turn = runFor(book, 100);
+  expect(turn.turnNext == 1, "menu-off-turn", "tabs off: a flick right after the menu closes turns the page at once");
+}
+
+void aFlickStillOutWhenTheMenuClosesTurnsNoPage() {
+  reset();
+  SETTINGS.tiltPageTurn = kNormal;
+  SETTINGS.tiltTabNavigation = kNormal;
+  Screen book{1, true, true};
+  imu.gx = 400.0f;
+  runFor(book, 700);
+  book.menuOpen = false;
+  imu.gx = 0.0f;
+  const Counts closed = runFor(book, 700);
+  expect(closed.turnNext == 0 && closed.turnPrev == 0, "menu-close", "a flick waiting for its return when the menu closes is dropped");
+}
+
+void theHandComingBackAfterTheMenuClosesTurnsNoPageTheOtherWay() {
+  reset();
+  SETTINGS.tiltPageTurn = kNormal;
+  SETTINGS.tiltTabNavigation = kNormal;
+  Screen book{1, true, true};
+  imu.gx = 400.0f;
+  imu.ax = 0.7f, imu.az = 0.7f;  // turned away, not yet back
+  runFor(book, 700);
+  book.menuOpen = false;
+  imu.gx = 0.0f;
+  const Counts closed = runFor(book, 200);
+  imu.gx = -300.0f;  // the hand comes back
+  const Counts swing = runFor(book, 150);
+  imu.gx = 0.0f;
+  imu.ax = 0.0f, imu.az = 1.0f;
+  const Counts home = runFor(book, 700);
+  expect(closed.turnNext + closed.turnPrev + swing.turnNext + swing.turnPrev + home.turnNext + home.turnPrev == 0,
+         "menu-return",
+         "the hand coming back after the menu closed turns no page, either way");
+}
+
+void aPopupOrTheFontLevelDropsTheFlickAndKeepsTheSensorUp() {
+  reset();
+  SETTINGS.tiltPageTurn = kNormal;
+  SETTINGS.tiltTabNavigation = kInverted;
+  Screen book{1, true, true};
+  runFor(book, 700);
+  expect(imu.wakeCalls == 1, "menu-popup", "the sensor is up under the menu");
+  book.popup = true;
+  const Counts popup = flick(book, -400.0f);
+  expect(popup.tabNext + popup.tabPrev == 0, "menu-popup", "a flick under a popup steps no tab");
+  runFor(book, 1000);
+  expect(halTiltSensor.isAwake() && imu.sleepCalls == 0 && imu.wakeCalls == 1, "menu-popup",
+         "a popup does not put the sensor to sleep and wake it");
+  book.popup = false;
+  const Counts after = flick(book, -400.0f);
+  expect(after.tabNext + after.tabPrev == 1, "menu-popup", "with the popup closed a flick steps a tab at once, with no wake to wait for");
+  book.fonts = true;
+  const Counts fonts = flick(book, -400.0f);
+  runFor(book, 1000);
+  expect(fonts.tabNext + fonts.tabPrev == 0, "menu-fonts", "a flick at the second level steps no tab");
+  expect(halTiltSensor.isAwake() && imu.sleepCalls == 0 && imu.wakeCalls == 1, "menu-fonts",
+         "the second level does not put the sensor to sleep and wake it");
+  book.fonts = false;
+  const Counts back = flick(book, 400.0f);
+  expect(back.tabNext + back.tabPrev == 1, "menu-fonts", "back at the rows a flick steps a tab at once");
+}
+
+void thePageKeepsItsTurnRule() {
+  reset();
+  SETTINGS.tiltPageTurn = kNormal;
+  SETTINGS.tiltTabNavigation = kNormal;
+  const Screen book{1, true, false};
+  imu.gx = 400.0f;
+  const Counts turn = runFor(book, 700);
+  expect(turn.turnNext == 1, "page-turn", "with the menu closed a flick turns the page at once, without waiting for the hand");
+}
+
+void theMenuLeavesTheRowChannelDisarmed() {
+  reset();
+  halTiltSensor.configureVerticalGesture(kNormal, true);  // what a list left behind
+  const Screen menu{2, true, true};
+  runFor(menu, 100);
+  expect(imu.wakeCalls == 0, "menu-rows", "no row channel stays armed under the reader's menu");
+}
+
+}  // namespace
+
+CrossPointSettings SETTINGS;
+
+unsigned long millis() { return fakeMillis; }
+
+namespace freeink {
+
+bool Imu::begin() {
+  begun_ = true;
+  return true;
+}
+bool Imu::read(Sample& out) {
+  out = Sample{imu.ax, 0.0f, imu.az, imu.gx, 0.0f, 0.0f};
+  return begun_;
+}
+bool Imu::sleep() {
+  ++imu.sleepCalls;
+  return begun_;
+}
+bool Imu::wake() {
+  ++imu.wakeCalls;
+  return begun_;
+}
+bool Imu::enableFifo() { return begun_; }
+bool Imu::disableFifo() { return begun_; }
+bool Imu::readFifo(FifoSink, void*, uint16_t& frames) {
+  frames = 0;
+  return begun_;
+}
+
+}  // namespace freeink
+
+@MAIN_TILT_ROUTE@
+
+int main() {
+  aFlickInTheMenuStepsTheTabs();
+  aFlickInTheMenuIsNoPageTurnWhenItClosesWithTabsOff();
+  aTurnRightAfterTheMenuClosesIsNotLostWithTabsOff();
+  aFlickStillOutWhenTheMenuClosesTurnsNoPage();
+  theHandComingBackAfterTheMenuClosesTurnsNoPageTheOtherWay();
+  aPopupOrTheFontLevelDropsTheFlickAndKeepsTheSensorUp();
+  thePageKeepsItsTurnRule();
+  theMenuLeavesTheRowChannelDisarmed();
+  std::printf("reader_menu_tilt: %d failed assertions\n", failures);
+  return failures == 0 ? 0 : 1;
+}

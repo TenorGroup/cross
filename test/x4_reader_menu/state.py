@@ -37,10 +37,18 @@ namespace readermenu {
 ''' + tools + r'''
 }
 struct RenderLock {};
+// The journey leaves tilt alone (the tilt cases are in the second program below); the block must still compile.
+namespace CrossPointTiltPageTurn { enum Value : uint8_t { TILT_OFF = 0 }; }
+struct { void update(uint8_t, uint8_t, bool) {} } halTiltSensor;
+namespace menutilt {
+struct Step { bool next = false, previous = false; };
+inline Step pollTabs(uint8_t, bool) { return {}; }
+}
 struct EpubReaderMenuActivity { enum class MenuAction { TEXT_SETTINGS }; };
 struct MenuResult {};
 struct Settings {
   int fontPointSize=18,lineSpacing=0,paragraphAlignment=0,dropCapMode=1,writes=0;
+  uint8_t tiltTabNavigation=0,tiltPageTurn=0;
   char sdFontFamilyName[32]={};
   void saveToFile(){++writes;}
 } SETTINGS;
@@ -90,7 +98,7 @@ class MappedInputManager {
  void resetHomeButtonInput(){}
 };
 struct Renderer {
- int getScreenWidth()const{return 480;}int getScreenHeight()const{return 800;}
+ int getScreenWidth()const{return 480;}int getScreenHeight()const{return 800;}int getOrientation()const{return 0;}
  void restoreBwBuffer(bool){}bool storeBwBuffer(){return true;}
  void displayBuffer(int){}
  operator int()const{return 0;}
@@ -221,3 +229,21 @@ sdk=a.repo/'freeink-sdk/libs/ui/FreeInkUI'
 subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Wno-unused-variable','-Wno-unused-parameter','-fsanitize=address,undefined',
  '-I'+str(a.repo/'test/x4_reader_menu/stubs'),'-I'+str(a.repo/'src'),'-I'+str(sdk/'include'),str(a.output/'state.cpp'),str(a.repo/'src/ReaderFontSizes.cpp'),str(sdk/'src/FreeInkUI.cpp'),'-o',str(a.output/'state')],check=True)
 subprocess.run([str(a.output/'state')],check=True)
+
+# Tilt in the menu (tilt.cpp.in): the real handleOverlayInput and menutilt::pollTabs against a fake sensor, for the
+# X4 Pro bar, the toolbar of the button boards (X4C), and the X3 bar.
+here=Path(__file__).resolve().parent
+header=(a.repo/'src/activities/reader/ReaderMenuLayout.h').read_text()
+tabs=re.search(r'enum class Tab : uint8_t \{.*?\};',header,re.S).group(0)
+tilt=((here/'tilt.cpp.in').read_text()
+ .replace('@TABS@',tabs).replace('@TOOLS@',tools.split('inline constexpr int TOOL_COUNT')[0])
+ .replace('@EVENTS@',events).replace('@ROUTED@',routed).replace('@HANDLE@',method(s,'handleOverlayInput')))
+(a.output/'tilt.cpp').write_text(tilt)
+bad=0
+for pro in (1,0):
+    exe=a.output/('tilt-x4pro' if pro else 'tilt-buttons')
+    subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Wno-unused-variable','-Wno-unused-parameter','-Wno-unused-private-field','-fsanitize=address,undefined',
+     '-DFREEINK_DEVICE_X4PRO='+str(pro),'-I'+str(here/'tilt_stubs'),'-I'+str(a.repo/'test/x4_reader_menu/stubs'),'-I'+str(a.repo/'src'),'-I'+str(sdk/'include'),
+     str(a.output/'tilt.cpp'),str(a.repo/'src/ReaderFontSizes.cpp'),str(sdk/'src/FreeInkUI.cpp'),'-o',str(exe)],check=True)
+    bad|=subprocess.run([str(exe)]).returncode
+raise SystemExit(bad)

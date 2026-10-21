@@ -59,13 +59,14 @@ else:
         r"const bool foregroundReader\s*=\s*activityManager\.isForegroundReaderActivity\(\);\s*"
         r"const bool foregroundActivityManagesTiltSensor\s*=\s*"
         r"activityManager\.isForegroundActivityManagingTiltSensor\(\);\s*"
+        r"(?://[^\n]*\s*)*halTiltSensor\.noteScreen\([^;]*\);\s*"
         r"updateTiltSensorForForegroundActivity\(foregroundReader, foregroundActivityManagesTiltSensor\);",
         main_source,
         "main loop is not wired to the foreground tilt owner route",
     )
     require(
-        r"halTiltSensor\.noteScreen\(activityManager\.activityGeneration\(\)\);\s*"
-        r"const bool foregroundReader\s*=",
+        r"halTiltSensor\.noteScreen\(activityManager\.activityGeneration\(\)[^;]*\);\s*"
+        r"updateTiltSensorForForegroundActivity",
         main_source,
         "main loop does not tell the sensor which screen is in front before it polls",
     )

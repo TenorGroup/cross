@@ -1185,13 +1185,14 @@ static void updateTiltSensorForForegroundActivity(const bool foregroundReader,
   halTiltSensor.configureFlip(SETTINGS.faceDownAction, SETTINGS.faceUpAction);
   halTiltSensor.configureDoubleTap(SETTINGS.doubleTapAction, SETTINGS.screenTapAction, SETTINGS.edgeTapAction);
   // Menus wait for a side flick to come back (picking the device up is not a tab
-  // step); the reader keeps page turns immediate.
-  halTiltSensor.confirmSideFlicks(!foregroundReader);
+  // step); the reader keeps page turns immediate. A reader with its menu open is
+  // a menu: the menu polls the tabs itself, like a list.
+  halTiltSensor.confirmSideFlicks(!foregroundReader || foregroundActivityManagesTiltSensor);
   if (foregroundReader) {
     // Row tilt belongs to the menu screens: the reader keeps the page-turn axis
     // and nothing else, so the vertical channel is disarmed on the way in.
     halTiltSensor.configureVerticalGesture(CrossPointTiltPageTurn::TILT_OFF, false);
-    halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, true);
+    if (!foregroundActivityManagesTiltSensor) halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, true);
   } else if (!foregroundActivityManagesTiltSensor) {
     halTiltSensor.configureVerticalGesture(CrossPointTiltPageTurn::TILT_OFF, false);
     halTiltSensor.update(CrossPointTiltPageTurn::TILT_OFF, SETTINGS.orientation, false);
@@ -1593,9 +1594,11 @@ void loop() {
   // Tab gestures are sampled by the activity at the end of the previous loop.
   // Preserve their activity before the foreground route clears the flag.
   const bool pendingTiltActivity = halTiltSensor.hadActivity();
-  halTiltSensor.noteScreen(activityManager.activityGeneration());
   const bool foregroundReader = activityManager.isForegroundReaderActivity();
   const bool foregroundActivityManagesTiltSensor = activityManager.isForegroundActivityManagingTiltSensor();
+  // The menu opening over the book or closing is a change of screen for a flick waiting for the hand.
+  halTiltSensor.noteScreen(activityManager.activityGeneration() * 2 +
+                           (foregroundReader && foregroundActivityManagesTiltSensor));
   updateTiltSensorForForegroundActivity(foregroundReader, foregroundActivityManagesTiltSensor);
 
   renderer.setFadingFix(SETTINGS.fadingFix);
@@ -2113,6 +2116,19 @@ void loop() {
 #ifndef SIMULATOR
       } else if (cmd.startsWith("CAT ")) {
         catCommand(cmd.substring(4));
+      } else if (cmd.startsWith("TILT_INJECT ")) {
+        halTiltSensor.probeInjectFlick(cmd.substring(12).startsWith("F"));
+      } else if (cmd.startsWith("LS ")) {
+        // CMD:LS <dir>: one "LS:<d|f> <size> <FAT date<<16|time, hex> <name>" line an entry, hidden ones too.
+        HalFile dir = Storage.open(cmd.substring(3).c_str());
+        char name[128];
+        for (HalFile f = dir ? dir.openNextFile() : HalFile(); f; f = dir.openNextFile()) {
+          f.getName(name, sizeof(name));
+          logSerial.printf("LS:%c %u %08lx %s\n", f.isDirectory() ? 'd' : 'f', static_cast<unsigned>(f.size()),
+                           static_cast<unsigned long>(f.modificationTime()), name);
+          f.close();
+        }
+        logSerial.printf("LS_END:%d\n", dir ? 1 : 0);
 #endif
 #ifndef SIMULATOR
       } else if (cmd.startsWith("PUT ")) {

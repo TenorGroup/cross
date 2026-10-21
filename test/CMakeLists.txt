@@ -321,6 +321,7 @@ add_test(NAME FormatterCliSafety COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURREN
 add_test(NAME FirmwareImageSize COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/firmware_size/test_image_size.py")
 add_test(NAME BuiltinFontMetadata COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/font_metadata/test_pooling.py")
 add_test(NAME TiltSensorForegroundOwnership COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tilt_sensor_ownership/run.py" --source "${REPO_ROOT}")
+add_test(NAME ReaderMenuTilt COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tilt/run.py" --source "${REPO_ROOT}")
 add_test(NAME ImuDoubleTap COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/imu_double_tap/run.py" --source "${REPO_ROOT}")
 add_test(NAME BleRadioOwnership COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/ble_radio_owner/run.py" --source "${REPO_ROOT}")
 add_test(NAME BleMenuUxRegression COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/ble_menu_ux/run.py" "${REPO_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/ble-menu-ux")

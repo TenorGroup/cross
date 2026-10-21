@@ -123,6 +123,17 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
   // to return to neutral before another event can fire.
   const bool horizontalArmed = horizontalEnabled && gestureTargetActive;
   const bool verticalArmed = verticalEnabled && verticalTargetActive;
+#ifdef TENOR_PRESS_PROBE
+  if (_probeInject) {
+    if (horizontalArmed) {
+      raiseTiltEvents(_probeInject);
+      _hadActivity = true;
+    }
+    LOG_INF("GYR", "Injected flick %s armed=%d mode=%u", _probeInject == HELD_FORWARD ? "forward" : "back",
+            horizontalArmed, mode);
+    _probeInject = 0;
+  }
+#endif
   if (!horizontalArmed && !verticalArmed && !sampling) {
     return;
   }

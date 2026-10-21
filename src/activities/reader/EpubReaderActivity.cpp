@@ -51,6 +51,7 @@
 #include "KOReaderAutoSync.h"
 #include "KOReaderCredentialStore.h"
 #include "KOReaderSyncActivity.h"
+#include "MenuTiltInput.h"
 #include "HeapBigProbe.h"
 #include <HeapFloor.h>
 #include "HeapMapProbe.h"
@@ -3655,7 +3656,7 @@ const char* EpubReaderActivity::nextScreenWaiting() const {
 TextGrayContext EpubReaderActivity::textGrayContext() const {
   TextGrayContext context;
   context.textAntiAliasing = SETTINGS.textAntiAliasing;
-  context.covered = overlay != Overlay::None || overlayPopup.isActive();
+  context.covered = overlay != Overlay::None || overlayPopup.isActive() || sheetOpening.load(std::memory_order_acquire);
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   // The way back's bar stands on a black and white page (its ring refreshes alone); the paint that takes it down is gray.
   context.covered = context.covered || jumpBar.up();
@@ -4962,6 +4963,16 @@ void EpubReaderActivity::openOverlay(Overlay target) {
     bwUnderSheet = false;
     textCloseFrame.store(0, std::memory_order_relaxed);
   }
+  // Serialize against the render task before the overlay changes: renderBook may be mid-page (status bar
+  // included) in the shared framebuffer. A page still painting when the menu opens over it skips its gray
+  // pass (sheetOpening) and leaves the sheet to this call; it used to see the new overlay half set up, draw
+  // and push the sheet itself, and this call then stored the page a second time with the sheet already on it.
+  std::optional<RenderLock> lock;
+  if (section) {
+    if (previous == Overlay::None) sheetOpening.store(true, std::memory_order_release);
+    lock.emplace();
+    sheetOpening.store(false, std::memory_order_relaxed);
+  }
   overlay = target;
   textDepth = TextDepth::Rows;
 #if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
@@ -4987,10 +4998,6 @@ void EpubReaderActivity::openOverlay(Overlay target) {
   // images ever visibly ghost through the chrome, restore a HALF cleanup on
   // the first open (see #2190 for the mechanism).
   if (section) {
-    // Serialize against the render task: renderBook may be mid-page (status
-    // bar included) in the shared framebuffer, and painting the chrome from
-    // the loop task at the same time interleaves the two frames.
-    RenderLock lock;
     settleOverlayRefresh();
     if (previous == Overlay::None) {
       const uint32_t loanCount = renderer.frameBufferLoanCount();
@@ -5070,6 +5077,10 @@ void EpubReaderActivity::prepareOverlayState(const Overlay target) {
 // grayscale-AA pass restore the page snapshot and push one FAST refresh -- no
 // re-render, no flash; Xteink boards re-render to restore the AA planes.
 void EpubReaderActivity::closeOverlayToPage() {
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("MENU_CLOSE", "closeOverlayToPage from=%d t=%lu ra=%p", static_cast<int>(overlay), millis(),
+          __builtin_return_address(0));
+#endif
   mappedInput.resetHomeButtonInput();
   bool frameUp = false;
   {
@@ -5295,6 +5306,18 @@ void EpubReaderActivity::renderOverlay() {
 void EpubReaderActivity::handleOverlayInput() {
   if (!toolbarUi) return;
 
+  // Tilt steps the tabs as in the lists. A popup, or a second level of a panel, gives the buttons no tab to
+  // step, so its flicks are dropped; the channel stays on, or the sensor would sleep and wake on every popup.
+  // With tab tilt off the page-turn channel stays awake, its flicks dropped, so a turn right after the menu
+  // closes is not lost to the sensor waking up.
+  menutilt::Step tilt;
+  if (SETTINGS.tiltTabNavigation != CrossPointTiltPageTurn::TILT_OFF) {
+    tilt = menutilt::pollTabs(static_cast<uint8_t>(renderer.getOrientation()), true);
+    if (overlayPopup.isActive() || textDepth != TextDepth::Rows) tilt = {};
+  } else {
+    halTiltSensor.update(SETTINGS.tiltPageTurn, static_cast<uint8_t>(renderer.getOrientation()), false);
+  }
+
   // A modal option picker over the panel owns all input while open.
   if (overlayPopup.isActive()) {
     overlayPopup.handleInput(mappedInput, [this] {
@@ -5412,13 +5435,13 @@ void EpubReaderActivity::handleOverlayInput() {
       closeOverlayToPage();
       return;
     }
-    if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Left) || tilt.previous) {
       focusedTool = (focusedTool + toolCount - 1) % toolCount;
       panelCursorShown = true;
       fastRedraw();
       return;
     }
-    if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Right) || tilt.next) {
       focusedTool = (focusedTool + 1) % toolCount;
       panelCursorShown = true;
       fastRedraw();
@@ -5690,6 +5713,13 @@ void EpubReaderActivity::handleOverlayInput() {
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     activateRow();
+    return;
+  }
+
+  // Tilt goes to the tab before or after, on every board (the X4 Pro's side buttons move the cursor).
+  if (tilt.previous || tilt.next) {
+    focusedTool = (focusedTool + (tilt.previous ? toolCount - 1 : 1)) % toolCount;
+    openOverlay(toolOverlay(focusedTool));
     return;
   }
 
@@ -6095,6 +6125,10 @@ void EpubReaderActivity::flushTextSettingsLocked() {
 }
 
 void EpubReaderActivity::panelClosedLocked(const bool leaving, const bool frameUp) {
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("MENU_CLOSE", "panelClosed leaving=%d frameUp=%d t=%lu ra=%p", leaving, frameUp, millis(),
+          __builtin_return_address(0));
+#endif
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   tenorchrome::noteReaderFootBar(false, false, -1);
   spacingDragging = false;
@@ -6965,6 +6999,10 @@ void EpubReaderActivity::onPause() {
 }
 
 void EpubReaderActivity::onExit() {
+#ifdef TENOR_PRESS_PROBE
+  if (overlay != Overlay::None) LOG_INF("MENU_CLOSE", "reader left with the menu open overlay=%d t=%lu",
+                                        static_cast<int>(overlay), millis());
+#endif
   readertip::close();
   panelClosedLocked(true, false);  // ActivityManager owns RenderLock during exit
   dropCatchUp();  // the next open lays the chapter out from its saved place
