@@ -177,15 +177,23 @@ class EpubReaderActivity final : public ReaderActivity {
   // Favorites: the X4 Pro's 4th tool (founder 06/10).
   enum class Overlay { None, Toolbar, Contents, Text, More, Favorites, Reading };
   Overlay overlay = Overlay::None;
-  // The tool in focus, by its place on the bar (readermenu::Tool). The menu opens on Contents, as it always has.
+  // The tool in focus, by its value (readermenu::Tool; on the X3 bar readermenu::Tab), never by its place on the bar: the X3
+  // bar's tabs stand in the order the reader saved (menucustom, group "EpubReaderMenu"). The menu opens on Contents,
+  // as it always has.
   int focusedTool = static_cast<int>(readermenu::Tool::CONTENTS);
+  static int toolGroup();
+  // The tool a step on the bar from the one in focus reaches (-1 before, 1 after, wrapping), in the bar's order.
+  int stepTool(int direction) const;
+  bool tabChordBlocked = false;  // Up and Down pressed together move no tab until both are up (menutab::pollHold)
   int panelIndex = 0;   // selected row within the active panel
   // Panel list navigation: a tap steps one row, a hold jumps PANEL_HOLD_STEP rows in one go
   // (a contents list runs to hundreds of chapters). One jump per hold, not a repeat -- every
   // step repaints the panel, so repeating is bounded by the e-ink refresh anyway and reads as
   // sluggish. True once a hold has jumped, so the release that ends it is swallowed.
+  // X4 Pro only; the button boards go to the page's first or last row by a hold of EDGE_HOLD_MS (below).
   static constexpr unsigned long PANEL_HOLD_MS = 1500;
   static constexpr int PANEL_HOLD_STEP = 10;
+  static constexpr unsigned long EDGE_HOLD_MS = 700;
   bool panelHoldJumped = false;
   // Whether the panel draws its cursor row. Button boards always do; touch
   // boards only once a button has moved it, so a tapped row is not left inverted.
@@ -259,6 +267,8 @@ class EpubReaderActivity final : public ReaderActivity {
   std::vector<uint8_t> favoriteRows;
   void loadPins();
   void togglePin(uint8_t pin);
+  // Favorites, a row button held: the pinned row under the cursor goes one step on, the cursor with it; false when none moved.
+  bool moveFavorite(int direction);
   // Writes `pins` to the settings (not to the card) and lists them again; under the render lock.
   void storePinsLocked();
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO

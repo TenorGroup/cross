@@ -75,7 +75,6 @@ struct EpubReaderMenuActivity {
   explicit EpubReaderMenuActivity(GfxRenderer& target) : renderer(target) {}
   tenorchrome::X3ScreenLayout screenLayout() const;
   std::string progressText() const;
-  static std::string progressLine(int currentPage, int totalPages, int bookProgressPercent);
   bool infoOverBar() const;
   void drawX3Content() const;
   int tabCount() const;

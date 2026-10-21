@@ -3,12 +3,15 @@
 #include <FreeInkApp.h>
 #include <MenuTiltInput.h>
 #include <ReaderFontSizes.h>
+#include <MenuTabHold.h>
 
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <functional>
+#include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -21,7 +24,16 @@ namespace readermenu {
 inline constexpr int TOOL_COUNT = 4;
 inline constexpr int X3_TAB_COUNT = 5;
 inline constexpr unsigned long GIU_GHIM_MS = 1000;
+@FAVORDER@
 }  // namespace readermenu
+// The saved tab order (menucustom) as the production header has it; only the card behind it is replaced.
+#include <MenuCustomization.h>
+namespace menucustom {
+State& state() { static State value; return value; }
+int saves = 0;
+bool save() { ++saves; return true; }
+void load() {}
+}  // namespace menucustom
 struct RenderLock {};
 namespace fontdoc {
 int soHo(SdCardFontRegistry*) { return 7; }
@@ -30,14 +42,27 @@ struct FontSystem {
   SdCardFontRegistry data;
   SdCardFontRegistry& registry() { return data; }
 };
+// The buttons a case sets: released this pass, held down for `heldMs`. wasLongPressed answers as the real one does:
+// once per press, and the press's release is then swallowed (`swallowed`).
 class MappedInputManager {
  public:
   enum class Button { Back, Left, Right, Up, Down, Confirm };
   enum class SwipeDir { None, Up, Down };
-  bool wasReleased(Button) const { return false; }
-  bool isPressed(Button) const { return false; }
-  bool wasLongPressed(Button, unsigned long) const { return false; }
-  int getHeldTime() const { return 0; }
+  mutable std::set<int> released, pressed, fired, swallowed;
+  mutable std::vector<std::pair<int, unsigned long>> asked;
+  unsigned long heldMs = 0;
+  bool wasReleased(Button b) const { return released.count(static_cast<int>(b)) != 0; }
+  bool isPressed(Button b) const { return pressed.count(static_cast<int>(b)) != 0; }
+  bool wasLongPressed(Button b, unsigned long ms) const {
+    asked.push_back({static_cast<int>(b), ms});
+    const int key = static_cast<int>(b);
+    if (!isPressed(b) || fired.count(key) || heldMs < ms) return false;
+    fired.insert(key);
+    swallowed.insert(key);
+    return true;
+  }
+  void letGo() { released.clear(); pressed.clear(); fired.clear(); swallowed.clear(); asked.clear(); heldMs = 0; }
+  int getHeldTime() const { return static_cast<int>(heldMs); }
   bool wasScreenTouchReleased() const { return false; }
   SwipeDir wasSwipe() const { return SwipeDir::None; }
   void resetHomeButtonInput() {}
@@ -60,7 +85,9 @@ struct Epub {
 };
 struct Popup {
   bool on = false;
+  int steps = 0, lastStep = 0;
   bool isActive() const { return on; }
+  void step(int direction) { ++steps; lastStep = direction; }
   template <class F>
   void handleInput(MappedInputManager&, F) {}
 };
@@ -78,7 +105,7 @@ struct ReaderToolbarUi {
   Routed route(const MappedInputManager&) { return {}; }
   freeink::ui::ListNav nav_;
   freeink::ui::ListNav& nav() { return nav_; }
-  int visibleRows() const { return 5; }
+  int visibleRows() const { return 5; }  // rows one page of the sheet shows
   int scrollRows(const MappedInputManager&, int) const { return 0; }
 };
 namespace shell {
@@ -111,7 +138,22 @@ class EpubReaderActivity {
   bool panelCursorShown = false, panelHoldJumped = false, overlayPageStored = true;
   std::string pendingAnchor;
   std::unique_ptr<int> section = std::make_unique<int>(1);
-  static constexpr int PANEL_HOLD_MS = 600, PANEL_HOLD_STEP = 5;
+  static constexpr int PANEL_HOLD_MS = 1500, PANEL_HOLD_STEP = 10;  // as production
+  static constexpr unsigned long EDGE_HOLD_MS = 700;
+  bool tabChordBlocked = false;
+  // The pins and what a book shows of them: a pin in `hidden` is one this book lacks (loadPins leaves it out).
+  std::vector<uint8_t> pins;
+  std::set<uint8_t> hidden;
+  int stored = 0;
+  static int toolGroup();
+  int stepTool(int direction) const;
+  bool moveFavorite(int direction);
+  void storePinsLocked() {
+    ++stored;
+    favoriteRows.clear();
+    for (const auto pin : pins)
+      if (!hidden.count(pin)) favoriteRows.push_back(pin);
+  }
   int spacingDraftPermille = 0;
   bool spacingDragging = false;
   std::string pointSizeDraft;
@@ -122,7 +164,8 @@ class EpubReaderActivity {
   void renderOverlay() { ++redraws; }
   void settleOverlayRefresh() {}
   void pushOverlayRefresh() {}
-  void paintOverlayPopup() {}
+  int popupPaints = 0;
+  void paintOverlayPopup() { ++popupPaints; }
   void requestUpdate() {}
   void clearDeferredReposition() {}
   void pushReturnPosition() {}
@@ -149,6 +192,7 @@ class EpubReaderActivity {
   void handleOverlayInput();
 };
 @HANDLE@
+@STEPTOOL@
 
 namespace {
 
@@ -186,6 +230,8 @@ bool pageChannelAwakeOnly(const uint8_t page, const size_t polls) {
 void reset() {
   SETTINGS = CrossPointSettings{};
   halTiltSensor = HalTiltSensor{};
+  menucustom::state() = menucustom::State{};
+  menucustom::saves = 0;
 }
 
 // One pass of the menu with a flick (`forward` or not) waiting in the sensor.
@@ -314,12 +360,335 @@ void tabsOffLeavesThePageChannelAwake(const Tabs& tabs) {
   }
 }
 
+
+// What the menu last armed the row channel with; a menu that never armed it leaves an impossible mode.
+HalTiltSensor::Vertical lastVertical() {
+  return halTiltSensor.verticalCalls.empty() ? HalTiltSensor::Vertical{255, 0} : halTiltSensor.verticalCalls.back();
+}
+
+// Row tilt: the nod of the other axis steps the cursor of a panel and of its value list, and the highlight of a popup.
+// The sensor gives a nod only to a channel armed after the poll that carries the tab setting (HalTiltSensor stub).
+// `up` is the sensor's wasTiltedUp: the next row, as menutilt::pollRows maps it for the lists.
+void rowTilt(const Tabs& tabs) {
+  reset();
+  SETTINGS.tiltMenuNavigation = kNormal;
+  SETTINGS.tiltTabNavigation = kInverted;
+  SETTINGS.tiltPageTurn = kNormal;
+  EpubReaderActivity reader;
+  reader.overlay = O::Contents;
+  reader.focusedTool = tabs.focused;
+  reader.moreItems.assign(8, 0);
+  const int rows = ReaderToolbarUi::usesX3Bar() ? 8 : 10;
+  halTiltSensor.up = true;
+  reader.handleOverlayInput();
+  expect(reader.panelIndex == 1 && reader.panelCursorShown && reader.redraws == 1, "row tilt",
+         "a nod steps the cursor one row on, shows it and redraws");
+  expect(halTiltSensor.order == "uv", "row tilt", "the row channel is armed after the tab poll, which carries the tab setting alone");
+  expect(lastVertical().mode == kNormal && lastVertical().active, "row tilt",
+         "the channel is armed with the menu setting and its target active");
+  halTiltSensor.down = true;
+  reader.handleOverlayInput();
+  expect(reader.panelIndex == 0, "row tilt", "a nod the other way steps back");
+  halTiltSensor.down = true;
+  reader.handleOverlayInput();
+  expect(reader.panelIndex == rows - 1, "row tilt", "and wraps, as the buttons do");
+  expect(reader.opened == 0 && tabChannelOnly(kInverted, 3), "row tilt", "no tab is stepped, the tab channel stays as it was");
+
+  // Off in the settings: the channel is armed with Off and a nod comes to nothing.
+  reset();
+  SETTINGS.tiltTabNavigation = kInverted;
+  reader = EpubReaderActivity{};
+  reader.overlay = O::Contents;
+  reader.focusedTool = tabs.focused;
+  halTiltSensor.up = true;
+  reader.handleOverlayInput();
+  expect(reader.panelIndex == 0 && !halTiltSensor.verticalCalls.empty() && lastVertical().mode == 0, "row tilt off",
+         "with the row setting off the nod moves nothing");
+
+  // Tabs off, page turn on: the page channel stays awake as before, and the rows still go.
+  reset();
+  SETTINGS.tiltTabNavigation = CrossPointTiltPageTurn::TILT_OFF;
+  SETTINGS.tiltPageTurn = kNormal;
+  SETTINGS.tiltMenuNavigation = kInverted;
+  reader = EpubReaderActivity{};
+  reader.overlay = O::Contents;
+  reader.focusedTool = tabs.focused;
+  reader.moreItems.assign(8, 0);
+  halTiltSensor.up = true;
+  reader.handleOverlayInput();
+  expect(reader.panelIndex == 1 && pageChannelAwakeOnly(kNormal, 1), "row tilt, tabs off",
+         "rows step and the page channel stays awake with its target off, never put down and woken");
+
+  // A popup: the highlight, not the cursor of the panel under it.
+  reset();
+  SETTINGS.tiltMenuNavigation = kNormal;
+  SETTINGS.tiltTabNavigation = kInverted;
+  reader = EpubReaderActivity{};
+  reader.overlay = O::Contents;
+  reader.focusedTool = tabs.focused;
+  reader.overlayPopup.on = true;
+  halTiltSensor.up = true;
+  reader.handleOverlayInput();
+  halTiltSensor.down = true;
+  reader.handleOverlayInput();
+  expect(reader.overlayPopup.steps == 2 && reader.overlayPopup.lastStep == -1 && reader.popupPaints == 2 &&
+             reader.panelIndex == 0,
+         "row tilt, popup", "a nod steps the popup's highlight and paints it, the panel's cursor stays");
+  expect(tabChannelOnly(kInverted, 2), "row tilt, popup", "the tab channel stays on under the popup");
+
+  // The toolbar has no rows: the channel is armed with its target off.
+  if (!ReaderToolbarUi::usesX3Bar()) {
+    reset();
+    SETTINGS.tiltMenuNavigation = kNormal;
+    reader = EpubReaderActivity{};
+    reader.overlay = O::Toolbar;
+    reader.focusedTool = 1;
+    halTiltSensor.up = true;
+    reader.handleOverlayInput();
+    expect(reader.panelIndex == 0 && !halTiltSensor.verticalCalls.empty() && !lastVertical().active,
+           "row tilt, toolbar", "the toolbar takes no nod");
+  }
+
+  // Fonts, and on the buttons the value list: second levels, where the tab tilt is dropped and the rows are not.
+  reset();
+  SETTINGS.tiltMenuNavigation = kNormal;
+  SETTINGS.tiltTabNavigation = kInverted;
+  reader = EpubReaderActivity{};
+  reader.overlay = O::Text;
+  reader.textDepth = D::Fonts;
+  halTiltSensor.up = true;
+  reader.handleOverlayInput();
+  expect(reader.panelIndex == 1 && reader.opened == 0, "row tilt, fonts", "a nod steps the font list");
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+  reader.textDepth = D::Pick;
+  reader.pick.labels = {"a", "b", "c"};
+  reader.panelIndex = 2;
+  halTiltSensor.up = true;
+  reader.handleOverlayInput();
+  expect(reader.panelIndex == 0 && reader.opened == 0, "row tilt, pick", "a nod steps the value list, and wraps");
+#else
+  reader.textDepth = D::Spacing;
+  reader.panelIndex = 0;
+  halTiltSensor.up = true;
+  reader.handleOverlayInput();
+  expect(reader.panelIndex == 0 && !halTiltSensor.verticalCalls.empty() && !lastVertical().active, "row tilt, slider",
+         "the spacing slider has no rows");
+#endif
+}
+
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+using B = MappedInputManager::Button;
+
+// One pass with `button` held for `ms` (the pass the hold fires on); the release that follows is swallowed by the
+// activity manager, so it is not a pass here.
+void hold(EpubReaderActivity& reader, const B button, const unsigned long ms) {
+  reader.mappedInput.letGo();
+  reader.mappedInput.pressed.insert(static_cast<int>(button));
+  reader.mappedInput.heldMs = ms;
+  reader.handleOverlayInput();
+}
+
+bool swallowed(const EpubReaderActivity& reader, const B button) {
+  return reader.mappedInput.swallowed.count(static_cast<int>(button)) != 0;
+}
+
+// Whether a hold of `ms` was asked of a row button (Left or Right): the edge jump's, or the 1500 ms jump's.
+bool askedMs(const EpubReaderActivity& reader, const unsigned long ms) {
+  return std::any_of(reader.mappedInput.asked.begin(), reader.mappedInput.asked.end(), [ms](const auto& ask) {
+    return ask.second == ms && (ask.first == static_cast<int>(B::Left) || ask.first == static_cast<int>(B::Right));
+  });
+}
+
+// Favorites, a row button held a second: the pinned row goes one step on, by its pin, the hidden pins in their places.
+void favoritesOrder() {
+  reset();
+  EpubReaderActivity reader;
+  reader.overlay = O::Favorites;
+  reader.pins = {10, 20, 30, 40};
+  reader.hidden = {20};  // a footnote pin in a book with none
+  reader.storePinsLocked();
+  reader.stored = 0;
+  reader.panelIndex = 1;  // the pin 30
+  hold(reader, B::Left, 700);
+  hold(reader, B::Left, 999);
+  expect(reader.pins == std::vector<uint8_t>({10, 20, 30, 40}) && reader.redraws == 0, "favorites order",
+         "a hold short of a second moves nothing");
+  expect(!askedMs(reader, 700), "favorites order", "no hold of the edge jump runs in Favorites");
+  hold(reader, B::Left, 1000);
+  expect(reader.pins == std::vector<uint8_t>({30, 20, 10, 40}), "favorites order",
+         "held Left a second: the pin goes one before, the pin this book lacks keeps its place");
+  expect(reader.favoriteRows == std::vector<uint8_t>({30, 10, 40}) && reader.panelIndex == 0, "favorites order",
+         "the rows shown follow, with the cursor on the pin that moved");
+  expect(reader.redraws == 1 && SETTINGS.saves == 1 && reader.stored == 1, "favorites order",
+         "one redraw, one save, the pins listed again once");
+  expect(swallowed(reader, B::Left), "favorites order", "the release that ends the hold is swallowed");
+  reader.mappedInput.letGo();
+  reader.panelIndex = 2;  // the pin 40, the last shown
+  hold(reader, B::Right, 1000);
+  expect(reader.pins == std::vector<uint8_t>({40, 20, 30, 10}) && reader.panelIndex == 0, "favorites order",
+         "held Right on the last row: it wraps to the first, as in the list menu");
+  // A hold of 1500 ms does not also jump ten rows: it is one step.
+  reader.pins = {1, 2, 3, 4, 5, 6, 7, 8};
+  reader.hidden.clear();
+  reader.storePinsLocked();
+  reader.panelIndex = 0;
+  hold(reader, B::Right, 1500);
+  expect(reader.pins == std::vector<uint8_t>({2, 1, 3, 4, 5, 6, 7, 8}) && reader.panelIndex == 1, "favorites order",
+         "held 1500 ms it still moves the pin one step, no ten-row jump");
+  // Open on a pinned Text row's values (a second level over Favorites): holds go to the page's edges, no pin moves.
+  reader.textDepth = D::Pick;
+  reader.pick.labels = {"a", "b", "c"};
+  reader.panelIndex = 0;
+  reader.redraws = 0;
+  hold(reader, B::Right, 700);
+  expect(reader.pins == std::vector<uint8_t>({2, 1, 3, 4, 5, 6, 7, 8}) && reader.panelIndex == 2, "favorites order",
+         "over a value list a hold goes to the last row of the list and moves no pin");
+  // Another tab: a hold of a second is the edge of the page, not an order.
+  reader.textDepth = D::Rows;
+  reader.overlay = O::Contents;
+  reader.moreItems.assign(14, 0);
+  reader.panelIndex = 1;
+  hold(reader, B::Left, 1000);
+  expect(reader.pins == std::vector<uint8_t>({2, 1, 3, 4, 5, 6, 7, 8}) && reader.panelIndex == 0, "favorites order",
+         "outside Favorites no pin is moved");
+}
+
+// A row button held 700 ms: the page's first or last row, the page before or after when the cursor stands there.
+void edgeHold(const Tabs& tabs) {
+  reset();
+  EpubReaderActivity reader;
+  reader.overlay = O::Contents;
+  reader.focusedTool = tabs.focused;
+  const int rows = ReaderToolbarUi::usesX3Bar() ? 14 : 10;
+  reader.moreItems.assign(14, 0);
+  reader.panelIndex = 1;
+  hold(reader, B::Right, 600);
+  expect(reader.panelIndex == 1 && reader.redraws == 0, "edge hold", "short of 700 ms nothing moves");
+  hold(reader, B::Right, 700);
+  expect(reader.panelIndex == 4 && reader.redraws == 1 && swallowed(reader, B::Right), "edge hold",
+         "held Right: the last row of the page on screen (5 rows), the release swallowed");
+  expect(!askedMs(reader, 1500), "edge hold", "the ten-row jump of 1500 ms is gone");
+  hold(reader, B::Right, 700);
+  expect(reader.panelIndex == 5, "edge hold", "held Right again at the edge: on to the next page");
+  reader.toolbarUi->nav().top = 5;
+  reader.panelIndex = 7;
+  hold(reader, B::Left, 700);
+  expect(reader.panelIndex == 5, "edge hold", "held Left: the first row of the page");
+  hold(reader, B::Left, 700);
+  expect(reader.panelIndex == 4, "edge hold", "held Left again at the edge: the page before, at its last row");
+  reader.toolbarUi->nav().top = 0;
+  reader.panelIndex = 0;
+  hold(reader, B::Left, 700);
+  expect(reader.panelIndex == 0, "edge hold", "at the very first row there is no page before");
+  reader.toolbarUi->nav().top = rows - 5;
+  reader.panelIndex = rows - 1;
+  hold(reader, B::Right, 700);
+  expect(reader.panelIndex == rows - 1, "edge hold", "at the very last row there is no page after");
+  reader.toolbarUi->nav().top = 0;
+  reader.panelIndex = 0;
+  hold(reader, B::Right, 1500);
+  expect(reader.panelIndex == 4, "edge hold", "held 1500 ms it is still the edge of the page, not ten rows");
+  // The value list is a page too.
+  reader.overlay = O::Text;
+  reader.textDepth = D::Pick;
+  reader.pick.labels = {"a", "b", "c", "d", "e", "f", "g"};
+  reader.panelIndex = 0;
+  hold(reader, B::Right, 700);
+  expect(reader.panelIndex == 4, "edge hold", "in a value list too");
+}
+
+// The X3 bar's tabs in the order the reader saved: a step goes by the order, a hold of an edge button moves the tab.
+void tabOrder(const Tabs& tabs, const bool x3Bar) {
+  reset();
+  // Favorites, Reading, Tools, Position, Text: the tab values stay, their places change.
+  menucustom::state().order[2] = {0, 3, 2, 1, 4, 5, 6, 7, 8};
+  SETTINGS.tiltTabNavigation = kInverted;
+  EpubReaderActivity reader;
+  reader.overlay = O::Contents;
+  reader.focusedTool = tabs.focused;
+  if (x3Bar) {
+    pass(reader, true);
+    expect(reader.overlay == O::Text && reader.focusedTool == static_cast<int>(readermenu::Tab::TEXT), "tab order",
+           "tilt forward from Position goes to the tab after it in the saved order (Text)");
+    reader.overlay = O::Contents;
+    reader.focusedTool = static_cast<int>(readermenu::Tab::POSITION);
+    pass(reader, false, true);
+    expect(reader.overlay == O::Reading && reader.focusedTool == static_cast<int>(readermenu::Tab::READING), "tab order",
+           "tilt back goes to the tab before it (Reading)");
+    reader.overlay = O::Favorites;
+    reader.focusedTool = static_cast<int>(readermenu::Tab::FAVORITES);
+    reader.mappedInput.letGo();
+    reader.mappedInput.released.insert(static_cast<int>(B::Down));
+    reader.handleOverlayInput();
+    expect(reader.overlay == O::More && reader.focusedTool == static_cast<int>(readermenu::Tab::TOOLS), "tab order",
+           "the edge button Down from Favorites goes to the tab in the second place (Tools)");
+    reader.overlay = O::Favorites;
+    reader.focusedTool = static_cast<int>(readermenu::Tab::FAVORITES);
+    reader.mappedInput.letGo();
+    reader.mappedInput.released.insert(static_cast<int>(B::Up));
+    reader.handleOverlayInput();
+    expect(reader.overlay == O::Text, "tab order", "and Up wraps to the last place (Text)");
+  }
+  // Held 700 ms: the tab in focus changes places with its neighbour.
+  reader.overlay = O::Reading;
+  reader.focusedTool = static_cast<int>(readermenu::Tab::READING);
+  reader.opened = reader.redraws = 0;
+  reader.mappedInput.letGo();
+  SETTINGS.saves = 0;
+  hold(reader, B::Up, 699);
+  expect(menucustom::saves == 0 && reader.redraws == 0, "tab order", "short of 700 ms nothing moves");
+  hold(reader, B::Up, 700);
+  const auto& order = menucustom::state().order[2];
+  if (x3Bar) {
+    expect(order[1] == 2 && order[2] == 3 && menucustom::saves == 1, "tab order",
+           "held Up: Reading goes one place before and the order is saved");
+    expect(reader.redraws == 1 && reader.opened == 0 && swallowed(reader, B::Up), "tab order",
+           "the bar is drawn again, no panel opens, the release is swallowed");
+    // Up with Down: the chord moves nothing, and holds the buttons until both are up.
+    reader.mappedInput.letGo();
+    reader.mappedInput.pressed = {static_cast<int>(B::Up), static_cast<int>(B::Down)};
+    reader.mappedInput.heldMs = 900;
+    reader.redraws = 0;
+    menucustom::saves = 0;
+    reader.handleOverlayInput();
+    reader.mappedInput.pressed = {static_cast<int>(B::Up)};
+    reader.handleOverlayInput();
+    expect(menucustom::saves == 0 && reader.redraws == 0 && reader.tabChordBlocked, "tab order",
+           "Up and Down together move nothing, and neither does the one still down");
+    reader.mappedInput.letGo();
+    reader.handleOverlayInput();
+    expect(!reader.tabChordBlocked, "tab order", "the latch lifts when both are up");
+    // A second level keeps the edge buttons still.
+    reader.textDepth = D::Fonts;
+    reader.overlay = O::Text;
+    reader.focusedTool = static_cast<int>(readermenu::Tab::TEXT);
+    hold(reader, B::Up, 900);
+    expect(menucustom::saves == 0, "tab order", "in the font list a hold moves no tab");
+  } else {
+    expect(order[1] == 3 && order[2] == 2 && menucustom::saves == 0, "tab order",
+           "on a bar that is not the X3's the saved order is not touched");
+    reader.overlay = O::Toolbar;
+    reader.focusedTool = 1;
+    reader.mappedInput.letGo();
+    reader.mappedInput.released.insert(static_cast<int>(B::Right));
+    reader.handleOverlayInput();
+    expect(reader.focusedTool == 2, "tab order", "and its tools step in their own order");
+  }
+}
+#endif
+
 void runVariant(const char* const name, const bool x3Bar, const Tabs& tabs) {
   variant = name;
   ReaderToolbarUi::x3Bar = x3Bar;
   tabsOn(tabs);
   secondLevelAndPopupTakeNoStep(tabs);
   tabsOffLeavesThePageChannelAwake(tabs);
+  rowTilt(tabs);
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+  favoritesOrder();
+  edgeHold(tabs);
+  tabOrder(tabs, x3Bar);
+#endif
 }
 
 }  // namespace

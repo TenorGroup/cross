@@ -43,6 +43,7 @@ struct { void update(uint8_t, uint8_t, bool) {} } halTiltSensor;
 namespace menutilt {
 struct Step { bool next = false, previous = false; };
 inline Step pollTabs(uint8_t, bool) { return {}; }
+inline Step pollRows(bool) { return {}; }
 }
 struct EpubReaderMenuActivity { enum class MenuAction { TEXT_SETTINGS }; };
 struct MenuResult {};
@@ -106,7 +107,7 @@ struct Renderer {
 struct HalDisplay {static constexpr int FAST_REFRESH=1;};
 struct Toc {int spineIndex=0,level=1;std::string anchor;};
 struct Epub {int getTocItemsCount(){return 10;}int getTocIndexForSpineIndex(int){return 0;}Toc getTocItem(int){return {};}int getSpineItemsCount(){return 10;}};
-struct Popup {bool isActive()const{return false;}template<class F>void handleInput(MappedInputManager&,F){}void dismiss(){}};
+struct Popup {bool isActive()const{return false;}template<class F>void handleInput(MappedInputManager&,F){}void dismiss(){}void step(int){}};
 struct ButtonNavigator {static int previousIndex(int i,int n){return (i+n-1)%n;}static int nextIndex(int i,int n){return (i+1)%n;}};
 struct ReaderToolbarUi {
  static bool usesX3Bar(){return false;}
@@ -140,6 +141,7 @@ class EpubReaderActivity {
  Popup overlayPopup;
  std::vector<int> moreItems;
  int focusedTool=0,panelIndex=0,currentSpineIndex=0,nextPageNumber=0;
+ int stepTool(int direction)const{return (focusedTool+direction+4)%4;}
  bool panelCursorShown=false,panelHoldJumped=false,overlayPageStored=true,bwUnderSheet=false,sheetKeptRadio=false;
  std::string pendingAnchor;
  std::unique_ptr<int> section=std::make_unique<int>(1);
@@ -235,9 +237,11 @@ subprocess.run([str(a.output/'state')],check=True)
 here=Path(__file__).resolve().parent
 header=(a.repo/'src/activities/reader/ReaderMenuLayout.h').read_text()
 tabs=re.search(r'enum class Tab : uint8_t \{.*?\};',header,re.S).group(0)
+favorder=header[header.index('// Touch (the order screen): the pins `wanted`'):header.index('// X4 Pro (founder 06/10)')]+header[header.index('// Giu nut Len hoac Xuong'):header.index('}  // namespace readermenu')]
 tilt=((here/'tilt.cpp.in').read_text()
- .replace('@TABS@',tabs).replace('@TOOLS@',tools.split('inline constexpr int TOOL_COUNT')[0])
- .replace('@EVENTS@',events).replace('@ROUTED@',routed).replace('@HANDLE@',method(s,'handleOverlayInput')))
+ .replace('@TABS@',tabs).replace('@TOOLS@',tools.split('inline constexpr int TOOL_COUNT')[0]).replace('@FAVORDER@',favorder)
+ .replace('@EVENTS@',events).replace('@ROUTED@',routed).replace('@HANDLE@',method(s,'handleOverlayInput'))
+ .replace('@STEPTOOL@','\n'.join(method(s,name) for name in ('toolGroup','stepTool','moveFavorite'))))
 (a.output/'tilt.cpp').write_text(tilt)
 bad=0
 for pro in (1,0):
@@ -246,4 +250,12 @@ for pro in (1,0):
      '-DFREEINK_DEVICE_X4PRO='+str(pro),'-I'+str(here/'tilt_stubs'),'-I'+str(a.repo/'test/x4_reader_menu/stubs'),'-I'+str(a.repo/'src'),'-I'+str(sdk/'include'),
      str(a.output/'tilt.cpp'),str(a.repo/'src/ReaderFontSizes.cpp'),str(sdk/'src/FreeInkUI.cpp'),'-o',str(exe)],check=True)
     bad|=subprocess.run([str(exe)]).returncode
+# The More panel's switches turn where they stand (inplace.cpp.in): the production activateMoreRow on the button boards.
+actions=re.search(r'enum class Action \{.*?\n\};',header,re.S).group(0)
+inplace=((here/'inplace.cpp.in').read_text().replace('@ACTIONS@',actions).replace('@ACTIVATE@',method(s,'activateMoreRow')))
+(a.output/'inplace.cpp').write_text(inplace)
+exe=a.output/'inplace'
+subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Wno-unused-variable','-Wno-unused-parameter','-Wno-unused-private-field','-fsanitize=address,undefined',
+ '-I'+str(a.repo/'src'),str(a.output/'inplace.cpp'),'-o',str(exe)],check=True)
+bad|=subprocess.run([str(exe)]).returncode
 raise SystemExit(bad)

@@ -57,7 +57,7 @@ class ReaderToolbarUi {
  public:
   static constexpr int kToolCount = 4;
   static bool usesX3Bar(); static int toolCount();
-  struct Model { bool panel = false; int activeTool = 0; const char* tipText = nullptr; } model_;
+  struct Model { bool panel = false; int activeTool = 0; const char* tipText = nullptr; const char* info = nullptr; } model_;
   GfxRenderer* renderer_;
   tenorchrome::X3ScreenLayout screenLayout() const;
   fui::Rect toolRect(int index) const;
@@ -108,6 +108,17 @@ int main() {
                  layout.barRect.width == expected.width && layout.barRect.height == expected.height);
           assert(layout.bodyRect.bottom() + 8 <= layout.barRect.y);
           assert(layout.tipRect.bottom() <= layout.barRect.y);
+          // The progress line (readermenu::progressLine) stands in the strip over the bar, where the tips stand: the bar
+          // and its tabs keep their places, the sheet's body gives up the line and the 4 px air under it, no more.
+          toolbar.model_.info = "Chuong: 3/13 trang  |  Sach: 3%";
+          const auto withInfo = toolbar.screenLayout();
+          const int line = tenorchrome::tipHeight(renderer, toolbar.model_.info, 2);
+          toolbar.model_.info = nullptr;
+          assert(line > 0);
+          assert(withInfo.barRect.y == layout.barRect.y && withInfo.barRect.height == layout.barRect.height);
+          assert(withInfo.tipRect.height >= line && withInfo.tipRect.bottom() + 4 == withInfo.barRect.y);
+          assert(withInfo.bodyRect.bottom() == layout.bodyRect.bottom() - line - 4);
+          assert(withInfo.bodyRect.bottom() + 8 <= withInfo.tipRect.y);
           for (int index = 0; index < 5; ++index) {
             const auto rect = toolbar.toolRect(index);
             assert(rect.y == expected.y && rect.height == expected.height);
@@ -138,7 +149,7 @@ int main() {
   assert(!reader.actionPanel());
   reader.overlay = EpubReaderActivity::Overlay::Reading;
   assert(!reader.actionPanel());
-  printf("GREEN toolbar: %d layer/tab cases, exact Home bar and centers, shared action IDs, ugly unchanged\\n", cases);
+  printf("GREEN toolbar: %d layer/tab cases, exact Home bar and centers, progress line over the bar, shared action IDs, ugly unchanged\\n", cases);
 }
 '''
 unit = args.work / 'toolbar.cpp'

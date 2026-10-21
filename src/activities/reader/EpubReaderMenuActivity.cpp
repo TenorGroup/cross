@@ -597,18 +597,7 @@ tenorchrome::X3ScreenLayout EpubReaderMenuActivity::screenLayout() const {
 }
 
 std::string EpubReaderMenuActivity::progressText() const {
-  return progressLine(currentPage, totalPages, bookProgressPercent);
-}
-
-std::string EpubReaderMenuActivity::progressLine(const int currentPage, const int totalPages,
-                                                 const int bookProgressPercent) {
-  std::string text;
-  if (totalPages > 0)
-    text = std::string(tr(STR_CHAPTER_PREFIX)) + std::to_string(currentPage) + "/" + std::to_string(totalPages) +
-           tr(STR_PAGES_SEPARATOR);
-  text += bookProgressPercent >= 0 ? std::string(tr(STR_BOOK_PREFIX)) + std::to_string(bookProgressPercent) + "%"
-                                   : std::string(tr(STR_INDEXING));
-  return text;
+  return readermenu::progressLine(currentPage, totalPages, bookProgressPercent);
 }
 
 // An empty Favorites list is a framed card, as a list with rows is, holding the hint on how to pin.

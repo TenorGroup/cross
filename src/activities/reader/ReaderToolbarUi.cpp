@@ -85,11 +85,11 @@ bool ReaderToolbarUi::usesX3Bar() { return tenorchrome::x3ScreenLayoutEnabled() 
 int ReaderToolbarUi::toolCount() { return usesX3Bar() ? readermenu::X3_TAB_COUNT : kToolCount; }
 
 tenorchrome::X3ScreenLayout ReaderToolbarUi::screenLayout() const {
-  return tenorchrome::x3ScreenLayout(*renderer_);
+  return tenorchrome::x3ScreenLayout(*renderer_, 0, model_.info ? tenorchrome::tipHeight(*renderer_, model_.info, 2) : 0);
 }
 
 fui::Rect ReaderToolbarUi::toolRect(const int index) const {
-  const auto bar = screenLayout().barRect;
+  const auto bar = tenorchrome::x3ScreenLayout(*renderer_).barRect;  // the bar's place does not depend on the info line
   // The tab list's own centres (UiTabListActivity::veThanhTheTenor): ring X3_BAR_MARGIN in from the bar's ends.
   const int center = tenorchrome::barTabCentre(bar.x + tenorchrome::X3_BAR_MARGIN,
                                                bar.width - 2 * tenorchrome::X3_BAR_MARGIN, readermenu::X3_TAB_COUNT,
@@ -179,14 +179,19 @@ void ReaderToolbarUi::buildX3Bar(UiScreen& screen) {
   renderer_->fillRect(0, layout.bodyRect.bottom(), renderer_->getScreenWidth(), clearTo - layout.bodyRect.bottom(), false);
   tenorchrome::drawBarFrame(*renderer_, layout.barRect.x + tenorchrome::X3_BAR_MARGIN, layout.barRect.y,
                             layout.barRect.width - 2 * tenorchrome::X3_BAR_MARGIN, layout.barRect.height);
-  for (int index = 0; index < readermenu::X3_TAB_COUNT; ++index) {
-    const bool active = model_.activeTool == index;
-    const auto& icon = readermenu::x3TabIcon(static_cast<readermenu::Tab>(index), active);
-    const auto slot = toolRect(index);
+  // The tab standing at each place (the order the reader saved), told apart from its place: the icon, the focus and the
+  // tap go by the tab, the slot by the place.
+  for (int place = 0; place < readermenu::X3_TAB_COUNT; ++place) {
+    const int tab = model_.tabAt[place];
+    const bool active = model_.activeTool == tab;
+    const auto& icon = readermenu::x3TabIcon(static_cast<readermenu::Tab>(tab), active);
+    const auto slot = toolRect(place);
     tenorchrome::drawBarTab(*renderer_, slot.x + slot.width / 2, slot.y, slot.height, icon.bits, icon.w, icon.h,
                             active);
-    screen.frame().hit(slot, ACTION_TOOL, static_cast<int16_t>(index), fui::InputTouch);
+    screen.frame().hit(slot, ACTION_TOOL, static_cast<int16_t>(tab), fui::InputTouch);
   }
+  // The strip over the bar is the info line's alone here (no tips stand in a panel): screenLayout sized it to the line.
+  if (model_.info && uiTarget.paintingEnabled()) tenorchrome::drawInfoInRect(*renderer_, model_.info, layout.tipRect, 2);
 }
 
 void ReaderToolbarUi::begin() {

@@ -52,6 +52,14 @@ def tilt_block(source: str) -> str:
     return method[start:end]
 
 
+def row_tilt_statement(source: str) -> str:
+    """The row poll of handleOverlayInput: `const auto rowTilt = menutilt::pollRows(...)`, which comes after the tab poll.
+    A reader without it never nods a row, which is what the empty step says."""
+    method = extract_function(source, r"void EpubReaderActivity::handleOverlayInput\s*\(\)")
+    match = re.search(r"const auto rowTilt = menutilt::pollRows\([^;]*;", method)
+    return match.group(0) if match else "const menutilt::Step rowTilt{};"
+
+
 def manages_tilt_sensor(header: str, activity_header: str) -> str:
     """The reader's own override, or the Activity default it inherits when the reader has none."""
     own = re.search(r"bool managesTiltSensor\(\) const override \{[^}]*\}", header)
@@ -90,6 +98,7 @@ with tempfile.TemporaryDirectory(prefix="reader-menu-tilt-") as temporary_dir:
         .replace("@NOTE_SCREEN@", note_screen)
         .replace("@MENU_MANAGES@", manages_tilt_sensor(reader_header, activity_header))
         .replace("@MENU_TILT_BLOCK@", tilt_block(reader_source))
+        .replace("@MENU_ROW_TILT@", row_tilt_statement(reader_source))
     )
     (out / "harness.cpp").write_text(harness)
     build = subprocess.run(

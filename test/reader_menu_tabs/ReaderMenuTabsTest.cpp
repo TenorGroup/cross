@@ -375,3 +375,61 @@ TEST(ToolbarMore, SearchRowStandsFirstOnlyWhenTheBoardCanSearch) {
 }
 
 }  // namespace
+
+// The toolbar menu's Favorites holds pin codes (a byte each), and shows only the pins this book has: a footnote pin in a
+// book with no footnotes waits unshown. A step of a shown row is a step among the shown, and the unshown pin keeps its place.
+TEST(XepYeuThich, DayBacChayCaTrenMaGhimMotByte) {
+  std::vector<uint8_t> ghim = {10, 20, 30};
+  EXPECT_EQ(readermenu::dayBac(ghim, 2, -1), 1);
+  EXPECT_EQ(ghim, std::vector<uint8_t>({10, 30, 20}));
+  EXPECT_EQ(readermenu::dayBac(ghim, 2, 1), 0) << "quay vong";
+  EXPECT_EQ(ghim, std::vector<uint8_t>({20, 10, 30}));
+}
+
+TEST(XepYeuThich, DayBacHienThiGiuChoGhimAn) {
+  const std::vector<uint8_t> goc = {10, 99, 30, 40};  // 99: a pin this book lacks
+  const std::vector<uint8_t> hien = {10, 30, 40};
+  auto ghim = goc;
+  EXPECT_EQ(readermenu::dayBacHienThi(ghim, hien, 1, -1), 0);
+  EXPECT_EQ(ghim, std::vector<uint8_t>({30, 99, 10, 40})) << "the hidden pin stays in its place, the shown ones swap";
+  ghim = goc;
+  EXPECT_EQ(readermenu::dayBacHienThi(ghim, hien, 0, 1), 1) << "a step over the hidden pin is a visible step";
+  EXPECT_EQ(ghim, std::vector<uint8_t>({30, 99, 10, 40}));
+  ghim = goc;
+  EXPECT_EQ(readermenu::dayBacHienThi(ghim, hien, 2, 1), 0) << "the last shown row wraps to the first";
+  EXPECT_EQ(ghim, std::vector<uint8_t>({40, 99, 10, 30}));
+  ghim = goc;
+  EXPECT_EQ(readermenu::dayBacHienThi(ghim, hien, 5, 1), 5);
+  EXPECT_EQ(readermenu::dayBacHienThi(ghim, std::vector<uint8_t>({10}), 0, 1), 0);
+  EXPECT_EQ(ghim, goc) << "out of range, or one row alone: nothing moves";
+}
+
+// A Text-setting pin (PIN_TEXT | place) is a byte too, and orders with the actions.
+TEST(XepYeuThich, GhimVanBanSapXepCungGhimLenh) {
+  const uint8_t van = readermenu::PIN_TEXT | 2;
+  std::vector<uint8_t> ghim = {static_cast<uint8_t>(MenuAction::SYNC), van, static_cast<uint8_t>(MenuAction::DICTIONARY)};
+  const auto hien = ghim;
+  EXPECT_EQ(readermenu::dayBacHienThi(ghim, hien, 1, -1), 0);
+  EXPECT_EQ(ghim[0], van);
+}
+
+// "Chapter: 3/12 pages  |  Book: 25%": one line for the list menu, the chapter list and the toolbar menu's X3 bar.
+TEST(ReaderProgress, DongTienDo) {
+  const std::string chuong = std::string(tr(STR_CHAPTER_PREFIX)) + "3/12" + tr(STR_PAGES_SEPARATOR);
+  EXPECT_EQ(readermenu::progressLine(3, 12, 25), chuong + tr(STR_BOOK_PREFIX) + "25%");
+  EXPECT_EQ(readermenu::progressLine(3, 12, 0), chuong + tr(STR_BOOK_PREFIX) + "0%");
+  EXPECT_EQ(readermenu::progressLine(3, 12, -1), chuong + tr(STR_INDEXING)) << "the book is still indexing";
+  EXPECT_EQ(readermenu::progressLine(1, 0, 40), std::string(tr(STR_BOOK_PREFIX)) + "40%") << "no chapter total yet";
+  EXPECT_EQ(readermenu::progressLine(1, 0, -1), tr(STR_INDEXING));
+}
+
+TEST(ToolbarMore, TiltRowOnlyWhereTheBoardHasASensor) {
+  std::vector<readermenu::Item> with, without;
+  readermenu::buildMoreItems(with, true, true, true, false, true);
+  readermenu::buildMoreItems(without, true, true, true, false, false);
+  ASSERT_EQ(with.size(), without.size() + 1);
+  EXPECT_EQ(with.back().action, MenuAction::TILT_PAGE_TURN) << "the row stands last, after File transfer";
+  for (size_t i = 0; i < without.size(); ++i) EXPECT_EQ(with[i].action, without[i].action);
+  EXPECT_TRUE(std::none_of(without.begin(), without.end(),
+                           [](const auto& item) { return item.action == MenuAction::TILT_PAGE_TURN; }));
+}

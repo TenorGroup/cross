@@ -9,6 +9,7 @@
 
 #include "MappedInputManager.h"
 #include "MenuCustomization.h"
+#include "MenuTabHold.h"
 #include "MenuTiltInput.h"
 #include "activities/util/ListOrderActivity.h"
 #include "components/TenorMenuChrome.h"
@@ -268,27 +269,15 @@ void UiTabListActivity::moveRingTo(const int ringIndex, const int direction) {
 bool UiTabListActivity::handleTabHoldNavigation() {
   using Button = MappedInputManager::Button;
   constexpr unsigned long HOLD_MS = 700;
-  const bool up = mappedInput.isPressed(Button::Up), down = mappedInput.isPressed(Button::Down);
-  if (up && down) {
-    tabChordBlocked = true;
-    mappedInput.wasLongPressed(Button::Up, 0);
-    mappedInput.wasLongPressed(Button::Down, 0);
-  }
-  if (tabChordBlocked) {
-    if (!up && !down) tabChordBlocked = false;
-    return true;
-  }
-  for (int direction : {-1, 1}) {
-    const Button button = direction < 0 ? Button::Up : Button::Down;
-    if (mappedInput.wasLongPressed(button, HOLD_MS)) {
-      {
-        RenderLock lock(*this);
-        menucustom::moveTab(menucustom::groupFor(name.c_str()), activeTab(), tabCount(), direction);
-      }
-      requestUpdate();
-      return true;
+  const auto hold = menutab::pollHold(mappedInput, tabChordBlocked);
+  if (hold.direction) {
+    {
+      RenderLock lock(*this);
+      menucustom::moveTab(menucustom::groupFor(name.c_str()), activeTab(), tabCount(), hold.direction);
     }
+    requestUpdate();
   }
+  if (hold.consumed) return true;
   // Favorites keeps its explicitly approved hold-to-reorder gesture.
   if (mappedInput.isPressed(Button::Left) && giuNutDiDong(-1)) return true;
   if (mappedInput.isPressed(Button::Right) && giuNutDiDong(1)) return true;

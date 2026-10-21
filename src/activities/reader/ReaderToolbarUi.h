@@ -3,6 +3,7 @@
 
 #include <I18n.h>
 
+#include <array>
 #include <functional>
 #include <string>
 
@@ -81,8 +82,13 @@ class ReaderToolbarUi : public UiAppHost {
     std::function<readermenu::RowEnd(int)> rowEnd;
     // The state of a switch row.
     std::function<bool(int)> rowOn;
-    // Tile row: the tool in focus (toolbar) / the open panel (panel). 0..3, -1 none.
+    // Tile row: the tool in focus (toolbar) / the open panel (panel). 0..3, -1 none. On the X3 bar a tab's value
+    // (readermenu::Tab), never its place on the bar: tabAt says which tab stands at each place.
     int activeTool = 0;
+    std::array<uint8_t, readermenu::X3_TAB_COUNT> tabAt{0, 1, 2, 3, 4};
+    // X3 bar: where the reader stands (readermenu::progressLine), in the strip over the bar where the tips stand. The
+    // sheet is the shorter by that strip.
+    const char* info = nullptr;
     // Button boards keep the theme's denser list row height (as every other
     // list does there); touch boards use FreeInkUI's finger-sized rows.
     bool denseRows = false;

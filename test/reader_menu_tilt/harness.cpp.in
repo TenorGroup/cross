@@ -10,6 +10,7 @@ unsigned long fakeMillis = 0;
 
 struct FakeImuState {
   float gx = 0.0f;
+  float gy = 0.0f;  // the screen's up-down axis: a nod
   float ax = 0.0f;  // gravity: (0, 0, 1) is the device held as it was; a hand turned away leaves it
   float az = 1.0f;
   int wakeCalls = 0;
@@ -27,7 +28,7 @@ void expect(const bool condition, const char* const scenario, const char* const 
 // The reader's menu as far as tilt goes: the two pieces of the reader's own text, compiled as written.
 struct MenuModel {
   enum class Overlay { None, Toolbar, Text };
-  enum class TextDepth { Rows, Fonts };
+  enum class TextDepth { Rows, Fonts, Spacing, PointSize };
   struct Popup {
     bool on = false;
     bool isActive() const { return on; }
@@ -40,10 +41,14 @@ struct MenuModel {
 
   @MENU_MANAGES@
 
-  // What handleOverlayInput takes from the sensor before it looks at a button.
-  menutilt::Step tiltOfThisPass() {
+  // What handleOverlayInput takes from the sensor before it looks at a button: the tab tilt, then the row tilt.
+  struct Taken {
+    menutilt::Step tabs, rows;
+  };
+  Taken tiltOfThisPass() {
     @MENU_TILT_BLOCK@
-    return tilt;
+    @MENU_ROW_TILT@
+    return {tilt, rowTilt};
   }
 };
 
@@ -53,17 +58,20 @@ struct Screen {
   bool menuOpen = false;
   bool popup = false;  // a modal option picker over the menu
   bool fonts = false;  // the second level of the Text panel
+  bool panel = false;  // a panel of rows, not the toolbar
 };
 
 struct Counts {
-  int turnNext = 0, turnPrev = 0, tabNext = 0, tabPrev = 0;
+  int turnNext = 0, turnPrev = 0, tabNext = 0, tabPrev = 0, rowNext = 0, rowPrev = 0;
 };
 
 // One pass of the main loop, then the screen in front: the page turn read of a reader (ReaderUtils), the menu's
 // own take of the sensor over it. The route and the screen note are main.cpp's own text.
 void pass(const Screen& screen, Counts& sum) {
   MenuModel menu;
-  menu.overlay = screen.menuOpen ? MenuModel::Overlay::Toolbar : MenuModel::Overlay::None;
+  menu.overlay = !screen.menuOpen ? MenuModel::Overlay::None
+                 : screen.panel   ? MenuModel::Overlay::Text
+                                  : MenuModel::Overlay::Toolbar;
   menu.overlayPopup.on = screen.popup;
   menu.textDepth = screen.fonts ? MenuModel::TextDepth::Fonts : MenuModel::TextDepth::Rows;
   const uint32_t generation = screen.generation;
@@ -76,8 +84,10 @@ void pass(const Screen& screen, Counts& sum) {
     sum.turnPrev += SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedBack();
   } else if (screen.reader) {
     const auto step = menu.tiltOfThisPass();
-    sum.tabNext += step.next;
-    sum.tabPrev += step.previous;
+    sum.tabNext += step.tabs.next;
+    sum.tabPrev += step.tabs.previous;
+    sum.rowNext += step.rows.next;
+    sum.rowPrev += step.rows.previous;
   }
 }
 
@@ -110,6 +120,7 @@ Counts flick(const Screen& screen, const float rate, const unsigned long outMs =
   imu.gx = 0.0f;
   const Counts back = runFor(screen, backMs);
   sum.turnNext += back.turnNext, sum.turnPrev += back.turnPrev, sum.tabNext += back.tabNext, sum.tabPrev += back.tabPrev;
+  sum.rowNext += back.rowNext, sum.rowPrev += back.rowPrev;
   return sum;
 }
 
@@ -233,12 +244,97 @@ void thePageKeepsItsTurnRule() {
   expect(turn.turnNext == 1, "page-turn", "with the menu closed a flick turns the page at once, without waiting for the hand");
 }
 
-void theMenuLeavesTheRowChannelDisarmed() {
+void theReaderLeavesTheRowChannelDisarmed() {
   reset();
   halTiltSensor.configureVerticalGesture(kNormal, true);  // what a list left behind
-  const Screen menu{2, true, true};
-  runFor(menu, 100);
-  expect(imu.wakeCalls == 0, "menu-rows", "no row channel stays armed under the reader's menu");
+  const Screen book{2, true, false};
+  runFor(book, 100);
+  expect(imu.wakeCalls == 0, "book-rows", "no row channel stays armed under the page, with no menu open");
+}
+
+// A nod in the menu: the row channel is the menu's own, armed with its setting after the tab poll, so the reader's
+// route must leave it to the menu (main.cpp used to disarm it every pass, whoever held the sensor).
+void aNodInTheMenuStepsTheRows() {
+  reset();
+  SETTINGS.tiltMenuNavigation = kNormal;
+  SETTINGS.tiltTabNavigation = kInverted;
+  const Screen menu{1, true, true, false, false, true};
+  runFor(menu, 700);
+  imu.gy = 400.0f;
+  const Counts out = runFor(menu, 400);
+  expect(out.rowNext + out.rowPrev == 0, "menu-rows", "a hand that stays turned is no step");
+  imu.gy = 0.0f;
+  const Counts back = runFor(menu, 400);
+  expect(back.rowPrev == 1 && back.rowNext == 0, "menu-rows", "a nod steps a row once the hand is back");
+  imu.gy = -400.0f;
+  runFor(menu, 400);
+  imu.gy = 0.0f;
+  const Counts other = runFor(menu, 400);
+  expect(other.rowNext == 1 && other.rowPrev == 0, "menu-rows", "a nod the other way steps the other way");
+  expect(imu.wakeCalls == 1 && imu.sleepCalls == 0, "menu-rows", "the sensor wakes once and stays awake");
+  expect(back.tabNext + back.tabPrev + other.tabNext + other.tabPrev == 0, "menu-rows", "a nod steps no tab");
+}
+
+void aNodInTheMenuWithTabsOffStepsRowsAndLeavesNoGhost() {
+  reset();
+  SETTINGS.tiltPageTurn = kNormal;
+  SETTINGS.tiltMenuNavigation = kNormal;
+  Screen book{1, true, true, false, false, true};
+  runFor(book, 700);
+  imu.gy = 400.0f;
+  runFor(book, 200);
+  imu.gy = 0.0f;
+  const Counts nod = runFor(book, 400);
+  expect(nod.rowPrev == 1, "menu-rows-off", "tabs off: the nod still steps a row");
+  expect(imu.sleepCalls == 0, "menu-rows-off", "tabs off: the sensor never sleeps under the menu");
+  // A nod still waiting for the hand when the menu closes is dropped, and the channel with it.
+  imu.gy = 400.0f;
+  runFor(book, 200);
+  book.menuOpen = false;
+  imu.gy = 0.0f;
+  runFor(book, 400);
+  book.menuOpen = true;
+  book.generation = 2;
+  const Counts reopened = runFor(book, 400);
+  expect(reopened.rowNext + reopened.rowPrev == 0, "menu-rows-ghost", "a nod left over from a closed menu steps nothing in the next");
+}
+
+// Tabs off, rows on, page turn on: the row channel armed under the menu changes nothing for the page turn after it.
+void aTurnRightAfterTheMenuClosesIsNotLostWithRowTiltOn() {
+  reset();
+  SETTINGS.tiltPageTurn = kNormal;
+  SETTINGS.tiltMenuNavigation = kNormal;
+  Screen book{1, true, false};
+  runFor(book, 700);
+  book.menuOpen = true;
+  book.panel = true;
+  runFor(book, 3000);
+  expect(imu.sleepCalls == 0, "menu-rows-turn", "the sensor stays up under the menu");
+  book.menuOpen = false;
+  book.panel = false;
+  imu.gx = 400.0f;
+  const Counts turn = runFor(book, 100);
+  expect(turn.turnNext == 1, "menu-rows-turn", "a flick right after the menu closes turns the page at once, rows on too");
+  imu.gx = 0.0f;
+  runFor(book, 300);
+  imu.gy = 400.0f;
+  runFor(book, 300);
+  imu.gy = 0.0f;
+  const Counts nod = runFor(book, 400);
+  expect(nod.turnNext + nod.turnPrev + nod.rowNext + nod.rowPrev == 0, "menu-rows-turn",
+         "with the menu closed a nod turns no page and steps no row");
+}
+
+void aNodIsNoStepWhenTheRowSettingIsOff() {
+  reset();
+  SETTINGS.tiltTabNavigation = kInverted;
+  const Screen menu{1, true, true, false, false, true};
+  runFor(menu, 700);
+  imu.gy = 400.0f;
+  runFor(menu, 200);
+  imu.gy = 0.0f;
+  const Counts nod = runFor(menu, 400);
+  expect(nod.rowNext + nod.rowPrev == 0, "menu-rows-off-setting", "row tilt off: a nod steps nothing");
 }
 
 }  // namespace
@@ -254,7 +350,7 @@ bool Imu::begin() {
   return true;
 }
 bool Imu::read(Sample& out) {
-  out = Sample{imu.ax, 0.0f, imu.az, imu.gx, 0.0f, 0.0f};
+  out = Sample{imu.ax, 0.0f, imu.az, imu.gx, imu.gy, 0.0f};
   return begun_;
 }
 bool Imu::sleep() {
@@ -284,7 +380,11 @@ int main() {
   theHandComingBackAfterTheMenuClosesTurnsNoPageTheOtherWay();
   aPopupOrTheFontLevelDropsTheFlickAndKeepsTheSensorUp();
   thePageKeepsItsTurnRule();
-  theMenuLeavesTheRowChannelDisarmed();
+  theReaderLeavesTheRowChannelDisarmed();
+  aNodInTheMenuStepsTheRows();
+  aNodInTheMenuWithTabsOffStepsRowsAndLeavesNoGhost();
+  aTurnRightAfterTheMenuClosesIsNotLostWithRowTiltOn();
+  aNodIsNoStepWhenTheRowSettingIsOff();
   std::printf("reader_menu_tilt: %d failed assertions\n", failures);
   return failures == 0 ? 0 : 1;
 }

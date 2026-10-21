@@ -57,8 +57,8 @@ void buildItems(std::vector<Item>& items, const bool hasFootnotes, const bool ha
 }
 
 void buildMoreItems(std::vector<Item>& items, const bool hasFootnotes, const bool hasBookmarks,
-                    const bool hasFrontlight, const bool hasSearch) {
-  buildItems(items, hasFootnotes, hasBookmarks, hasFrontlight);
+                    const bool hasFrontlight, const bool hasSearch, const bool hasTilt) {
+  buildItems(items, hasFootnotes, hasBookmarks, hasFrontlight, hasTilt);
   items.erase(std::remove_if(items.begin(), items.end(),
                              [](const auto& item) {
                                return item.action == Action::SELECT_CHAPTER || item.action == Action::TEXT_SETTINGS;
@@ -98,20 +98,6 @@ int rowsOfFavorites(const std::vector<Item>& all, const Action* favorites, const
     }
   }
   return n;
-}
-
-int dayBac(std::vector<Action>& ghim, const int viTri, const int huong) {
-  const int n = static_cast<int>(ghim.size());
-  if (viTri < 0 || viTri >= n || n <= 1 || huong == 0) return viTri;
-
-  // Nho ra roi cam vao, chu khong doi cho hai muc: doi cho thi khi quay vong, muc nam
-  // giua cung bi hat di, va thu tu nguoi ta xep vo.
-  int moi = (viTri + huong) % n;
-  if (moi < 0) moi += n;
-  const Action a = ghim[static_cast<size_t>(viTri)];
-  ghim.erase(ghim.begin() + viTri);
-  ghim.insert(ghim.begin() + moi, a);
-  return moi;
 }
 
 }  // namespace readermenu

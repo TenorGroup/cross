@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include <vector>
 
 namespace readermenu {
@@ -78,10 +79,22 @@ void buildItems(std::vector<Item>& items, bool hasFootnotes, bool hasBookmarks, 
                 bool hasTilt = false);
 
 // Toolbar More keeps its original order independently of the tab layout. A board that can search the book's text
-// (hasSearch) gets that row on top.
+// (hasSearch) gets that row on top; one with a tilt sensor (hasTilt) the tilt page turn switch.
 void buildMoreItems(std::vector<Item>& items, bool hasFootnotes, bool hasBookmarks, bool hasFrontlight,
-                    bool hasSearch = false);
+                    bool hasSearch = false, bool hasTilt = false);
 void separateTextTab(std::vector<Item>& items);
+
+// "Chapter: 3/12 pages  |  Book: 25%": where the reader stands, over the bar of the list menu, the chapter list and the
+// toolbar menu's X3 bar. `totalPages` 0 leaves the chapter out; a negative `bookProgressPercent` says the book is indexing.
+inline std::string progressLine(const int currentPage, const int totalPages, const int bookProgressPercent) {
+  std::string text;
+  if (totalPages > 0)
+    text = std::string(tr(STR_CHAPTER_PREFIX)) + std::to_string(currentPage) + "/" + std::to_string(totalPages) +
+           tr(STR_PAGES_SEPARATOR);
+  text += bookProgressPercent >= 0 ? std::string(tr(STR_BOOK_PREFIX)) + std::to_string(bookProgressPercent) + "%"
+                                   : std::string(tr(STR_INDEXING));
+  return text;
+}
 
 // Hai ham duoi ghi CHI SO trong `all` vao `out`, toi da `max` chi so, va tra ve
 // so dong ghi duoc. Tra chi so chu khong tra ban sao vi hai le: man hinh can chi
@@ -208,6 +221,30 @@ inline uint8_t textPin(const char* storedKey) {
 // Giu nut Len hoac Xuong trong tab Yeu thich la goi ham nay: day muc o `viTri` di mot
 // bac theo `huong` (-1 len, 1 xuong). QUAY VONG, vi ca may quay vong, va vi nho vay dua
 // mot muc tu day len dau chi ton mot nhip. Tra ve vi tri moi cua muc do.
-int dayBac(std::vector<Action>& ghim, int viTri, int huong);
+// Mot luat cho ca hai menu: X3 danh sach day vector<Action>, thanh cong cu day cac ma ghim (uint8_t).
+template <class T>
+int dayBac(std::vector<T>& ghim, const int viTri, const int huong) {
+  const int n = static_cast<int>(ghim.size());
+  if (viTri < 0 || viTri >= n || n <= 1 || huong == 0) return viTri;
+
+  // Nho ra roi cam vao, chu khong doi cho hai muc: doi cho thi khi quay vong, muc nam
+  // giua cung bi hat di, va thu tu nguoi ta xep vo.
+  int moi = (viTri + huong) % n;
+  if (moi < 0) moi += n;
+  const T muc = ghim[static_cast<size_t>(viTri)];
+  ghim.erase(ghim.begin() + viTri);
+  ghim.insert(ghim.begin() + moi, muc);
+  return moi;
+}
+
+// The toolbar menu's Favorites shows `hienThi`, the pins this book has, in the order of `ghim`; a pin it lacks (a
+// footnote pin in a book with none) waits unshown. Pushes the shown row `row` one step as dayBac does, among the shown
+// ones, and the hidden pins keep their places (xepLai). Returns the row's new place; `row` when nothing moved.
+template <class T>
+int dayBacHienThi(std::vector<T>& ghim, const std::vector<T>& hienThi, const int row, const int huong) {
+  std::vector<T> wanted = hienThi;
+  const int moi = dayBac(wanted, row, huong);
+  return moi != row && xepLai(ghim, wanted) ? moi : row;
+}
 
 }  // namespace readermenu

@@ -1,0 +1,141 @@
+// The More panel's switches turn where they stand: the production activateMoreRow on the button boards, with the rest
+// of the reader replaced by a model that counts what it was asked.
+#include <cstdint>
+#include <cstdio>
+#include <memory>
+#include <string>
+#include <vector>
+
+struct RenderLock {};
+unsigned long millis() { return 1; }
+// The X4 Pro's popup branches stand after the button boards' early returns in the same text: they must compile.
+enum class StrId { STR_ORIENTATION, STR_AUTO_TURN_PAGES_PER_MIN, STR_HIDE_READER_STATUS_BAR };
+struct Rect {};
+struct Popup {
+  template <class... Args>
+  void showInFrame(Args&&...) {}
+};
+struct ToolbarUi {
+  Rect panelRect() const { return {}; }
+};
+struct CrossPointSettings {
+  static constexpr int ORIENTATION_COUNT = 4, READER_STATUS_BAR_MODE_COUNT = 8;
+};
+constexpr StrId kOrientationIds[] = {StrId::STR_ORIENTATION};
+struct HalDisplay {
+  static constexpr int FAST_REFRESH = 1;
+};
+struct Renderer {
+  int displays = 0;
+  void displayBuffer(int) { ++displays; }
+  void restoreBwBuffer(bool) {}
+};
+namespace readermenu {
+@ACTIONS@
+inline constexpr StrId STATUS_BAR_MODE_LABELS[] = {StrId::STR_HIDE_READER_STATUS_BAR};
+}
+struct EpubReaderMenuActivity {
+  using MenuAction = readermenu::Action;
+};
+struct MenuResult {};
+struct Settings {
+  int orientation = 0, readerStatusBarMode = 0;
+  uint8_t tiltPageTurn = 1, tiltPageTurnLastOn = 1, screenInverted = 0, frontlightOn = 0;
+  int saves = 0;
+  void saveToFile() { ++saves; }
+  // CrossPointSettings::toggleTiltPageTurn: Off goes back to the last mode that was on.
+  void toggleTiltPageTurn() {
+    if (tiltPageTurn != 0) {
+      tiltPageTurnLastOn = tiltPageTurn;
+      tiltPageTurn = 0;
+    } else {
+      tiltPageTurn = tiltPageTurnLastOn;
+    }
+  }
+} SETTINGS;
+struct FrontlightModel {
+  bool on = false;
+  bool isOn() const { return on; }
+  void setOn(bool value) { on = value; }
+} Frontlight;
+int textToolFocus() { return 4; }
+
+class EpubReaderActivity {
+ public:
+  enum class Overlay { None, Toolbar, Contents, Text, More, Favorites, Reading };
+  struct Item {
+    readermenu::Action action;
+  };
+  Overlay overlay = Overlay::More;
+  std::vector<Item> moreItems;
+  Renderer renderer;
+  int focusedTool = 0;
+  bool overlayPageStored = true, showBookmarkMessage = false;
+  unsigned long bookmarkMessageTime = 0;
+  Popup overlayPopup;
+  std::unique_ptr<ToolbarUi> toolbarUi = std::make_unique<ToolbarUi>();
+  int autoTurnOption = 0;
+  std::vector<StrId> autoTurnLabels() const { return {}; }
+  void toggleAutoPageTurn(uint8_t) {}
+  void applyOrientation(uint8_t) {}
+  void setReaderStatusBarMode(int) {}
+  void paintOverlayPopup() {}
+  // What the reader was asked.
+  int renders = 0, closed = 0, confirmed = 0, notices = 0, updates = 0, picks = 0, opened = 0;
+  void settleOverlayRefresh() {}
+  void renderOverlay() { ++renders; }
+  void requestUpdate() { ++updates; }
+  void discardOverlayPage() { overlayPageStored = false; }
+  void openOverlay(Overlay target) { overlay = target; ++opened; }
+  void panelClosedLocked(bool, bool) { ++closed; }
+  void openPick(int, std::string) { ++picks; }
+  std::string moreRowName(int) const { return ""; }
+  bool waitsForIndex() { return false; }
+  void addBookmark() {}
+  // The reader's handler of a row that left the menu: the tilt row went here and drew its notice over the page.
+  void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action, MenuResult) {
+    ++confirmed;
+    if (action == EpubReaderMenuActivity::MenuAction::TILT_PAGE_TURN) toggleTiltFromReader();
+  }
+  // toggleTiltFromReader: the setting turned and a notice drawn over the page.
+  void toggleTiltFromReader() {
+    ++notices;
+    SETTINGS.toggleTiltPageTurn();
+    SETTINGS.saveToFile();
+    showBookmarkMessage = true;
+  }
+  static constexpr int PICK_MORE = 100;
+  void activateMoreRow(int row);
+};
+@ACTIVATE@
+
+namespace {
+int failures = 0;
+void expect(const bool ok, const char* const what) {
+  if (ok) return;
+  std::printf("FAIL tilt row in place: %s\n", what);
+  ++failures;
+}
+}  // namespace
+
+int main() {
+  using A = readermenu::Action;
+  EpubReaderActivity reader;
+  reader.moreItems = {{A::SYNC}, {A::TILT_PAGE_TURN}, {A::NIGHT_MODE}};
+  SETTINGS.tiltPageTurn = 1;
+  reader.activateMoreRow(1);
+  expect(SETTINGS.tiltPageTurn == 0, "the switch turns off where it stands");
+  expect(SETTINGS.saves == 1, "and is saved once");
+  expect(reader.overlay == EpubReaderActivity::Overlay::More && reader.closed == 0 && reader.confirmed == 0,
+         "the menu stays open: nothing closes it, nothing leaves for the reader's own handler");
+  expect(reader.notices == 0 && !reader.showBookmarkMessage, "no notice is drawn over the page");
+  expect(reader.renders == 1 && reader.renderer.displays == 1, "the sheet is drawn again once, to show the switch");
+  reader.activateMoreRow(1);
+  expect(SETTINGS.tiltPageTurn == 1 && SETTINGS.saves == 2 && reader.closed == 0 && reader.renders == 2,
+         "turned on again: back to the mode it had, still open");
+  // The switch next to it is the pattern: night mode turns in place too.
+  reader.activateMoreRow(2);
+  expect(SETTINGS.screenInverted == 1 && reader.closed == 0, "night mode still turns in place");
+  std::printf("x4_reader_menu in place: %d failed assertions\n", failures);
+  return failures == 0 ? 0 : 1;
+}

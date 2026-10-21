@@ -1229,9 +1229,13 @@ static void updateTiltSensorForForegroundActivity(const bool foregroundReader,
   halTiltSensor.confirmSideFlicks(!foregroundReader || foregroundActivityManagesTiltSensor);
   if (foregroundReader) {
     // Row tilt belongs to the menu screens: the reader keeps the page-turn axis
-    // and nothing else, so the vertical channel is disarmed on the way in.
-    halTiltSensor.configureVerticalGesture(CrossPointTiltPageTurn::TILT_OFF, false);
-    if (!foregroundActivityManagesTiltSensor) halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, true);
+    // and nothing else, so the vertical channel is disarmed on the way in. A menu
+    // open over the book arms it again each pass; it is left to the menu then, or
+    // the poll that carries its samples would find it off.
+    if (!foregroundActivityManagesTiltSensor) {
+      halTiltSensor.configureVerticalGesture(CrossPointTiltPageTurn::TILT_OFF, false);
+      halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, true);
+    }
   } else if (!foregroundActivityManagesTiltSensor) {
     halTiltSensor.configureVerticalGesture(CrossPointTiltPageTurn::TILT_OFF, false);
     halTiltSensor.update(CrossPointTiltPageTurn::TILT_OFF, SETTINGS.orientation, false);

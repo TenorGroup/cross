@@ -643,6 +643,7 @@ else:
         adapters = read_source('src/activities/home/X3FileReaderChrome.h')
         adapters = adapters[adapters.index('template <class Visitor'):adapters.rfind('}')]
         reader_icons = function(read_source('src/activities/reader/ReaderMenuLayout.h'), 'enum class Tab') + ';\n'
+        reader_icons += function(read_source('src/activities/reader/ReaderMenuLayout.h'), 'inline std::string progressLine(') + '\n'
         if 'x3TabIcon(' in read_source('src/activities/reader/EpubReaderMenuActivity.cpp'):
             reader_icons += function(read_source('src/components/icons/X3ReaderTabIcons.h'),
                                      'inline const freeink::Icon& x3TabIcon(')
@@ -651,7 +652,7 @@ else:
         extra_methods = {
             'FileBrowserActivity': ('screenTip',),
             'QuoteTrimActivity': ('screenTip', 'screenInfo', 'areaTop', 'linesPerArea'),
-            'EpubReaderMenuActivity': ('progressText', 'progressLine', 'tabIcon', 'infoOverBar'),
+            'EpubReaderMenuActivity': ('progressText', 'tabIcon', 'infoOverBar'),
             'EpubReaderChapterSelectionActivity': ('infoOverBar',),
             'QuoteDetailActivity': ('metrics', 'metaStep', 'positionLabel', 'visitX3Meta', 'layoutX3Pages'),
             'QuotesActivity': ('metrics', 'footer'),
