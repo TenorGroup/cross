@@ -557,9 +557,12 @@ int runWakeRow() {
     row.valueSetter(1);
     ok = expect(SETTINGS.wakeTarget == S::WAKE_BOOK, "the second position stores Book") && ok;
     SETTINGS.wakeTarget = S::WAKE_HOME;
-    ok = expect(row.valueGetter() == 2, "Home reads as the root screen on ugly and as Recent on cross") && ok;
+    ok = expect(row.valueGetter() == 2, "Home reads as the root screen on ugly and as the home screen on cross") && ok;
+    SETTINGS.wakeTarget = S::WAKE_RECENT;
+    ok = expect(row.valueGetter() == (ugly ? 3 : 2), "Recent reads as the home screen on cross") && ok;
     row.valueSetter(row.enumLabels().size() - 1);
-    ok = expect(SETTINGS.wakeTarget == S::WAKE_RECENT, "the last position stores Recent") && ok;
+    ok = expect(SETTINGS.wakeTarget == (ugly ? S::WAKE_RECENT : S::WAKE_HOME),
+                "the last position stores Recent on ugly, Home on cross") && ok;
   }
   std::printf("settings_upgrade=wake-row:%s\n", ok ? "GREEN" : "RED");
   return ok ? 0 : 1;

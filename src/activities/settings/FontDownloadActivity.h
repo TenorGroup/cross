@@ -27,7 +27,7 @@ inline bool preventsAutoSleep(const Phase phase) {
 }  // namespace font_power
 
 #ifndef FONT_MANIFEST_URL
-#define FONT_MANIFEST_URL "https://cross.tenor.vn/firmware/v1.0.71/fonts/fonts.json"
+#define FONT_MANIFEST_URL "https://cross.tenor.vn/firmware/v1.0.72/fonts/fonts.json"
 #endif
 
 class FontDownloadActivity final : public UiListActivity {

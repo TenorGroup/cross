@@ -243,11 +243,11 @@ inline SettingInfo buildTenorClockPlacementSetting(const SettingInfo& registered
 }
 
 // The "On wake" row: three choices on tenor/cross, four on tenor/ugly (which has a root screen of its
-// own). The menu order is not the stored order, and Home and Recent are one place on cross, so a Home
-// stored there reads as Recent.
+// own). The menu order is not the stored order. Home and Recent are one place on cross: its last choice
+// stores Home, and a Recent stored on ugly reads as Home there.
 inline SettingInfo buildWakeTargetSetting(const SettingInfo& registered) {
   using S = CrossPointSettings;
-  static constexpr uint8_t CROSS[] = {S::WAKE_RESUME, S::WAKE_BOOK, S::WAKE_RECENT};
+  static constexpr uint8_t CROSS[] = {S::WAKE_RESUME, S::WAKE_BOOK, S::WAKE_HOME};
   static constexpr uint8_t UGLY[] = {S::WAKE_RESUME, S::WAKE_BOOK, S::WAKE_HOME, S::WAKE_RECENT};
   const bool ugly = SETTINGS.uiShell == 1;
   const std::span<const uint8_t> targets = ugly ? std::span<const uint8_t>(UGLY) : std::span<const uint8_t>(CROSS);

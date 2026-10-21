@@ -35,6 +35,8 @@ inline bool mergedGlobalStatusBarPinRoute() {
 inline const char* canonicalPinKey(const char* key) {
   if (!key) return "";
   if (strcmp(key, "text/focusReadingEnabled") == 0) return "text/dropCapMode";
+  if (strcmp(key, "settings/wakeIntoBook") == 0 || strcmp(key, "settings/uglyStartScreen") == 0)
+    return "settings/wakeTarget";
   if (mergedGlobalStatusBarPinRoute() &&
       (strcmp(key, "settings/globalStatusBarMode") == 0 || strcmp(key, "settings/tenorButtonHints") == 0 ||
        strcmp(key, "settings/hideGlobalStatusBar") == 0))

@@ -955,9 +955,10 @@ void setup() {
   bool needsWakeRefresh = false;
   // A crash may have come from the book that was open: the next wake does not reopen it.
   // The place the sleep kept goes the same way: a screen that crashed is not reopened.
-  if (rebootedFromPanic && (!APP_STATE.openEpubPath.empty() || APP_STATE.wake.kind != WakeKind::None)) {
+  // The place needs no write: only a deep-sleep wake reads it, and the next sleep writes it again.
+  if (rebootedFromPanic) APP_STATE.wake = {};
+  if (rebootedFromPanic && !APP_STATE.openEpubPath.empty()) {
     APP_STATE.openEpubPath.clear();
-    APP_STATE.wake = {};
     APP_STATE.saveToFile();
   }
   bool normalColdBoot = !isSleepWake;

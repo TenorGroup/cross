@@ -175,8 +175,10 @@ int main(int argc, char** argv) {
   ok &= check(routes["settings/wakeTarget"]==7 && !routes.count("settings/wakeIntoBook") &&
                   !routes.count("settings/uglyStartScreen"),
               "both shells have the one On wake row in Sleep");
-  ok &= check(activity.focusFavorite("settings/wakeIntoBook")<0 && activity.focusFavorite("settings/uglyStartScreen")<0,
-              "a pin of one of the two rows it replaced stays hidden");
+  ok &= check(activity.focusFavorite("settings/wakeIntoBook")==activity.focusFavorite("settings/wakeTarget") &&
+                  activity.focusFavorite("settings/uglyStartScreen")==activity.focusFavorite("settings/wakeTarget") &&
+                  activity.focusFavorite("settings/wakeTarget")>=0,
+              "a pin of one of the two rows it replaced opens the On wake row");
   ok &= check(ugly ? routes["settings/uglyRootScreen"]==0 : !routes.count("settings/uglyRootScreen"),
               "the Root row belongs to Display only in ugly");
   ok &= check(!routes.count("settings/wakeButtons"),"retired wakeButtons row is gone on every board");

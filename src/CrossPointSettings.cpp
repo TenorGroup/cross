@@ -53,13 +53,8 @@ void CrossPointSettings::validateFrontButtonMapping(CrossPointSettings& settings
 
 CrossPointSettings::CrossPointSettings() { applyTenorPreset(); }
 
-uint8_t CrossPointSettings::defaultReaderMenuStyle() {
-#if FREEINK_DEVICE_X4CLASSIC
-  return READER_MENU_TOOLBAR;
-#else
-  return READER_MENU_LIST;
-#endif
-}
+// The toolbar is the reader menu on every board since v1.0.72; the list menu stays a choice until v1.1.0.
+uint8_t CrossPointSettings::defaultReaderMenuStyle() { return READER_MENU_TOOLBAR; }
 
 uint8_t CrossPointSettings::defaultOf(uint8_t CrossPointSettings::* field) {
   // A fresh instance holds the defaults; it lives on the heap for the moment it takes to read one.

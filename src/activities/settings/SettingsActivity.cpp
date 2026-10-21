@@ -1261,6 +1261,7 @@ int SettingsActivity::focusFavorite(const std::string& key) {
   // Existing action pins keep their key after the Tenor-only child is removed.
   const std::string target =
       (key == "action/2") ? "settings/statusBarClock"
+      : (key == "settings/wakeIntoBook" || key == "settings/uglyStartScreen") ? "settings/wakeTarget"
       : (menucustom::mergedGlobalStatusBarPinRoute() &&
          (key == "settings/globalStatusBarMode" || key == "settings/tenorButtonHints" ||
           key == "settings/hideGlobalStatusBar"))

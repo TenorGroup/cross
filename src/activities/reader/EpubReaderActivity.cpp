@@ -6229,7 +6229,8 @@ void EpubReaderActivity::buildMoreActions() {
     return;
   }
   readermenu::buildMoreItems(moreItems, !currentPageFootnotes.empty(), !cachedBookmarks.empty(), Frontlight.present(),
-                             tenorchrome::kTouchShell && BookSearchRunner::supported(), halTiltSensor.isAvailable());
+                             tenorchrome::kTouchShell && BookSearchRunner::supported(),
+                             !tenorchrome::kTouchShell && halTiltSensor.isAvailable());  // the touch shell has no tilt rows
 }
 
 int EpubReaderActivity::panelActionRow(const int row) const {
@@ -6350,8 +6351,9 @@ void EpubReaderActivity::activateMoreRow(int row) {
       SETTINGS.saveToFile();
       {
         RenderLock lock;  // the render task shares the framebuffer
+        settleOverlayRefresh();  // the last step's refresh may still be on the glass
         renderOverlay();
-        renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+        pushOverlayRefresh();
       }
       return;
     case MA::FRONTLIGHT: {
@@ -6361,8 +6363,9 @@ void EpubReaderActivity::activateMoreRow(int row) {
       SETTINGS.saveToFile();
       {
         RenderLock lock;  // the render task shares the framebuffer
+        settleOverlayRefresh();  // the last step's refresh may still be on the glass
         renderOverlay();
-        renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+        pushOverlayRefresh();
       }
       return;
     }

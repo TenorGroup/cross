@@ -10,13 +10,8 @@ bool expect(const bool condition, const char* label) {
   return condition;
 }
 
-uint8_t boardDefault() {
-#if FREEINK_DEVICE_X4CLASSIC
-  return CrossPointSettings::READER_MENU_TOOLBAR;
-#else
-  return CrossPointSettings::READER_MENU_LIST;
-#endif
-}
+// The toolbar is every board's default since v1.0.72 (founder 21/10); a saved list menu is still honoured.
+uint8_t boardDefault() { return CrossPointSettings::READER_MENU_TOOLBAR; }
 
 int run(const std::string& mode) {
   JsonDocument doc;
