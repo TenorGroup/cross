@@ -1407,13 +1407,14 @@ void FontDownloadActivity::promptDeleteInstalled(const int installedIndex) {
   pendingDeleteName_ = installed_[installedIndex].name;
   // What the question must say besides "deleted from the card": a font in use restarts the unit, and a font of the
   // reader's own cannot be fetched again from the store.
-  std::string message = displayName(pendingDeleteName_.c_str()) + " " + tr(STR_ALERT_FONT_MESSAGE_SUFFIX);
+  // The box is narrow: the question is the title, the font's name and at most one short note the body.
+  std::string message = displayName(pendingDeleteName_.c_str());
   if (fontIsLoaded(pendingDeleteName_)) {
-    message += std::string(" ") + tr(STR_FONT_DELETE_NOTE_USED);
+    message += std::string(". ") + tr(STR_FONT_DELETE_NOTE_USED);
   } else {
     const char* root = SdCardFontRegistry::findFamilyRoot(pendingDeleteName_.c_str());
     if (!root || !FontPackInstaller::isPackFamily(root, pendingDeleteName_.c_str()))
-      message += std::string(" ") + tr(STR_FONT_DELETE_NOTE_OWN);
+      message += std::string(". ") + tr(STR_FONT_DELETE_NOTE_OWN);
   }
   // Cancel first, so the cursor starts on the safe answer; touch has the one action and a tap outside cancels.
   const char* options[] = {tr(STR_CANCEL), tr(STR_ALERT_FONT_ACTION_SHORT)};
