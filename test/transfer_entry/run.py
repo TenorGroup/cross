@@ -115,9 +115,9 @@ class TransferEntryContract(unittest.TestCase):
     def test_font_store_restart_returns_to_store_or_book(self):
         exit_body = function_body(self.fonts, "void FontDownloadActivity::onExit()")
         self.assertIn("if (toBook_) silentRestartToReader();", exit_body)
+        self.assertIn("else if (restartToStore_) silentRestartToFontStore();", exit_body)
         self.assertIn("else if (leavingStore_) silentRestartToFileTransfer();", exit_body)
-        self.assertIn("else silentRestartToFontStore();", exit_body)
-        self.assertNotRegex(exit_body, r"silentRestart\(\);")
+        self.assertIn("else silentRestart();", exit_body)
         self.assertIn("bool toBook = false", self.fonts_header)
         self.assertRegex(self.main, r"SILENT_REBOOT_TARGET_FONTS = 5;\s*constexpr uint32_t SILENT_REBOOT_TARGET_MAX = SILENT_REBOOT_TARGET_FONTS;")
         transfer = function_body(self.main, "void silentRestartToFontStore()")

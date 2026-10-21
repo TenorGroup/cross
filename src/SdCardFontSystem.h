@@ -88,7 +88,7 @@ class SdCardFontSystem {
   uint8_t loadedInkLevel_ = 0;
   float packLineFactor_ = 0.0f;
   static constexpr uint16_t allWeights() { return static_cast<uint16_t>((1u << readerInk::LEVEL_COUNT) - 1); }
-  uint16_t weightMask_ = allWeights();
+  mutable uint16_t weightMask_ = 0;  // 0: not worked out yet for the font in use
   uint16_t weightMaskOf(const SdCardFontFamilyInfo& family) const;
   bool notoPackMissing_ = false;
   void beginImpl(GfxRenderer& renderer);

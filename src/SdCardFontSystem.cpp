@@ -265,7 +265,7 @@ bool SdCardFontSystem::loadSelected(GfxRenderer& renderer, const SdCardFontFamil
                           ? FontPackInstaller::lineFactor(root, family.name.c_str())
                           : 0.0f;
     SETTINGS.sdPackLineFactor = packLineFactor_;
-    weightMask_ = weightMaskOf(family);
+    weightMask_ = 0;  // unknown until a weight list asks (it costs card reads)
 #ifdef TENOR_PRESS_PROBE
     LOG_INF("FONT", "PACK_LINE_FACTOR family=%s factor=%.2f compression=%.2f", family.name.c_str(), packLineFactor_,
             SETTINGS.getReaderLineCompression());
@@ -477,7 +477,12 @@ int SdCardFontSystem::resolveFontId(const char* familyName, uint8_t /*pointSize*
 
 // The levels the loaded font really has, as stored-level bits (worked out when the font was loaded: the base file and the
 // weight folders of its pack for the size in use; a font made with few levels cannot be chosen past them).
-uint16_t SdCardFontSystem::availableWeightMask() const { return weightMask_; }
+uint16_t SdCardFontSystem::availableWeightMask() const {
+  if (weightMask_) return weightMask_;  // known for the font in use
+  const std::string& name = manager_.currentFamilyName();
+  const SdCardFontFamilyInfo* family = name.empty() || manager_.isBuiltinRaster() ? nullptr : familyNamed(name);
+  return weightMask_ = family ? weightMaskOf(*family) : allWeights();  // worked out at the first question, not at each load
+}
 
 uint16_t SdCardFontSystem::weightMaskOf(const SdCardFontFamilyInfo& family) const {
   const SdCardFontFileInfo* file = family.findNearestSize(SETTINGS.fontPointSize);

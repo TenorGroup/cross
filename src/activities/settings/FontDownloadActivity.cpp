@@ -135,6 +135,7 @@ fui::ListNav& FontDownloadActivity::activeNav() { return state_ == GROUP_LIST ? 
 
 void FontDownloadActivity::onBackButton() {
   if (state_ == STORE_LIST) leavingStore_ = true;
+  else restartToStore_ = true;  // out of the add list: back to the fonts on the card, after the restart
   if (state_ != FAMILY_LIST || !hasGroupScreen()) {
     finish();
     return;
@@ -235,8 +236,9 @@ void FontDownloadActivity::onExit() {
       WiFi.disconnect(false);
       delay(30);
       if (toBook_) silentRestartToReader();
+      else if (restartToStore_) silentRestartToFontStore();
       else if (leavingStore_) silentRestartToFileTransfer();
-      else silentRestartToFontStore();
+      else silentRestart();  // left by the home gesture: Home, as every Wi-Fi screen does
     }
   }
 
@@ -1474,6 +1476,7 @@ void FontDownloadActivity::onDeleteInstalledResult(const ActivityResult& result)
   if (loaded) {
     // The font manager still holds the deleted files; a clean start is the safe way to let go of them.
     networkUsed_ = true;
+    restartToStore_ = true;
     finish();
     return;
   }
@@ -1588,6 +1591,7 @@ bool FontDownloadActivity::handleCustomInput() {
       terminalStateSince_ = millis();
       terminalIdleTimerStarted_ = true;
     } else if (terminalStateIdleExpired(millis())) {
+      restartToStore_ = true;
       finish();
       return true;
     }
@@ -1685,13 +1689,16 @@ bool FontDownloadActivity::terminalStateIdleExpired(const unsigned long now) con
 
 void FontDownloadActivity::returnToFamilyList(const fontdownload::ReleaseButton releaseButton) {
   if (!updateTarget_.empty()) {  // one font was updated: nothing to go back to but the store, via the restart
+    restartToStore_ = true;
     finish();
     return;
   }
+  familyListReleaseGuard_.arm(releaseButton);  // the press that brought us here must not act again on its release
   if (families_.empty()) {
     // No list of fonts to add came (the list failed, a delete failed): back to the fonts on the card, or out through
     // the restart when the radio was used.
     if (networkUsed_) {
+      restartToStore_ = true;
       finish();
       return;
     }
@@ -1704,7 +1711,6 @@ void FontDownloadActivity::returnToFamilyList(const fontdownload::ReleaseButton 
     requestUpdate();
     return;
   }
-  familyListReleaseGuard_.arm(releaseButton);
   {
     RenderLock lock(*this);
     state_ = FAMILY_LIST;

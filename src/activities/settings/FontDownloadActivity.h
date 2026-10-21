@@ -121,6 +121,9 @@ class FontDownloadActivity final : public UiListActivity {
   bool errorOnly_ = false;
   // Left with Back from the store list: the restart that follows goes to Connections, not back into the store.
   bool leavingStore_ = false;
+  // This screen ends itself after a download, an update or a delete of the font in use: the restart comes back to the
+  // store. Left any other way (the home gesture) it goes Home.
+  bool restartToStore_ = false;
   int pendingDeleteIndex_ = -1;
   void loadInstalledList();
   void beginNetwork();
