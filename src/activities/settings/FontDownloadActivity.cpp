@@ -134,6 +134,7 @@ void FontDownloadActivity::activateIndex(const int index) {
 fui::ListNav& FontDownloadActivity::activeNav() { return state_ == GROUP_LIST ? groupNav_ : nav; }
 
 void FontDownloadActivity::onBackButton() {
+  if (state_ == STORE_LIST) leavingStore_ = true;
   if (state_ != FAMILY_LIST || !hasGroupScreen()) {
     finish();
     return;
@@ -212,11 +213,16 @@ void FontDownloadActivity::beginNetwork() {
     sdFontSystem.markRegistryDirty();
     installed_.clear();
     installed_.shrink_to_fit();
+    std::vector<fui::ListItem>().swap(rowItems_);
+    std::vector<std::string>().swap(rowLabels_);
+    std::vector<std::string>().swap(rowNames_);
+    rowsDirty_ = true;
     LOG_INF("FONT", "Download registry released=%u heap=%u largest=%u", before <= ESP.getFreeHeap() ? ESP.getFreeHeap() - before : 0u,
             ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     state_ = WIFI_SELECTION;
   }
   WiFi.mode(WIFI_STA);
+  networkUsed_ = true;  // the radio and TLS leave the heap fragmented: leaving the store restarts the unit
   startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
                          [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
 }
@@ -228,7 +234,9 @@ void FontDownloadActivity::onExit() {
     if (networkUsed_ || WiFi.getMode() != WIFI_MODE_NULL) {
       WiFi.disconnect(false);
       delay(30);
-      toBook_ ? silentRestartToReader() : silentRestartToFontStore();
+      if (toBook_) silentRestartToReader();
+      else if (leavingStore_) silentRestartToFileTransfer();
+      else silentRestartToFontStore();
     }
   }
 
@@ -290,6 +298,8 @@ void FontDownloadActivity::onWifiSelectionComplete(const bool success) {
     clearManifest();
     {
       RenderLock lock(*this);
+      downloadingFamilyIndex_ = -1;
+      errorOnly_ = true;
       state_ = ERROR;
     }
     return;
@@ -337,6 +347,7 @@ void FontDownloadActivity::onWifiSelectionComplete(const bool success) {
       RenderLock lock(*this);
       downloadingFamilyIndex_ = -1;
       errorMessage_ = tr(STR_FONT_NO_UPDATE);
+      errorOnly_ = true;
       state_ = ERROR;
       return;
     }
@@ -1016,6 +1027,7 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
     requiredMb_ = 0;
     installingPack_ = false;
     errorMessage_.clear();
+    errorOnly_ = false;
     currentFileIndex_ = 0;
     currentFileTotal_ = family.fileCount;
   }
@@ -1438,7 +1450,7 @@ void FontDownloadActivity::promptDeleteInstalled(const int installedIndex) {
 bool FontDownloadActivity::fontIsLoaded(const std::string& name) {
   if (name == SETTINGS.sdFontFamilyName) return true;
   return SETTINGS.sdFontFamilyName[0] == '\0' && SETTINGS.readerInkWeight != readerInk::ZERO &&
-         (name == "NotoSans" || name == "NotoSerif");
+         name == "NotoSans";
 }
 
 void FontDownloadActivity::onDeleteInstalledResult(const ActivityResult& result) {
@@ -1453,6 +1465,7 @@ void FontDownloadActivity::onDeleteInstalledResult(const ActivityResult& result)
     RenderLock lock(*this);
     errorMessage_ = tr(STR_FONT_DELETE_FAILED);
     downloadingFamilyIndex_ = -1;
+    errorOnly_ = true;
     state_ = ERROR;
     requestUpdate();
     return;
@@ -1673,6 +1686,22 @@ bool FontDownloadActivity::terminalStateIdleExpired(const unsigned long now) con
 void FontDownloadActivity::returnToFamilyList(const fontdownload::ReleaseButton releaseButton) {
   if (!updateTarget_.empty()) {  // one font was updated: nothing to go back to but the store, via the restart
     finish();
+    return;
+  }
+  if (families_.empty()) {
+    // No list of fonts to add came (the list failed, a delete failed): back to the fonts on the card, or out through
+    // the restart when the radio was used.
+    if (networkUsed_) {
+      finish();
+      return;
+    }
+    loadInstalledList();
+    RenderLock lock(*this);
+    nav.reset();
+    state_ = STORE_LIST;
+    rowsDirty_ = true;
+    terminalIdleTimerStarted_ = false;
+    requestUpdate();
     return;
   }
   familyListReleaseGuard_.arm(releaseButton);
@@ -1928,9 +1957,9 @@ void FontDownloadActivity::render(RenderLock&&) {
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", pages ? tr(STR_DIR_UP) : "", pages ? tr(STR_DIR_DOWN) : "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else if (state_ == ERROR) {
-    renderer.drawCenteredText(UI_10_FONT_ID, centerY - lineHeight, tr(STR_FONT_INSTALL_FAILED), true,
-                              EpdFontFamily::BOLD);
-    if (!errorMessage_.empty()) {
+    renderer.drawCenteredText(UI_10_FONT_ID, centerY - lineHeight,
+                              errorOnly_ ? errorMessage_.c_str() : tr(STR_FONT_INSTALL_FAILED), true, EpdFontFamily::BOLD);
+    if (!errorOnly_ && !errorMessage_.empty()) {
       renderer.drawCenteredText(UI_10_FONT_ID, centerY + metrics.verticalSpacing, errorMessage_.c_str());
     }
     if (tenorchrome::kTouchShell) drawTouchPill(tr(STR_RETRY));
@@ -1943,7 +1972,7 @@ void FontDownloadActivity::render(RenderLock&&) {
 
 std::string FontDownloadActivity::x3InfoText() const {
   if (state_ == LOADING_MANIFEST) return tr(STR_LOADING_FONT_LIST);
-  if (state_ == ERROR) return std::string(tr(STR_FONT_INSTALL_FAILED)) + "\n" + errorMessage_;
+  if (state_ == ERROR) return errorOnly_ ? errorMessage_ : std::string(tr(STR_FONT_INSTALL_FAILED)) + "\n" + errorMessage_;
   char summary[96];
   if (state_ == COMPLETE) {
     if (!batchResult_) return tr(STR_FONT_INSTALLED);

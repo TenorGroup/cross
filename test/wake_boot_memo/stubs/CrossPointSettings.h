@@ -9,6 +9,7 @@ struct CrossPointSettings {
   bool fontFallbackNotice = false;
   uint8_t fontPointSize = 14;
   uint8_t readerInkWeight = 0;
+  float sdPackLineFactor = 0.0f;
   int (*sdFontIdResolver)(void*, const char*, uint8_t) = nullptr;
   void* sdFontResolverCtx = nullptr;
   int saves = 0;

@@ -21,6 +21,7 @@ std::string SdCardFontFamilyInfo::filePath(const SdCardFontFileInfo& file, const
 }
 
 uint8_t SdCardFontFamilyInfo::weights(const SdCardFontFileInfo&) const { return 1; }
+bool SdCardFontFamilyInfo::hasWeight(const SdCardFontFileInfo&, uint8_t) const { return false; }
 
 const SdCardFontFileInfo* SdCardFontFamilyInfo::findFile(uint8_t size, uint8_t style) const {
   for (const auto& f : files)

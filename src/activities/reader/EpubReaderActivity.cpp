@@ -138,6 +138,9 @@ void traceSheetHeap(const char* stage, const GfxRenderer& renderer, const int ro
 // The places on the toolbar menu's bar of the tools the reader opens by name.
 constexpr int kContentsTool = static_cast<int>(readermenu::Tool::CONTENTS);
 constexpr int kTextTool = static_cast<int>(readermenu::Tool::TEXT);
+// What focusing the Text panel means: the X3 bar numbers its tabs by readermenu::Tab, the toolbar by Tool (as
+// openReaderMenu does).
+int textToolFocus() { return ReaderToolbarUi::usesX3Bar() ? static_cast<int>(readermenu::Tab::TEXT) : kTextTool; }
 // Anh chup cac cai dat lam thay doi cach dan trang. So truoc va sau khi mo man Cai dat van ban
 // de biet co phai dan lai hay khong.
 struct AnhChupChu {
@@ -1903,7 +1906,7 @@ void EpubReaderActivity::loop() {
         return;
       case readertap::Zone::TextMenu:
         if (usesToolbarMenu() && section) {
-          focusedTool = kTextTool;
+          focusedTool = textToolFocus();
           openOverlay(Overlay::Text);
         } else {
           openReaderMenu();
@@ -6264,8 +6267,7 @@ void EpubReaderActivity::activateMoreRow(int row) {
       // The text settings of the toolbar menu are its Text panel: the page changes behind it as a setting does. These
       // rows used to start the stand-alone Text settings screen the first time and only came back to the panel
       // when it closed, so the first visit showed the old screen (v1.0.70).
-      // The X3 bar numbers its tabs by readermenu::Tab, the toolbar by Tool (as openReaderMenu does).
-      focusedTool = ReaderToolbarUi::usesX3Bar() ? static_cast<int>(readermenu::Tab::TEXT) : kTextTool;
+      focusedTool = textToolFocus();
       openOverlay(Overlay::Text);
       return;
     default:
@@ -6483,7 +6485,7 @@ void EpubReaderActivity::activateFavoriteRow(const int row) {
     return;
   }
   // Font, size and line spacing open their level of the Text panel.
-  focusedTool = kTextTool;
+  focusedTool = textToolFocus();
   openOverlay(Overlay::Text);
   panelIndex = place;
   openTextRow(place);
@@ -6493,7 +6495,7 @@ void EpubReaderActivity::activateFavoriteRow(const int row) {
     return;
   }
   // Font opens its list in the Text panel.
-  focusedTool = kTextTool;
+  focusedTool = textToolFocus();
   openOverlay(Overlay::Text);
   enterFontLevel();
 #endif

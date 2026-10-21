@@ -117,6 +117,10 @@ class FontDownloadActivity final : public UiListActivity {
   std::string updateTarget_;
   bool networkUsed_ = false;  // Wi-Fi was joined: leaving the store restarts the unit to give the heap back
   std::string pendingDeleteName_;
+  // The error says only its own words (a failed list, a failed delete, nothing newer): no "Can't install" headline.
+  bool errorOnly_ = false;
+  // Left with Back from the store list: the restart that follows goes to Connections, not back into the store.
+  bool leavingStore_ = false;
   int pendingDeleteIndex_ = -1;
   void loadInstalledList();
   void beginNetwork();

@@ -60,6 +60,8 @@ struct System {
  Manager manager_;
  uint8_t loadedInkLevel_=0;
  float packLineFactor_=0;
+ uint16_t weightMask_=0;
+ static uint16_t allWeights(){return 511;}
  bool notoPackMissing_=false,present=true;
  Family family;
  std::string asked;

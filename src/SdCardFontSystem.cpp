@@ -265,6 +265,7 @@ bool SdCardFontSystem::loadSelected(GfxRenderer& renderer, const SdCardFontFamil
                           ? FontPackInstaller::lineFactor(root, family.name.c_str())
                           : 0.0f;
     SETTINGS.sdPackLineFactor = packLineFactor_;
+    weightMask_ = weightMaskOf(family);
 #ifdef TENOR_PRESS_PROBE
     LOG_INF("FONT", "PACK_LINE_FACTOR family=%s factor=%.2f compression=%.2f", family.name.c_str(), packLineFactor_,
             SETTINGS.getReaderLineCompression());
@@ -327,6 +328,7 @@ void SdCardFontSystem::ensureLoadedImpl(GfxRenderer& renderer) {
 
   if (wantedFamily[0] == '\0') {
     packLineFactor_ = SETTINGS.sdPackLineFactor = 0.0f;
+    weightMask_ = allWeights();
     // Back on a built-in family, which exists only at BUILTIN_READER_POINT_SIZES:
     // a size inherited from an SD family has to come back into that set.
     snapFontPointSizeTo(snapToNearestPointSize(BUILTIN_READER_POINT_SIZES, std::size(BUILTIN_READER_POINT_SIZES),
@@ -473,21 +475,16 @@ int SdCardFontSystem::resolveFontId(const char* familyName, uint8_t /*pointSize*
   return manager_.getFontId(familyName);
 }
 
-// The levels the loaded font really has, as stored-level bits: the base file and the weight folders of its pack for the
-// size in use. A font made with few levels (the Fonts page used to make 0 to +3) cannot be chosen past them.
-uint16_t SdCardFontSystem::availableWeightMask() const {
-  const uint16_t all = static_cast<uint16_t>((1u << readerInk::LEVEL_COUNT) - 1);
-#if CROSSPOINT_VECTOR_FONTS
-  if (!ttfFamily_.empty()) return all;  // an outline font is drawn at any strength
-#endif
-  const std::string& name = manager_.currentFamilyName();
-  if (name.empty() || manager_.isBuiltinRaster()) return all;
-  const SdCardFontFamilyInfo* family = familyNamed(name);
-  const SdCardFontFileInfo* file = family ? family->findNearestSize(SETTINGS.fontPointSize) : nullptr;
-  if (!file) return all;
-  uint16_t physical = family->weights(*file);
+// The levels the loaded font really has, as stored-level bits (worked out when the font was loaded: the base file and the
+// weight folders of its pack for the size in use; a font made with few levels cannot be chosen past them).
+uint16_t SdCardFontSystem::availableWeightMask() const { return weightMask_; }
+
+uint16_t SdCardFontSystem::weightMaskOf(const SdCardFontFamilyInfo& family) const {
+  const SdCardFontFileInfo* file = family.findNearestSize(SETTINGS.fontPointSize);
+  if (!file) return allWeights();
+  uint16_t physical = family.weights(*file);
   for (uint8_t weight = 7; weight <= SdCardFontFamilyInfo::MAX_WEIGHT; ++weight)
-    if (family->hasWeight(*file, weight)) physical |= static_cast<uint16_t>(1u << weight);
+    if (family.hasWeight(*file, weight)) physical |= static_cast<uint16_t>(1u << weight);
   return static_cast<uint16_t>(readerInk::publicMask(physical) | (1u << readerInk::ZERO));
 }
 
@@ -680,6 +677,7 @@ void SdCardFontSystem::setupTtfUiFallbacks(GfxRenderer& renderer) {
 void SdCardFontSystem::loadTtfFamily(const SdCardFontFamilyInfo& family, GfxRenderer& renderer,
                                      const bool registryWasDirty) {
   packLineFactor_ = SETTINGS.sdPackLineFactor = 0.0f;
+  weightMask_ = allWeights();  // an outline font is drawn at any strength
   // Keep sizes inherited from other families within the selectable vector range.
   snapFontPointSizeTo(
       snapToNearestPointSize(VECTOR_READER_POINT_SIZES, std::size(VECTOR_READER_POINT_SIZES), SETTINGS.fontPointSize));
