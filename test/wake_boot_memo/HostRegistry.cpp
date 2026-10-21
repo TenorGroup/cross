@@ -8,6 +8,7 @@
 
 std::vector<SdCardFontFamilyInfo> hostCatalog;
 int hostDiscoveries = 0;
+uint8_t hostFamilyWeights = 1;
 
 std::string SdCardFontFamilyInfo::dir() const {
   return std::string(hiddenRoot ? SdCardFontRegistry::FONTS_DIR_HIDDEN : SdCardFontRegistry::FONTS_DIR_VISIBLE) + "/" +
@@ -20,7 +21,7 @@ std::string SdCardFontFamilyInfo::filePath(const SdCardFontFileInfo& file, const
   return path + "/" + stems[file.stem] + "_" + std::to_string(file.pointSize) + ".cpfont";
 }
 
-uint8_t SdCardFontFamilyInfo::weights(const SdCardFontFileInfo&) const { return 1; }
+uint8_t SdCardFontFamilyInfo::weights(const SdCardFontFileInfo&) const { return hostFamilyWeights; }
 bool SdCardFontFamilyInfo::hasWeight(const SdCardFontFileInfo&, uint8_t) const { return false; }
 
 const SdCardFontFileInfo* SdCardFontFamilyInfo::findFile(uint8_t size, uint8_t style) const {

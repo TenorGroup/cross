@@ -38,6 +38,7 @@ class SdFontBoot : public ::testing::Test {
     hostCardFiles.clear();
     hostLoads.clear();
     hostDiscoveries = 0;
+    hostFamilyWeights = 1;
     hostCjk = false;
     hostSettings = CrossPointSettings{};
     Storage.cardRead = true;
@@ -73,7 +74,8 @@ TEST_F(SdFontBoot, ReaderInkLoadsVariantsAndKeepsLayoutIdentity) {
   boot(ESP_RST_POWERON, system, renderer);
   const auto fontId = system.resolveFontId("Bokerlam", 14);
   const size_t loads = hostLoads.size();
-  EXPECT_EQ(system.availableWeightMask(), 0x1ff);
+  // A font that holds the base file only cannot be chosen past it (the mask is worked out from the files it has).
+  EXPECT_EQ(system.availableWeightMask(), 1u << readerInk::ZERO);
   for (int level = 0; level < readerInk::LEVEL_COUNT; ++level) {
     SETTINGS.readerInkWeight = level;
     system.ensureLoaded(renderer);
@@ -81,6 +83,19 @@ TEST_F(SdFontBoot, ReaderInkLoadsVariantsAndKeepsLayoutIdentity) {
     EXPECT_EQ(hostLoads.size(), loads + level);
     EXPECT_EQ(system.effectiveWeight(), readerInk::ZERO);  // the fixture card holds the base file only
   }
+}
+
+TEST_F(SdFontBoot, WeightMaskFollowsTheWeightFilesOfTheLoadedFont) {
+  hostFamilyWeights = 0x7d;  // base file and +1..+5; the old Light file (bit 1) is not a level
+  SdCardFontSystem system;
+  GfxRenderer renderer;
+  boot(ESP_RST_POWERON, system, renderer);
+  EXPECT_EQ(system.availableWeightMask(), readerInk::publicMask(0x7d) | (1u << readerInk::ZERO));
+  EXPECT_EQ(system.availableWeightMask(), 0x1f8);
+  // A built-in family is drawn at any strength.
+  hostSettings.sdFontFamilyName[0] = '\0';
+  system.ensureLoaded(renderer);
+  EXPECT_EQ(system.availableWeightMask(), 0x1ff);
 }
 
 TEST_F(SdFontBoot, LongVariantNamesStaySelectedAfterWake) {

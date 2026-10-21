@@ -23,16 +23,16 @@ unit = r'''
 #include "FontStoreCatalog.h"
 enum Key { STR_LOADING_FONT_LIST, STR_FONT_INSTALLED, STR_FONT_INSTALL_FAILED,
            STR_DOWNLOADING, STR_FONT_BATCH_DONE, STR_FONT_BATCH_FAILED,
-           STR_FONT_BATCH_DOWNLOADING, STR_FONT_BATCH_TOTAL, STR_FONT_PACK_INSTALLING };
+           STR_FONT_BATCH_DOWNLOADING, STR_FONT_BATCH_TOTAL, STR_FONT_PACK_INSTALLING, STR_FONT_ONE_FAILED };
 const char* tr(Key key) {
   static const char* words[] = {"Loading", "Installed", "Failed", "Downloading",
-      "Done %u/%u", "Failure %u/%u", "Downloading %s/%s", "Total %u/%u %u%%", "Installing"};
+      "Done %u/%u", "Failure %u/%u", "Downloading %s/%s", "Total %u/%u %u%%", "Installing", "Could not install:"};
   return words[key];
 }
 struct Family { const char* name; uint64_t totalSize; const char* failureReason; unsigned requiredMb; };
 struct FontDownloadActivity {
   enum State { LOADING_MANIFEST, DOWNLOADING, COMPLETE, ERROR } state_ = COMPLETE;
-  bool batchResult_ = true, batchRunning_ = true, installingPack_ = false;
+  bool batchResult_ = true, batchRunning_ = true, installingPack_ = false, errorOnly_ = false;
   unsigned batchSuccessCount_ = 2, batchFamilyCount_ = 3, batchFailureCount_ = 1, batchFamilyIndex_ = 2;
   int resultFailureIndex_ = 1, downloadingFamilyIndex_ = 0, currentFileIndex_ = 0, currentFileTotal_ = 1;
   uint64_t familyDownloadedBytes_ = 100, fileProgress_ = 100, fileTotal_ = 300;
@@ -49,9 +49,13 @@ int main() {
   FontDownloadActivity page;
   auto text = page.x3InfoText();
   assert(text.find("Done 2/3") != std::string::npos);
-  assert(text.find("Failure 1/1") != std::string::npos);
+  // One failed font says so in words; the "n/m" count is for several.
+  assert(text.find("Could not install:") != std::string::npos && text.find("Failure") == std::string::npos);
   assert(text.find("Literata") != std::string::npos);
   assert(text.find("Need 8 MB") != std::string::npos);
+  page.batchFailureCount_ = 2;
+  assert(page.x3InfoText().find("Failure 1/2") != std::string::npos);
+  page.batchFailureCount_ = 1;
   page.state_ = FontDownloadActivity::DOWNLOADING;
   text = page.x3InfoText();
   assert(text.find("Noto Serif") != std::string::npos && text.find("NotoSerif") == std::string::npos);
@@ -61,7 +65,9 @@ int main() {
   page.installingPack_ = true;
   assert(page.x3InfoText().find("Installing") != std::string::npos);
   page.state_ = FontDownloadActivity::ERROR;
-  assert(page.x3InfoText().find("Transfer interrupted") != std::string::npos);
+  assert(page.x3InfoText() == "Failed\nTransfer interrupted");
+  page.errorOnly_ = true;  // a message that already says what failed stands alone
+  assert(page.x3InfoText() == "Transfer interrupted");
   page.state_ = FontDownloadActivity::COMPLETE;
   page.batchResult_ = false;
   assert(page.x3InfoText() == "Installed");

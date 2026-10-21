@@ -36,6 +36,8 @@ enum class StrId {
   STR_FONT_INSTALL_FAILED,
   STR_FONT_BATCH_DONE,
   STR_FONT_BATCH_FAILED,
+  STR_FONT_ONE_FAILED,
+  STR_ADD_NEW_FONTS,
   STR_FONT_BATCH_DOWNLOADING,
   STR_FONT_BATCH_TOTAL,
   STR_FONT_PACK_INSTALLING,
@@ -114,6 +116,8 @@ FIXTURE_STRING(STR_FONT_INSTALLED)
 FIXTURE_STRING(STR_FONT_INSTALL_FAILED)
 FIXTURE_STRING(STR_FONT_BATCH_DONE)
 FIXTURE_STRING(STR_FONT_BATCH_FAILED)
+FIXTURE_STRING(STR_FONT_ONE_FAILED)
+FIXTURE_STRING(STR_ADD_NEW_FONTS)
 FIXTURE_STRING(STR_FONT_BATCH_DOWNLOADING)
 FIXTURE_STRING(STR_FONT_BATCH_TOTAL)
 FIXTURE_STRING(STR_FONT_PACK_INSTALLING)
@@ -266,7 +270,7 @@ struct FontDownloadActivity {
   int currentFileIndex_ = 2, currentFileTotal_ = 4;
   size_t fileProgress_ = 4096, fileTotal_ = 8192;
   std::string errorMessage_ = "Network disconnected";
-  bool batchResult_ = false, batchRunning_ = false, installingPack_ = false;
+  bool batchResult_ = false, batchRunning_ = false, installingPack_ = false, errorOnly_ = false;
   unsigned batchSuccessCount_ = 0, batchFamilyCount_ = 1, batchFailureCount_ = 0, batchFamilyIndex_ = 1;
   int resultFailureIndex_ = 0;
   uint64_t familyDownloadedBytes_ = 0, batchTotalBytes_ = 8192, batchDownloadedBytes_ = 0;
@@ -275,6 +279,7 @@ struct FontDownloadActivity {
   const char* str(const std::string& text) const { return text.c_str(); }
   static std::string formatSize(size_t bytes) { return std::to_string(bytes); }
   const char* headerSubtitle() { return "Latin"; }
+  bool hasGroupScreen() const { return false; }
   std::string x3InfoText() const;
   void drawChrome();
   void renderX3State();

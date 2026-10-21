@@ -60,7 +60,9 @@ struct FontDownloadActivity {
   struct Nav { std::atomic<int> selected{0}; void reset() {} } groupNav_, nav;
   // The store list and the update-one-font path of onWifiSelectionComplete.
   std::string updateTarget_, errorMessage_;
-  bool networkUsed_ = false;
+  bool networkUsed_ = false, errorOnly_ = false;
+  std::vector<int> filteredIndices_;
+  int specialRowCount() const { return 0; }
   int downloadingFamilyIndex_ = 0;
   size_t currentFileIndex_ = 0, currentFileTotal_ = 0;
   struct Family { uint32_t fileCount = 0; bool hasUpdate = false; int name = 0; };
@@ -178,7 +180,7 @@ bool catalogReleaseProbe() {
   FontDownloadActivity failed;
   failed.fetchOk = false;
   failed.onWifiSelectionComplete(true);
-  ok &= check(failed.state_ == FontDownloadActivity::ERROR && failed.sawReleased, "manifest failure preserves release and error path");
+  ok &= check(failed.state_ == FontDownloadActivity::ERROR && failed.errorOnly_ && failed.sawReleased, "manifest failure preserves release and error path");
   ok &= check(jsonSettings() == beforeJson, "persistence getter rebuilds safely after release/error");
   return ok;
 }

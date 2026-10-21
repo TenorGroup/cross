@@ -12,12 +12,19 @@ source = (repo / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
 start = source.index('  // Touch shell: the top band opens the top menu')
 end = source.index('  if (confirmReleased || ReaderUtils::isTouchMenuGesture(renderer, mappedInput, tenorchrome::kTouchShell)) {', start)
 block = source[start:end]
+# The helper the production loop focuses the Text tool through (X3 bar numbers tabs by readermenu::Tab).
+helper = source[source.index('int textToolFocus()'):]
+helper = helper[:helper.index('\n') + 1]
 fixture = r'''
 #include <cassert>
 #include <memory>
 #include "''' + str(repo / 'src/activities/reader/ReaderTapZones.h') + r'''"
 namespace tenorchrome { constexpr bool kTouchShell = true; }
 constexpr int kTextTool = 2;  // readermenu::Tool::TEXT
+bool x3Bar = false;
+namespace ReaderToolbarUi { bool usesX3Bar() { return x3Bar; } }
+namespace readermenu { enum class Tab { FAVORITES, POSITION, READING, TOOLS, TEXT }; }
+''' + helper + r'''
 struct R {}; struct I {};
 readertap::Zone next = readertap::Zone::None;
 namespace ReaderUtils {
@@ -41,6 +48,9 @@ int main() {
   assert(activityManager.topMenus == 1 && r.overlay == Overlay::None && r.fellThrough == 0);
   next = readertap::Zone::TextMenu; r.loop();
   assert(r.overlay == Overlay::Text && r.focusedTool == kTextTool && r.fellThrough == 0);
+  x3Bar = true; r.loop();  // the X3 bar focuses the Text tab by its own numbering
+  assert(r.overlay == Overlay::Text && r.focusedTool == static_cast<int>(readermenu::Tab::TEXT));
+  x3Bar = false;
   r.overlay = Overlay::None; r.toolbar = false; r.loop();
   assert(r.listMenus == 1 && r.overlay == Overlay::None);
   r.toolbar = true; r.section.reset(); r.loop();

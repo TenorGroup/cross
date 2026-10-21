@@ -107,8 +107,12 @@ int main() {{
                             reader_loop.index("default:", reader_loop.index("case readertap::Zone::TextMenu:"))]
     require("TEXT_SETTINGS" not in text_zone and "FREEINK_DEVICE_X4PRO" not in text_zone,
             "The page Text gesture must open the Text sheet on every device")
-    require("focusedTool = kTextTool;" in text_zone and "openOverlay(Overlay::Text);" in text_zone,
+    require("focusedTool = textToolFocus();" in text_zone and "openOverlay(Overlay::Text);" in text_zone,
             "The Text gesture must keep the overlay path")
+
+    require("kTextTool" in reader_source[reader_source.index("int textToolFocus()"):][:200] and
+            "readermenu::Tab::TEXT" in reader_source[reader_source.index("int textToolFocus()"):][:200],
+            "The Text focus must stay the toolbar Tool on the button boards and the Tab on the X3 bar")
 
     # The text settings row of the toolbar menu (Favorites, More) opens the Text panel the first time too, not the
     # stand-alone settings screen that only handed back to the panel when it closed (v1.0.70).

@@ -214,7 +214,7 @@ class FontDownloadActivity {
   Input mappedInput;
   int downloadingFamilyIndex_ = 0;
   size_t fileProgress_ = 0, fileTotal_ = 0, currentFileIndex_ = 0, currentFileTotal_ = 1;
-  bool cancelRequested_ = false, goHomeRequested_ = false, rowsDirty_ = false, installingPack_ = false;
+  bool cancelRequested_ = false, goHomeRequested_ = false, rowsDirty_ = false, installingPack_ = false, errorOnly_ = false;
   bool batchRunning_ = false, batchResult_ = false;
   bool terminalIdleTimerStarted_ = false;
   uint64_t batchTotalBytes_ = 0, batchDownloadedBytes_ = 0;
