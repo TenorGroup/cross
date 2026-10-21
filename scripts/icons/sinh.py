@@ -72,7 +72,8 @@ SETS = [
     ('tenorStatusIcons.h', 18, 2, [('status_wifi', 'wifi'), ('status_bluetooth', 'bluetooth'),
                                    ('status_bluetooth_lost', 'bluetooth_hong')]),
     # The mark of the value in use at the end of a row in a list of choices (touch shell).
-    ('tenorRowMarks.h', 24, 2, [('row_chosen', 'chon')]),
+    # ... and the check circle of a row picked in a multiple choice (empty ring / black disc with the tick cut out).
+    ('tenorRowMarks.h', 24, 2, [('row_chosen', 'chon'), ('row_check', 'o_kiem'), ('row_checked', 'o_kiem_chon')]),
     ('search32.h', 32, 2, [('search', 'tim')]),
     ('readerToolbarIcons.h', 24, 2, [
         ('reader_contents', 'muc_luc'), ('reader_text', 'chu'), ('reader_more', 'them'),

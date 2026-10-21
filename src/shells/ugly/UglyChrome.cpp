@@ -67,7 +67,7 @@ void ring(const GfxRenderer& r, const fui::Rect& w, uint32_t seed) {
 
 int marksWidth(const GfxRenderer& r, const Marks& m) {
   int w = (m.chosen ? MARK + 2 : 0) + (m.opensNext ? MARK : 0);
-  if (m.toggle) w += ugly::width(r, ugly::Size::S22, tr(STR_STATE_OFF)) + 8;
+  if (m.toggle) w += m.check ? 30 : ugly::width(r, ugly::Size::S22, tr(STR_STATE_OFF)) + 8;
   return w;
 }
 
@@ -82,7 +82,15 @@ void marks(const GfxRenderer& r, const fui::Rect& box, const Marks& m, uint32_t 
     ugly::tick(r, x - 10, cy + 8);
     x -= MARK + 2;
   }
-  if (m.toggle) {
+  if (m.toggle && m.check) {
+    // A pen box, right edge at x + 10 (the X4 Pro notebook's tickBox is not built on the other boards).
+    const int right = x + 10, left = right - 22, top = cy - 10, bottom = cy + 10;
+    ugly::line(r, left, top, right, top - 1, 830, 2);
+    ugly::line(r, right, top - 1, right + 1, bottom, 831, 2);
+    ugly::line(r, right + 1, bottom, left - 1, bottom + 1, 832, 2);
+    ugly::line(r, left - 1, bottom + 1, left, top, 833, 2);
+    if (m.toggleOn) ugly::tick(r, right - 10, cy + 8);
+  } else if (m.toggle) {
     const char* state = m.toggleOn ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
     ugly::text(r, ugly::Size::S22, x + 10 - ugly::width(r, ugly::Size::S22, state), cy + ugly::ascent(ugly::Size::S22) / 2, state);
   }

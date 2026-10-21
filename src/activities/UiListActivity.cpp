@@ -1035,6 +1035,7 @@ bool UiListActivity::renderUglyList() {
       continue;
     }
     uglychrome::Marks marks{row == activeNav().selected, item.chosen, item.opensNext, item.toggle, item.toggleChecked};
+    marks.check = item.check;
     // The circle goes round the row's label: the first words written from the row's left half.
     for (size_t i = 0; marks.selected && i < runs.size(); ++i) {
       const auto& at = runs[i].rect;

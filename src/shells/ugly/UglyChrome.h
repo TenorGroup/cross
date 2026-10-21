@@ -30,6 +30,7 @@ void ring(const GfxRenderer& renderer, const freeink::ui::Rect& words, uint32_t 
 struct Marks {
   bool selected = false, chosen = false, opensNext = false, toggle = false, toggleOn = false;
   freeink::ui::Rect around{};
+  bool check = false;  // with toggle: a pen box (ticked or empty) in place of the word On or Off
 };
 void marks(const GfxRenderer& renderer, const freeink::ui::Rect& box, const Marks& marks, uint32_t seed);
 // Room the marks take at the row's right end.

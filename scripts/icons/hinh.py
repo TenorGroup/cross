@@ -178,6 +178,17 @@ def _(g):
     g.rpoly((5, 12.5), (10, 17.5), (19, 6.5), r=BO_VUA)
 
 
+@reg('o_kiem', 'O kiem chua chon (chon nhieu, kieu iOS): vong tron')
+def _(g):
+    g.circle(12, 12, 9.5)
+
+
+@reg('o_kiem_chon', 'O kiem da chon: dia den, dau tick khoet trang')
+def _(g):
+    g.dot(12, 12, 11)
+    g.rpoly((7, 12.5), (10.5, 16), (17, 8.5), r=BO_VUA, w=3, to=g.cut)
+
+
 @reg('thu_vien', 'Calibre: ke sach')
 def _(g):
     g.line((5, 3.5), (5, 20.5))

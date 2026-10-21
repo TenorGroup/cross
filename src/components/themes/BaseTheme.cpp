@@ -154,6 +154,20 @@ void uglyBar(const GfxRenderer& r, const int x, const int y, const int w, const 
 }
 }  // namespace
 
+void BaseTheme::drawProgressTrack(const GfxRenderer& renderer, const Rect rect, const int percent, const bool outline,
+                                  const bool ink) {
+  if (rect.width <= 0 || rect.height <= 0) return;
+  const int lineWidth = rect.height >= 10 ? 2 : 1;  // a thin bar keeps a hairline so the ink inside still shows
+  const int inset = outline ? lineWidth + 1 : 0;    // the border plus 1 px of paper
+  if (outline) renderer.drawRoundedRect(rect.x, rect.y, rect.width, rect.height, lineWidth, rect.height / 2, ink);
+  const int innerH = rect.height - 2 * inset;
+  const int fill = (rect.width - 2 * inset) * std::clamp(percent, 0, 100) / 100;
+  // Under its own height the ink stays a full-height round dot that grows into the pill, never a sliver.
+  if (fill > 0 && innerH > 0)
+    renderer.fillRoundedRect(rect.x + inset, rect.y + inset, std::max(fill, std::min(innerH, rect.width - 2 * inset)),
+                             innerH, innerH / 2, ink ? Color::Black : Color::White);
+}
+
 void BaseTheme::drawProgressBar(const GfxRenderer& renderer, Rect rect, const size_t current, const size_t total) {
   if (total == 0) {
     return;
@@ -167,16 +181,7 @@ void BaseTheme::drawProgressBar(const GfxRenderer& renderer, Rect rect, const si
     uglyBar(renderer, rect.x, rect.y + rect.height / 2, rect.width, percent);
     return;
   }
-  // Draw outline
-  renderer.drawRect(rect.x, rect.y, rect.width, rect.height);
-
-  // Draw filled portion
-  const int fillWidth = (rect.width - 4) * percent / 100;
-  if (fillWidth > 0) {
-    renderer.fillRect(rect.x + 2, rect.y + 2, fillWidth, rect.height - 4);
-  }
-
-  // Draw percentage text centered below bar
+  drawProgressTrack(renderer, rect, percent);
   const std::string percentText = std::to_string(percent) + "%";
   renderer.drawCenteredText(UI_10_FONT_ID, rect.y + rect.height + PROGRESS_LABEL_GAP, percentText.c_str());
 }
@@ -478,14 +483,8 @@ void BaseTheme::fillPopupProgress(const GfxRenderer& renderer, const Rect& layou
   }
 
   const int scaledProgress = metrics.popupProgressClampPercent ? std::clamp(progress, 0, 100) : progress;
-  const int fillWidth = barWidth * scaledProgress / 100;
-
-  if (metrics.popupProgressDrawOutline) {
-    renderer.drawRect(barX, barY, barWidth, barHeight, 1, metrics.popupProgressOutlineInverted);
-  }
-  if (fillWidth > 0) {
-    renderer.fillRect(barX, barY, fillWidth, barHeight, metrics.popupProgressFillInverted);
-  }
+  drawProgressTrack(renderer, Rect{barX, barY, barWidth, barHeight}, scaledProgress, metrics.popupProgressDrawOutline,
+                    metrics.popupProgressFillInverted);
 
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }
@@ -566,9 +565,9 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
       // Chapter progress
       progress = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) * 100 : 0;
     }
-    const int barWidth = progressBarMaxWidth * progress / 100;
     const int barHeight = sb.progressBarHeightPx + (fillMargin ? orientedMarginBottom - 1 : 0);
-    renderer.fillRect(barMarginLeft, progressBarY, barWidth, barHeight, true);
+    drawProgressTrack(renderer, Rect{barMarginLeft, progressBarY, progressBarMaxWidth, barHeight},
+                      static_cast<int>(progress), false);
   }
 
   // Draw Battery

@@ -1308,6 +1308,7 @@ void FontDownloadActivity::rebuildFamilyRowItems() {
         item.state = fui::StateDisabled;
       } else {
         item.toggle = true;
+        item.check = true;  // pick several: a check box, not a switch
         item.toggleChecked = family.chosen;
       }
     }

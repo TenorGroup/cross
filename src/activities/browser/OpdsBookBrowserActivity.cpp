@@ -405,7 +405,8 @@ void OpdsBookBrowserActivity::buildDownloadScreen(UiScreen& screen) {
     progress.value = static_cast<int32_t>(downloadProgress);
     progress.max = static_cast<int32_t>(downloadTotal);
     progress.border = fui::Paint::solid(fui::Color::Black);
-    progress.borderWidth = 1;
+    progress.borderWidth = 2;
+    progress.radius = static_cast<uint8_t>(bar.height / 2);  // the pill every progress bar draws
     fui::progressBar(screen.frame(), bar, progress);
   } else {
     char received[32];
