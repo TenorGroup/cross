@@ -25,7 +25,9 @@ class NotoSelection(unittest.TestCase):
 struct CrossPointSettings { enum {NOTOSANS=0}; };
 struct Settings {
  uint8_t fontFamily=0,fontPointSize=14,readerInkWeight=3;
+
  char sdFontFamilyName[32]="";
+ float sdPackLineFactor=0;
  int getReaderFontId()const{return 1000+fontFamily*100+fontPointSize;}
 } SETTINGS;
 namespace readerInk {
@@ -57,6 +59,7 @@ struct Manager {
 struct System {
  Manager manager_;
  uint8_t loadedInkLevel_=0;
+ float packLineFactor_=0;
  bool notoPackMissing_=false,present=true;
  Family family;
  std::string asked;

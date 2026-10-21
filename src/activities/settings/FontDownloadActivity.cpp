@@ -1171,62 +1171,6 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
   }
 }
 
-void FontDownloadActivity::promptDeleteSelectedFamily() {
-  const int pendingDeleteFamilyIndex = familyIndexFromList(nav.selected);
-  if (pendingDeleteFamilyIndex < 0 || pendingDeleteFamilyIndex >= static_cast<int>(families_.size())) {
-    return;
-  }
-
-  std::string heading = tr(STR_DELETE);
-  const auto& family = families_[pendingDeleteFamilyIndex];
-  std::string body = str(family.name);
-  startActivityForResult(
-      std::make_unique<ConfirmationActivity>(
-          renderer, mappedInput, heading, body,
-          ConfirmationContent{tr(STR_ALERT_FONT_QUESTION), body + " " + tr(STR_ALERT_FONT_MESSAGE_SUFFIX),
-                              tr(STR_ALERT_FONT_ACTION_SHORT), tr(STR_ALERT_FONT_ACTION_LONG), "", true}),
-      [this](const ActivityResult& result) { onDeleteConfirmationResult(result); });
-}
-
-void FontDownloadActivity::onDeleteConfirmationResult(const ActivityResult& result) {
-  if (result.isCancelled) {
-    requestUpdate();
-    return;
-  }
-
-  const int familyIndex = familyIndexFromList(nav.selected);
-  if (familyIndex < 0) {
-    requestUpdate();
-    return;
-  }
-  auto& family = families_[familyIndex];
-
-  if (fontInstaller_.deleteFamily(str(family.name)) != FontInstaller::Error::OK) {
-    RenderLock lock(*this);
-    state_ = ERROR;
-    errorMessage_ = tr(STR_FONT_DELETE_FAILED);
-  } else {
-    RenderLock lock(*this);  // the render task reads these rows
-    sdFontSystem.markRegistryDirty();
-    family.installed = false;
-    family.chosen = false;
-    family.hasUpdate = false;
-    // Unlike the other family_ mutations, this one stays in FAMILY_LIST (no
-    // state_ transition to hang the rebuild off), so it must set the flag
-    // directly.
-    rowsDirty_ = true;
-  }
-
-  requestUpdate();
-}
-
-bool FontDownloadActivity::isSelectedFamilyDeletable() const {
-  const int familyIndex = familyIndexFromList(nav.selected);  // -1 on the special rows and the own-font row
-  if (familyIndex < 0) return false;
-  const auto& family = families_[familyIndex];
-  return family.installed && !family.hasUpdate;
-}
-
 void FontDownloadActivity::activateSelected() {
   if (filteredIndices_.empty()) return;
   if (isDownloadAllRow(nav.selected)) {
@@ -1261,14 +1205,7 @@ void FontDownloadActivity::activateSelected() {
       requestUpdate();  // a button press does not repaint the list by itself (touch does)
       return;
     }
-    if (family.hasUpdate) {
-      currentFileIndex_ = 0;
-      currentFileTotal_ = family.fileCount;
-      downloadFamily(family);
-    } else {
-      promptDeleteSelectedFamily();
-      return;
-    }
+    return;  // the add list holds only fonts not on the card: a font on the card is updated or deleted in the store list
   }
   requestUpdateAndWait();
 }
@@ -1743,7 +1680,6 @@ void FontDownloadActivity::drawListHints() {
   const char* confirmLabel = !hasVisibleFamilies || isOwnFontRow(nav.selected) ||
                                      (isDownloadAllRow(nav.selected) && chosenCount() == 0)
                                  ? ""
-                             : isSelectedFamilyDeletable()  ? tr(STR_DELETE)
                              : isUpdateAllRow(nav.selected) ? tr(STR_UPDATE)
                              : toggles                      ? tr(STR_TOGGLE)
                                                             : tr(STR_DOWNLOAD);

@@ -48,7 +48,7 @@ assert.deepStrictEqual(cpfontFilesOnly([{name:'A.cpfont'},{name:'A.cpfontpack'},
         self.assertTrue('RenderLock lock(*this)' in owner)
         self.assertTrue('FontPackInstaller::scan()' in owner)
         header = (ROOT / 'src/activities/settings/FontDownloadActivity.h').read_text()
-        self.assertTrue('https://cross.tenor.vn/firmware/v1.0.70/fonts/fonts.json' in header)
+        self.assertTrue('https://cross.tenor.vn/firmware/v1.0.71/fonts/fonts.json' in header)
         self.assertTrue('installDownloadedPack' in header)
 
 

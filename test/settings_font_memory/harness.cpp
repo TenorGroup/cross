@@ -56,8 +56,20 @@ struct ActivityResult { bool isCancelled = false; };
 struct FontDownloadActivity {
   template<class A, class B> FontDownloadActivity(A&, B&) {}
   FontDownloadActivity() = default;
-  enum State { LOADING_MANIFEST, ERROR, GROUP_LIST, FAMILY_LIST } state_ = FAMILY_LIST;
-  struct Nav { void reset() {} } groupNav_, nav;
+  enum State { STORE_LIST, LOADING_MANIFEST, ERROR, GROUP_LIST, FAMILY_LIST } state_ = FAMILY_LIST;
+  struct Nav { std::atomic<int> selected{0}; void reset() {} } groupNav_, nav;
+  // The store list and the update-one-font path of onWifiSelectionComplete.
+  std::string updateTarget_, errorMessage_;
+  bool networkUsed_ = false;
+  int downloadingFamilyIndex_ = 0;
+  size_t currentFileIndex_ = 0, currentFileTotal_ = 0;
+  struct Family { uint32_t fileCount = 0; bool hasUpdate = false; int name = 0; };
+  std::vector<Family> families_;
+  const char* str(int) const { return ""; }
+  void loadInstalledList() {}
+  int storeRowCount() const { return 2; }
+  void downloadFamily(Family&) {}
+  void requestUpdate() {}
   struct Renderer {
     Renderer* getFontCacheManager() { return this; }
     void releaseSdFontCaches() {}
@@ -71,6 +83,8 @@ struct FontDownloadActivity {
   void buildFilteredIndices(int) {}
   void onWifiSelectionComplete(bool);
 };
+struct { void mode(int) {} } WiFi;
+constexpr int WIFI_OFF = 0;
 struct RenderLock {
   FontDownloadActivity* owner = nullptr;
   explicit RenderLock(FontDownloadActivity& value) : owner(&value) {
@@ -158,7 +172,8 @@ bool catalogReleaseProbe() {
   ok &= check(font.sawReleased && !font.locked, "catalog released after Wi-Fi before manifest TLS");
   FontDownloadActivity cancelled;
   cancelled.onWifiSelectionComplete(false);
-  ok &= check(cancelled.finished, "Wi-Fi cancellation still finishes child");
+  // Backing out of Wi-Fi returns to the store list (no TLS ran, so nothing to restart from).
+  ok &= check(!cancelled.finished && cancelled.state_ == FontDownloadActivity::STORE_LIST, "Wi-Fi cancellation returns to the store list");
   // Fail manifest and rebuild settings on return in the lifecycle test below.
   FontDownloadActivity failed;
   failed.fetchOk = false;
