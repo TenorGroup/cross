@@ -508,6 +508,30 @@ bool FontPackInstaller::isPackFamily(const char* root, const char* family) {
   }
   return false;
 }
+float FontPackInstaller::lineFactor(const char* root, const char* family) {
+  if (!root || !FontInstaller::isValidFamilyName(family)) return 0.0f;
+  char path[96];
+  std::snprintf(path, sizeof(path), "%s/%s/pack.json", root, family);
+  HalFile file;
+  if (!Storage.openFileForRead("FONTPACK", path, file)) return 0.0f;
+  // Every entry of a pack was built for the same factor and the first entry's reading_quality stands within the
+  // first few KB of the file (offset 3.5 KB at the farthest in the store packs), so the head of the file is enough.
+  static constexpr size_t HEAD = 8192;
+  char* head = static_cast<char*>(std::malloc(HEAD + 1));
+  if (!head) return 0.0f;
+  size_t total = 0;
+  while (total < HEAD) {
+    const int got = file.read(reinterpret_cast<uint8_t*>(head) + total, std::min<size_t>(512, HEAD - total));
+    if (got <= 0) break;
+    total += static_cast<size_t>(got);
+  }
+  head[total] = '\0';
+  float value = 0.0f;
+  if (const char* at = std::strstr(head, "\"line_factor\":")) value = std::strtof(at + 14, nullptr);
+  std::free(head);
+  return value > 0.0f && value < 3.0f ? value : 0.0f;
+}
+
 unsigned FontPackInstaller::scan() {
   HalFile directory;
   if (!Storage.openFileForRead("FONTPACK", "/fonts", directory) || !directory.isDirectory()) return 0;

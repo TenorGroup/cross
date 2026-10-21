@@ -89,8 +89,15 @@ def main():
         bad.append(f"weight folders {result['dirs']} want {want}")
     if result['sizes'] != list(range(12, 25, 2)):
         bad.append(f"sizes {result['sizes']}")
-    if result['defaults'] != [0, 1, 2, 3]:
-        bad.append(f"default levels {result['defaults']}")
+    # Stored level = level + 3 (src/ReaderInkWeight.h): the default is stored 3..8 (base, +1..+5), never the thin 0..2,
+    # or the reader silently falls back to a lighter level.
+    if sorted(d + 3 for d in result['defaults']) != list(range(3, 9)):
+        bad.append(f"default levels {result['defaults']} are not stored 3..8")
+    # The checkboxes on the page tick the same set.
+    page = (ROOT / 'src/network/html/FontsPage.html').read_text()
+    tick = re.search(r'box\.checked = ([^;]+);', page)
+    if not tick or [v for v in range(-3, 6) if eval(tick.group(1).replace('&&', ' and '), {}, {'level': v})] != result['defaults']:
+        bad.append(f"FontsPage.html checkbox default {tick and tick.group(1)!r} differs from DEFAULT_LEVELS")
 
     files = [bytes(__import__('base64').b64decode(f)) for f in result['files']]
     base = files[0]

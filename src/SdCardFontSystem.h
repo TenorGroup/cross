@@ -44,6 +44,9 @@ class SdCardFontSystem {
   void refreshUiFallbacks(GfxRenderer& renderer, uint8_t uiTextSize);
   uint16_t availableWeightMask() const;
   uint8_t effectiveWeight() const;
+  // The line spacing factor the loaded SD font's pack was built for (FontPackInstaller::lineFactor), 0 for a
+  // built-in face or a font made elsewhere. The reader's line spacing starts from it.
+  float packLineFactor() const { return packLineFactor_; }
   bool needsNotoPack() const { return notoPackMissing_; }
 
   // OTA uses built-in UI fonts and reboots on exit. Release SD font metadata
@@ -83,6 +86,7 @@ class SdCardFontSystem {
  private:
   friend void readerInk::apply(GfxRenderer& renderer);
   uint8_t loadedInkLevel_ = 0;
+  float packLineFactor_ = 0.0f;
   bool notoPackMissing_ = false;
   void beginImpl(GfxRenderer& renderer);
   void ensureLoadedImpl(GfxRenderer& renderer);

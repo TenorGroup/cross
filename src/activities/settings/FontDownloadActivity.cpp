@@ -22,6 +22,9 @@
 #include "FileTransferState.h"
 #include "SdCardFontSystem.h"
 #include "FontPackInstaller.h"
+#include "FontStoreCatalog.h"
+#include "ReaderInkWeight.h"
+#include "CrossPointSettings.h"
 #include "SettingsList.h"
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
@@ -76,6 +79,11 @@ bool FontDownloadActivity::installDownloadedPack(const char* path, uint32_t size
 
 void FontDownloadActivity::activateIndex(const int index) {
   switch (state_) {
+    case STORE_LIST:
+      nav.selected = index;
+      app.clearTapFlash();
+      activateStoreRow(index);
+      return;
     case GROUP_LIST:
       app.clearTapFlash();
       enterGroup(index);
@@ -127,6 +135,42 @@ void FontDownloadActivity::onEnter() {
   }
   runtimeStarted_ = true;
   UiListActivity::onEnter();
+  // The store opens on the fonts already on the card: no network, no TLS heap, nothing to wait for.
+  loadInstalledList();
+  RenderLock lock(*this);
+  nav.reset();
+  state_ = STORE_LIST;
+  rowsDirty_ = true;
+}
+
+// The fonts on the card, read from the registry; "Update" from the receipt of a pack against this firmware's store.
+void FontDownloadActivity::loadInstalledList() {
+  sdFontSystem.refreshIfDirty();
+  std::vector<InstalledFont> list;
+  const auto& families = sdFontSystem.registry().getFamilies();
+  list.reserve(families.size());
+  for (const auto& family : families) {
+    InstalledFont font;
+    font.name = family.name;
+    const char* root = SdCardFontRegistry::findFamilyRoot(font.name.c_str());
+    if (root && FontPackInstaller::isPackFamily(root, font.name.c_str())) {
+      for (size_t i = 0; i < fontstore::PACK_COUNT; ++i) {
+        if (font.name != fontstore::PACKS[i].name) continue;
+        font.hasUpdate = !FontPackInstaller::matchesInstalled(root, font.name.c_str(), fontstore::PACKS[i].size,
+                                                              fontstore::PACKS[i].crc32);
+        break;
+      }
+    }
+    list.push_back(std::move(font));
+  }
+  std::sort(list.begin(), list.end(), [](const InstalledFont& a, const InstalledFont& b) { return a.name < b.name; });
+  RenderLock lock(*this);
+  installed_ = std::move(list);
+  rowsDirty_ = true;
+}
+
+// Joins Wi-Fi and loads the store's list (to add fonts, or to fetch the one font named in updateTarget_).
+void FontDownloadActivity::beginNetwork() {
   // This screen reads installation state directly from SD. Drop the rebuildable
   // registry before TLS/JSON allocations fragment the heap; keep loaded fonts
   // and CJK UI fallback pointers alive. Leaving Wi-Fi already restarts the app.
@@ -135,8 +179,11 @@ void FontDownloadActivity::onEnter() {
     const uint32_t before = ESP.getFreeHeap();
     sdFontSystem.registry() = SdCardFontRegistry{};
     sdFontSystem.markRegistryDirty();
-    LOG_INF("FONT", "Download registry released=%u heap=%u largest=%u",
-            before <= ESP.getFreeHeap() ? ESP.getFreeHeap() - before : 0u, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    installed_.clear();
+    installed_.shrink_to_fit();
+    LOG_INF("FONT", "Download registry released=%u heap=%u largest=%u", before <= ESP.getFreeHeap() ? ESP.getFreeHeap() - before : 0u,
+            ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    state_ = WIFI_SELECTION;
   }
   WiFi.mode(WIFI_STA);
   startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
@@ -147,7 +194,7 @@ void FontDownloadActivity::onExit() {
   Activity::onExit();
 
   if (runtimeStarted_) {
-    if (WiFi.getMode() != WIFI_MODE_NULL) {
+    if (networkUsed_ || WiFi.getMode() != WIFI_MODE_NULL) {
       WiFi.disconnect(false);
       delay(30);
       toBook_ ? silentRestartToReader() : silentRestartToFileTransfer();
@@ -159,9 +206,20 @@ void FontDownloadActivity::onExit() {
 
 void FontDownloadActivity::onWifiSelectionComplete(const bool success) {
   if (!success) {
-    finish();
+    // Backed out of Wi-Fi: no TLS ran, so the store list comes back as it was, with the radio off.
+    WiFi.mode(WIFI_OFF);
+    updateTarget_.clear();
+    loadInstalledList();
+    {
+      RenderLock lock(*this);
+      nav.reset();
+      state_ = STORE_LIST;
+      rowsDirty_ = true;
+    }
+    requestUpdate();
     return;
   }
+  networkUsed_ = true;
 
   {
     RenderLock lock(*this);
@@ -238,6 +296,25 @@ void FontDownloadActivity::onWifiSelectionComplete(const bool success) {
     LOG_INF("TLS_AUDIT", "No uninstalled font family available");
   }
 #endif
+
+  if (!updateTarget_.empty()) {
+    int target = -1;
+    for (size_t i = 0; i < families_.size(); ++i) {
+      if (updateTarget_ == str(families_[i].name)) target = static_cast<int>(i);
+    }
+    if (target < 0 || !families_[target].hasUpdate) {
+      RenderLock lock(*this);
+      downloadingFamilyIndex_ = -1;
+      errorMessage_ = tr(STR_FONT_NO_UPDATE);
+      state_ = ERROR;
+      return;
+    }
+    currentFileIndex_ = 0;
+    currentFileTotal_ = families_[target].fileCount;
+    downloadFamily(families_[target]);
+    requestUpdate();
+    return;
+  }
 
   if (!hasGroupScreen()) buildFilteredIndices(0);
 
@@ -702,12 +779,8 @@ bool FontDownloadActivity::showDownloadAllRow() const {
   return false;
 }
 
-bool FontDownloadActivity::showUpdateAllRow() const {
-  for (const int familyIndex : filteredIndices_) {
-    if (families_[familyIndex].hasUpdate) return true;
-  }
-  return false;
-}
+// Updates are done one font at a time from the store list; the add list holds only fonts not on the card.
+bool FontDownloadActivity::showUpdateAllRow() const { return false; }
 
 int FontDownloadActivity::specialRowCount() const {
   return (showDownloadAllRow() ? 1 : 0) + (showUpdateAllRow() ? 1 : 0);
@@ -730,6 +803,8 @@ bool FontDownloadActivity::isOwnFontRow(const int index) const {
 
 int FontDownloadActivity::listCount() const {
   switch (state_) {
+    case STORE_LIST:
+      return storeRowCount();
     case GROUP_LIST:
       return groupListItemCount();
     case FAMILY_LIST:
@@ -763,16 +838,18 @@ int FontDownloadActivity::groupMemberCount(const int scriptGroupIndex) const {
 void FontDownloadActivity::buildFilteredIndices(const int groupListIndex) {
   filteredIndices_.clear();
   filteredIndices_.reserve(families_.size());
+  // The list adds fonts: one already on the card is in the store list, to update or delete there.
   if (groupListIndex <= 0) {
     for (int familyIndex = 0; familyIndex < static_cast<int>(families_.size()); familyIndex++) {
-      filteredIndices_.push_back(familyIndex);
+      if (!families_[familyIndex].installed) filteredIndices_.push_back(familyIndex);
     }
     return;
   }
 
   const uint32_t groupBit = uint32_t{1} << (groupListIndex - 1);
   for (int familyIndex = 0; familyIndex < static_cast<int>(families_.size()); familyIndex++) {
-    if (families_[familyIndex].scriptMask & groupBit) filteredIndices_.push_back(familyIndex);
+    if ((families_[familyIndex].scriptMask & groupBit) && !families_[familyIndex].installed)
+      filteredIndices_.push_back(familyIndex);
   }
 }
 
@@ -1209,8 +1286,8 @@ void FontDownloadActivity::buildScreen(UiScreen& screen) {
 
   if (state_ == FAMILY_LIST && filteredIndices_.empty()) {
     if (tenorchrome::x3ScreenLayoutEnabled())
-      tenorchrome::drawInfoInRect(renderer, tr(STR_NO_FONTS_AVAILABLE), tenorchrome::x3ScreenLayout(renderer).bodyRect);
-    else screen.centeredText(I18N.get(shell::uglyParts() ? StrId::STR_UGLY_FONT_EMPTY : StrId::STR_NO_FONTS_AVAILABLE),
+      tenorchrome::drawInfoInRect(renderer, tr(STR_ALL_FONTS_INSTALLED), tenorchrome::x3ScreenLayout(renderer).bodyRect);
+    else screen.centeredText(I18N.get(shell::uglyParts() ? StrId::STR_UGLY_FONT_EMPTY : StrId::STR_ALL_FONTS_INSTALLED),
                               screen.theme().bodyText);
     return;
   }
@@ -1232,6 +1309,9 @@ void FontDownloadActivity::buildScreen(UiScreen& screen) {
 
 void FontDownloadActivity::rebuildRowItems() {
   switch (state_) {
+    case STORE_LIST:
+      rebuildStoreRowItems();
+      return;
     case GROUP_LIST:
       rebuildGroupRowItems();
       return;
@@ -1247,6 +1327,120 @@ void FontDownloadActivity::rebuildRowItems() {
       rowItems_.clear();
       return;
   }
+}
+
+// --- The store list: fonts on the card ---
+
+// Row 0 adds fonts, then the fonts on the card, then the way to add your own.
+int FontDownloadActivity::storeRowCount() const { return static_cast<int>(installed_.size()) + 2; }
+
+void FontDownloadActivity::rebuildStoreRowItems() {
+  const int listSize = storeRowCount();
+  rowLabels_.assign(listSize, std::string());
+  rowItems_.clear();
+  rowItems_.reserve(listSize);
+  for (int i = 0; i < listSize; i++) {
+    fui::ListItem item;
+    if (i == 0) {
+      item.label = tr(STR_ADD_NEW_FONTS);
+      item.subtitle = tr(STR_ADD_NEW_FONTS_SUB);
+      item.opensNext = true;
+    } else if (i == listSize - 1) {
+      rowLabels_[i] = std::string(tr(STR_FILE_TRANSFER)) + " > " + tr(STR_JOIN_NETWORK) + tr(STR_OWN_FONT_HINT);
+      item.label = tr(STR_OWN_FONT);
+      item.subtitle = rowLabels_[i].c_str();
+    } else {
+      const auto& font = installed_[i - 1];
+      item.label = font.name.c_str();
+      item.value = font.hasUpdate ? tr(STR_UPDATE_AVAILABLE) : tr(STR_INSTALLED);
+    }
+    item.actionValue = static_cast<int16_t>(i);
+    rowItems_.push_back(item);
+  }
+}
+
+void FontDownloadActivity::activateStoreRow(const int index) {
+  if (index == 0) {
+    updateTarget_.clear();
+    beginNetwork();
+    return;
+  }
+  if (index >= 1 && index <= static_cast<int>(installed_.size())) showInstalledMenu(index - 1);
+}
+
+// A font on the card: Delete, and Update when the store has a newer pack.
+void FontDownloadActivity::showInstalledMenu(const int installedIndex) {
+  if (installedIndex < 0 || installedIndex >= static_cast<int>(installed_.size())) return;
+  const bool update = installed_[installedIndex].hasUpdate;
+  const char* options[2];
+  int count = 0;
+  if (update) options[count++] = tr(STR_UPDATE);
+  options[count++] = tr(STR_ALERT_FONT_ACTION_LONG);
+  const std::string name = installed_[installedIndex].name;
+  rowMenu.show(tr(STR_FONT_BOX_TITLE), name.c_str(), options, count, -1, [this, installedIndex, update](const int choice) {
+    if (installedIndex >= static_cast<int>(installed_.size())) return;
+    if (update && choice == 0) {
+      startUpdate(installed_[installedIndex].name);
+    } else {
+      promptDeleteInstalled(installedIndex);
+    }
+  });
+  requestUpdate();
+}
+
+void FontDownloadActivity::startUpdate(const std::string& name) {
+  updateTarget_ = name;
+  beginNetwork();
+}
+
+void FontDownloadActivity::promptDeleteInstalled(const int installedIndex) {
+  pendingDeleteName_ = installed_[installedIndex].name;
+  startActivityForResult(
+      std::make_unique<ConfirmationActivity>(
+          renderer, mappedInput, std::string(tr(STR_DELETE)), pendingDeleteName_,
+          ConfirmationContent{tr(STR_ALERT_FONT_QUESTION),
+                              pendingDeleteName_ + " " + tr(STR_ALERT_FONT_MESSAGE_SUFFIX),
+                              tr(STR_ALERT_FONT_ACTION_SHORT), tr(STR_ALERT_FONT_ACTION_LONG), "", true}),
+      [this](const ActivityResult& result) { onDeleteInstalledResult(result); });
+}
+
+// The font the reader draws with now (its own pack, or the pack standing in for a built-in face at a heavier
+// weight): its files are open in the font manager, so the unit restarts after it is deleted.
+bool FontDownloadActivity::fontIsLoaded(const std::string& name) {
+  if (name == SETTINGS.sdFontFamilyName) return true;
+  return SETTINGS.sdFontFamilyName[0] == '\0' && SETTINGS.readerInkWeight != readerInk::ZERO &&
+         (name == "NotoSans" || name == "NotoSerif");
+}
+
+void FontDownloadActivity::onDeleteInstalledResult(const ActivityResult& result) {
+  const std::string name = std::move(pendingDeleteName_);
+  pendingDeleteName_.clear();
+  if (result.isCancelled) {
+    requestUpdate();
+    return;
+  }
+  const bool loaded = fontIsLoaded(name);
+  if (fontInstaller_.deleteFamily(name.c_str()) != FontInstaller::Error::OK) {
+    RenderLock lock(*this);
+    errorMessage_ = tr(STR_FONT_DELETE_FAILED);
+    downloadingFamilyIndex_ = -1;
+    state_ = ERROR;
+    requestUpdate();
+    return;
+  }
+  sdFontSystem.markRegistryDirty();
+  if (loaded) {
+    // The font manager still holds the deleted files; a clean start is the safe way to let go of them.
+    networkUsed_ = true;
+    finish();
+    return;
+  }
+  loadInstalledList();
+  {
+    RenderLock lock(*this);
+    nav.selected = std::min(nav.selected.load(), storeRowCount() - 1);
+  }
+  requestUpdate();
 }
 
 void FontDownloadActivity::rebuildGroupRowItems() {
@@ -1275,8 +1469,9 @@ void FontDownloadActivity::rebuildFamilyRowItems() {
     if (isDownloadAllRow(i)) {
       const int chosen = chosenCount();
       if (chosen) {
-        rowLabels_[i] = std::string(tr(STR_DOWNLOAD_CHOSEN)) + " (" + std::to_string(chosen) + ", " +
-                        formatSize(totalDownloadSize()) + ")";
+        char label[96];
+        std::snprintf(label, sizeof(label), tr(STR_DOWNLOAD_CHOSEN), chosen, formatSize(totalDownloadSize()).c_str());
+        rowLabels_[i] = label;
         item.label = rowLabels_[i].c_str();
       } else {
         item.label = tr(STR_PICK_FONTS_TO_DOWNLOAD);
@@ -1320,7 +1515,7 @@ void FontDownloadActivity::rebuildFamilyRowItems() {
 // --- Input handling ---
 
 bool FontDownloadActivity::handleCustomInput() {
-  if (state_ == GROUP_LIST || state_ == FAMILY_LIST) {
+  if (state_ == STORE_LIST || state_ == GROUP_LIST || state_ == FAMILY_LIST) {
     // The base list protocol (Back/Confirm, touch routing, swipe scroll,
     // button navigation) handles both list states.
     return false;
@@ -1438,6 +1633,10 @@ bool FontDownloadActivity::terminalStateIdleExpired(const unsigned long now) con
 }
 
 void FontDownloadActivity::returnToFamilyList(const fontdownload::ReleaseButton releaseButton) {
+  if (!updateTarget_.empty()) {  // one font was updated: nothing to go back to but the store, via the restart
+    finish();
+    return;
+  }
   familyListReleaseGuard_.arm(releaseButton);
   {
     RenderLock lock(*this);
@@ -1505,6 +1704,7 @@ bool FontDownloadActivity::renderUglyNote() const {
 }
 
 const char* FontDownloadActivity::headerSubtitle() {
+  if (state_ == FAMILY_LIST && !hasGroupScreen()) return tr(STR_ADD_NEW_FONTS);
   if (state_ != FAMILY_LIST || !hasGroupScreen()) return nullptr;
   const int scriptGroupIndex = groupNav_.selected - 1;
   return scriptGroupIndex >= 0 && scriptGroupIndex < static_cast<int>(scriptGroupLabels_.size())
@@ -1530,6 +1730,13 @@ void FontDownloadActivity::drawListHints() {
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     return;
   }
+  if (state_ == STORE_LIST) {
+    const int last = storeRowCount() - 1;
+    const char* confirm = nav.selected == 0 ? tr(STR_OPEN) : nav.selected == last ? "" : tr(STR_SELECT);
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirm, tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    return;
+  }
   const bool hasVisibleFamilies = !filteredIndices_.empty();
   const int familyIndex = familyIndexFromList(nav.selected);
   const bool toggles = familyIndex >= 0 && !families_[familyIndex].installed;
@@ -1546,6 +1753,7 @@ void FontDownloadActivity::drawListHints() {
 }
 
 void FontDownloadActivity::render(RenderLock&&) {
+  if (rowMenu.processRender(renderer, mappedInput)) return;
   if (state_ == DOWNLOADING || (state_ == COMPLETE && batchResult_)) {
     const auto paintDelay = progressRenderGate_.paintDelay(millis());
     if (paintDelay) delay(paintDelay);
@@ -1554,7 +1762,7 @@ void FontDownloadActivity::render(RenderLock&&) {
     progressRenderGate_.renderStarted();
   }
   if (shell::uglyParts() && renderUglyNote()) return;
-  if (tenorchrome::x3ScreenLayoutEnabled() && state_ != GROUP_LIST && state_ != FAMILY_LIST) {
+  if (tenorchrome::x3ScreenLayoutEnabled() && state_ != STORE_LIST && state_ != GROUP_LIST && state_ != FAMILY_LIST) {
     renderX3State();
     return;
   }
@@ -1563,7 +1771,7 @@ void FontDownloadActivity::render(RenderLock&&) {
   const auto pageHeight = renderer.getScreenHeight();
 
   // The two lists by hand: the layout keeps its words and the shared skin writes them.
-  if ((state_ == GROUP_LIST || state_ == FAMILY_LIST) && renderUglyList()) {
+  if ((state_ == STORE_LIST || state_ == GROUP_LIST || state_ == FAMILY_LIST) && renderUglyList()) {
     renderer.displayBuffer();
     return;
   }
@@ -1592,7 +1800,7 @@ void FontDownloadActivity::render(RenderLock&&) {
 
   if (state_ == LOADING_MANIFEST) {
     renderer.drawCenteredText(UI_10_FONT_ID, centerY, tr(STR_LOADING_FONT_LIST));
-  } else if (state_ == GROUP_LIST) {
+  } else if (state_ == GROUP_LIST || state_ == STORE_LIST) {
     renderFontList();
     drawListHints();
   } else if (state_ == FAMILY_LIST) {

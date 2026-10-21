@@ -754,6 +754,17 @@ float CrossPointSettings::getReaderLineCompression() const {
   // switch-based tuning was not ported into this unified formula - lineFactorOffset()
   // in ReaderSpacing.h does not distinguish SD/vector fonts from built-ins. Worth
   // revisiting there.
+  // A font from the store was built for a line factor: its stacked capitals clear the line above only from there on
+  // (11 families need more than 1.2). The levels then step from that factor, and the wide levels of a board that has
+  // them (1.30, 1.60) never fall below the level before.
+  const float packFactor = sdFontFamilyName[0] == '\0' ? 0.0f : sdPackLineFactor;
+  if (packFactor > 0.0f) {
+    if (lineSpacing >= readerSpacing::LEVEL_COUNT) {
+      const float chained = packFactor + 0.20f + 0.10f * static_cast<float>(lineSpacing - (readerSpacing::LEVEL_COUNT - 1));
+      return std::max(readerSpacing::lineFactor(readerSpacing::clampLineLevel(lineSpacing)), chained);
+    }
+    return packFactor + readerSpacing::lineFactorOffset(lineSpacing);
+  }
   if (lineSpacing >= readerSpacing::LEVEL_COUNT)
     return readerSpacing::lineFactor(readerSpacing::clampLineLevel(lineSpacing));
   // The built-in Noto Sans sets tighter than the card fonts (a reader moved from the built-in serif to the

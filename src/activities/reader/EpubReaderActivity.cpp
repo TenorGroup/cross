@@ -678,6 +678,11 @@ int EpubReaderActivity::bookPercentFor(const ChapterPosition& position) const {
 }
 
 void EpubReaderActivity::openReaderMenu(const bool onText) {
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("MENU_OPEN", "openReaderMenu onText=%d toolbar=%d x3bar=%d overlay=%d section=%d style=%u", onText,
+          usesToolbarMenu(), ReaderToolbarUi::usesX3Bar(), static_cast<int>(overlay), section != nullptr,
+          static_cast<unsigned>(SETTINGS.readerMenuStyle));
+#endif
   pendingManualTurn = 0;
   // The zone icon of a screen opened from the menu leads to the page, not back to the menu.
   if (activityManager.returningToReaderPage()) {
@@ -2289,6 +2294,10 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
     case EpubReaderMenuActivity::MenuAction::TEXT_SETTINGS:
     case EpubReaderMenuActivity::MenuAction::FONT_SIZE:
     case EpubReaderMenuActivity::MenuAction::FONT_FAMILY: {
+#ifdef TENOR_PRESS_PROBE
+      LOG_INF("MENU_OPEN", "TextSettings action=%d section=%d overlay=%d", static_cast<int>(action), section != nullptr,
+              static_cast<int>(overlay));
+#endif
       // Menu da chon xong tai cho (trinh chon hoac doi tai cho): ap MOT lan, dan lai mot lan,
       // luu ngoai khoa. Khong mo man nao.
       if (action == EpubReaderMenuActivity::MenuAction::FONT_SIZE && menu.coChu > 0) {
@@ -4909,6 +4918,10 @@ sheetradio::Plan EpubReaderActivity::beginSheetRadio() {
 }
 
 void EpubReaderActivity::openOverlay(Overlay target) {
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("MENU_OPEN", "openOverlay target=%d from=%d section=%d x3bar=%d", static_cast<int>(target),
+          static_cast<int>(overlay), section != nullptr, ReaderToolbarUi::usesX3Bar());
+#endif
   if (target == Overlay::Contents && !ReaderToolbarUi::usesX3Bar() && waitsForIndex()) return;
   if (target == Overlay::Toolbar && ReaderToolbarUi::usesX3Bar()) {
     // The X3 bar opens on the list of its first tab.

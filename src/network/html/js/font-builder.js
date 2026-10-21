@@ -11,7 +11,9 @@
   const SIZES = [12, 14, 16, 18, 20, 22, 24];
   // readerInk::OUTLINE_STRENGTHS (src/ReaderInkWeight.h) for the levels -3..+5, in 1/64 px.
   const STRENGTHS = [-48, -32, -18, 0, 25, 37, 63, 81, 96];
-  const DEFAULT_LEVELS = [0, 1, 2, 3];
+  // Base and every heavier level (+1..+5 = stored 3..8): a level not built makes the reader fall back to a lighter one.
+  // The thin levels -1..-3 are opt-in. FontsPage.html ticks the same set (test_layout.py checks they agree).
+  const DEFAULT_LEVELS = [0, 1, 2, 3, 4, 5];
   // Glyphs are drawn 4x and averaged down: the area coverage FreeType computes, free of the browser's text
   // gamma, and a stroke a quarter pixel wide still lands on whole pixels. The averaging loop assumes 4.
   const SCALE = 4;

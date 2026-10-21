@@ -34,6 +34,9 @@ set_tests_properties(FontPack PROPERTIES ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
 add_test(NAME FontPackManifest COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/test_manifest.py")
 set_tests_properties(FontPackManifest PROPERTIES ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1" TIMEOUT 120)
 
+add_test(NAME FontStoreCatalog COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/test_store_catalog.py")
+set_tests_properties(FontStoreCatalog PROPERTIES ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1" TIMEOUT 60)
+
 add_test(NAME FontPackMali COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/test_mali.py")
 set_tests_properties(FontPackMali PROPERTIES ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1" TIMEOUT 120)
 

@@ -20,6 +20,7 @@
 #include <iterator>
 
 #include "CrossPointSettings.h"
+#include "FontPackInstaller.h"
 #include "ReaderFontSizes.h"
 #include "ReaderInkWeight.h"
 #include "SdFontBootMemo.h"
@@ -258,6 +259,13 @@ bool SdCardFontSystem::loadSelected(GfxRenderer& renderer, const SdCardFontFamil
     return false;
   }
   loadedInkLevel_ = readerInk::clamp(SETTINGS.readerInkWeight);
+  {
+    const char* root = family.hiddenRoot ? SdCardFontRegistry::FONTS_DIR_HIDDEN : SdCardFontRegistry::FONTS_DIR_VISIBLE;
+    packLineFactor_ = FontPackInstaller::isPackFamily(root, family.name.c_str())
+                          ? FontPackInstaller::lineFactor(root, family.name.c_str())
+                          : 0.0f;
+    SETTINGS.sdPackLineFactor = packLineFactor_;
+  }
   snapFontPointSizeTo(manager_.currentPointSize());
   sdfontmemo::save(family, bootMemo);
   setupUiFallbacks(renderer);
@@ -314,6 +322,7 @@ void SdCardFontSystem::ensureLoadedImpl(GfxRenderer& renderer) {
   const std::string& currentFamily = manager_.currentFamilyName();
 
   if (wantedFamily[0] == '\0') {
+    packLineFactor_ = SETTINGS.sdPackLineFactor = 0.0f;
     // Back on a built-in family, which exists only at BUILTIN_READER_POINT_SIZES:
     // a size inherited from an SD family has to come back into that set.
     snapFontPointSizeTo(snapToNearestPointSize(BUILTIN_READER_POINT_SIZES, std::size(BUILTIN_READER_POINT_SIZES),
@@ -652,6 +661,7 @@ void SdCardFontSystem::setupTtfUiFallbacks(GfxRenderer& renderer) {
 
 void SdCardFontSystem::loadTtfFamily(const SdCardFontFamilyInfo& family, GfxRenderer& renderer,
                                      const bool registryWasDirty) {
+  packLineFactor_ = SETTINGS.sdPackLineFactor = 0.0f;
   // Keep sizes inherited from other families within the selectable vector range.
   snapFontPointSizeTo(
       snapToNearestPointSize(VECTOR_READER_POINT_SIZES, std::size(VECTOR_READER_POINT_SIZES), SETTINGS.fontPointSize));

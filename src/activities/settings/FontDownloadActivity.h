@@ -27,7 +27,7 @@ inline bool preventsAutoSleep(const Phase phase) {
 }  // namespace font_power
 
 #ifndef FONT_MANIFEST_URL
-#define FONT_MANIFEST_URL "https://cross.tenor.vn/firmware/v1.0.70/fonts/fonts.json"
+#define FONT_MANIFEST_URL "https://cross.tenor.vn/firmware/v1.0.71/fonts/fonts.json"
 #endif
 
 class FontDownloadActivity final : public UiListActivity {
@@ -64,6 +64,7 @@ class FontDownloadActivity final : public UiListActivity {
   bool auditDownload_ = false;
 #endif
   enum State {
+    STORE_LIST,  // Tải font: the fonts on the card and the way to add more; nothing here needs the network
     WIFI_SELECTION,
     LOADING_MANIFEST,
     GROUP_LIST,
@@ -99,7 +100,30 @@ class FontDownloadActivity final : public UiListActivity {
 
   static constexpr size_t MAX_SCRIPT_GROUPS = 32;
 
-  State state_ = WIFI_SELECTION;
+  // A font on the card, as the store list shows it. Read from the card's registry, never from the network: a pack
+  // is "Update" when its receipt differs from the pack of this firmware's store (FontStoreCatalog.h).
+  struct InstalledFont {
+    std::string name;
+    bool hasUpdate = false;
+  };
+  std::vector<InstalledFont> installed_;
+  // Set to a font's name when the store was opened to update that one font: it goes to the network, downloads it
+  // and leaves, without the list of fonts to add.
+  std::string updateTarget_;
+  bool networkUsed_ = false;  // Wi-Fi was joined: leaving the store restarts the unit to give the heap back
+  std::string pendingDeleteName_;
+  void loadInstalledList();
+  void beginNetwork();
+  void rebuildStoreRowItems();
+  int storeRowCount() const;
+  void activateStoreRow(int index);
+  void showInstalledMenu(int installedIndex);
+  void promptDeleteInstalled(int installedIndex);
+  void onDeleteInstalledResult(const ActivityResult& result);
+  void startUpdate(const std::string& name);
+  static bool fontIsLoaded(const std::string& name);
+
+  State state_ = STORE_LIST;
   FontInstaller fontInstaller_;
 
   // Manifest data

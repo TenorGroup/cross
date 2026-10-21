@@ -168,6 +168,7 @@
       </form>
       <p id="ttfHint" class="family-meta" style="margin: 12px 0 0;"></p>
       <p id="weightPick" class="family-meta" style="margin: 8px 0 0;" hidden><span data-i18n="fonts.weightsLabel">Độ đậm cần tạo:</span></p>
+      <p id="weightHint" class="family-meta" style="margin: 4px 0 0;" data-i18n="fonts.weightsHint" hidden>Font tạo ít mức đậm hơn thì trong máy đọc chỉ dùng được các mức đó.</p>
       <p id="pickedInfo" class="family-meta" style="margin: 8px 0 0;"></p>
       <div id="uploadBar"><i></i></div>
       <div id="status"></div>
@@ -394,7 +395,7 @@
     // Only PSRAM builds render .ttf/.otf; elsewhere the page turns them into .cpfont
     // (/js/font-builder.js) before sending.
     function applyVectorSupport() {
-      document.getElementById('weightPick').hidden = vectorSupported;
+      document.getElementById('weightPick').hidden = document.getElementById('weightHint').hidden = vectorSupported;
       renderHint();
     }
 
@@ -404,7 +405,7 @@
       const box = document.createElement('input');
       box.type = 'checkbox';
       box.value = level;
-      box.checked = level >= 0 && level <= 3;
+      box.checked = level >= 0;
       box.disabled = level === 0;
       label.append(' ', box, level > 0 ? '+' + level : String(level));
       document.getElementById('weightPick').appendChild(label);

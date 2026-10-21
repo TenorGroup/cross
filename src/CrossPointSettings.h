@@ -821,6 +821,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   static uint8_t sleepTimeoutEnumToMinutes(uint8_t legacyValue);
 
   float getReaderLineCompression() const;
+  // Not stored: the line factor the loaded SD font's pack was built for (SdCardFontSystem sets it on every font load,
+  // 0 for a built-in face or a font made elsewhere). getReaderLineCompression starts from it.
+  float sdPackLineFactor = 0.0f;
   unsigned long getSleepTimeoutMs() const;
   int getRefreshFrequency() const;
 };
