@@ -12,8 +12,8 @@
 namespace fui = freeink::ui;
 
 namespace {
-// One row a mode, in screen order. The row's actionValue carries its mode: the rows a board has (USB, WebDAV)
-// shift the indices, so an index is never a mode.
+// One row a mode, in screen order. The row's actionValue is its index (the list routes a tap by index and refuses one
+// past the last row): the rows a board has (USB, WebDAV) shift the indices, so the mode is read from ROWS[index].
 struct Row {
   NetworkMode mode;
   StrId label, description;
@@ -41,7 +41,7 @@ NetworkModeSelectionActivity::NetworkModeSelectionActivity(GfxRenderer& renderer
     item.label = I18N.get(ROWS[i].label);
     item.subtitle = I18N.get(ROWS[i].description);
     item.icon = listIconFor(ROWS[i].icon, 32);  // subtitle rows carry the larger icon
-    item.actionValue = static_cast<int16_t>(ROWS[i].mode);
+    item.actionValue = static_cast<int16_t>(i);  // the row; its mode is ROWS[i].mode
     rowItems_[i] = item;
   }
 }
@@ -57,7 +57,7 @@ void NetworkModeSelectionActivity::activateIndex(const int index) {
   app.clearTapFlash();
   nav.selected = index;
 
-  onModeSelected(static_cast<NetworkMode>(rowItems_[index].actionValue));
+  onModeSelected(ROWS[index].mode);
 }
 
 void NetworkModeSelectionActivity::buildScreen(UiScreen& screen) {

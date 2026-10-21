@@ -1381,7 +1381,7 @@ void FontDownloadActivity::showInstalledMenu(const int installedIndex) {
   const auto choose = [this, installedIndex, update](const int choice) {
     if (installedIndex >= static_cast<int>(installed_.size())) return;
     if (update && choice == 0) startUpdate(installed_[installedIndex].name);
-    else promptDeleteInstalled(installedIndex);
+    else pendingDeleteIndex_ = installedIndex;  // the box follows once the menu is gone and the list is painted
   };
   if (tenorchrome::kTouchShell) {
     static constexpr StrId BOTH[] = {StrId::STR_UPDATE, StrId::STR_ALERT_FONT_ACTION_LONG};
@@ -1544,6 +1544,13 @@ void FontDownloadActivity::rebuildFamilyRowItems() {
 // --- Input handling ---
 
 bool FontDownloadActivity::handleCustomInput() {
+  if (pendingDeleteIndex_ >= 0 && !rowMenu.isActive()) {
+    const int index = pendingDeleteIndex_;
+    pendingDeleteIndex_ = -1;
+    requestUpdateAndWait();  // the list without the menu, so the box does not stand over its leftovers
+    if (index < static_cast<int>(installed_.size())) promptDeleteInstalled(index);
+    return true;
+  }
   if (state_ == STORE_LIST || state_ == GROUP_LIST || state_ == FAMILY_LIST) {
     // The base list protocol (Back/Confirm, touch routing, swipe scroll,
     // button navigation) handles both list states.
@@ -1900,7 +1907,7 @@ void FontDownloadActivity::render(RenderLock&&) {
         std::snprintf(summary, sizeof(summary), tr(STR_FONT_BATCH_FAILED), ordinal, batchFailureCount_);
         renderer.drawCenteredText(UI_10_FONT_ID, centerY - lineHeight, summary);
         const int width = pageWidth - metrics.contentSidePadding * 2;
-        const auto name = renderer.truncatedText(UI_10_FONT_ID, str(failed.name), width);
+        const auto name = renderer.truncatedText(UI_10_FONT_ID, displayName(str(failed.name)).c_str(), width);
         renderer.drawCenteredText(UI_10_FONT_ID, centerY, name.c_str());
         if (failed.requiredMb) std::snprintf(summary, sizeof(summary), failed.failureReason, failed.requiredMb);
         else std::snprintf(summary, sizeof(summary), "%s", failed.failureReason);
@@ -1911,6 +1918,7 @@ void FontDownloadActivity::render(RenderLock&&) {
       renderer.drawCenteredText(UI_10_FONT_ID, centerY, tr(STR_FONT_INSTALLED), true, EpdFontFamily::BOLD);
     }
     const bool pages = batchResult_ && batchFailureCount_ > 1;
+    if (tenorchrome::kTouchShell) drawTouchPill(tr(STR_DONE));
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", pages ? tr(STR_DIR_UP) : "", pages ? tr(STR_DIR_DOWN) : "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else if (state_ == ERROR) {
@@ -1941,7 +1949,7 @@ std::string FontDownloadActivity::x3InfoText() const {
       for (int index = 0; index <= resultFailureIndex_; ++index)
         if (families_[index].failureReason) ++ordinal;
       std::snprintf(summary, sizeof(summary), tr(STR_FONT_BATCH_FAILED), ordinal, batchFailureCount_);
-      text += std::string("\n") + summary + "\n" + str(failed.name);
+      text += std::string("\n") + summary + "\n" + displayName(str(failed.name));
       if (failed.requiredMb) std::snprintf(summary, sizeof(summary), failed.failureReason, failed.requiredMb);
       else std::snprintf(summary, sizeof(summary), "%s", failed.failureReason);
       text += std::string("\n") + summary;
@@ -1949,18 +1957,20 @@ std::string FontDownloadActivity::x3InfoText() const {
     return text;
   }
   const auto& family = families_[downloadingFamilyIndex_];
-  const auto familyBytes = uint64_t{familyDownloadedBytes_} + fileProgress_;
-  const auto totalBytes = batchRunning_ ? batchTotalBytes_ : family.totalSize;
-  const auto downloadedBytes = batchRunning_ ? batchDownloadedBytes_ + fileProgress_ : familyBytes;
-  const unsigned totalPercent = totalBytes ? static_cast<unsigned>(downloadedBytes * 100 / totalBytes) : 0;
   std::string text = displayName(str(family.name));
-  if (installingPack_) text += std::string("\n") + tr(STR_FONT_PACK_INSTALLING);
-  std::snprintf(summary, sizeof(summary), tr(STR_FONT_BATCH_DOWNLOADING),
-                formatSize(familyBytes).c_str(), formatSize(family.totalSize).c_str());
+  // Installing is a wait of its own: no bytes, no percent (they stand at 100% and read as done).
+  if (installingPack_) return text + "\n" + tr(STR_FONT_PACK_INSTALLING);
+  const auto familyBytes = uint64_t{familyDownloadedBytes_} + fileProgress_;
+  std::snprintf(summary, sizeof(summary), tr(STR_FONT_BATCH_DOWNLOADING), formatSize(familyBytes).c_str(),
+                formatSize(family.totalSize).c_str());
   text += std::string("\n") + summary;
-  std::snprintf(summary, sizeof(summary), tr(STR_FONT_BATCH_TOTAL), batchRunning_ ? batchFamilyIndex_ : 1u,
-                batchRunning_ ? batchFamilyCount_ : 1u, totalPercent);
-  text += std::string("\n") + summary + "\n" + formatSize(downloadedBytes) + " / " + formatSize(totalBytes);
+  // One font has only its own bytes; several fonts add the total (the bar below follows it).
+  if (batchRunning_ && batchFamilyCount_ > 1) {
+    const auto downloadedBytes = batchDownloadedBytes_ + fileProgress_;
+    const unsigned totalPercent = batchTotalBytes_ ? static_cast<unsigned>(downloadedBytes * 100 / batchTotalBytes_) : 0;
+    std::snprintf(summary, sizeof(summary), tr(STR_FONT_BATCH_TOTAL), batchFamilyIndex_, batchFamilyCount_, totalPercent);
+    text += std::string("\n") + summary + "\n" + formatSize(downloadedBytes) + " / " + formatSize(batchTotalBytes_);
+  }
   return text;
 }
 

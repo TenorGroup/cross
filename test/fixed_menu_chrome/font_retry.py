@@ -63,8 +63,9 @@ struct FontDownloadActivity {
   Input mappedInput;
   State state_ = ERROR;
   int infoPages_ = 1, infoPage_ = 0, fileTotal_ = 100, fileProgress_ = 50;
-  bool batchResult_ = false, installingPack_ = false;
-  unsigned batchFailureCount_ = 0;
+  bool batchResult_ = false, installingPack_ = false, batchRunning_ = false;
+  unsigned batchFailureCount_ = 0, batchFamilyCount_ = 1;
+  uint64_t batchDownloadedBytes_ = 0, batchTotalBytes_ = 100;
   int downloadingFamilyIndex_ = 0;
   uint64_t familyDownloadedBytes_ = 0;
   struct Family { uint64_t totalSize = 100; };

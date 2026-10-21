@@ -90,12 +90,14 @@ class TransferEntryContract(unittest.TestCase):
         tail = rows[rows.rindex("#endif"):]
         self.assertIn("{NetworkMode::FONT_STORE, StrId::STR_MANAGE_FONTS, StrId::STR_MANAGE_FONTS_SUB", tail)
 
-    def test_rows_map_to_modes_by_value(self):
+    # A row's action value is its index (the list refuses one past its last row, which a mode number can be on a board
+    # without WebDAV); the mode is read from the row table.
+    def test_rows_map_to_modes_by_row(self):
         self.assertNotIn("static_cast<NetworkMode>(index)", self.chooser)
         build = function_body(self.chooser, "NetworkModeSelectionActivity::NetworkModeSelectionActivity(")
-        self.assertIn("item.actionValue = static_cast<int16_t>(ROWS[i].mode)", build)
+        self.assertIn("item.actionValue = static_cast<int16_t>(i)", build)
         select = function_body(self.chooser, "void NetworkModeSelectionActivity::activateIndex(")
-        self.assertIn("static_cast<NetworkMode>(rowItems_[index].actionValue)", select)
+        self.assertIn("onModeSelected(ROWS[index].mode)", select)
 
     def test_font_store_opens_from_hub_and_comes_back(self):
         body = function_body(self.activity, "void CrossPointWebServerActivity::onNetworkModeSelected")

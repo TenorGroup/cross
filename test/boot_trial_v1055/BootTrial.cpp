@@ -60,7 +60,8 @@ void advance(uint64_t us) {
 }
 
 enum class BootResume { Splash, Silent, SplashlessWake };
-constexpr unsigned SILENT_REBOOT_TARGET_READER = 1, SILENT_REBOOT_TARGET_SETTINGS = 2, SILENT_REBOOT_TARGET_TRANSFER = 4;
+constexpr unsigned SILENT_REBOOT_TARGET_READER = 1, SILENT_REBOOT_TARGET_SETTINGS = 2, SILENT_REBOOT_TARGET_TRANSFER = 4,
+                SILENT_REBOOT_TARGET_FONTS = 5;
 bool recoveryFirmwareMode = false, rebootedFromPanic = false, updateBoot = false, wakeToBook = false;
 bool needsWakeRefresh = false;
 BootResume resume = BootResume::Splash;
@@ -72,7 +73,7 @@ namespace koautosync {
 template<class R> int pullOnWake(R&, const std::string&, bool) { return 0; }  // automatic sync is off here
 }
 struct { std::string openEpubPath = "/huge.epub"; } APP_STATE;
-int renderer = 0, mappedInputManager = 0, otaBoot = 0, transfers = 0;
+int renderer = 0, mappedInputManager = 0, otaBoot = 0, transfers = 0, fontStores = 0;
 struct SdFirmwareUpdateActivity { template<class... T> explicit SdFirmwareUpdateActivity(T...) {} };
 struct OtaUpdateActivity { template<class... T> explicit OtaUpdateActivity(T...) {} };
 template<class T, class... A> std::unique_ptr<T> makeUniqueNoThrow(A... args) {
@@ -87,7 +88,7 @@ struct {
   template<class T> void replaceActivity(std::unique_ptr<T>) {}
   void goToCrashReport() {}
   void goToSettings() {}
-  void goToFileTransfer() { ++transfers; }
+  void goToFileTransfer(bool openFontStore = false) { ++transfers; fontStores += openFontStore; }
   void goHome(HomeMenuItem tab = HomeMenuItem::NONE, bool = false) { home = tab; }
   void goToReader(const std::string&) { ++readers; advance(35000000); }
   void requestUpdateAndWait() { ++paints; advance(1000000); }
@@ -114,6 +115,12 @@ int main(int argc, char** argv) {
     state = ESP_OTA_IMG_VALID;
     resume = BootResume::Silent;
     snapshotTarget = SILENT_REBOOT_TARGET_TRANSFER;
+  }
+  // The font store's own restart (after a download or an update): straight back into the store.
+  if (name == "silent-fonts") {
+    state = ESP_OTA_IMG_VALID;
+    resume = BootResume::Silent;
+    snapshotTarget = SILENT_REBOOT_TARGET_FONTS;
   }
   if (name == "wake-large-book") { resume = BootResume::SplashlessWake; wakeToBook = true; }
   if (name == "valid-wake-book") { state = ESP_OTA_IMG_VALID; wakeToBook = true; }
@@ -145,7 +152,11 @@ int main(int argc, char** argv) {
     ok = abortReason.empty() && readers == 0 && marked == 1 && !acceptedBeforePaint &&
          activityManager.home == HomeMenuItem::SETTINGS_MENU;
   else if (name == "silent-transfer")
-    ok = abortReason.empty() && transfers == 1 && readers == 0 && activityManager.home == HomeMenuItem::NONE;
+    ok = abortReason.empty() && transfers == 1 && fontStores == 0 && readers == 0 &&
+         activityManager.home == HomeMenuItem::NONE;
+  else if (name == "silent-fonts")
+    ok = abortReason.empty() && transfers == 1 && fontStores == 1 && readers == 0 &&
+         activityManager.home == HomeMenuItem::NONE;
   else if (name == "valid-wake-book")
     ok = abortReason.empty() && readers == 1 && marked == 0 && created == 0;
   else if (name == "valid" || name == "new" || name == "aborted" || name == "query-error")

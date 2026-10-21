@@ -627,6 +627,11 @@ else:
                                 ('FontDownloadActivity', ('x3InfoText', 'drawChrome', 'renderX3State'))):
             state_source = read_source(f'src/activities/settings/{name}.cpp')
             if f'{name}::{functions[-1]}(' in state_source:
+                if 'bool inStoreCatalog(' in state_source:
+                    # file-local display-name helper the font screens call ("BeVietnamPro" -> "Be Vietnam Pro")
+                    fixture += ('\n#include <cctype>\n#include <cstring>\n#include "FontStoreCatalog.h"\nnamespace {\n' +
+                                state_source[state_source.index('bool inStoreCatalog('):state_source.index('}  // namespace')] +
+                                '}\n')
                 for method in functions:
                     fixture += '\n' + function(state_source, f'{name}::{method}(')
                 fixture += f'\n#define X3_{name.upper()}_AVAILABLE 1\n'

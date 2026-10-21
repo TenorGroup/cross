@@ -47,7 +47,7 @@ struct RenderLock {
   ~RenderLock() { locked = false; }
 };
 enum class WebServerActivityState { MODE_SELECTION };
-enum class NetworkMode { JOIN_NETWORK };
+enum class NetworkMode { JOIN_NETWORK, FONT_STORE };
 struct NetworkModeResult {
   NetworkMode mode;
 };
@@ -68,6 +68,7 @@ class CrossPointWebServerActivity : public Activity {
   void onEnter();
   bool runtimeStarted = false;
   bool autoJoinForTest = true;
+  bool openFontStore = false;  // restart into the font store: onEnter goes straight to it
   GfxRenderer renderer;
   MappedInputManager mappedInput;
   WebServerActivityState state{};
@@ -78,7 +79,11 @@ class CrossPointWebServerActivity : public Activity {
   void leave() {}
   void requestUpdate() {}
   // The chooser (and the Wi-Fi it leads to) or the test's direct join: the radio comes after either.
-  void onNetworkModeSelected(NetworkMode) { noteRadio("join with the catalog held"); }
+  void onNetworkModeSelected(NetworkMode mode) {
+    lastMode = mode;
+    noteRadio("join with the catalog held");
+  }
+  NetworkMode lastMode = NetworkMode::JOIN_NETWORK;
   void chooseMode() { noteRadio("chooser with the catalog held"); }
 };
 
@@ -86,8 +91,15 @@ class CrossPointWebServerActivity : public Activity {
 
 int main() {
   CrossPointWebServerActivity activity;
+#ifdef OPEN_FONT_STORE
+  activity.openFontStore = true;
+#endif
   activity.onEnter();
-  const bool ok = radioStart && std::string(radioStart) == "clean" && !releasedUnlocked;
+  bool ok = radioStart && std::string(radioStart) == "clean" && !releasedUnlocked;
+#ifdef OPEN_FONT_STORE
+  // The restart-into-the-store entry must reach the store (not the chooser) and consume the request.
+  ok = ok && activity.lastMode == NetworkMode::FONT_STORE && !activity.openFontStore;
+#endif
   std::printf("%s (radio step: %s%s)\n", ok ? "PASS" : "FAIL", radioStart ? radioStart : "none",
               releasedUnlocked ? ", released without the render lock" : "");
   return ok ? 0 : 1;

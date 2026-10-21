@@ -21,7 +21,7 @@ while depth:
     at += 1
 (out / 'production-onenter.inc').write_text(code[start:at] + '\n')
 failed = 0
-for name, flags in (('menu', []), ('auto-join', ['-DTENOR_UI_ACCEPTANCE'])):
+for name, flags in (('menu', []), ('auto-join', ['-DTENOR_UI_ACCEPTANCE']), ('font-store', ['-DOPEN_FONT_STORE'])):
     binary = out / f'onenter-{name}'
     subprocess.run([a.cxx, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter', *flags,
                     '-I' + str(out), str(here / 'Harness.cpp'), '-o', str(binary)], check=True)

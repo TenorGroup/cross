@@ -49,7 +49,18 @@ struct Input {
   bool wasPressed(Button) const { return back; }
   bool wasLongPressed(Button, int) const { return false; }
   bool wasHomeGesture() const { return false; }
+  // A touch screen tap, once: where the test put it.
+  bool tapped = false;
+  int tapAtX = 0, tapAtY = 0;
+  bool wasScreenTapped(int& x, int& y) {
+    if (!tapped) return false;
+    tapped = false;
+    x = tapAtX;
+    y = tapAtY;
+    return true;
+  }
 };
+namespace tenorchrome { inline bool kTouchShell = true; }  // a variable here so a scenario can play a button unit
 using MappedInputManager = Input;
 struct Renderer {
   Renderer* getFontCacheManager() { return nullptr; }
@@ -220,6 +231,8 @@ class FontDownloadActivity {
   bool installPowerCorrect = true;
   std::vector<uint8_t> installedBytes;
   const char* str(const std::string& text) const { return text.c_str(); }
+  struct Pill { int x, y, width, height; };
+  Pill touchPillRect() const { return {164, 602, 200, 64}; }  // the pill that Cancel is drawn in
   void requestUpdate(bool = false) {}
   void requestUpdateAndWait() {}
   void onGoHome() { state_ = FAMILY_LIST; }
@@ -299,6 +312,21 @@ int main(int argc, char** argv) {
     std::cout << scenario << " bytes=" << activity.batchDownloadedBytes_ << " calls=" << HttpDownloader::calls << '\n';
     std::filesystem::remove_all(cardRoot);
     return passed ? 0 : 1;
+  }
+  if (scenario.starts_with("tap-")) {
+    // Touch: the Cancel pill is the one action of the download screen. A tap in it cancels, a tap elsewhere does not,
+    // and not while the pack installs (no Cancel is drawn then) nor on a button unit.
+    const auto pill = activity.touchPillRect();
+    activity.mappedInput.tapped = true;
+    activity.mappedInput.tapAtX = scenario == "tap-outside" ? pill.x - 1 : pill.x + pill.width / 2;
+    activity.mappedInput.tapAtY = pill.y + pill.height / 2;
+    activity.installingPack_ = scenario == "tap-installing";
+    tenorchrome::kTouchShell = scenario != "tap-buttons";
+    activity.updateDownloadProgress(10, 100);
+    const bool expected = scenario == "tap-pill";
+    std::cout << scenario << " cancel=" << activity.cancelRequested_ << " goHome=" << activity.goHomeRequested_ << '\n';
+    std::filesystem::remove_all(cardRoot);
+    return activity.cancelRequested_ == expected && !activity.goHomeRequested_ ? 0 : 1;
   }
   const bool legacy = scenario.starts_with("legacy") || scenario == "rangelegacy" || scenario == "rangelegacywrite";
   if (scenario.starts_with("range")) {
