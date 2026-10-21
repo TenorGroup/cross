@@ -168,6 +168,7 @@ class EpubReaderActivity {
   int pagesUntilFullRefresh = 5;
   bool forcedRefreshPending = false, pageFrameKeepsUnderFast = false, bwUnderSheet = false;
   std::atomic<bool> paintDropped{false};
+  std::atomic<bool> sheetOpening{false};
   GfxRenderer renderer;
   bool usesToolbarMenu() const { return true; }
   const char* pageBeingLeft() const { return leaving ? "leaving" : jumpWaiting ? "jump" : nullptr; }
@@ -236,6 +237,9 @@ int main() {
   check(counts.allocations == 0 && counts.gray == 0, "menu and tab changes allocate zero");
   reader.overlay = EpubReaderActivity::Overlay::None; reader.paint();
   check(counts.allocations == 1 && counts.gray == 1, "menu close keeps one gray pass");
+  reset(); EpubReaderActivity opening;
+  opening.sheetOpening = true; opening.paint();
+  check(counts.allocations == 0 && counts.gray == 0, "page painting while the menu opens over it skips its gray pass");
   for (bool EpubReaderActivity::*field : {&EpubReaderActivity::showBookmarkMessage,
        &EpubReaderActivity::showDictionaryMessage, &EpubReaderActivity::showIndexingMessage,
        &EpubReaderActivity::buildPopupPending, &EpubReaderActivity::buildPopupRefreshing,

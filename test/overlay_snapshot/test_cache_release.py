@@ -31,7 +31,11 @@ class OverlaySnapshotCacheTest(unittest.TestCase):
                           "bool EpubReaderActivity::renderPreview("):
             overlay = body(body(source, signature), "if (overlay != Overlay::None && usesToolbarMenu())")
             snapshots.append(overlay[:overlay.index("renderer.storeBwBuffer();") + len("renderer.storeBwBuffer();")])
-        opening = body(source, "void EpubReaderActivity::openOverlay(").rsplit("RenderLock lock;", 1)[1]
+        open_overlay = body(source, "void EpubReaderActivity::openOverlay(")
+        # The render lock is taken before the overlay changes (std::optional, emplaced once a page exists);
+        # the snapshot is the first-open branch that runs under it, after the refresh settles.
+        self.assertLess(open_overlay.index("lock.emplace();"), open_overlay.index("settleOverlayRefresh();"))
+        opening = open_overlay.split("settleOverlayRefresh();", 1)[1]
         snapshots.append(body(opening, "if (previous == Overlay::None)"))
         harness = r"""
 #include <cstdio>
