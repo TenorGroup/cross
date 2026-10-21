@@ -6240,7 +6240,8 @@ void EpubReaderActivity::activateMoreRow(int row) {
       // The text settings of the toolbar menu are its Text panel: the page changes behind it as a setting does. These
       // rows used to start the stand-alone Text settings screen the first time and only came back to the panel
       // when it closed, so the first visit showed the old screen (v1.0.70).
-      focusedTool = kTextTool;
+      // The X3 bar numbers its tabs by readermenu::Tab, the toolbar by Tool (as openReaderMenu does).
+      focusedTool = ReaderToolbarUi::usesX3Bar() ? static_cast<int>(readermenu::Tab::TEXT) : kTextTool;
       openOverlay(Overlay::Text);
       return;
     default:
