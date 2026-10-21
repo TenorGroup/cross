@@ -364,6 +364,8 @@ void FontDownloadActivity::onWifiSelectionComplete(const bool success) {
       state_ = GROUP_LIST;
     } else {
       nav.reset();
+      // The first row is the instruction until something is ticked (not pressable): the cursor starts on a font.
+      if (specialRowCount() > 0 && !filteredIndices_.empty()) nav.selected = specialRowCount();
       state_ = FAMILY_LIST;
     }
   }
@@ -1768,7 +1770,7 @@ void FontDownloadActivity::drawListHints() {
   }
   if (state_ == STORE_LIST) {
     const int last = storeRowCount() - 1;
-    const char* confirm = nav.selected == 0 ? tr(STR_OPEN) : nav.selected == last ? "" : tr(STR_SELECT);
+    const char* confirm = (nav.selected == 0 || nav.selected == last) ? tr(STR_OPEN) : tr(STR_SELECT);
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirm, tr(STR_DIR_UP), tr(STR_DIR_DOWN));
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     return;
@@ -1776,7 +1778,8 @@ void FontDownloadActivity::drawListHints() {
   const bool hasVisibleFamilies = !filteredIndices_.empty();
   const int familyIndex = familyIndexFromList(nav.selected);
   const bool toggles = familyIndex >= 0 && !families_[familyIndex].installed;
-  const char* confirmLabel = !hasVisibleFamilies || isOwnFontRow(nav.selected) ||
+  const char* confirmLabel = isOwnFontRow(nav.selected) ? tr(STR_OPEN)
+                             : !hasVisibleFamilies ||
                                      ((isDownloadAllRow(nav.selected) || isBottomDownloadRow(nav.selected)) &&
                                   chosenCount() == 0)
                                  ? ""
@@ -1904,7 +1907,8 @@ void FontDownloadActivity::render(RenderLock&&) {
         unsigned ordinal = 0;
         for (int index = 0; index <= resultFailureIndex_; ++index)
           if (families_[index].failureReason) ++ordinal;
-        std::snprintf(summary, sizeof(summary), tr(STR_FONT_BATCH_FAILED), ordinal, batchFailureCount_);
+        if (batchFailureCount_ == 1) std::snprintf(summary, sizeof(summary), "%s", tr(STR_FONT_ONE_FAILED));
+        else std::snprintf(summary, sizeof(summary), tr(STR_FONT_BATCH_FAILED), ordinal, batchFailureCount_);
         renderer.drawCenteredText(UI_10_FONT_ID, centerY - lineHeight, summary);
         const int width = pageWidth - metrics.contentSidePadding * 2;
         const auto name = renderer.truncatedText(UI_10_FONT_ID, displayName(str(failed.name)).c_str(), width);
@@ -1948,7 +1952,8 @@ std::string FontDownloadActivity::x3InfoText() const {
       unsigned ordinal = 0;
       for (int index = 0; index <= resultFailureIndex_; ++index)
         if (families_[index].failureReason) ++ordinal;
-      std::snprintf(summary, sizeof(summary), tr(STR_FONT_BATCH_FAILED), ordinal, batchFailureCount_);
+      if (batchFailureCount_ == 1) std::snprintf(summary, sizeof(summary), "%s", tr(STR_FONT_ONE_FAILED));
+      else std::snprintf(summary, sizeof(summary), tr(STR_FONT_BATCH_FAILED), ordinal, batchFailureCount_);
       text += std::string("\n") + summary + "\n" + displayName(str(failed.name));
       if (failed.requiredMb) std::snprintf(summary, sizeof(summary), failed.failureReason, failed.requiredMb);
       else std::snprintf(summary, sizeof(summary), "%s", failed.failureReason);
