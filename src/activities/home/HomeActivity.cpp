@@ -3345,7 +3345,7 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
   }
   const int progressX = centered ? 96 : f.text.x;
   const int progressW = centered ? renderer.getScreenWidth() - 192 : f.text.w;
-  BaseTheme::drawProgressTrack(renderer, Rect{progressX, f.progressY, progressW, 12}, cardStats.percent);
+  BaseTheme::drawProgressTrack(renderer, Rect{progressX, f.progressY, progressW, 10}, cardStats.percent * 10);
   const int progressFont = renderer.getTextWidth(UI_10_FONT_ID, progress) > f.text.w ? SMALL_FONT_ID : UI_10_FONT_ID;
   const auto fitted = renderer.truncatedText(progressFont, progress, f.text.w);
   line(progressFont, f.text.x, f.progressY + 22, f.text.w, fitted, EpdFontFamily::REGULAR);
@@ -3368,7 +3368,7 @@ void HomeActivity::drawTouchRecent(const HomeRecentLayout& f) {
                                 fittedCover.first, fittedCover.second}, index) && settled;
       loadCardStats(index);
       const int bottom = cell.y + cell.h;
-      BaseTheme::drawProgressTrack(renderer, Rect{x, bottom + 8, 128, 8}, cardStats.percent);
+      BaseTheme::drawProgressTrack(renderer, Rect{x, bottom + 8, 128, 6}, cardStats.percent * 10);
       const auto name = recentName(other);
       renderer.drawText(SMALL_FONT_ID, x, bottom + 20, renderer.truncatedText(SMALL_FONT_ID, name.c_str(), 128).c_str());
       snprintf(progress, sizeof(progress), tr(STR_HOME_PROGRESS), static_cast<unsigned>(cardStats.percent));

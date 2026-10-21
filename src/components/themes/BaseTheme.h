@@ -246,9 +246,9 @@ class BaseTheme {
   // Pixels between a bar and the percent label drawProgressBar writes under it.
   static constexpr int PROGRESS_LABEL_GAP = 15;
   static void drawProgressBar(const GfxRenderer& renderer, Rect rect, size_t current, size_t total);
-  // The one progress shape of every screen: a pill, and a pill of ink inside it as far as percent has come.
-  // Without the outline the pill of ink fills the whole rect (a thin bar).
-  static void drawProgressTrack(const GfxRenderer& renderer, Rect rect, int percent, bool outline = true,
+  // The one progress shape of every screen: a pill, and a pill of ink inside it as far as `permille` (0..1000)
+  // has come. Without the outline the pill of ink fills the whole rect (a thin bar).
+  static void drawProgressTrack(const GfxRenderer& renderer, Rect rect, int permille, bool outline = true,
                                 bool ink = true);
   void drawBatteryLeft(const GfxRenderer& renderer, Rect rect,
                        bool showPercentage = true) const;  // Left aligned (reader mode)

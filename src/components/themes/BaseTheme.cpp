@@ -154,14 +154,14 @@ void uglyBar(const GfxRenderer& r, const int x, const int y, const int w, const 
 }
 }  // namespace
 
-void BaseTheme::drawProgressTrack(const GfxRenderer& renderer, const Rect rect, const int percent, const bool outline,
+void BaseTheme::drawProgressTrack(const GfxRenderer& renderer, const Rect rect, const int permille, const bool outline,
                                   const bool ink) {
   if (rect.width <= 0 || rect.height <= 0) return;
   const int lineWidth = rect.height >= 10 ? 2 : 1;  // a thin bar keeps a hairline so the ink inside still shows
   const int inset = outline ? lineWidth + 1 : 0;    // the border plus 1 px of paper
   if (outline) renderer.drawRoundedRect(rect.x, rect.y, rect.width, rect.height, lineWidth, rect.height / 2, ink);
   const int innerH = rect.height - 2 * inset;
-  const int fill = (rect.width - 2 * inset) * std::clamp(percent, 0, 100) / 100;
+  const int fill = (rect.width - 2 * inset) * std::clamp(permille, 0, 1000) / 1000;
   // Under its own height the ink stays a full-height round dot that grows into the pill, never a sliver.
   if (fill > 0 && innerH > 0)
     renderer.fillRoundedRect(rect.x + inset, rect.y + inset, std::max(fill, std::min(innerH, rect.width - 2 * inset)),
@@ -181,7 +181,7 @@ void BaseTheme::drawProgressBar(const GfxRenderer& renderer, Rect rect, const si
     uglyBar(renderer, rect.x, rect.y + rect.height / 2, rect.width, percent);
     return;
   }
-  drawProgressTrack(renderer, rect, percent);
+  drawProgressTrack(renderer, rect, percent * 10);
   const std::string percentText = std::to_string(percent) + "%";
   renderer.drawCenteredText(UI_10_FONT_ID, rect.y + rect.height + PROGRESS_LABEL_GAP, percentText.c_str());
 }
@@ -483,7 +483,7 @@ void BaseTheme::fillPopupProgress(const GfxRenderer& renderer, const Rect& layou
   }
 
   const int scaledProgress = metrics.popupProgressClampPercent ? std::clamp(progress, 0, 100) : progress;
-  drawProgressTrack(renderer, Rect{barX, barY, barWidth, barHeight}, scaledProgress, metrics.popupProgressDrawOutline,
+  drawProgressTrack(renderer, Rect{barX, barY, barWidth, barHeight}, scaledProgress * 10, metrics.popupProgressDrawOutline,
                     metrics.popupProgressFillInverted);
 
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
@@ -566,8 +566,11 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
       progress = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) * 100 : 0;
     }
     const int barHeight = sb.progressBarHeightPx + (fillMargin ? orientedMarginBottom - 1 : 0);
-    drawProgressTrack(renderer, Rect{barMarginLeft, progressBarY, progressBarMaxWidth, barHeight},
-                      static_cast<int>(progress), false);
+    // Book progress is whole percents, chapter progress a fraction: both to the permille.
+    const int permille = sb.progressBarMode == CrossPointSettings::STATUS_BAR_PROGRESS_BAR::BOOK_PROGRESS
+                             ? static_cast<int>(progress) * 10
+                             : (pageCount > 0 ? static_cast<int>(1000LL * currentPage / pageCount) : 0);
+    drawProgressTrack(renderer, Rect{barMarginLeft, progressBarY, progressBarMaxWidth, barHeight}, permille, false);
   }
 
   // Draw Battery
