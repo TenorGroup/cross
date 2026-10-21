@@ -1752,8 +1752,10 @@ const char* FontDownloadActivity::headerSubtitle() {
 
 void FontDownloadActivity::drawChrome() {
   if (tenorchrome::x3ScreenLayoutEnabled()) {
+    // The parent screen has its own pill; this one names the screen itself ("Tải font" or "Thêm font mới").
     std::string title = tr(STR_FONT_BROWSER);
-    if (headerSubtitle() && *headerSubtitle()) title += std::string(" / ") + headerSubtitle();
+    if (state_ == FAMILY_LIST && !hasGroupScreen()) title = tr(STR_ADD_NEW_FONTS);
+    else if (headerSubtitle() && *headerSubtitle()) title += std::string(" / ") + headerSubtitle();
     x3settings::drawPath(renderer, title.c_str());
     return;
   }
