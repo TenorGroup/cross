@@ -700,18 +700,21 @@ void EpubReaderActivity::openReaderMenu(const bool onText) {
   LOG_INF("ERS", "MENU_REQUEST t=%lu", millis());
 #endif
   if (usesToolbarMenu()) {
-    // Built tenor-cross without exceptions: a menu that cannot get its memory stays shut, the page stays.
-    if (!toolbarUi) toolbarUi = makeUniqueNoThrow<ReaderToolbarUi>(renderer);
-    if (!toolbarUi) {
-      LOG_ERR("ERS", "OOM: reader menu");
-      requestUpdate();
-      return;
-    }
     // Reached from a child activity's result handler (footnotes, bookmarks,
     // go-to-percent... cancelled back to the menu), so the framebuffer holds
     // that screen, not the page: re-render the page and let renderBook() put
     // the toolbar on top. The in-reader fast path is openOverlay().
-    if (overlay == Overlay::None) beginSheetRadio();
+    const bool opening = overlay == Overlay::None;
+    if (opening) beginSheetRadio();
+    // Built tenor-cross without exceptions: a menu that cannot get its memory stays shut, the page stays. Asked after the
+    // radio stopped, which frees the heap the menu needs.
+    if (!toolbarUi) toolbarUi = makeUniqueNoThrow<ReaderToolbarUi>(renderer);
+    if (!toolbarUi) {
+      LOG_ERR("ERS", "OOM: reader menu");
+      if (opening) sheetKeptRadio = false;  // as when the menu closes: the radio comes back with the page
+      requestUpdate();
+      return;
+    }
     // The X3 bar has no toolbar step: the menu opens straight on a panel's list (the Text one when asked).
     const bool x3Bar = ReaderToolbarUi::usesX3Bar();
     const Overlay target = !x3Bar ? Overlay::Toolbar : onText ? Overlay::Text : Overlay::Favorites;
@@ -4963,17 +4966,19 @@ void EpubReaderActivity::openOverlay(Overlay target) {
     target = Overlay::Favorites;
     focusedTool = static_cast<int>(readermenu::Tab::FAVORITES);
   }
-  if (!toolbarUi) toolbarUi = makeUniqueNoThrow<ReaderToolbarUi>(renderer);
-  if (!toolbarUi) {
-    LOG_ERR("ERS", "OOM: reader menu");
-    return;
-  }
   mappedInput.resetHomeButtonInput();
   const Overlay previous = overlay;
   if (previous == Overlay::None) {
     beginSheetRadio();
     bwUnderSheet = false;
     textCloseFrame.store(0, std::memory_order_relaxed);
+  }
+  // After the radio stopped, which frees the heap the menu needs.
+  if (!toolbarUi) toolbarUi = makeUniqueNoThrow<ReaderToolbarUi>(renderer);
+  if (!toolbarUi) {
+    LOG_ERR("ERS", "OOM: reader menu");
+    if (previous == Overlay::None) sheetKeptRadio = false;  // as when the menu closes: the radio comes back with the page
+    return;
   }
   // Serialize against the render task before the overlay changes: renderBook may be mid-page (status bar
   // included) in the shared framebuffer. A page still painting when the menu opens over it skips its gray
