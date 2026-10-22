@@ -54,6 +54,7 @@
 #ifndef SIMULATOR
 #include <esp_heap_caps.h>
 #include <esp_ota_ops.h>
+#include <esp_sleep.h>
 #endif
 
 #include "BlePageTurnerHost.h"
@@ -983,6 +984,13 @@ void setup() {
                                  return dir && dir.isDirectory();
                                })
           : WakePlace{};
+#ifndef SIMULATOR
+  // One line in every build: why this start happened and what "On wake" made of the kept place.
+  LOG_INF("BOOT", "Wake reset=%d cause=%d usb=%u sleepWake=%u target=%u kept=%u opened=%u",
+          static_cast<int>(esp_reset_reason()), static_cast<int>(esp_sleep_get_wakeup_cause()),
+          gpio.isUsbConnected() ? 1u : 0u, isSleepWake ? 1u : 0u, static_cast<unsigned>(wakeTarget),
+          static_cast<unsigned>(APP_STATE.wake.kind), static_cast<unsigned>(wakePlace.kind));
+#endif
   APP_STATE.wake = {};
   std::string wakeBook =
       wakebook::bookToOpen(isSleepWake, wakeTarget == CrossPointSettings::WAKE_BOOK, APP_STATE.openEpubPath,
