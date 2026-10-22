@@ -53,6 +53,7 @@
 #include <cstring>
 #ifndef SIMULATOR
 #include <esp_heap_caps.h>
+#include <PowerManager.h>
 #include <esp_ota_ops.h>
 #include <esp_sleep.h>
 #endif
@@ -535,7 +536,7 @@ static void sleepUntilPowerButton() {
 static bool autoSleepBlockedUntilInput = false;
 #ifdef TENOR_PRESS_PROBE
 static bool probeKeepWakePlace = false;
-static char probeBootWakeLine[112] = "";
+static char probeBootWakeLine[128] = "";
 #endif
 
 // Enter deep sleep mode
@@ -991,16 +992,21 @@ void setup() {
           : WakePlace{};
 #ifndef SIMULATOR
   // One line in every build: why this start happened and what "On wake" made of the kept place.
-  LOG_INF("BOOT", "Wake reset=%d cause=%d usb=%u sleepWake=%u target=%u kept=%u opened=%u",
+  // aborted: the sleep before this start was refused by the chip and restarted instead (cause and pin level then).
+  const auto aborted = freeink::PowerManager::takeAbortedSleepInfo();
+  LOG_INF("BOOT", "Wake reset=%d cause=%d usb=%u sleepWake=%u target=%u kept=%u opened=%u aborted=%d/%d/%d",
           static_cast<int>(esp_reset_reason()), static_cast<int>(esp_sleep_get_wakeup_cause()),
           gpio.isUsbConnected() ? 1u : 0u, isSleepWake ? 1u : 0u, static_cast<unsigned>(wakeTarget),
-          static_cast<unsigned>(APP_STATE.wake.kind), static_cast<unsigned>(wakePlace.kind));
+          static_cast<unsigned>(APP_STATE.wake.kind), static_cast<unsigned>(wakePlace.kind), aborted.aborted ? 1 : 0,
+          aborted.wakeupCause, aborted.wakePinLevel);
 #ifdef TENOR_PRESS_PROBE
   // The same line again on CMD:WAKE_PLACE: a wake on battery has no cable to print it to.
-  snprintf(probeBootWakeLine, sizeof(probeBootWakeLine), "reset=%d cause=%d usb=%u sleepWake=%u target=%u kept=%u opened=%u",
+  snprintf(probeBootWakeLine, sizeof(probeBootWakeLine),
+           "reset=%d cause=%d usb=%u sleepWake=%u target=%u kept=%u opened=%u aborted=%d/%d/%d",
            static_cast<int>(esp_reset_reason()), static_cast<int>(esp_sleep_get_wakeup_cause()),
            gpio.isUsbConnected() ? 1u : 0u, isSleepWake ? 1u : 0u, static_cast<unsigned>(wakeTarget),
-           static_cast<unsigned>(APP_STATE.wake.kind), static_cast<unsigned>(wakePlace.kind));
+           static_cast<unsigned>(APP_STATE.wake.kind), static_cast<unsigned>(wakePlace.kind), aborted.aborted ? 1 : 0,
+           aborted.wakeupCause, aborted.wakePinLevel);
 #endif
 #endif
   APP_STATE.wake = {};
