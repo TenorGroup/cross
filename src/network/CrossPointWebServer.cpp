@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <optional>
 #include <utility>
 
 #include "CrossPointSettings.h"
@@ -1534,7 +1535,11 @@ void CrossPointWebServer::handleGetSettings() const {
   bool seenFirst = false;
   JsonDocument doc;
 
-  for (const auto& s : settings) {
+  for (const auto& registered : settings) {
+    // "On wake" offers the choices of the shell in use, in the device's order (buildWakeTargetSetting).
+    std::optional<SettingInfo> wakeRow;
+    if (registered.valuePtr == &CrossPointSettings::wakeTarget) wakeRow = buildWakeTargetSetting(registered);
+    const SettingInfo& s = wakeRow ? *wakeRow : registered;
     if (!s.key) continue;  // Skip ACTION-only entries
 
     doc.clear();
@@ -1662,7 +1667,10 @@ void CrossPointWebServer::handlePostSettings() {
     SETTINGS.adoptReaderStatusItems();
   }
 
-  for (const auto& s : settings) {
+  for (const auto& registered : settings) {
+    std::optional<SettingInfo> wakeRow;  // the same list the page was given
+    if (registered.valuePtr == &CrossPointSettings::wakeTarget) wakeRow = buildWakeTargetSetting(registered);
+    const SettingInfo& s = wakeRow ? *wakeRow : registered;
     if (!s.key) continue;
     if (!doc[s.key].is<JsonVariant>()) continue;
 

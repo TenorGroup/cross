@@ -700,6 +700,13 @@ void EpubReaderActivity::openReaderMenu(const bool onText) {
   LOG_INF("ERS", "MENU_REQUEST t=%lu", millis());
 #endif
   if (usesToolbarMenu()) {
+    // Built tenor-cross without exceptions: a menu that cannot get its memory stays shut, the page stays.
+    if (!toolbarUi) toolbarUi = makeUniqueNoThrow<ReaderToolbarUi>(renderer);
+    if (!toolbarUi) {
+      LOG_ERR("ERS", "OOM: reader menu");
+      requestUpdate();
+      return;
+    }
     // Reached from a child activity's result handler (footnotes, bookmarks,
     // go-to-percent... cancelled back to the menu), so the framebuffer holds
     // that screen, not the page: re-render the page and let renderBook() put
@@ -711,7 +718,6 @@ void EpubReaderActivity::openReaderMenu(const bool onText) {
     overlay = target;
     focusedTool = !x3Bar ? kContentsTool : static_cast<int>(onText ? readermenu::Tab::TEXT : readermenu::Tab::FAVORITES);
     textDepth = TextDepth::Rows;
-    if (!toolbarUi) toolbarUi = std::make_unique<ReaderToolbarUi>(renderer);
     toolbarUi->begin();
     prepareOverlayState(target);
     discardOverlayPage();
@@ -4957,6 +4963,11 @@ void EpubReaderActivity::openOverlay(Overlay target) {
     target = Overlay::Favorites;
     focusedTool = static_cast<int>(readermenu::Tab::FAVORITES);
   }
+  if (!toolbarUi) toolbarUi = makeUniqueNoThrow<ReaderToolbarUi>(renderer);
+  if (!toolbarUi) {
+    LOG_ERR("ERS", "OOM: reader menu");
+    return;
+  }
   mappedInput.resetHomeButtonInput();
   const Overlay previous = overlay;
   if (previous == Overlay::None) {
@@ -4983,7 +4994,6 @@ void EpubReaderActivity::openOverlay(Overlay target) {
   spacingDragging = false;
   pointSizeDraft.clear();
 #endif
-  if (!toolbarUi) toolbarUi = std::make_unique<ReaderToolbarUi>(renderer);
   if (previous == Overlay::None) toolbarUi->begin();
   prepareOverlayState(target);
 
