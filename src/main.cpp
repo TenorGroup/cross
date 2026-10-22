@@ -535,6 +535,7 @@ static void sleepUntilPowerButton() {
 static bool autoSleepBlockedUntilInput = false;
 #ifdef TENOR_PRESS_PROBE
 static bool probeKeepWakePlace = false;
+static char probeBootWakeLine[112] = "";
 #endif
 
 // Enter deep sleep mode
@@ -994,6 +995,13 @@ void setup() {
           static_cast<int>(esp_reset_reason()), static_cast<int>(esp_sleep_get_wakeup_cause()),
           gpio.isUsbConnected() ? 1u : 0u, isSleepWake ? 1u : 0u, static_cast<unsigned>(wakeTarget),
           static_cast<unsigned>(APP_STATE.wake.kind), static_cast<unsigned>(wakePlace.kind));
+#ifdef TENOR_PRESS_PROBE
+  // The same line again on CMD:WAKE_PLACE: a wake on battery has no cable to print it to.
+  snprintf(probeBootWakeLine, sizeof(probeBootWakeLine), "reset=%d cause=%d usb=%u sleepWake=%u target=%u kept=%u opened=%u",
+           static_cast<int>(esp_reset_reason()), static_cast<int>(esp_sleep_get_wakeup_cause()),
+           gpio.isUsbConnected() ? 1u : 0u, isSleepWake ? 1u : 0u, static_cast<unsigned>(wakeTarget),
+           static_cast<unsigned>(APP_STATE.wake.kind), static_cast<unsigned>(wakePlace.kind));
+#endif
 #endif
   APP_STATE.wake = {};
   std::string wakeBook =
@@ -1998,6 +2006,7 @@ void loop() {
         };
         line("state", APP_STATE.wake);
         line("now", activityManager.captureWakePlace());
+        logSerial.printf("WAKE_PLACE:boot %s\n", probeBootWakeLine);
       } else if (cmd.startsWith("WAKE_PLACE_SET ")) {
         // CMD:WAKE_PLACE_SET <kind> <shell> <tab> <row> <path> <name> ("-" for empty): the place the next sleep
         // keeps, in place of the screen's own, to try a book or folder that is gone or a kind from another build.
