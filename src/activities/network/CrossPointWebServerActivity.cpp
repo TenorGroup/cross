@@ -234,7 +234,7 @@ void CrossPointWebServerActivity::onEnter() {
 // The Connections list, opened on entry and again whenever a mode hands back without a session to show.
 void CrossPointWebServerActivity::chooseMode() {
   LOG_DBG("WEBACT", "Launching NetworkModeSelectionActivity...");
-  startActivityForResult(std::make_unique<NetworkModeSelectionActivity>(renderer, mappedInput),
+  startActivityForResult(std::make_unique<NetworkModeSelectionActivity>(renderer, mappedInput, returnBook),
                          [this](const ActivityResult& result) {
                            if (result.isCancelled) {
                              leave();
@@ -309,6 +309,7 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
 #endif
   }
   LOG_DBG("WEBACT", "Network mode selected: %s", modeName);
+  networkMode = mode;  // before the modes that leave this screen's own flow: a sleep in one is kept by this mode
 
 #if FREEINK_CAP_USB_MSC
   if (mode == NetworkMode::USB_DRIVE) {
@@ -333,7 +334,6 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
   }
 #endif
 
-  networkMode = mode;
   isApMode = (mode == NetworkMode::CREATE_HOTSPOT);
 
   if (mode == NetworkMode::CONNECT_CALIBRE) {

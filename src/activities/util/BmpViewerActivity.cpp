@@ -28,6 +28,13 @@ constexpr size_t COPY_BUFFER_SIZE = 2048;
 BmpViewerActivity::BmpViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string path)
     : Activity("BmpViewer", renderer, mappedInput), filePath(std::move(path)) {}
 
+bool BmpViewerActivity::wakePlace(WakePlace& place) const {
+  place.kind = WakeKind::Files;
+  place.path = FsHelpers::extractFolderPath(filePath);
+  place.name = filePath.substr(filePath.find_last_of('/') + 1);
+  return true;
+}
+
 void BmpViewerActivity::loadSiblingImages() {
   siblingImages.clear();
   currentImageIndex = -1;

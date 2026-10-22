@@ -56,6 +56,12 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   void loop() override;
   void render(RenderLock&&) override;
   bool preventAutoSleep() override { return state == CONNECTING || state == SYNCING || state == UPLOADING; }
+  // Replaces the reader for the sync: a wake reopens the book, at the page the reader saved.
+  bool wakePlace(WakePlace& place) const override {
+    place.kind = WakeKind::Book;
+    place.path = epubPath;
+    return true;
+  }
 
  private:
   mutable ugly::MarkState mark_;

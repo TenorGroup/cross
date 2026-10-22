@@ -41,6 +41,8 @@ struct {
   std::vector<Book> books{{"/book.epub"}};
   const std::vector<Book>& getBooks() const { return books; }
 } RECENT_BOOKS;
+enum class NetworkMode { JOIN_NETWORK };
+struct NetworkModeSelectionActivity { static int rowOf(NetworkMode) { return 0; } };  // the board's Connections rows
 struct Dir { bool isDirectory() const { return true; } explicit operator bool() const { return true; } };
 struct { bool exists(const char*) const { return true; } Dir open(const char*) const { return {}; } } Storage;
 enum class HomeMenuItem { RECENTS, DESK, RECENT_CONTINUE };

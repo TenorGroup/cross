@@ -16,6 +16,7 @@
 #include "FileTransferState.h"
 #include "MappedInputManager.h"
 #include "SilentRestart.h"
+#include "activities/network/NetworkModeSelectionActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
@@ -102,6 +103,12 @@ std::string remoteUrlFor(const WebDavConfig& config, const webdav::PropfindEntry
   return entry.href.empty() || entry.href.front() != '/' ? std::string{} : origin + entry.href;
 }
 }  // namespace
+
+bool WebDavPullActivity::wakePlace(WakePlace& place) const {
+  place.kind = WakeKind::Connect;
+  place.row = static_cast<int16_t>(NetworkMode::WEB_DAV);
+  return true;
+}
 
 void WebDavPullActivity::onEnter() {
   runtimeStarted = false;

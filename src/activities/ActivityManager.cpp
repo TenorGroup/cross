@@ -772,10 +772,12 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
   }
 }
 
-void ActivityManager::goToFileTransfer(const bool openFontStore) {
+void ActivityManager::goToFileTransfer(const bool openFontStore, std::string returnBook) {
   // Opened from a book, File transfer is a detour: it hands the reader back on
   // exit. The reader has already saved its position, it does so on every paint.
   std::string book = isReaderActivity() ? APP_STATE.openEpubPath : std::string();
+  // A wake gives the book the sleep kept (no reader is in front yet).
+  if (!returnBook.empty()) book = std::move(returnBook);
   replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput, std::move(book), openFontStore));
 }
 
@@ -878,7 +880,7 @@ bool ActivityManager::goToSleep(bool fromTimeout) {
 WakePlace ActivityManager::captureWakePlace() const {
   WakePlace place;
   const auto holds = [&place](const std::unique_ptr<Activity>& activity) {
-    return activity && !activity->preventAutoSleep() && activity->wakePlace(place);
+    return activity && activity->wakePlace(place);
   };
   if (!holds(currentActivity) &&
       std::none_of(stackActivities.rbegin(), stackActivities.rend(), holds))
@@ -922,6 +924,20 @@ void ActivityManager::goToWakePlace(const WakePlace& place, const bool cleanInit
       seedHome(3, mappedInput.hasTouch() ? 0 : 1, {});
       goToSettings(place.tab, place.name);
       break;
+    case WakeKind::Connect: {
+      // Connections is row 0 of Home's Settings tab: the way back from it. The store opens on the fonts already on
+      // the card (no Wi-Fi); any other mode opens the list, the cursor on that mode's row.
+      seedHome(3, mappedInput.hasTouch() ? 0 : 1, {});
+      const auto mode = static_cast<NetworkMode>(place.row);
+      if (mode != NetworkMode::FONT_STORE) {
+        MenuNavigationState list;
+        list.count = 1;
+        list.cursors[0].selected = NetworkModeSelectionActivity::rowOf(mode);
+        navigationMemory.save("NetworkModeSelection", list);
+      }
+      goToFileTransfer(mode == NetworkMode::FONT_STORE, place.path);
+      break;
+    }
     default:
       goHome(HomeMenuItem::RECENT_CONTINUE, cleanInitialRefresh);
   }

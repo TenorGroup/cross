@@ -26,6 +26,8 @@ class WebDavPullActivity final : public Activity {
   void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
+  // Replaces the Connections session (nothing under it): a wake comes back to the Connections list on the WebDAV row.
+  bool wakePlace(WakePlace& place) const override;
   bool preventAutoSleep() override { return pullStatus == WebDavPullStatus::wifi_selection ||
                                             pullStatus == WebDavPullStatus::discovering ||
                                             pullStatus == WebDavPullStatus::downloading; }

@@ -83,6 +83,7 @@
 #include "activities/home/BookStatsActivity.h"
 #include "QuoteStore.h"
 #include "activities/home/QuotesActivity.h"
+#include "activities/network/NetworkModeSelectionActivity.h"
 
 // Page turner BLE: lib/BlePageTurner chi chay radio khi capability duoc bat (xem env x3-ble).
 #include "FileTransferState.h"
@@ -982,6 +983,9 @@ void setup() {
                                [](const std::string& path) {
                                  auto dir = Storage.open(path.c_str());
                                  return dir && dir.isDirectory();
+                               },
+                               [](const int mode) {  // a Connections mode this board has a row for
+                                 return NetworkModeSelectionActivity::rowOf(static_cast<NetworkMode>(mode)) >= 0;
                                })
           : WakePlace{};
 #ifndef SIMULATOR
@@ -998,7 +1002,8 @@ void setup() {
   if (wakePlace.kind == WakeKind::Book) wakeBook = wakePlace.path;
   const bool wakeToBook = !wakeBook.empty();
   // A screen other than Home or a book: its first frame is not Home's clean one.
-  const bool wakeToScreen = wakePlace.kind == WakeKind::Files || wakePlace.kind == WakeKind::SettingsTab;
+  const bool wakeToScreen = wakePlace.kind == WakeKind::Files || wakePlace.kind == WakeKind::SettingsTab ||
+                            wakePlace.kind == WakeKind::Connect;
 
   setupDisplayAndFonts(resume != BootResume::Splash, !updateBoot);
   renderer.setDiffOnlyPanel(gpio.deviceIsX3() && display.getController() == HalDisplay::Controller::UC8279);

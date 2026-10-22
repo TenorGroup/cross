@@ -319,9 +319,8 @@ def run_rows(repo: Path, output: Path, cxx: str) -> bool:
     count = re.search(r"#if FREEINK_CAP_USB_MSC\n\s*static constexpr int MENU_ITEM_COUNT.*?#endif", header, re.S).group(0)
     rows = source[source.index("namespace {"):source.index("}  // namespace") + len("}  // namespace")]
     unit = (ROWS_HARNESS.replace("@@ENUM@@", enum).replace("@@COUNT@@", count).replace("@@ROWS@@", rows)
-            .replace("@@CONSTRUCTOR@@", function_body(source, "NetworkModeSelectionActivity::NetworkModeSelectionActivity(")
-                     .replace(": UiListActivity(\"NetworkModeSelection\", renderer, mappedInput)", "")
-                     .replace("(GfxRenderer& renderer, MappedInputManager& mappedInput)", "()"))
+            .replace("@@CONSTRUCTOR@@", re.sub(r"\(GfxRenderer&[^{]*\{", "() {",  # arguments and base initializers
+                                              function_body(source, "NetworkModeSelectionActivity::NetworkModeSelectionActivity(")))
             .replace("@@SELECT@@", function_body(source, "void NetworkModeSelectionActivity::activateIndex(")))
     output.mkdir(parents=True, exist_ok=True)
     (output / "rows.cpp").write_text(unit)

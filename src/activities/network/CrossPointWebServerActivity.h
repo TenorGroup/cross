@@ -96,4 +96,12 @@ class CrossPointWebServerActivity final : public Activity {
   void render(RenderLock&&) override;
   bool skipLoopDelay() override { return webServer && webServer->isRunning(); }
   bool preventAutoSleep() override { return webServer && webServer->isRunning(); }
+  // Where this session stands for the wake: its mode (the font store, the server, Calibre, the hotspot...) and the
+  // book it is a detour from. The screens it opens (the font store, Wi-Fi, Calibre) do not answer: this one does for them.
+  bool wakePlace(WakePlace& place) const override {
+    place.kind = WakeKind::Connect;
+    place.row = static_cast<int16_t>(networkMode);
+    place.path = returnBook;
+    return true;
+  }
 };

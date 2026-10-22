@@ -33,8 +33,9 @@ constexpr Row ROWS[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
 };
 }  // namespace
 
-NetworkModeSelectionActivity::NetworkModeSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-    : UiListActivity("NetworkModeSelection", renderer, mappedInput) {
+NetworkModeSelectionActivity::NetworkModeSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                                           std::string returnBook)
+    : UiListActivity("NetworkModeSelection", renderer, mappedInput), returnBook_(std::move(returnBook)) {
   // Entirely static, so built once here rather than every buildScreen() call.
   for (int i = 0; i < MENU_ITEM_COUNT; i++) {
     fui::ListItem item;
@@ -44,6 +45,19 @@ NetworkModeSelectionActivity::NetworkModeSelectionActivity(GfxRenderer& renderer
     item.actionValue = static_cast<int16_t>(i);  // the row; its mode is ROWS[i].mode
     rowItems_[i] = item;
   }
+}
+
+int NetworkModeSelectionActivity::rowOf(const NetworkMode mode) {
+  for (int i = 0; i < MENU_ITEM_COUNT; i++)
+    if (ROWS[i].mode == mode) return i;
+  return -1;
+}
+
+bool NetworkModeSelectionActivity::wakePlace(WakePlace& place) const {
+  place.kind = WakeKind::Connect;
+  place.row = static_cast<int16_t>(ROWS[kepConTro(nav.selected, MENU_ITEM_COUNT)].mode);  // the mode, not the index
+  place.path = returnBook_;
+  return true;
 }
 
 int NetworkModeSelectionActivity::listCount() const { return MENU_ITEM_COUNT; }

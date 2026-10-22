@@ -32,7 +32,13 @@ class NetworkModeSelectionActivity final : public UiListActivity {
  public:
   tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Network; }
   void drawChrome() override;
-  explicit NetworkModeSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
+  // `returnBook`: the book the session was opened from, kept for the wake when sleep comes with this list in front.
+  explicit NetworkModeSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                        std::string returnBook = {});
+  // The row a mode has on this board, -1 when it has none (no USB drive on the X3, no WebDAV there).
+  static int rowOf(NetworkMode mode);
+  // A wake comes back to this list with the cursor on the row it was on.
+  bool wakePlace(WakePlace& place) const override;
 
 #if FREEINK_CAP_USB_MSC
   static constexpr int MENU_ITEM_COUNT = 6;
@@ -56,4 +62,5 @@ class NetworkModeSelectionActivity final : public UiListActivity {
   // built once in the constructor instead of every buildScreen() call, into
   // fixed-capacity storage that avoids any heap allocation for the row list.
   freeink::ui::ListItem rowItems_[MENU_ITEM_COUNT]{};
+  std::string returnBook_;
 };

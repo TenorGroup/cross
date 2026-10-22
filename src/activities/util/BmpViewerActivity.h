@@ -13,6 +13,8 @@ class BmpViewerActivity final : public Activity {
   void onEnter() override;
   void onExit() override;
   void loop() override;
+  // Replaces the file list it was opened from: a wake comes back to that folder, the cursor on this image.
+  bool wakePlace(WakePlace& place) const override;
 
  private:
   void loadSiblingImages();

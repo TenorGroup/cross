@@ -68,11 +68,20 @@ SettingsActivity::SettingsActivity(GfxRenderer& renderer, MappedInputManager& ma
       theBanDau(theBanDau >= 0 && theBanDau < settingstabs::TAB_COUNT ? theBanDau : 0),
       startKey(std::move(startKey)) {}
 
+namespace {
+// What a wake keeps a row by: its JSON key, or for an action row (no key) "action/N", the numbering the pins use
+// (menufavorites, favoriteKey). Empty: a row nothing names.
+std::string wakeKey(const SettingInfo& s) {
+  if (s.key) return s.key;
+  return s.action == SettingAction::None ? std::string() : "action/" + std::to_string(static_cast<int>(s.action));
+}
+}  // namespace
+
 bool SettingsActivity::wakePlace(WakePlace& place) const {
   place.kind = WakeKind::SettingsTab;
   place.tab = static_cast<int16_t>(selectedCategoryIndex);
   const int row = ringPos() - 1;
-  if (row >= 0 && row < settingsCount && (*currentSettings)[row].key) place.name = (*currentSettings)[row].key;
+  if (row >= 0 && row < settingsCount) place.name = wakeKey((*currentSettings)[row]);
   return true;
 }
 
@@ -269,9 +278,10 @@ void SettingsActivity::onEnter() {
 
   if (shell::isUgly()) ugly::ensureFonts(renderer);
   rebuildSettingsLists(true);
-  // A wake reopens the row it left, found by its key; gone (a row that comes and goes with a setting): the first.
+  // A wake reopens the row it left, found by its key (an action row: "action/N"); gone (a row that comes and goes with
+  // a setting): the first.
   const auto wanted = std::find_if(currentSettings->begin(), currentSettings->end(),
-                                   [this](const SettingInfo& s) { return s.key && startKey == s.key; });
+                                   [this](const SettingInfo& s) { return startKey == wakeKey(s); });
   if (!startKey.empty() && wanted != currentSettings->end())
     activeNav().selected = static_cast<int>(wanted - currentSettings->begin()) + 1;
   dapXuongNhom();
