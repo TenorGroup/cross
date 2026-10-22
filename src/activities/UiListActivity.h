@@ -297,6 +297,19 @@ class UiListActivity : public Activity, protected UiAppHost {
   virtual bool uglySkin() const { return true; }
   // Lays out and paints the list by hand when the skin applies; the caller then displays the buffer.
   bool renderUglyList();
+  // The label pictures (ListItem::labelImage) the last list pass placed, each where the layout stood it. The ugly
+  // list paints them by hand; a screen reads them to write over a picture's place.
+  struct ListPicture {
+    freeink::ui::Rect rect;
+    freeink::ui::BitmapRef bitmap;
+    freeink::ui::Paint paint;
+  };
+  std::vector<ListPicture> listPictures_;
+  // The target's bitmap sink for listPictures_ (ctx): keeps the tiled bitmaps, which a list draws only as label
+  // pictures; its icons and marks are not kept.
+  static void keepListPicture(void* ctx, freeink::ui::Rect rect, freeink::ui::BitmapRef bitmap,
+                              freeink::ui::BitmapMode mode, const freeink::ui::Paint& foreground,
+                              freeink::ui::Rotation rotation);
   virtual void drawChrome();
   virtual bool ownsX3Chrome() const { return false; }
   // Button hints, drawn after the app renders. Default: Back/Select/Up/Down.

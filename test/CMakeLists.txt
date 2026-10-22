@@ -116,6 +116,7 @@ add_subdirectory(mapped_input)
 add_subdirectory(button_edge_latch)
 add_subdirectory(wake_hold)
 add_subdirectory(tab_navigation)
+add_subdirectory(ugly_list_picture)
 add_subdirectory(reader_menu_tabs)
 add_subdirectory(tab_window)
 add_subdirectory(touch_probe)
@@ -173,6 +174,7 @@ add_subdirectory(font_download_heap)
 add_subdirectory(font_download_progress)
 add_subdirectory(font_store_names)
 add_subdirectory(font_download_pack)
+add_subdirectory(font_installed_picture)
 
 # Library-local host suites live next to the code they test; the binary directory
 # keeps them out of the flat test/ tree.

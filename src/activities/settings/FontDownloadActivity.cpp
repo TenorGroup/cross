@@ -32,6 +32,7 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/settings/FontDownloadTransfer.h"
 #include "activities/settings/FontDownloadHeap.h"
+#include "activities/settings/FontOwnName.h"
 #include "components/UIScale.h"
 #include "components/UITheme.h"
 #include "components/SettledListRender.h"
@@ -40,6 +41,7 @@
 #include "network/HttpRangeTransfer.h"
 #include "network/WebDavReplace.h"
 #include "shells/Shell.h"
+#include "shells/ugly/UglyChrome.h"
 #include "shells/ugly/UglyNote.h"
 
 namespace fui = freeink::ui;
@@ -52,15 +54,27 @@ bool inStoreCatalog(const char* name) {
     if (std::strcmp(name, fontstore::PACKS[i].name) == 0) return true;
   return false;
 }
-// The store font's name in its own letters at the UI text size; null for a font of the reader's own and in the ugly
-// shell, whose list keeps the words of the rows.
+// The store font's name in its own letters at the UI text size, by its place in fontstore::PACKS.
+const fui::LabelImage* storePicture(const int index) {
+  return &fontstore::NAME_IMAGES[normalizedUiTextSize(SETTINGS.uiTextSize)][index];
+}
+// By name; null for a font of the reader's own.
 const fui::LabelImage* nameImage(const char* name) {
-  if (shell::uglyParts()) return nullptr;
   for (size_t i = 0; i < fontstore::PACK_COUNT; ++i)
-    if (std::strcmp(name, fontstore::PACKS[i].name) == 0)
-      return &fontstore::NAME_IMAGES[normalizedUiTextSize(SETTINGS.uiTextSize)][i];
+    if (std::strcmp(name, fontstore::PACKS[i].name) == 0) return storePicture(static_cast<int>(i));
   return nullptr;
 }
+// The installed list draws a store pack's name from the store's picture when the pack is the store's current one
+// (receipt matches: "Installed") and, with this on, also when it is an older one ("Update"): the folder is still a
+// pack of the store's format with the store's name, so the picture is that font's name whichever version the card
+// holds. Off: an older pack keeps the words of its row.
+constexpr bool kPictureForOutdatedPack = true;
+// An installed font with no store picture (a font of the reader's own, or a pack on the way) shows its name in its
+// own face, drawn from the font file after the list pass (fontownname). Off: the words of the row.
+constexpr bool kOwnFontNames = true;
+// The blank picture such a row reserves for the name: all clear bits, wide as the widest label column.
+constexpr int16_t kBlankWidth = 300;
+constexpr uint8_t kBlank[((kBlankWidth + 7) / 8) * 44] = {};
 std::string displayName(const char* name) {
   if (!inStoreCatalog(name)) return name;
   std::string out;
@@ -196,6 +210,7 @@ void FontDownloadActivity::loadInstalledList() {
     if (root && FontPackInstaller::isPackFamily(root, font.name.c_str())) {
       for (size_t i = 0; i < fontstore::PACK_COUNT; ++i) {
         if (font.name != fontstore::PACKS[i].name) continue;
+        font.storeIndex = static_cast<int>(i);
         font.hasUpdate = !FontPackInstaller::matchesInstalled(root, font.name.c_str(), fontstore::PACKS[i].size,
                                                               fontstore::PACKS[i].crc32);
         break;
@@ -1370,14 +1385,69 @@ void FontDownloadActivity::rebuildStoreRowItems() {
       item.subtitle = tr(STR_OWN_FONT_SUB);
       item.opensNext = true;
     } else {
-      const auto& font = installed_[i - 1];
-      rowNames_[i] = displayName(font.name.c_str());
-      item.label = rowNames_[i].c_str();
+      auto& font = installed_[i - 1];
+      if (font.storeIndex >= 0 && (!font.hasUpdate || kPictureForOutdatedPack)) {
+        item.labelImage = storePicture(font.storeIndex);
+      } else {
+        rowNames_[i] = displayName(font.name.c_str());
+        if (ownNameFamily(font)) {
+          // The name in the UI face is the best guess of its width in the font's own: a quarter more, cut at the column.
+          const int width = renderer.getTextWidth(uiScaleSpec().bodyFontId, rowNames_[i].c_str());
+          font.ownLabel = {{kBlank, static_cast<uint16_t>(std::min<int>(kBlankWidth, width + width / 4 + 4)),
+                            uiTextSizeSpec(SETTINGS.uiTextSize).bodyLineHeight, fui::BitmapFormat::BW1, false},
+                           static_cast<int16_t>(renderer.getFontAscenderSize(uiScaleSpec().bodyFontId))};
+          item.labelImage = &font.ownLabel;
+        } else {
+          item.label = rowNames_[i].c_str();
+        }
+      }
       if (font.inUse) item.subtitle = tr(STR_FONT_IN_USE);
       item.value = font.hasUpdate ? tr(STR_UPDATE_AVAILABLE) : tr(STR_INSTALLED);
     }
     item.actionValue = static_cast<int16_t>(i);
     rowItems_.push_back(item);
+  }
+}
+
+// The card's family whose own face can draw the row's name: a .cpfont family (not a vector one) with a file near
+// the UI text size, which an earlier draw did not fail on. Registry and file names only: no card read.
+const SdCardFontFamilyInfo* FontDownloadActivity::ownNameFamily(const InstalledFont& font) const {
+  if (!kOwnFontNames || font.ownFailed) return nullptr;
+  const SdCardFontFamilyInfo* family = sdFontSystem.registry().findFamily(font.name);
+  const uint8_t points = uiTextSizeSpec(SETTINGS.uiTextSize).bodyPointSize;
+  return family && !family->vector && family->findNearestSize(points) ? family : nullptr;
+}
+
+// After the list pass, under the render lock: each visible row that reserved a blank gets its name in its own face
+// where the layout put the label (the ugly list reports its places the same way). A row the face cannot draw gets
+// the words the list would have written, and is not tried again.
+void FontDownloadActivity::drawOwnNames() {
+  if (state_ != STORE_LIST) return;
+  const int body = uiScaleSpec().bodyFontId;
+  const uint8_t points = uiTextSizeSpec(SETTINGS.uiTextSize).bodyPointSize;
+  for (const auto& picture : listPictures_) {
+    if (picture.bitmap.data != kBlank) continue;
+    for (size_t i = 0; i < installed_.size(); ++i) {
+      const auto row = app.publishedRect(ACTION_ROW, static_cast<int16_t>(i + 1));  // none for a row off the page
+      if (row.empty() || !row.contains(picture.rect.x + picture.rect.width / 2, picture.rect.y + picture.rect.height / 2))
+        continue;
+      auto& font = installed_[i];
+      const SdCardFontFamilyInfo* family = ownNameFamily(font);
+      const int baseline = picture.rect.y + font.ownLabel.baseline;  // the line the list's words stand on
+      const bool black = picture.paint.color != fui::Color::White;
+      if (family && fontownname::draw(renderer, *family, font.name.c_str(), points, picture.rect.x, baseline,
+                                      picture.rect.width, black))
+        break;
+      font.ownFailed = true;
+      const std::string words = displayName(font.name.c_str());
+      if (shell::uglyParts()) {
+        uglychrome::words(renderer, picture.rect, words.c_str(), fui::TextAlign::Left, false, 1);
+      } else {
+        const std::string cut = renderer.truncatedText(body, words.c_str(), picture.rect.width);
+        renderer.drawText(body, picture.rect.x, baseline - renderer.getFontAscenderSize(body), cut.c_str(), black);
+      }
+      break;
+    }
   }
 }
 
@@ -1879,6 +1949,7 @@ void FontDownloadActivity::render(RenderLock&&) {
 
   // The two lists by hand: the layout keeps its words and the shared skin writes them.
   if ((state_ == STORE_LIST || state_ == GROUP_LIST || state_ == FAMILY_LIST) && renderUglyList()) {
+    drawOwnNames();
     renderer.displayBuffer();
     return;
   }
@@ -1893,7 +1964,9 @@ void FontDownloadActivity::render(RenderLock&&) {
   const auto centerY = (pageHeight - lineHeight) / 2;
   const auto renderFontList = [&] {
     bool firstPass = true;
+    uiTarget.setBitmapSink(keepListPicture, &listPictures_);  // where the rows' label pictures stand
     renderSettledList(activeNav(), [&] {
+      listPictures_.clear();
       if (!firstPass) {
         renderer.clearScreen();
         if (tenorchrome::x3ScreenLayoutEnabled()) drawChrome();
@@ -1903,12 +1976,14 @@ void FontDownloadActivity::render(RenderLock&&) {
       firstPass = false;
       renderUi();
     });
+    uiTarget.setBitmapSink(nullptr, nullptr);
   };
 
   if (state_ == LOADING_MANIFEST) {
     renderer.drawCenteredText(UI_10_FONT_ID, centerY, tr(STR_LOADING_FONT_LIST));
   } else if (state_ == GROUP_LIST || state_ == STORE_LIST) {
     renderFontList();
+    drawOwnNames();
     drawListHints();
   } else if (state_ == FAMILY_LIST) {
     renderFontList();

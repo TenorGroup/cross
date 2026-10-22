@@ -928,8 +928,17 @@ struct UglyRun {
   fui::TextAlign align;
   bool locked;
   uint8_t lines;
+  // A label picture instead of words: where it stands, drawn as it is.
+  fui::BitmapRef bitmap{};
+  fui::Paint paint{};
 };
 }  // namespace
+
+void UiListActivity::keepListPicture(void* ctx, const fui::Rect rect, const fui::BitmapRef bitmap,
+                                     const fui::BitmapMode mode, const fui::Paint& foreground, const fui::Rotation) {
+  if (mode == fui::BitmapMode::TileX && bitmap.format == fui::BitmapFormat::BW1)
+    static_cast<std::vector<ListPicture>*>(ctx)->push_back({rect, bitmap, foreground});
+}
 
 bool UiListActivity::renderUglyList() {
   if (!uglySkin() || !shell::uglyParts()) return false;
@@ -937,6 +946,7 @@ bool UiListActivity::renderUglyList() {
   std::vector<UglyRun> runs;
   renderer.clearScreen();
   uiTarget.setPaintingEnabled(false);
+  uiTarget.setBitmapSink(keepListPicture, &listPictures_);
   uiTarget.setTextSink(
       [](void* ctx, const fui::Rect rect, const char* text, const fui::TextStyle& style) {
         // A disabled row's words come in light gray: the row is locked.
@@ -946,8 +956,10 @@ bool UiListActivity::renderUglyList() {
       &runs);
   renderSettledList(activeNav(), [&] {
     runs.clear();
+    listPictures_.clear();
     renderUi();
   });
+  uiTarget.setBitmapSink(nullptr, nullptr);
   uiTarget.setTextSink(nullptr, nullptr);
   uiTarget.setPaintingEnabled(true);
   drawChrome();
@@ -970,6 +982,19 @@ bool UiListActivity::renderUglyList() {
     else if (uglyItems_ && row >= uglyItemsFirst_) item = uglyItems_[row - uglyItemsFirst_];
     return item;
   };
+  // A row's label picture is a run of its own, ahead of the words: the circle of the row finds it first. The list's
+  // other bitmaps (icons, marks) are not label pictures and are drawn by the hand below.
+  if (!listPictures_.empty()) {
+    std::vector<const uint8_t*> labelData;
+    for (int row = first; row < count && row <= first + activeNav().pageRowsFor(count); ++row)
+      if (const auto* picture = itemAt(row).labelImage) labelData.push_back(picture->bitmap.data);
+    std::vector<UglyRun> pictures;
+    for (const auto& picture : listPictures_)
+      if (std::find(labelData.begin(), labelData.end(), picture.bitmap.data) != labelData.end())
+        pictures.push_back({picture.rect, {}, fui::TextAlign::Left, picture.paint.color == fui::Color::LightGray, 1,
+                            picture.bitmap, picture.paint});
+    runs.insert(runs.begin(), pictures.begin(), pictures.end());
+  }
   // The trailing preview has words but no hit rect. Use its laid-out label for icon painting only.
   const int preview = first + activeNav().pageRowsFor(count);
   auto iconRowBox = [&](int row) {
@@ -996,10 +1021,27 @@ bool UiListActivity::renderUglyList() {
       break;
     }
   }
-  std::vector<fui::Rect> ink;
-  ink.reserve(runs.size());
-  for (const auto& run : runs)
-    ink.push_back(uglychrome::words(renderer, run.rect, run.text.c_str(), run.align, run.locked, run.lines));
+  std::vector<fui::Rect> ink(runs.size());
+  for (size_t i = 0; i < runs.size(); ++i)
+    if (!runs[i].bitmap)
+      ink[i] = uglychrome::words(renderer, runs[i].rect, runs[i].text.c_str(), runs[i].align, runs[i].locked, runs[i].lines);
+  // The pictures stand as the layout set them, 1-bit as they are (the paper's look takes no frame round them), cut
+  // before a value the hand wrote on their line. A locked row is struck through like its words.
+  for (size_t i = 0; i < runs.size(); ++i) {
+    if (!runs[i].bitmap) continue;
+    fui::Rect box = runs[i].rect;
+    for (size_t j = 0; j < runs.size(); ++j)
+      if (!runs[j].bitmap && runs[j].align == fui::TextAlign::Right && ink[j].x > box.x && ink[j].y < box.bottom() &&
+          ink[j].bottom() > box.y)
+        box.width = std::min<int16_t>(box.width, ink[j].x - 10 - box.x);
+    if (box.width <= 0) continue;
+    uiTarget.bitmap(box, runs[i].bitmap, fui::BitmapMode::TileX,
+                    runs[i].paint.color == fui::Color::White ? runs[i].paint : fui::Paint::solid(fui::Color::Black));
+    if (runs[i].locked)
+      ugly::line(renderer, box.x - 2, box.y + box.height * 2 / 3, box.x + box.width + 2, box.y + box.height * 2 / 3 - 2, 840,
+                 2);
+    ink[i] = box;
+  }
   // The marks go on the rows that took a place on screen. A locked row has no place to choose and gets none, but
   // the cursor can stand on it: there it keeps the circle, round the label.
   for (int row = first; row < count && row < first + 64; ++row) {
@@ -1027,8 +1069,9 @@ bool UiListActivity::renderUglyList() {
     if (box.empty() && row != activeNav().selected) continue;
     const auto item = itemAt(row);
     if (box.empty()) {
-      for (size_t i = 0; item.label && i < runs.size(); ++i)
-        if (runs[i].align == fui::TextAlign::Left && runs[i].text == item.label) {
+      for (size_t i = 0; (item.label || item.labelImage) && i < runs.size(); ++i)
+        if (runs[i].align == fui::TextAlign::Left &&
+            (item.labelImage ? runs[i].bitmap.data == item.labelImage->bitmap.data : runs[i].text == item.label)) {
           uglychrome::ring(renderer, ink[i], mark_.get(selectionMarkKey()));
           break;
         }

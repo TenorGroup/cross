@@ -7,6 +7,7 @@
 #include <HalGPIO.h>
 #include <InlineSymbols.h>
 
+#include <algorithm>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -53,7 +54,20 @@ void GfxRenderer::getOrientedViewableTRBL(int* t, int* r, int* b, int* l) const 
   if (b) *b = 0;
   if (l) *l = 0;
 }
-void GfxRenderer::drawPixel(int, int, bool) const {}
+// What the ugly list suite reads: ink pixels (and where), the shell kind, the rings and marks the hand drew.
+namespace hosttest {
+bool ugly = false;
+int pixels = 0, minX = 1 << 30, minY = 1 << 30, maxX = -1, maxY = -1;
+std::vector<freeink::ui::Rect> rings, around;
+std::vector<std::string> words;
+}  // namespace hosttest
+void GfxRenderer::drawPixel(const int x, const int y, bool) const {
+  ++hosttest::pixels;
+  hosttest::minX = std::min(hosttest::minX, x);
+  hosttest::minY = std::min(hosttest::minY, y);
+  hosttest::maxX = std::max(hosttest::maxX, x);
+  hosttest::maxY = std::max(hosttest::maxY, y);
+}
 void inlineSymbols::drawShape(const GfxRenderer&, inlineSymbols::Shape, int, int, int, bool) {}
 void GfxRenderer::drawLine(int, int, int, int, int, bool) const {}
 void GfxRenderer::drawLine(int, int, int, int, bool) const {}
@@ -142,14 +156,15 @@ void circle(const GfxRenderer&, Circle, const Box&, int, int, int) {}
 // The host suites run tenor/cross; the hand-drawn list of tenor/ugly is measured in the simulator
 // (test/reading_stats_simulator/test_ugly_parts_x3.py).
 namespace shell {
-Kind current() { return Kind::Cross; }
+Kind current() { return hosttest::ugly ? Kind::Ugly : Kind::Cross; }
 }  // namespace shell
 namespace uglychrome {
-freeink::ui::Rect words(const GfxRenderer&, const freeink::ui::Rect&, const char*, freeink::ui::TextAlign, bool, int) {
+freeink::ui::Rect words(const GfxRenderer&, const freeink::ui::Rect&, const char* text, freeink::ui::TextAlign, bool, int) {
+  hosttest::words.push_back(text);
   return {};
 }
-void marks(const GfxRenderer&, const freeink::ui::Rect&, const Marks&, uint32_t) {}
-void ring(const GfxRenderer&, const freeink::ui::Rect&, uint32_t) {}
+void marks(const GfxRenderer&, const freeink::ui::Rect&, const Marks& m, uint32_t) { hosttest::around.push_back(m.around); }
+void ring(const GfxRenderer&, const freeink::ui::Rect& r, uint32_t) { hosttest::rings.push_back(r); }
 void apart(const GfxRenderer&, freeink::ui::Rect&, const char*, freeink::ui::Rect&, const char*) {}
 }  // namespace uglychrome
 

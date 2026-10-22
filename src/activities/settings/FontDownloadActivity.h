@@ -106,6 +106,14 @@ class FontDownloadActivity final : public UiListActivity {
     std::string name;
     bool hasUpdate = false;
     bool inUse = false;  // the reader draws with it now
+    // Its place in fontstore::PACKS when the folder is a pack of the store's format with a store name; -1 for a
+    // folder of the reader's own (no pack.json), whose name is never drawn from the store's pictures.
+    int storeIndex = -1;
+    // A font with no store picture shows its name in its own face (fontownname): the row reserves the label's place
+    // with a blank picture, ownLabel, and drawOwnNames() writes the name there after the list pass. ownFailed:
+    // the face could not draw it once, the row keeps its words.
+    freeink::ui::LabelImage ownLabel;
+    bool ownFailed = false;
   };
   std::vector<InstalledFont> installed_;
   std::vector<std::string> rowNames_;  // the names the rows show
@@ -126,6 +134,8 @@ class FontDownloadActivity final : public UiListActivity {
   bool restartToStore_ = false;
   int pendingDeleteIndex_ = -1;
   void loadInstalledList();
+  const SdCardFontFamilyInfo* ownNameFamily(const InstalledFont& font) const;
+  void drawOwnNames();
   void beginNetwork();
   void rebuildStoreRowItems();
   int storeRowCount() const;
