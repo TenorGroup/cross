@@ -124,8 +124,9 @@ struct HttpDownloader {
   static Result downloadToFile(const char*, const char*, std::nullptr_t) { return OK; }
 };
 enum { STR_MEMORY_ERROR, STR_INVALID_FONT_MANIFEST, STR_FONT_LIST_FETCH_FAILED,
-       STR_FONT_LIST_READ_FAILED, STR_FONT_MANIFEST_VERSION_UNSUPPORTED };
+       STR_FONT_LIST_READ_FAILED, STR_FONT_MANIFEST_VERSION_UNSUPPORTED, STR_FONT_SERVER_NOT_FOUND };
 const char* tr(int) { return "error"; }
+bool storeHostResolves() { return true; }  // the name lookup before the list (Wi-Fi is not part of this test)
 
 class FontDownloadActivity {
  public:

@@ -39,7 +39,7 @@ server_source = server_path.read_text()
 setter = method_slice(server_source, 'void CrossPointWebServer::setUiTextSizeApplier')
 apply = method_slice(server_source, 'bool CrossPointWebServer::applyUiTextSizeSetting')
 post = method_slice(server_source, 'void CrossPointWebServer::handlePostSettings')
-if post.index('applyUiTextSizeSetting') > post.index('for (const auto& s : settings)'):
+if post.index('applyUiTextSizeSetting') > post.index('for (const auto& registered : settings)'):
     print('RED: UI text size apply is not preflighted before generic assignment')
     raise SystemExit(1)
 if 's.valuePtr != &CrossPointSettings::uiTextSize' not in post:

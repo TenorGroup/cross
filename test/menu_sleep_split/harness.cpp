@@ -209,8 +209,11 @@ int main(int argc, char** argv) {
     const std::string key=row["key"] | "";
     if(key=="wakeTarget") {
       ++wakeRows;
-      ok &= check(row["value"].as<int>()==CrossPointSettings::DEFAULT_WAKE_TARGET,
+      // The page lists the shell's own choices in the device's order (buildWakeTargetSetting): Previous location
+      // first, then the book, then Home (and Recent on ugly); the value is the position.
+      ok &= check(CrossPointSettings::DEFAULT_WAKE_TARGET==CrossPointSettings::WAKE_RESUME && row["value"].as<int>()==0,
                   "web On wake defaults to the default wake target");
+      ok &= check(row["options"].as<JsonArrayConst>().size()==(ugly ? 4u : 3u), "web On wake lists the shell's choices");
     }
     if(key=="wakeIntoBook" || key=="uglyStartScreen") retiredRows=true;
     if(key=="tipsEnabled") {

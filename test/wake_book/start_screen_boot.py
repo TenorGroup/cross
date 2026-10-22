@@ -35,6 +35,9 @@ enum Reset { ESP_RST_POWERON, ESP_RST_EXT, ESP_RST_DEEPSLEEP, ESP_RST_PANIC, ESP
              ESP_RST_INT_WDT, ESP_RST_TASK_WDT, ESP_RST_WDT, ESP_RST_BROWNOUT, ESP_RST_SW, ESP_RST_UNKNOWN };
 Reset currentReset;
 Reset esp_reset_reason() { return currentReset; }
+int esp_sleep_get_wakeup_cause() { return 0; }  // the boot line that reports the start
+struct { bool isUsbConnected() const { return false; } } gpio;
+#define LOG_INF(...) ((void)0)
 struct Book { std::string path; };
 struct { std::string openEpubPath = "/book.epub"; WakePlace wake; } APP_STATE;
 struct {
