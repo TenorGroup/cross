@@ -11,6 +11,7 @@
 #include "activities/UiListActivity.h"
 #include "activities/settings/FontDownloadProgress.h"
 #include "activities/settings/FontDownloadReleaseGuard.h"
+#include "activities/settings/FontOwnName.h"
 
 // JSON schema version of the fonts.json manifest. The canonical version for
 // the build tooling lives in lib/EpdFont/scripts/cpfont_version.py. This
@@ -109,12 +110,21 @@ class FontDownloadActivity final : public UiListActivity {
     // Its place in fontstore::PACKS when the folder is a pack of the store's format with a store name; -1 for a
     // folder of the reader's own (no pack.json), whose name is never drawn from the store's pictures.
     int storeIndex = -1;
-    // A font with no store picture shows its name in its own face (fontownname): the row reserves the label's place
-    // with a blank picture, ownLabel, and drawOwnNames() writes the name there after the list pass. ownFailed:
-    // the face could not draw it once, the row keeps its words.
-    freeink::ui::LabelImage ownLabel;
+    // A font with no store picture shows its name in its own face (fontownname), as a picture kept in ownPictures_.
+    // ownFailed: the face could not draw it once, the row keeps its words.
     bool ownFailed = false;
   };
+  // The name of a font in its own face, drawn once per screen and kept (renderOwnNames): the row's labelImage, the same
+  // kind of picture as a store font's. Keyed by the family's name and the UI text size it was drawn for.
+  struct OwnPicture {
+    std::string family;
+    uint8_t textSize = 0;
+    fontownname::Picture picture;
+    freeink::ui::LabelImage label;
+  };
+  std::vector<std::unique_ptr<OwnPicture>> ownPictures_;  // behind a pointer: a row's labelImage points into one
+  size_t ownPictureBytes_ = 0;
+  bool ownCacheFull_ = false;  // a picture did not fit the cap: no more are drawn until the cache is freed
   std::vector<InstalledFont> installed_;
   std::vector<std::string> rowNames_;  // the names the rows show
   void showOwnFontHelp();
@@ -135,7 +145,10 @@ class FontDownloadActivity final : public UiListActivity {
   int pendingDeleteIndex_ = -1;
   void loadInstalledList();
   const SdCardFontFamilyInfo* ownNameFamily(const InstalledFont& font) const;
-  void drawOwnNames();
+  const OwnPicture* ownPicture(const std::string& family) const;
+  bool renderOwnPicture(const SdCardFontFamilyInfo& family, const std::string& name, OwnPicture& out);
+  void renderOwnNames(int first, int count);
+  void releaseOwnPictures();
   void beginNetwork();
   void rebuildStoreRowItems();
   int storeRowCount() const;

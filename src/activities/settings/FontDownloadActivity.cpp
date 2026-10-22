@@ -79,11 +79,13 @@ const fui::LabelImage* nameImage(const char* name) {
 // holds. Off: an older pack is drawn in its own face, as a font of the reader's own (its bytes are not the store's).
 constexpr bool kPictureForOutdatedPack = false;
 // An installed font with no store picture (a font of the reader's own, or a pack on the way) shows its name in its
-// own face, drawn from the font file after the list pass (fontownname). Off: the words of the row.
+// own face: drawn once from the font file into a picture the list shows as it does the store's (renderOwnNames).
+// Off: the words of the row.
 constexpr bool kOwnFontNames = true;
-// The blank picture such a row reserves for the name: all clear bits, wide as the widest label column.
-constexpr int16_t kBlankWidth = 300;
-constexpr uint8_t kBlank[((kBlankWidth + 7) / 8) * 44] = {};
+// The pictures kept for the screen's life hold at most this many bytes (a name is some 600); the one that would pass
+// it, and every name after it, keeps its words. A picture is cut at the widest label column.
+constexpr size_t kOwnPictureCap = 16 * 1024;
+constexpr int kOwnPictureWidth = 300;
 std::string displayName(const char* name) {
   if (!inStoreCatalog(name)) return name;
   std::string out;
@@ -234,6 +236,8 @@ void FontDownloadActivity::loadInstalledList() {
   });
   RenderLock lock(*this);
   installed_ = std::move(list);
+  rowItems_.clear();  // the rows point into the pictures freed here: they are built again before the next paint
+  releaseOwnPictures();
   rowsDirty_ = true;
 }
 
@@ -252,6 +256,7 @@ void FontDownloadActivity::beginNetwork() {
     std::vector<fui::ListItem>().swap(rowItems_);
     std::vector<std::string>().swap(rowLabels_);
     std::vector<std::string>().swap(rowNames_);
+    releaseOwnPictures();
     rowsDirty_ = true;
     LOG_INF("FONT", "Download registry released=%u heap=%u largest=%u", before <= ESP.getFreeHeap() ? ESP.getFreeHeap() - before : 0u,
             ESP.getFreeHeap(), ESP.getMaxAllocHeap());
@@ -265,6 +270,7 @@ void FontDownloadActivity::beginNetwork() {
 
 void FontDownloadActivity::onExit() {
   Activity::onExit();
+  releaseOwnPictures();
 
   if (runtimeStarted_) {
     if (networkUsed_ || WiFi.getMode() != WIFI_MODE_NULL) {
@@ -1031,6 +1037,7 @@ bool FontDownloadActivity::prepareDownloadHeap() {
 #endif
   std::vector<fui::ListItem>().swap(rowItems_);
   std::vector<std::string>().swap(rowLabels_);
+  releaseOwnPictures();
   rowsDirty_ = true;
 #ifdef TENOR_PRESS_PROBE
   logFontDownloadHeap("rows-released");
@@ -1356,6 +1363,8 @@ void FontDownloadActivity::buildScreen(UiScreen& screen) {
   props.valueInset = 8;               // air between the status and the row edge
   props.labelAscent = renderer.getFontAscenderSize(uiScaleSpec().bodyFontId);  // name pictures stand on the baseline
   syncListViewport(screen, props);
+  // The page about to be laid out: its own-face names get their pictures first, so the list draws them like any other.
+  if (state_ == STORE_LIST) renderOwnNames(props.topIndex, activeNav().visibleRows);
   screen.list(props);
 }
 
@@ -1408,16 +1417,10 @@ void FontDownloadActivity::rebuildStoreRowItems() {
         item.labelImage = storePicture(font.storeIndex);
       } else {
         rowNames_[i] = displayName(font.name.c_str());
-        if (ownNameFamily(font)) {
-          // The name in the UI face is the best guess of its width in the font's own: a quarter more, cut at the column.
-          const int width = renderer.getTextWidth(uiScaleSpec().bodyFontId, rowNames_[i].c_str());
-          font.ownLabel = {{kBlank, static_cast<uint16_t>(std::min<int>(kBlankWidth, width + width / 4 + 4)),
-                            uiTextSizeSpec(SETTINGS.uiTextSize).bodyLineHeight, fui::BitmapFormat::BW1, false},
-                           static_cast<int16_t>(renderer.getFontAscenderSize(uiScaleSpec().bodyFontId))};
-          item.labelImage = &font.ownLabel;
-        } else {
-          item.label = rowNames_[i].c_str();
-        }
+        // The picture of its own face when it is made already; else the words, until renderOwnNames makes it.
+        const OwnPicture* own = ownNameFamily(font) ? ownPicture(font.name) : nullptr;
+        if (own) item.labelImage = &own->label;
+        else item.label = rowNames_[i].c_str();
       }
       if (font.inUse) item.subtitle = tr(STR_FONT_IN_USE);
       item.value = font.hasUpdate ? tr(STR_UPDATE_AVAILABLE) : tr(STR_INSTALLED);
@@ -1436,37 +1439,97 @@ const SdCardFontFamilyInfo* FontDownloadActivity::ownNameFamily(const InstalledF
   return family && !family->vector && family->findNearestSize(points) ? family : nullptr;
 }
 
-// After the list pass, under the render lock: each visible row that reserved a blank gets its name in its own face
-// where the layout put the label (the ugly list reports its places the same way). A row the face cannot draw gets
-// the words the list would have written, and is not tried again.
-void FontDownloadActivity::drawOwnNames() {
-  if (state_ != STORE_LIST) return;
-  const int body = uiScaleSpec().bodyFontId;
-  const uint8_t points = uiTextSizeSpec(SETTINGS.uiTextSize).bodyPointSize;
-  for (const auto& picture : listPictures_) {
-    if (picture.bitmap.data != kBlank) continue;
-    for (size_t i = 0; i < installed_.size(); ++i) {
-      const auto row = app.publishedRect(ACTION_ROW, static_cast<int16_t>(i + 1));  // none for a row off the page
-      if (row.empty() || !row.contains(picture.rect.x + picture.rect.width / 2, picture.rect.y + picture.rect.height / 2))
-        continue;
-      auto& font = installed_[i];
-      const SdCardFontFamilyInfo* family = ownNameFamily(font);
-      const int baseline = picture.rect.y + font.ownLabel.baseline;  // the line the list's words stand on
-      const bool black = picture.paint.color != fui::Color::White;
-      if (family && fontownname::draw(renderer, *family, font.name.c_str(), points, picture.rect.x, baseline,
-                                      picture.rect.width, black))
-        break;
-      font.ownFailed = true;
-      const std::string words = displayName(font.name.c_str());
-      if (shell::uglyParts()) {
-        uglychrome::words(renderer, picture.rect, words.c_str(), fui::TextAlign::Left, false, 1);
-      } else {
-        const std::string cut = renderer.truncatedText(body, words.c_str(), picture.rect.width);
-        renderer.drawText(body, picture.rect.x, baseline - renderer.getFontAscenderSize(body), cut.c_str(), black);
-      }
-      break;
+// The picture made for the family at this UI text size, if any.
+const FontDownloadActivity::OwnPicture* FontDownloadActivity::ownPicture(const std::string& family) const {
+  const uint8_t size = normalizedUiTextSize(SETTINGS.uiTextSize);
+  for (const auto& own : ownPictures_)
+    if (own->textSize == size && own->family == family) return own.get();
+  return nullptr;
+}
+
+// The name in the family's own face, once. The file nearest the UI size draws it first. The store's pictures are fitted to
+// the x-height of the UI face (scripts/gen_font_names.py); a .cpfont has whole sizes only, so the folder's size whose
+// x-height, scaled from the first picture's, lands nearest the UI face's draws it again (when that is a better size).
+bool FontDownloadActivity::renderOwnPicture(const SdCardFontFamilyInfo& family, const std::string& name, OwnPicture& out) {
+  const UITextSizeSpec spec = uiTextSizeSpec(SETTINGS.uiTextSize);
+  const SdCardFontFileInfo* file = family.findNearestSize(spec.bodyPointSize);
+  if (!file || !fontownname::render(family.filePath(*file).c_str(), name.c_str(), kOwnPictureWidth, spec.bodyLineHeight,
+                                    out.picture))
+    return false;
+  const int want = fontstore::NAME_XHEIGHT_UI[normalizedUiTextSize(SETTINGS.uiTextSize)], measured = out.picture.xHeight;
+  const SdCardFontFileInfo* best = file;
+  int bestGap = std::abs(measured - want);
+  for (const auto& other : family.files) {
+    if (!measured) break;  // the face has no x to measure by
+    if (!other.pointSize) continue;
+    const int gap = std::abs((measured * other.pointSize + file->pointSize / 2) / file->pointSize - want);
+    if (gap < bestGap) {
+      best = &other;
+      bestGap = gap;
     }
   }
+  fontownname::Picture again;
+  if (best != file && fontownname::render(family.filePath(*best).c_str(), name.c_str(), kOwnPictureWidth,
+                                          spec.bodyLineHeight, again))
+    out.picture = std::move(again);
+  return true;
+}
+
+// Before the list lays out rows [first, first + count): each own-face name among them is drawn once into a picture and
+// handed to the row as its labelImage, like a store font's. A repaint (the cursor moving a row) finds them made and costs
+// nothing; a page change draws only the rows it brings. A face that cannot draw its name keeps the row's words (and is
+// not asked again); so does every name once the pictures hold kOwnPictureCap bytes.
+void FontDownloadActivity::renderOwnNames(const int first, const int count) {
+#ifdef TENOR_PRESS_PROBE
+  const unsigned long started = millis();
+  int asked = 0;
+#endif
+  const size_t end = std::min<size_t>(rowItems_.size(), static_cast<size_t>(std::max(first, 0)) + std::max(count, 0));
+  for (size_t row = std::max(first, 1); row < end && row <= installed_.size(); ++row) {
+    InstalledFont& font = installed_[row - 1];
+    const SdCardFontFamilyInfo* family = ownNameFamily(font);
+    if (!family || rowItems_[row].labelImage) continue;
+    if (const OwnPicture* made = ownPicture(font.name)) {
+      rowItems_[row].label = nullptr;
+      rowItems_[row].labelImage = &made->label;
+      continue;
+    }
+    if (ownCacheFull_) continue;
+    std::unique_ptr<OwnPicture> own(new (std::nothrow) OwnPicture());
+    if (!own) break;
+#ifdef TENOR_PRESS_PROBE
+    ++asked;
+#endif
+    own->family = font.name;
+    own->textSize = normalizedUiTextSize(SETTINGS.uiTextSize);
+    if (!renderOwnPicture(*family, rowNames_[row], *own)) {
+      font.ownFailed = true;
+      continue;
+    }
+    if (ownPictureBytes_ + own->picture.size > kOwnPictureCap) {
+      ownCacheFull_ = true;
+      continue;
+    }
+    const fontownname::Picture& picture = own->picture;
+    own->label = {{picture.bits.get(), picture.width, picture.height, fui::BitmapFormat::BW1, false}, picture.baseline};
+    ownPictureBytes_ += picture.size;
+    rowItems_[row].label = nullptr;
+    rowItems_[row].labelImage = &own->label;
+    ownPictures_.push_back(std::move(own));
+  }
+#ifdef TENOR_PRESS_PROBE
+  if (asked)
+    LOG_INF("FONT", "own-name page rows=%d+%d asked=%d kept=%u bytes=%u full=%d ms=%lu heap free=%u largest=%u", first, count,
+            asked, static_cast<unsigned>(ownPictures_.size()), static_cast<unsigned>(ownPictureBytes_), ownCacheFull_ ? 1 : 0,
+            millis() - started, static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
+}
+
+// Every picture freed. The rows that pointed into them must be rebuilt (or dropped) by the caller.
+void FontDownloadActivity::releaseOwnPictures() {
+  std::vector<std::unique_ptr<OwnPicture>>().swap(ownPictures_);
+  ownPictureBytes_ = 0;
+  ownCacheFull_ = false;
 }
 
 void FontDownloadActivity::activateStoreRow(const int index) {
@@ -1967,7 +2030,6 @@ void FontDownloadActivity::render(RenderLock&&) {
 
   // The two lists by hand: the layout keeps its words and the shared skin writes them.
   if ((state_ == STORE_LIST || state_ == GROUP_LIST || state_ == FAMILY_LIST) && renderUglyList()) {
-    drawOwnNames();
     renderer.displayBuffer();
     return;
   }
@@ -2001,7 +2063,6 @@ void FontDownloadActivity::render(RenderLock&&) {
     renderer.drawCenteredText(UI_10_FONT_ID, centerY, tr(STR_LOADING_FONT_LIST));
   } else if (state_ == GROUP_LIST || state_ == STORE_LIST) {
     renderFontList();
-    drawOwnNames();
     drawListHints();
   } else if (state_ == FAMILY_LIST) {
     renderFontList();

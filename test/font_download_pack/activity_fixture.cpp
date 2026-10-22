@@ -78,6 +78,7 @@ struct FontSystem {
   void releaseReaderForDownload(Renderer&) {}
 } sdFontSystem;
 void releaseBaseSettingsList() {}
+void releaseOwnPictures() {}  // the list's own-face name pictures: none in this fixture
 namespace fui { struct ListItem {}; }
 struct HalPowerManager {
   static inline int locks = 0;

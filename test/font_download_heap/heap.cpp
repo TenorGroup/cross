@@ -72,6 +72,7 @@ struct FontSystem {
   void releaseReaderForDownload(GfxRenderer& renderer) { manager.releaseReaderForDownload(renderer); }
 } sdFontSystem;
 void releaseBaseSettingsList() {}
+void releaseOwnPictures() {}  // the list's own-face name pictures: none in this fixture
 struct RenderLock { template<class Owner> explicit RenderLock(Owner&) {} };
 struct Esp {
   uint32_t largestLimit = UINT32_MAX;

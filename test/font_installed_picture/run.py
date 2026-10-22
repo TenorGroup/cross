@@ -31,9 +31,10 @@ header = (args.repo / 'src/activities/settings/FontDownloadActivity.h').read_tex
 if args.own_off: source = source.replace('constexpr bool kOwnFontNames = true;', 'constexpr bool kOwnFontNames = false;')
 if args.outdated_on: source = source.replace('constexpr bool kPictureForOutdatedPack = false;', 'constexpr bool kPictureForOutdatedPack = true;')
 (args.out / 'struct.inc').write_text(body(header, 'struct InstalledFont') + ';\n')
+(args.out / 'own.inc').write_text(body(header, 'struct OwnPicture') + ';\n')
 helpers = ''
 if 'kPictureForOutdatedPack' not in source: helpers += 'constexpr bool kPictureForOutdatedPack = true;  // the source has no switch yet\n'
-for found in re.finditer(r'^constexpr [\w:]+ (?:kPictureForOutdatedPack|kOwnFontNames|kBlankWidth|kBlank)\b.*;$', source, re.M):
+for found in re.finditer(r'^constexpr [\w:]+ (?:kPictureForOutdatedPack|kOwnFontNames|kOwnPictureCap|kOwnPictureWidth)\b.*;$', source, re.M):
     helpers += found.group(0) + '\n'
 for signature in ['bool inStoreCatalog(', 'std::string displayName(', 'const fui::LabelImage* storePicture(',
                   'const fui::LabelImage* ownNamePicture(']:
@@ -41,7 +42,10 @@ for signature in ['bool inStoreCatalog(', 'std::string displayName(', 'const fui
 (args.out / 'helpers.inc').write_text(helpers)
 (args.out / 'methods.inc').write_text('\n'.join(body(source, signature) for signature in [
     'void FontDownloadActivity::loadInstalledList(', 'void FontDownloadActivity::rebuildStoreRowItems(',
-    'const SdCardFontFamilyInfo* FontDownloadActivity::ownNameFamily(']) + '\n')
+    'const SdCardFontFamilyInfo* FontDownloadActivity::ownNameFamily(',
+    'const FontDownloadActivity::OwnPicture* FontDownloadActivity::ownPicture(',
+    'bool FontDownloadActivity::renderOwnPicture(', 'void FontDownloadActivity::renderOwnNames(',
+    'void FontDownloadActivity::releaseOwnPictures(']) + '\n')
 test_dir = Path(__file__).resolve().parent
 command = ['c++', '-std=c++20', '-UNDEBUG', '-Wall', '-Wextra', str(test_dir / 'fixture.cpp'), '-o', str(args.out / 'fixture')]
 for directory in [args.repo / 'test/font_download_pack/stubs', args.repo / 'test/font_pack/stubs', args.repo / 'src',
