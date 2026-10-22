@@ -906,7 +906,9 @@ bool SdCardFont::load(const char* path, const LoadOptions& options) {
     if (s.intervalsShared) {
       // Aliased above; fall through to the stub/metadata setup without touching the table.
     } else if (canUseBmp16) {
-      s.bmpIntervals = psramNewArray<PerStyle::BmpInterval16>(s.header.intervalCount);
+      // A light load is the Tải font screen's, on a heap near the floor: its table goes through the door.
+      s.bmpIntervals = light ? flooredNewArray<PerStyle::BmpInterval16>(s.header.intervalCount, "SDCF intervals")
+                             : psramNewArray<PerStyle::BmpInterval16>(s.header.intervalCount);
       if (!s.bmpIntervals) {
         LOG_ERR("SDCF", "Failed to allocate compact intervals for style %u", i);
         freeAll();
@@ -923,7 +925,8 @@ bool SdCardFont::load(const char* path, const LoadOptions& options) {
       }
       s.intervalsAreBmp16 = true;
     } else {
-      s.fullIntervals = psramNewArray<EpdUnicodeInterval>(s.header.intervalCount);
+      s.fullIntervals = light ? flooredNewArray<EpdUnicodeInterval>(s.header.intervalCount, "SDCF intervals")
+                              : psramNewArray<EpdUnicodeInterval>(s.header.intervalCount);
       if (!s.fullIntervals) {
         LOG_ERR("SDCF", "Failed to allocate %u intervals for style %u", s.header.intervalCount, i);
         freeAll();

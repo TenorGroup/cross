@@ -2,6 +2,7 @@
 // which every prewarm adds, a space, an 'x') is drawn; a name with a letter the file lacks is not.
 #include <FontOwnName.h>
 #include <HalStorage.h>
+#include <HeapFloor.h>
 #include <SdCardFont.h>
 #include <gtest/gtest.h>
 
@@ -197,4 +198,50 @@ TEST(FontOwnName, SizeIsChosenFromTheXHeightBeforeAnythingIsDrawn) {
   fontownname::Picture noX;
   ASSERT_TRUE(fontownname::render("/.fonts/Fake/Fake_12.cpfont", "Geist", 300, 44, noX, accept, &asked));
   EXPECT_EQ(0, asked.xHeight);
+}
+
+namespace {
+// Names with a thousand isolated letters of a CJK own font: the interval table alone is 6 KB, over the door's 4 KB.
+void makeBigFont() {
+  auto cps = latin();
+  for (uint32_t cp = 0x4E00; cp < 0x4E00 + 2000; cp += 2) cps.insert(cp);
+  makeFont(cps);
+}
+}  // namespace
+
+TEST(FontOwnName, LightLoadOfABigIntervalTableIsRefusedByTheDoor) {
+  makeBigFont();
+  heapfloor::refuseBig = true;
+  const uint32_t refusedBefore = heapfloor::refusals.load();
+  SdCardFont light;
+  EXPECT_FALSE(light.load("/.fonts/Fake/Fake_12.cpfont", SdCardFont::LoadOptions{true, 0x01}));
+  EXPECT_GT(heapfloor::refusals.load(), refusedBefore);
+  fontownname::Picture picture;
+  EXPECT_FALSE(render("Geist", picture));
+  EXPECT_EQ(nullptr, picture.bits.get());
+  EXPECT_TRUE(picture.retry) << "the heap said no, not the face";
+  // The reader's load does not go through the door for its tables: unchanged.
+  SdCardFont full;
+  EXPECT_TRUE(full.load("/.fonts/Fake/Fake_12.cpfont"));
+  heapfloor::refuseBig = false;
+  EXPECT_TRUE(render("Geist", picture));
+  EXPECT_FALSE(picture.retry);
+}
+
+TEST(FontOwnName, OnlyTheHeapMakesAFailureWorthRetrying) {
+  makeFont(latin());
+  fontownname::Picture missing;
+  EXPECT_FALSE(render("Geist \xE4\xB8\x80", missing));  // a letter the file lacks: for good
+  EXPECT_FALSE(missing.retry);
+  fontownname::Picture tall;
+  EXPECT_FALSE(render("Geist", tall, 300, 2));
+  EXPECT_FALSE(tall.retry);
+  ESP.largestBlock = 4 * 1024;  // under the floor
+  fontownname::Picture tight;
+  EXPECT_FALSE(render("Geist", tight));
+  EXPECT_TRUE(tight.retry);
+  ESP.largestBlock = 200 * 1024;
+  fontownname::Picture later;
+  EXPECT_TRUE(render("Geist", later));
+  EXPECT_FALSE(later.retry);
 }

@@ -54,6 +54,8 @@ bool storeHostResolves() {
   const char* host = std::strstr(FONT_MANIFEST_URL, "://");
   host = host ? host + 3 : FONT_MANIFEST_URL;
   const char* end = std::strchr(host, '/');
+  const char* colon = std::strchr(host, ':');  // a build pointed at a local server may name a port
+  if (colon && (!end || colon < end)) end = colon;
   const std::string name(host, end ? static_cast<size_t>(end - host) : std::strlen(host));
   IPAddress address;
   return WiFi.hostByName(name.c_str(), address) == 1;
@@ -209,7 +211,12 @@ void FontDownloadActivity::onEnter() {
 
 // The fonts on the card, read from the registry; "Update" from the receipt of a pack against this firmware's store.
 void FontDownloadActivity::loadInstalledList() {
-  sdFontSystem.refreshIfDirty();
+  {
+    // The render task reads the registry (renderOwnNames holds a family for the length of a card read): rediscovering it
+    // waits for the frame in hand.
+    RenderLock lock(*this);
+    sdFontSystem.refreshIfDirty();
+  }
   std::vector<InstalledFont> list;
   const auto& families = sdFontSystem.registry().getFamilies();
   list.reserve(families.size());
@@ -1474,14 +1481,21 @@ bool FontDownloadActivity::renderOwnPicture(const SdCardFontFamilyInfo& family, 
     }
     return fit.best == fit.file;
   };
+  bool heapSaidNo = false;  // any draw refused by the heap: the failure is not the face's
   const auto draw = [&](const SdCardFontFileInfo* from, const fontownname::Accept accept) {
-    return fontownname::render(family.filePath(*from).c_str(), name.c_str(), kOwnPictureWidth, spec.bodyLineHeight,
-                               out.picture, accept, &fit);
+    const bool drawn = fontownname::render(family.filePath(*from).c_str(), name.c_str(), kOwnPictureWidth,
+                                           spec.bodyLineHeight, out.picture, accept, &fit);
+    heapSaidNo |= out.picture.retry;
+    return drawn;
+  };
+  const auto done = [&](const bool drawn) {
+    out.picture.retry = !drawn && heapSaidNo;
+    return drawn;
   };
   if (draw(file, fitted)) return true;
-  if (fit.best == file) return false;  // it could not draw the name, and no other size was chosen
+  if (fit.best == file) return done(false);  // it could not draw the name, and no other size was chosen
   // Another size is the better fit; if it cannot draw the name, the first one's picture stands.
-  return draw(fit.best, nullptr) || draw(file, nullptr);
+  return done(draw(fit.best, nullptr) || draw(file, nullptr));
 }
 
 // Before the list lays out rows [first, first + count): each own-face name among them is drawn once into a picture and
@@ -1512,7 +1526,7 @@ void FontDownloadActivity::renderOwnNames(const int first, const int count) {
     own->family = font.name;
     own->textSize = normalizedUiTextSize(SETTINGS.uiTextSize);
     if (!renderOwnPicture(*family, rowNames_[row], *own)) {
-      font.ownFailed = true;
+      font.ownFailed = !own->picture.retry;  // the heap's refusal passes: a later render asks again
       continue;
     }
     if (ownPictureBytes_ + own->picture.size > kOwnPictureCap) {
@@ -2053,9 +2067,7 @@ void FontDownloadActivity::render(RenderLock&&) {
   const auto centerY = (pageHeight - lineHeight) / 2;
   const auto renderFontList = [&] {
     bool firstPass = true;
-    uiTarget.setBitmapSink(keepListPicture, &listPictures_);  // where the rows' label pictures stand
     renderSettledList(activeNav(), [&] {
-      listPictures_.clear();
       if (!firstPass) {
         renderer.clearScreen();
         if (tenorchrome::x3ScreenLayoutEnabled()) drawChrome();
@@ -2065,7 +2077,6 @@ void FontDownloadActivity::render(RenderLock&&) {
       firstPass = false;
       renderUi();
     });
-    uiTarget.setBitmapSink(nullptr, nullptr);
   };
 
   if (state_ == LOADING_MANIFEST) {

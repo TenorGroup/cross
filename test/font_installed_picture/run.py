@@ -36,7 +36,7 @@ helpers = ''
 if 'kPictureForOutdatedPack' not in source: helpers += 'constexpr bool kPictureForOutdatedPack = true;  // the source has no switch yet\n'
 for found in re.finditer(r'^constexpr [\w:]+ (?:kPictureForOutdatedPack|kOwnFontNames|kOwnPictureCap|kOwnPictureWidth)\b.*;$', source, re.M):
     helpers += found.group(0) + '\n'
-for signature in ['bool inStoreCatalog(', 'std::string displayName(', 'const fui::LabelImage* storePicture(',
+for signature in ['bool storeHostResolves(', 'bool inStoreCatalog(', 'std::string displayName(', 'const fui::LabelImage* storePicture(',
                   'const fui::LabelImage* ownNamePicture(']:
     if signature in source: helpers += body(source, signature) + '\n'
 (args.out / 'helpers.inc').write_text(helpers)

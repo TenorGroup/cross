@@ -15,6 +15,9 @@ struct Picture {
   uint16_t width = 0, height = 0;
   int16_t baseline = 0;
   uint8_t xHeight = 0;
+  // Set on a false return when the heap, not the face, refused (under the floor, or a block the door gave back): the
+  // name may well draw on a later try, so the caller does not give up on the face.
+  bool retry = false;
 };
 
 // Draws `name` into `out` in the face of the .cpfont at `path`, at most `maxWidth` wide (the name is cut there) and

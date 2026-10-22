@@ -10,6 +10,7 @@
 #include <cstring>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 #include "FontStoreCatalog.h"
 #include "FontStoreNames.h"
@@ -24,7 +25,18 @@ namespace fui = freeink::ui;
 namespace shell { inline bool ugly = false; inline bool uglyParts() { return ugly; } }
 struct { uint8_t uiTextSize = 0; } SETTINGS_STATE;
 #define SETTINGS SETTINGS_STATE
-struct RenderLock { template <class T> explicit RenderLock(T&&) {} };
+int lockHeld = 0;  // RenderLocks alive: the registry is rediscovered only under one
+struct RenderLock {
+  template <class T> explicit RenderLock(T&&) { ++lockHeld; }
+  ~RenderLock() { --lockHeld; }
+};
+
+// The store's host, as the name lookup is asked it.
+const char* manifestUrl = "";
+#define FONT_MANIFEST_URL manifestUrl
+std::string looked;  // the name the last lookup was asked
+struct IPAddress {};
+struct { int hostByName(const char* name, IPAddress&) { looked = name; return 1; } } WiFi;
 
 // The card: each folder says whether it is a pack (pack.json) and whether its receipt matches the store's.
 struct Folder { bool pack; bool matches; bool vector; };
@@ -53,7 +65,7 @@ std::string SdCardFontFamilyInfo::filePath(const SdCardFontFileInfo& file, uint8
 }
 // The name renderer, scripted: what it makes of a family (by the folder in the path) and how often it was asked.
 // The x-height it reports is `xPerMille` of the point size (the UI face stands at 14, 16, 18 px for 12, 14, 16 pt).
-struct Script { bool fail = false; int xPerMille = 1150; size_t bytes = 100; };
+struct Script { bool fail = false; bool transient = false; int xPerMille = 1150; size_t bytes = 100; };
 std::map<std::string, Script> script;
 std::vector<std::string> asked;  // the path of every render
 namespace fontownname {
@@ -63,7 +75,10 @@ bool render(const char* path, const char* name, int maxWidth, int maxHeight, Pic
   const int points = std::atoi(std::strrchr(path, '/') + 1);
   const Script& how = script[folder];
   assert(name && *name && maxWidth > 0 && maxHeight > 0);
-  if (how.fail) return false;
+  if (how.fail) {
+    out.retry = how.transient;
+    return false;
+  }
   const int xHeight = (points * how.xPerMille + 500) / 1000;
   if (accept && !accept(ctx, xHeight)) {  // the size is not the one to draw with: nothing is drawn
     out.xHeight = static_cast<uint8_t>(xHeight);
@@ -81,7 +96,7 @@ bool render(const char* path, const char* name, int maxWidth, int maxHeight, Pic
 }  // namespace fontownname
 struct FontSystem {
   SdCardFontRegistry reg;
-  void refreshIfDirty() {}
+  void refreshIfDirty() { assert(lockHeld > 0); }  // the render task reads the registry under the lock
   SdCardFontRegistry& registry() { return reg; }
 } sdFontSystem;
 bool fontIsLoaded(const std::string&) { return false; }
@@ -144,6 +159,16 @@ static bool ownPictured(const fui::ListItem& item) {
 }
 
 int main() {
+  // The host the store's list is asked of is looked up alone: no scheme, no port, no path.
+  for (const auto& [url, host] : std::vector<std::pair<const char*, const char*>>{
+           {"https://store.example.vn/fonts/list.json", "store.example.vn"},
+           {"http://192.168.1.5:8080/list.json", "192.168.1.5"},
+           {"http://host:8080", "host"},
+           {"store.example.vn:81/x", "store.example.vn"},
+           {"https://store.example.vn", "store.example.vn"}}) {
+    manifestUrl = url;
+    assert(storeHostResolves() && looked == host);
+  }
   // Alegreya: the store's pack, up to date. Geist: the store's pack, an older receipt. Inter: a folder of the
   // reader's own with a store name (no pack.json). Bookerly: the reader's own font. Vec: a vector family. Empty: a
   // folder with no file of a size.
@@ -251,6 +276,27 @@ int main() {
     activity.renderOwnNames(0, activity.storeRowCount());
     assert(!activity.rowFor("Bookerly").labelImage);
     assert(asked.size() == after);
+  }
+
+  // A face the heap refused is not given up on: the words stay, and a later render asks again.
+  if (kOwnFontNames) {
+    SETTINGS.uiTextSize = 0;
+    script.clear();
+    script["Bookerly"].fail = true;
+    script["Bookerly"].transient = true;
+    asked.clear();
+    FontDownloadActivity activity;
+    sdFontSystem.reg.adopt(families);
+    activity.loadInstalledList();
+    activity.rebuildStoreRowItems();
+    activity.renderOwnNames(0, activity.storeRowCount());
+    assert(!activity.rowFor("Bookerly").labelImage);
+    for (auto& font : activity.installed_) assert(!font.ownFailed);
+    const auto first = asked.size();
+    script["Bookerly"].fail = false;
+    activity.rebuildStoreRowItems();
+    activity.renderOwnNames(0, activity.storeRowCount());
+    assert(asked.size() > first && ownPictured(activity.rowFor("Bookerly")));
   }
 
   // The cache stops at its cap: a picture that would pass it is dropped, the row and every row after keep their

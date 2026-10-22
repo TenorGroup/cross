@@ -17,11 +17,14 @@ namespace {
 constexpr size_t kNeedBytes = 12 * 1024, kBiggestBytes = 6 * 1024;
 
 bool onFloor() { return !heapfloor::crosses(ESP.getFreeHeap(), ESP.getMaxAllocHeap()); }
+// Blocks the door has refused or the heap could not give, since boot: a step that sees it move failed on the heap.
+uint32_t doorTurnedAway() { return heapfloor::refusals.load() + heapfloor::failures.load(); }
 }  // namespace
 
 bool render(const char* path, const char* name, const int maxWidth, const int maxHeight, Picture& out,
             const Accept accept, void* const ctx) {
   if (!path || !name || !*name || maxWidth <= 0 || maxHeight <= 0) return false;
+  out.retry = false;
 #ifdef TENOR_PRESS_PROBE
   const unsigned long started = millis();
   const uint32_t freeBefore = ESP.getFreeHeap(), largestBefore = ESP.getMaxAllocHeap();
@@ -49,21 +52,31 @@ bool render(const char* path, const char* name, const int maxWidth, const int ma
 #else
 #define OWN_NAME_FAIL(reason) return false
 #endif
-  if (!heapfloor::leaves(kNeedBytes, kBiggestBytes, ESP.getFreeHeap(), ESP.getMaxAllocHeap())) OWN_NAME_FAIL("no-heap");
+// A failure of the heap, not of the face: the caller asks again on a later try.
+#define OWN_NAME_RETRY(reason) \
+  do {                         \
+    out.retry = true;          \
+    OWN_NAME_FAIL(reason);     \
+  } while (0)
+  if (!heapfloor::leaves(kNeedBytes, kBiggestBytes, ESP.getFreeHeap(), ESP.getMaxAllocHeap())) OWN_NAME_RETRY("no-heap");
   std::unique_ptr<SdCardFont> font(new (std::nothrow) SdCardFont());
-  if (!font) OWN_NAME_FAIL("alloc");
+  if (!font) OWN_NAME_RETRY("alloc");
 #ifdef TENOR_PRESS_PROBE
   probed = font.get();
 #endif
-  if (!onFloor()) OWN_NAME_FAIL("floor-alloc");
+  if (!onFloor()) OWN_NAME_RETRY("floor-alloc");
   // Light load: the regular style only and no content hash (a layout-cache key this label never needs), which is
   // almost all the time a full load takes.
+  const uint32_t turnedAway = doorTurnedAway();
   const bool loaded = font->load(path, SdCardFont::LoadOptions{true, 0x01});
 #ifdef TENOR_PRESS_PROBE
   loadMs = millis() - started;
 #endif
-  if (!loaded || !font->hasStyle(0)) OWN_NAME_FAIL("load");
-  if (!onFloor()) OWN_NAME_FAIL("floor-load");
+  if (!loaded || !font->hasStyle(0)) {
+    if (doorTurnedAway() != turnedAway) OWN_NAME_RETRY("load");
+    OWN_NAME_FAIL("load");
+  }
+  if (!onFloor()) OWN_NAME_RETRY("floor-load");
   const EpdFont* regular = font->getEpdFont(0);
   if (!regular) OWN_NAME_FAIL("no-style");
   // Every letter of the name must be in the file: a missing one would draw as a box, or a fallback face's glyph. A space
@@ -83,8 +96,11 @@ bool render(const char* path, const char* name, const int maxWidth, const int ma
                      (!hasX && !regular->hasCodepoint('x'));
   // Regular style only, no kern or ligature tables: a short label.
   const int missed = font->prewarm((std::string(name) + 'x').c_str(), 0x01, false, false);
-  if (missed < 0 || missed > absent) OWN_NAME_FAIL("prewarm");
-  if (!onFloor()) OWN_NAME_FAIL("floor-prewarm");
+  if (missed < 0 || missed > absent) {
+    if (doorTurnedAway() != turnedAway) OWN_NAME_RETRY("prewarm");
+    OWN_NAME_FAIL("prewarm");
+  }
+  if (!onFloor()) OWN_NAME_RETRY("floor-prewarm");
   const EpdGlyph* ex = regular->hasCodepoint('x') ? regular->getGlyph('x') : nullptr;
   if (accept && !accept(ctx, ex ? ex->height : 0)) {
     out.xHeight = ex ? ex->height : 0;
@@ -123,8 +139,8 @@ bool render(const char* path, const char* name, const int maxWidth, const int ma
   if (height > maxHeight) OWN_NAME_FAIL("tall");
   const size_t rowBytes = static_cast<size_t>(width + 7) / 8, size = rowBytes * height;
   std::unique_ptr<uint8_t[]> bits(new (std::nothrow) uint8_t[size]());
-  if (!bits) OWN_NAME_FAIL("alloc-bits");
-  if (!onFloor()) OWN_NAME_FAIL("floor-bits");
+  if (!bits) OWN_NAME_RETRY("alloc-bits");
+  if (!onFloor()) OWN_NAME_RETRY("floor-bits");
   walk(passed, [&](const int x, const EpdGlyph& glyph) {
     if (!glyph.dataLength) return true;
     const uint8_t* bitmap = font->isOverflowGlyph(&glyph) ? font->getOverflowBitmap(&glyph) : data->bitmap + glyph.dataOffset;
@@ -154,6 +170,7 @@ bool render(const char* path, const char* name, const int maxWidth, const int ma
 #endif
 }
 
+#undef OWN_NAME_RETRY
 #undef OWN_NAME_FAIL
 
 }  // namespace fontownname
