@@ -298,6 +298,25 @@ int main() {
     activity.renderOwnNames(0, activity.storeRowCount());
     assert(asked.size() > first && ownPictured(activity.rowFor("Bookerly")));
   }
+  // A refusal that does not pass: asked twice, then the row keeps its words for the visit (no reload per render).
+  if (kOwnFontNames) {
+    SETTINGS.uiTextSize = 0;
+    script.clear();
+    script["Bookerly"].fail = true;
+    script["Bookerly"].transient = true;
+    asked.clear();
+    FontDownloadActivity activity;
+    sdFontSystem.reg.adopt(families);
+    activity.loadInstalledList();
+    size_t bookerlyAsks = 0;
+    for (int render = 0; render < 5; ++render) {
+      const auto before = asked.size();
+      activity.rebuildStoreRowItems();
+      activity.renderOwnNames(0, activity.storeRowCount());
+      for (size_t i = before; i < asked.size(); ++i) bookerlyAsks += asked[i].find("Bookerly") != std::string::npos;
+    }
+    assert(bookerlyAsks == 2 && !activity.rowFor("Bookerly").labelImage);
+  }
 
   // The cache stops at its cap: a picture that would pass it is dropped, the row and every row after keep their
   // words, and nothing is rendered again once it is full.

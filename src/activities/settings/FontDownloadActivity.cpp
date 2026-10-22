@@ -1526,7 +1526,8 @@ void FontDownloadActivity::renderOwnNames(const int first, const int count) {
     own->family = font.name;
     own->textSize = normalizedUiTextSize(SETTINGS.uiTextSize);
     if (!renderOwnPicture(*family, rowNames_[row], *own)) {
-      font.ownFailed = !own->picture.retry;  // the heap's refusal passes: a later render asks again
+      // The heap's refusal may pass, so a later render asks again, twice at most.
+      font.ownFailed = !own->picture.retry || ++font.ownRefused >= 2;
       continue;
     }
     if (ownPictureBytes_ + own->picture.size > kOwnPictureCap) {

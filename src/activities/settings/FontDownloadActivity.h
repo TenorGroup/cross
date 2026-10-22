@@ -113,6 +113,8 @@ class FontDownloadActivity final : public UiListActivity {
     // A font with no store picture shows its name in its own face (fontownname), as a picture kept in ownPictures_.
     // ownFailed: the face could not draw it once, the row keeps its words.
     bool ownFailed = false;
+    // Heap refusals so far: two, and the row keeps its words for this visit (a render must not reload it forever).
+    uint8_t ownRefused = 0;
   };
   // The name of a font in its own face, drawn once per screen and kept (renderOwnNames): the row's labelImage, the same
   // kind of picture as a store font's. Keyed by the family's name and the UI text size it was drawn for.
