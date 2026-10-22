@@ -41,6 +41,12 @@ class SdCardFont {
   // Supports v4 (multi-style) format.
   // Returns true on success.
   bool load(const char* path);
+
+  struct LoadOptions {
+    bool light = false;
+    uint8_t styleMask = 0x0F;
+  };
+  bool load(const char* path, const LoadOptions&) { return load(path); }  // RED STUB: ignores the options
   bool matchesBuiltinLayout(const EpdFontFamily& builtin) const;
 
   // Pre-read glyphs needed for the given UTF-8 text from SD card.

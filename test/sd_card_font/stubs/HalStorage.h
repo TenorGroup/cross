@@ -7,6 +7,7 @@
 
 inline std::vector<uint8_t> sdFontTestFile;
 inline size_t sdFontTestReads = 0;
+inline size_t sdFontTestBytes = 0;  // bytes handed out by read()
 
 struct SdFontTestEsp {
   size_t largestBlock = 200 * 1024;
@@ -28,6 +29,7 @@ class HalFile {
     std::memcpy(output, sdFontTestFile.data() + position_, count);
     position_ += count;
     sdFontTestReads++;
+    sdFontTestBytes += count;
     return static_cast<int>(count);
   }
   void close() { opened_ = false; }

@@ -661,3 +661,155 @@ TEST(SdCardFontTest, AnEmptyOrFailedAdvanceBuildLeavesNoTable) {
   ASSERT_EQ(0, font.buildAdvanceTable(page(FIRST, 10).c_str(), 1));
   EXPECT_TRUE(font.hasAdvanceTable());
 }
+
+// --- Light load: a font's name in its own face ---
+
+namespace {
+// A four-style 1-bit .cpfont of U+0020..U+017F, the size of a real Latin pack's tables: per style a glyph table, kern
+// class tables with a matrix, a ligature pair and 8-byte bitmaps that differ by style and glyph. Header 32 bytes, four
+// style entries of 32, then each style's intervals, glyphs, kern left, kern right, matrix, ligatures, bitmaps.
+constexpr uint32_t MULTI_FIRST = 0x20, MULTI_GLYPHS = 0x180 - 0x20, MULTI_KERN = 150;
+constexpr uint8_t MULTI_CLASSES = 12;
+constexpr size_t MULTI_BITMAP = 8;
+
+uint8_t multiBitmapByte(uint8_t style, uint32_t index, size_t at) { return static_cast<uint8_t>(style * 61 + index * 7 + at); }
+
+void makeMultiStyleFont() {
+  const size_t kernBytes = MULTI_KERN * sizeof(EpdKernClassEntry), matrixBytes = MULTI_CLASSES * MULTI_CLASSES;
+  const size_t styleBytes = 12 + MULTI_GLYPHS * sizeof(EpdGlyph) + 2 * kernBytes + matrixBytes + sizeof(EpdLigaturePair) +
+                            MULTI_GLYPHS * MULTI_BITMAP;
+  sdFontTestFile.assign(32 + 4 * 32 + 4 * styleBytes, 0);
+  std::memcpy(sdFontTestFile.data(), "CPFONT\0\0", 8);
+  put16(8, CPFONT_VERSION);
+  sdFontTestFile[12] = 4;
+  for (uint8_t style = 0; style < 4; ++style) {
+    const size_t toc = 32 + style * 32, base = 32 + 4 * 32 + style * styleBytes;
+    sdFontTestFile[toc] = style;
+    put32(toc + 4, 1);
+    put32(toc + 8, MULTI_GLYPHS);
+    sdFontTestFile[toc + 12] = 20 + style;
+    put16(toc + 13, 16);
+    put16(toc + 15, static_cast<uint16_t>(-4));
+    put16(toc + 17, MULTI_KERN);
+    put16(toc + 19, MULTI_KERN);
+    sdFontTestFile[toc + 21] = sdFontTestFile[toc + 22] = MULTI_CLASSES;
+    sdFontTestFile[toc + 23] = 1;
+    put32(toc + 24, static_cast<uint32_t>(base));
+    put16(toc + 28, 15);
+    put32(base, MULTI_FIRST);
+    put32(base + 4, MULTI_FIRST + MULTI_GLYPHS - 1);
+    put32(base + 8, 0);
+    const size_t glyphAt = base + 12, kernAt = glyphAt + MULTI_GLYPHS * sizeof(EpdGlyph);
+    const size_t matrixAt = kernAt + 2 * kernBytes, ligAt = matrixAt + matrixBytes, bitmapAt = ligAt + sizeof(EpdLigaturePair);
+    for (uint32_t i = 0; i < MULTI_GLYPHS; ++i) {
+      EpdGlyph glyph{};
+      glyph.width = 8;
+      glyph.height = MULTI_FIRST + i == 'x' ? 5 : 8;
+      glyph.advanceX = static_cast<uint16_t>((6 + i % 5) << 4);
+      glyph.top = glyph.height;
+      glyph.dataLength = MULTI_BITMAP;
+      glyph.dataOffset = i * MULTI_BITMAP;
+      std::memcpy(sdFontTestFile.data() + glyphAt + i * sizeof(glyph), &glyph, sizeof(glyph));
+      for (size_t at = 0; at < MULTI_BITMAP; ++at) sdFontTestFile[bitmapAt + i * MULTI_BITMAP + at] = multiBitmapByte(style, i, at);
+    }
+    for (uint32_t side = 0; side < 2; ++side)
+      for (uint32_t i = 0; i < MULTI_KERN; ++i) {
+        put16(kernAt + side * kernBytes + i * 3, static_cast<uint16_t>(MULTI_FIRST + i));
+        sdFontTestFile[kernAt + side * kernBytes + i * 3 + 2] = static_cast<uint8_t>(1 + (i + side + style) % MULTI_CLASSES);
+      }
+    for (size_t i = 0; i < matrixBytes; ++i) sdFontTestFile[matrixAt + i] = static_cast<uint8_t>(i * 3 + style);
+    put32(ligAt, 'f' << 16 | 'i');
+    put32(ligAt + 4, 0xFB01);
+  }
+}
+
+// What a drawing needs of a prewarmed regular (or other) style: the glyph record of each codepoint and its bitmap.
+std::vector<uint8_t> prewarmed(SdCardFont& font, uint8_t style, const char* text) {
+  std::vector<uint8_t> out;
+  const auto* face = font.getEpdFont(style);
+  for (const char* at = text; *at; ++at) {
+    const EpdGlyph* glyph = face->hasCodepoint(*at) ? face->getGlyph(*at) : nullptr;
+    EXPECT_NE(nullptr, glyph) << *at;
+    if (!glyph) continue;
+    const auto* bytes = reinterpret_cast<const uint8_t*>(glyph);
+    out.insert(out.end(), bytes, bytes + sizeof(EpdGlyph));
+    const uint8_t* bitmap = font.isOverflowGlyph(glyph) ? font.getOverflowBitmap(glyph) : face->data->bitmap + glyph->dataOffset;
+    out.insert(out.end(), bitmap, bitmap + glyph->dataLength);
+  }
+  return out;
+}
+
+size_t bytesOfLoad(SdCardFont& font, const SdCardFont::LoadOptions* options) {
+  sdFontTestBytes = 0;
+  const bool ok = options ? font.load("fixture", *options) : font.load("fixture");
+  EXPECT_TRUE(ok);
+  return sdFontTestBytes;
+}
+}  // namespace
+
+TEST(SdCardFontTest, DefaultLoadKeepsItsContentHash) {
+  // Pinned from the code before the light mode: the reader's layout caches are keyed by it.
+  makeMultiStyleFont();
+  SdCardFont font;
+  ASSERT_TRUE(font.load("fixture"));
+  EXPECT_EQ(0xF5B95A83u, font.contentHash());
+  EXPECT_EQ(4, font.styleCount());
+  SdCardFont same;
+  ASSERT_TRUE(same.load("fixture", SdCardFont::LoadOptions{}));  // the options' default is the full load
+  EXPECT_EQ(font.contentHash(), same.contentHash());
+}
+
+TEST(SdCardFontTest, LightLoadReadsAFractionOfAFullLoadAndDrawsTheSame) {
+  makeMultiStyleFont();
+  SdCardFont full;
+  const size_t fullBytes = bytesOfLoad(full, nullptr);
+  SdCardFont light;
+  const SdCardFont::LoadOptions regular{true, 0x01};
+  const size_t lightBytes = bytesOfLoad(light, &regular);
+  std::printf("multi-style fixture: %zu bytes in the file, full load read %zu, light load read %zu\n",
+              sdFontTestFile.size(), fullBytes, lightBytes);
+  EXPECT_LT(lightBytes * 4, fullBytes);
+  EXPECT_EQ(0u, light.contentHash());
+  EXPECT_TRUE(light.hasStyle(0));
+  EXPECT_EQ(1, light.styleCount());
+
+  // prewarm(name, regular, with bitmaps, no kern/ligature): what the name renderer asks.
+  const char* name = "Hello, world fix x";
+  const int missedFull = full.prewarm(name, 0x01, false, false);
+  const int missedLight = light.prewarm(name, 0x01, false, false);
+  EXPECT_EQ(missedFull, missedLight);
+  const EpdFontData* a = full.getEpdFont(0)->data;
+  const EpdFontData* b = light.getEpdFont(0)->data;
+  EXPECT_EQ(a->advanceY, b->advanceY);
+  EXPECT_EQ(a->ascender, b->ascender);
+  EXPECT_EQ(a->descender, b->descender);
+  EXPECT_EQ(a->is2Bit, b->is2Bit);
+  EXPECT_EQ(full.maxInkTop(0), light.maxInkTop(0));
+  EXPECT_EQ(prewarmed(full, 0, name), prewarmed(light, 0, name));
+  EXPECT_FALSE(prewarmed(light, 0, name).empty());
+  for (uint32_t cp : {0x1Fu, 0x20u, 0x17Fu, 0x180u}) EXPECT_EQ(full.getEpdFont(0)->hasCodepoint(cp), light.getEpdFont(0)->hasCodepoint(cp)) << cp;
+}
+
+TEST(SdCardFontTest, LightLoadOfAnotherStyleServesThatStyleOnly) {
+  makeMultiStyleFont();
+  SdCardFont full;
+  ASSERT_TRUE(full.load("fixture"));
+  SdCardFont light;
+  const SdCardFont::LoadOptions bold{true, 0x02};
+  ASSERT_TRUE(light.load("fixture", bold));
+  EXPECT_TRUE(light.hasStyle(1));
+  EXPECT_FALSE(light.hasStyle(0));
+  EXPECT_EQ(full.prewarm("Bold x", 0x02, false, false), light.prewarm("Bold x", 0x02, false, false));
+  EXPECT_EQ(prewarmed(full, 1, "Bold x"), prewarmed(light, 1, "Bold x"));
+  // A style the file has, but not the one asked for, is not set up.
+  EXPECT_EQ(nullptr, light.getEpdFont(0));
+}
+
+TEST(SdCardFontTest, LightLoadOfStylesTheFileLacksFails) {
+  makeMultiStyleFont();
+  sdFontTestFile[12] = 1;  // the TOC now lists the regular style alone
+  SdCardFont font;
+  EXPECT_FALSE(font.load("fixture", SdCardFont::LoadOptions{true, 0x0C}));
+  EXPECT_FALSE(font.hasStyle(0));
+  EXPECT_TRUE(font.load("fixture", SdCardFont::LoadOptions{true, 0x01}));
+}

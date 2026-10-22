@@ -23,6 +23,13 @@ struct Picture {
 // stays in memory. False, with `out` untouched, when the file does not load, lacks a letter of the name (a space is
 // never a reason: it is a gap), the name is taller than `maxHeight`, or the heap would fall under the floor
 // (heapfloor::kFreeFloor / kLargestFloor): the caller writes words.
-bool render(const char* path, const char* name, int maxWidth, int maxHeight, Picture& out);
+//
+// accept (optional): asked with `ctx` and the x-height of the file's size (0 when the file has no x), after the file is
+// loaded and the name warmed but before anything is drawn. False: this size is not the one to draw with; render returns
+// false at once with `out.xHeight` set and `out.bits` null, the caller draws with another file (one load for a size that
+// is right, no drawing for one that is not).
+using Accept = bool (*)(void* ctx, int xHeight);
+bool render(const char* path, const char* name, int maxWidth, int maxHeight, Picture& out, Accept accept = nullptr,
+            void* ctx = nullptr);
 
 }  // namespace fontownname

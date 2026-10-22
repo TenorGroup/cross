@@ -141,3 +141,60 @@ TEST(FontOwnName, NameTallerOrWiderThanTheRowIsCutOrRefused) {
   EXPECT_LE(picture.width, 40);
   EXPECT_GT(picture.width, 30);
 }
+
+// A font of the whole Latin-1 and Latin Extended-A range: a glyph table far bigger than the name needs of it.
+TEST(FontOwnName, NameIsDrawnWithoutReadingTheGlyphTableOrTheKernArea) {
+  auto cps = latin();
+  for (uint32_t cp = 0xC0; cp < 0x180; ++cp) cps.insert(cp);
+  for (uint32_t cp = 0x400; cp < 0x500; ++cp) cps.insert(cp);
+  makeFont(cps);
+  fontownname::Picture picture;
+  sdFontTestBytes = 0;
+  ASSERT_TRUE(render("Be Vietnam Pro", picture));
+  EXPECT_LT(sdFontTestBytes, cps.size() * sizeof(EpdGlyph) / 2) << "of " << cps.size() * sizeof(EpdGlyph) << " B of glyph table";
+  EXPECT_EQ(12 * 6 + 2 * 3 - 1, picture.width);  // the same picture as ever
+  std::printf("own-name render read %zu B (glyph table %zu B, file %zu B)\n", sdFontTestBytes,
+              cps.size() * sizeof(EpdGlyph), sdFontTestFile.size());
+}
+
+namespace {
+struct Asked {
+  int calls = 0, xHeight = -1;
+  bool answer = true;
+};
+bool accept(void* ctx, int xHeight) {
+  auto* asked = static_cast<Asked*>(ctx);
+  ++asked->calls;
+  asked->xHeight = xHeight;
+  return asked->answer;
+}
+}  // namespace
+
+TEST(FontOwnName, SizeIsChosenFromTheXHeightBeforeAnythingIsDrawn) {
+  makeFont(latin());
+  Asked asked;
+  fontownname::Picture picture;
+  ASSERT_TRUE(fontownname::render("/.fonts/Fake/Fake_12.cpfont", "Geist", 300, 44, picture, accept, &asked));
+  EXPECT_EQ(1, asked.calls);
+  EXPECT_EQ(4, asked.xHeight);
+  EXPECT_EQ(4, picture.xHeight);
+  EXPECT_NE(nullptr, picture.bits.get());
+
+  asked = {};
+  asked.answer = false;
+  fontownname::Picture declined;
+  EXPECT_FALSE(fontownname::render("/.fonts/Fake/Fake_12.cpfont", "Geist", 300, 44, declined, accept, &asked));
+  EXPECT_EQ(1, asked.calls);
+  EXPECT_EQ(4, declined.xHeight);
+  EXPECT_EQ(nullptr, declined.bits.get());
+  EXPECT_EQ(0u, declined.size);
+
+  // A file without an x reports 0 and is still asked.
+  auto cps = latin();
+  cps.erase('x');
+  makeFont(cps);
+  asked = {};
+  fontownname::Picture noX;
+  ASSERT_TRUE(fontownname::render("/.fonts/Fake/Fake_12.cpfont", "Geist", 300, 44, noX, accept, &asked));
+  EXPECT_EQ(0, asked.xHeight);
+}

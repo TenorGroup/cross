@@ -19,7 +19,7 @@ constexpr size_t kNeedBytes = 12 * 1024, kBiggestBytes = 6 * 1024;
 bool onFloor() { return !heapfloor::crosses(ESP.getFreeHeap(), ESP.getMaxAllocHeap()); }
 }  // namespace
 
-bool render(const char* path, const char* name, const int maxWidth, const int maxHeight, Picture& out) {
+bool render(const char* path, const char* name, const int maxWidth, const int maxHeight, Picture& out, Accept, void*) {
   if (!path || !name || !*name || maxWidth <= 0 || maxHeight <= 0) return false;
 #ifdef TENOR_PRESS_PROBE
   const unsigned long started = millis();
