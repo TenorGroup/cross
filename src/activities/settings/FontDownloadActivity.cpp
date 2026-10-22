@@ -1447,32 +1447,41 @@ const FontDownloadActivity::OwnPicture* FontDownloadActivity::ownPicture(const s
   return nullptr;
 }
 
-// The name in the family's own face, once. The file nearest the UI size draws it first. The store's pictures are fitted to
-// the x-height of the UI face (scripts/gen_font_names.py); a .cpfont has whole sizes only, so the folder's size whose
-// x-height, scaled from the first picture's, lands nearest the UI face's draws it again (when that is a better size).
+// The name in the family's own face, once. The file nearest the UI size is loaded first. The store's pictures are fitted
+// to the x-height of the UI face (scripts/gen_font_names.py); a .cpfont has whole sizes only, so from the x-height that
+// file reports, the folder's size whose x-height, scaled, lands nearest the UI face's is chosen before anything is drawn:
+// the first file draws the name when it is that size (one load, the usual case), else the chosen file does.
 bool FontDownloadActivity::renderOwnPicture(const SdCardFontFamilyInfo& family, const std::string& name, OwnPicture& out) {
   const UITextSizeSpec spec = uiTextSizeSpec(SETTINGS.uiTextSize);
   const SdCardFontFileInfo* file = family.findNearestSize(spec.bodyPointSize);
-  if (!file || !fontownname::render(family.filePath(*file).c_str(), name.c_str(), kOwnPictureWidth, spec.bodyLineHeight,
-                                    out.picture))
-    return false;
-  const int want = fontstore::NAME_XHEIGHT_UI[normalizedUiTextSize(SETTINGS.uiTextSize)], measured = out.picture.xHeight;
-  const SdCardFontFileInfo* best = file;
-  int bestGap = std::abs(measured - want);
-  for (const auto& other : family.files) {
-    if (!measured) break;  // the face has no x to measure by
-    if (!other.pointSize) continue;
-    const int gap = std::abs((measured * other.pointSize + file->pointSize / 2) / file->pointSize - want);
-    if (gap < bestGap) {
-      best = &other;
-      bestGap = gap;
+  if (!file) return false;
+  struct Fit {
+    const SdCardFontFamilyInfo& family;
+    const SdCardFontFileInfo *file, *best;
+    int want;
+  } fit{family, file, file, fontstore::NAME_XHEIGHT_UI[normalizedUiTextSize(SETTINGS.uiTextSize)]};
+  const auto fitted = [](void* ctx, const int measured) {
+    Fit& fit = *static_cast<Fit*>(ctx);
+    int bestGap = std::abs(measured - fit.want);
+    for (const auto& other : fit.family.files) {
+      if (!measured) break;  // the face has no x to measure by
+      if (!other.pointSize) continue;
+      const int gap = std::abs((measured * other.pointSize + fit.file->pointSize / 2) / fit.file->pointSize - fit.want);
+      if (gap < bestGap) {
+        fit.best = &other;
+        bestGap = gap;
+      }
     }
-  }
-  fontownname::Picture again;
-  if (best != file && fontownname::render(family.filePath(*best).c_str(), name.c_str(), kOwnPictureWidth,
-                                          spec.bodyLineHeight, again))
-    out.picture = std::move(again);
-  return true;
+    return fit.best == fit.file;
+  };
+  const auto draw = [&](const SdCardFontFileInfo* from, const fontownname::Accept accept) {
+    return fontownname::render(family.filePath(*from).c_str(), name.c_str(), kOwnPictureWidth, spec.bodyLineHeight,
+                               out.picture, accept, &fit);
+  };
+  if (draw(file, fitted)) return true;
+  if (fit.best == file) return false;  // it could not draw the name, and no other size was chosen
+  // Another size is the better fit; if it cannot draw the name, the first one's picture stands.
+  return draw(fit.best, nullptr) || draw(file, nullptr);
 }
 
 // Before the list lays out rows [first, first + count): each own-face name among them is drawn once into a picture and

@@ -20,9 +20,9 @@ struct Picture {
 // Draws `name` into `out` in the face of the .cpfont at `path`, at most `maxWidth` wide (the name is cut there) and
 // `maxHeight` high. Loads the file, warms the name's glyphs, rasterizes them (2-bit glyphs at the first level of grey and
 // up, the cut gen_font_names.py makes for the store's pictures), unloads: the card is read once and nothing of the font
-// stays in memory. False, with `out` untouched, when the file does not load, lacks a letter of the name (a space is
-// never a reason: it is a gap), the name is taller than `maxHeight`, or the heap would fall under the floor
-// (heapfloor::kFreeFloor / kLargestFloor): the caller writes words.
+// stays in memory (a light load: the regular style only, no content hash). False, with `out` untouched, when the file
+// does not load, lacks a letter of the name (a space is never a reason: it is a gap), the name is taller than
+// `maxHeight`, or the heap would fall under the floor (heapfloor::kFreeFloor / kLargestFloor): the caller writes words.
 //
 // accept (optional): asked with `ctx` and the x-height of the file's size (0 when the file has no x), after the file is
 // loaded and the name warmed but before anything is drawn. False: this size is not the one to draw with; render returns

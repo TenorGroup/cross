@@ -635,7 +635,11 @@ void SdCardFont::computeStyleFileOffsets(PerStyle& s, uint32_t baseOffset) {
 
 // --- Load ---
 
-bool SdCardFont::load(const char* path) {
+bool SdCardFont::load(const char* path) { return load(path, LoadOptions{}); }
+
+bool SdCardFont::load(const char* path, const LoadOptions& options) {
+  const bool light = options.light;
+  const uint8_t wanted = light ? options.styleMask : 0x0F;
   freeAll();
   if (strlen(path) >= sizeof(filePath_)) {
     LOG_ERR("SDCF", "Path too long (%zu bytes, max %zu)", strlen(path), sizeof(filePath_) - 1);
@@ -700,6 +704,8 @@ bool SdCardFont::load(const char* path) {
       return false;
     }
 
+    if (!(wanted & (1u << styleId))) continue;  // a light load leaves the style out altogether
+
     auto& s = styles_[styleId];
     s.present = true;
     s.header.intervalCount = readU32(tocBuf + 4);
@@ -739,9 +745,19 @@ bool SdCardFont::load(const char* path) {
     computeStyleFileOffsets(s, dataOffset);
   }
 
-  styleCount_ = styleCount;
+  if (light) {
+    styleCount_ = 0;
+    for (const auto& s : styles_) styleCount_ += s.present;
+    if (!styleCount_) {
+      LOG_ERR("SDCF", "None of the styles asked for (0x%02X) is in the file", wanted);
+      freeAll();
+      return false;
+    }
+  } else {
+    styleCount_ = styleCount;
+  }
   uint8_t layoutBuffer[512];
-  for (uint8_t style = 0; style < MAX_STYLES; ++style) {
+  for (uint8_t style = 0; style < MAX_STYLES && !light; ++style) {
     const auto& data = styles_[style];
     if (!data.present) continue;
     if (!file.seekSet(data.intervalsFileOffset)) {
@@ -780,7 +796,7 @@ bool SdCardFont::load(const char* path) {
       remaining -= count;
     }
   }
-  contentHash_ = hash;
+  contentHash_ = light ? 0 : hash;
 
   // Load full intervals into RAM for each present style. BMP-only fonts with
   // fewer than 65536 glyphs use a compact 6-byte interval table instead of the

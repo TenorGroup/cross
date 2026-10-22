@@ -57,20 +57,25 @@ struct Script { bool fail = false; int xPerMille = 1150; size_t bytes = 100; };
 std::map<std::string, Script> script;
 std::vector<std::string> asked;  // the path of every render
 namespace fontownname {
-bool render(const char* path, const char* name, int maxWidth, int maxHeight, Picture& out) {
+bool render(const char* path, const char* name, int maxWidth, int maxHeight, Picture& out, Accept accept, void* ctx) {
   asked.push_back(path);
   const std::string folder = std::string(path).substr(8, std::string(path).rfind('/') - 8);
   const int points = std::atoi(std::strrchr(path, '/') + 1);
   const Script& how = script[folder];
   assert(name && *name && maxWidth > 0 && maxHeight > 0);
   if (how.fail) return false;
+  const int xHeight = (points * how.xPerMille + 500) / 1000;
+  if (accept && !accept(ctx, xHeight)) {  // the size is not the one to draw with: nothing is drawn
+    out.xHeight = static_cast<uint8_t>(xHeight);
+    return false;
+  }
   out.bits.reset(new uint8_t[how.bytes]);
   std::memset(out.bits.get(), 0xFF, how.bytes);
   out.size = how.bytes;
   out.width = static_cast<uint16_t>(points * 10);  // tells which size drew it
   out.height = static_cast<uint16_t>(maxHeight - 4);
   out.baseline = 15;
-  out.xHeight = static_cast<uint8_t>((points * how.xPerMille + 500) / 1000);
+  out.xHeight = static_cast<uint8_t>(xHeight);
   return true;
 }
 }  // namespace fontownname

@@ -19,19 +19,21 @@ constexpr size_t kNeedBytes = 12 * 1024, kBiggestBytes = 6 * 1024;
 bool onFloor() { return !heapfloor::crosses(ESP.getFreeHeap(), ESP.getMaxAllocHeap()); }
 }  // namespace
 
-bool render(const char* path, const char* name, const int maxWidth, const int maxHeight, Picture& out, Accept, void*) {
+bool render(const char* path, const char* name, const int maxWidth, const int maxHeight, Picture& out,
+            const Accept accept, void* const ctx) {
   if (!path || !name || !*name || maxWidth <= 0 || maxHeight <= 0) return false;
 #ifdef TENOR_PRESS_PROBE
   const unsigned long started = millis();
   const uint32_t freeBefore = ESP.getFreeHeap(), largestBefore = ESP.getMaxAllocHeap();
   const SdCardFont* probed = nullptr;
+  unsigned long loadMs = 0;
   const char* why = "drawn";
   const Picture* made = nullptr;
   const auto log = [&](const bool ok) {
     const SdCardFont::Stats stats = probed ? probed->getStats() : SdCardFont::Stats{};
-    LOG_INF("FONT", "own-name %s ok=%d why=%s ms=%lu sdReadMs=%u seeks=%u prewarmMs=%u glyphs=%u bitmapB=%u pic=%ux%u/%uB "
-                    "heap free=%u->%u largest=%u->%u",
-            path, ok ? 1 : 0, why, millis() - started, static_cast<unsigned>(stats.sdReadTimeMs),
+    LOG_INF("FONT", "own-name %s ok=%d why=%s ms=%lu load=%lu sdReadMs=%u seeks=%u prewarmMs=%u glyphs=%u bitmapB=%u "
+                    "pic=%ux%u/%uB heap free=%u->%u largest=%u->%u",
+            path, ok ? 1 : 0, why, millis() - started, loadMs, static_cast<unsigned>(stats.sdReadTimeMs),
             static_cast<unsigned>(stats.seekCount), static_cast<unsigned>(stats.prewarmTotalMs),
             static_cast<unsigned>(stats.uniqueGlyphs), static_cast<unsigned>(stats.bitmapBytes),
             made ? made->width : 0u, made ? made->height : 0u, made ? static_cast<unsigned>(made->size) : 0u,
@@ -54,7 +56,13 @@ bool render(const char* path, const char* name, const int maxWidth, const int ma
   probed = font.get();
 #endif
   if (!onFloor()) OWN_NAME_FAIL("floor-alloc");
-  if (!font->load(path) || !font->hasStyle(0)) OWN_NAME_FAIL("load");
+  // Light load: the regular style only and no content hash (a layout-cache key this label never needs), which is
+  // almost all the time a full load takes.
+  const bool loaded = font->load(path, SdCardFont::LoadOptions{true, 0x01});
+#ifdef TENOR_PRESS_PROBE
+  loadMs = millis() - started;
+#endif
+  if (!loaded || !font->hasStyle(0)) OWN_NAME_FAIL("load");
   if (!onFloor()) OWN_NAME_FAIL("floor-load");
   const EpdFont* regular = font->getEpdFont(0);
   if (!regular) OWN_NAME_FAIL("no-style");
@@ -77,6 +85,11 @@ bool render(const char* path, const char* name, const int maxWidth, const int ma
   const int missed = font->prewarm((std::string(name) + 'x').c_str(), 0x01, false, false);
   if (missed < 0 || missed > absent) OWN_NAME_FAIL("prewarm");
   if (!onFloor()) OWN_NAME_FAIL("floor-prewarm");
+  const EpdGlyph* ex = regular->hasCodepoint('x') ? regular->getGlyph('x') : nullptr;
+  if (accept && !accept(ctx, ex ? ex->height : 0)) {
+    out.xHeight = ex ? ex->height : 0;
+    OWN_NAME_FAIL("other-size");
+  }
 
   // The glyphs in place: left to right along the baseline, each step the last glyph's advance snapped to a pixel as the
   // renderer does (no kern: none was loaded). Calls each(x, glyph) for a glyph with ink; false from it stops the walk
@@ -127,7 +140,6 @@ bool render(const char* path, const char* name, const int maxWidth, const int ma
     }
     return true;
   });
-  const EpdGlyph* ex = regular->hasCodepoint('x') ? regular->getGlyph('x') : nullptr;
   out.bits = std::move(bits);
   out.size = size;
   out.width = static_cast<uint16_t>(width);

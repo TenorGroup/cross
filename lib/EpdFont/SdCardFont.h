@@ -43,10 +43,16 @@ class SdCardFont {
   bool load(const char* path);
 
   struct LoadOptions {
+    // Light load, for a one-off label (a font's name in its own face) that is drawn and dropped: only the styles in
+    // `styleMask` are set up, and nothing that only the content hash needs is read (the whole glyph table and the kern
+    // area, per style). Prewarm, glyph lookup and bitmaps work as after a full load. contentHash() is 0 and
+    // matchesBuiltinLayout() false: never register a light-loaded font with a layout cache. `styleMask` is read only
+    // when `light` is set.
     bool light = false;
     uint8_t styleMask = 0x0F;
   };
-  bool load(const char* path, const LoadOptions&) { return load(path); }  // RED STUB: ignores the options
+  // False too when `light` asks for styles the file lacks entirely.
+  bool load(const char* path, const LoadOptions& options);
   bool matchesBuiltinLayout(const EpdFontFamily& builtin) const;
 
   // Pre-read glyphs needed for the given UTF-8 text from SD card.
@@ -161,6 +167,7 @@ class SdCardFont {
 
   // Content hash of the file header + style TOC entries (computed during load).
   // Used to generate deterministic font IDs for section cache invalidation.
+  // 0 after a light load (LoadOptions::light): such a font must not key a cache.
   uint32_t contentHash() const { return contentHash_; }
 
  private:
