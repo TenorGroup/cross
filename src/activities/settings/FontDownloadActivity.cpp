@@ -49,6 +49,15 @@ namespace fui = freeink::ui;
 namespace {
 // The store's fonts are named by their folder (BeVietnamPro); the reader sees "Be Vietnam Pro". A font of the
 // reader's own keeps the name it was given.
+// The host of the store's list answers a name lookup (Wi-Fi is up by then).
+bool storeHostResolves() {
+  const char* host = std::strstr(FONT_MANIFEST_URL, "://");
+  host = host ? host + 3 : FONT_MANIFEST_URL;
+  const char* end = std::strchr(host, '/');
+  const std::string name(host, end ? static_cast<size_t>(end - host) : std::strlen(host));
+  IPAddress address;
+  return WiFi.hostByName(name.c_str(), address) == 1;
+}
 bool inStoreCatalog(const char* name) {
   for (size_t i = 0; i < fontstore::PACK_COUNT; ++i)
     if (std::strcmp(name, fontstore::PACKS[i].name) == 0) return true;
@@ -67,8 +76,8 @@ const fui::LabelImage* nameImage(const char* name) {
 // The installed list draws a store pack's name from the store's picture when the pack is the store's current one
 // (receipt matches: "Installed") and, with this on, also when it is an older one ("Update"): the folder is still a
 // pack of the store's format with the store's name, so the picture is that font's name whichever version the card
-// holds. Off: an older pack keeps the words of its row.
-constexpr bool kPictureForOutdatedPack = true;
+// holds. Off: an older pack is drawn in its own face, as a font of the reader's own (its bytes are not the store's).
+constexpr bool kPictureForOutdatedPack = false;
 // An installed font with no store picture (a font of the reader's own, or a pack on the way) shows its name in its
 // own face, drawn from the font file after the list pass (fontownname). Off: the words of the row.
 constexpr bool kOwnFontNames = true;
@@ -498,6 +507,15 @@ bool FontDownloadActivity::fetchAndParseManifest() {
       ESP.getMaxAllocHeap() < HttpDownloader::MIN_TLS_MAX_ALLOC) {
     LOG_ERR("FONT", "Low heap for manifest (%u free, %u max block)", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     errorMessage_ = tr(STR_MEMORY_ERROR);
+    return false;
+  }
+
+  // The store's name first: when it does not resolve (the domain's DNS was down on 22/10/2026 while Wi-Fi was
+  // fine) the screen says the server cannot be found, not a general failure. lwIP keeps the answer for the
+  // connection that follows, so both see the same reply.
+  if (!storeHostResolves()) {
+    LOG_ERR("FONT", "Store host does not resolve: %s", FONT_MANIFEST_URL);
+    errorMessage_ = tr(STR_FONT_SERVER_NOT_FOUND);
     return false;
   }
 

@@ -22,13 +22,14 @@ parser.add_argument('--repo', type=Path, required=True)
 parser.add_argument('--out', type=Path, required=True)
 parser.add_argument('--source', type=Path)
 parser.add_argument('--outdated-off', action='store_true')
+parser.add_argument('--outdated-on', action='store_true')  # the older pack's picture switched on, for that side
 parser.add_argument('--own-off', action='store_true')  # the switch, flipped, for the check of the other side  # a mutated copy of the activity, for the mutation check
 args = parser.parse_args()
 args.out.mkdir(parents=True, exist_ok=True)
 source = (args.source or args.repo / 'src/activities/settings/FontDownloadActivity.cpp').read_text()
 header = (args.repo / 'src/activities/settings/FontDownloadActivity.h').read_text()
 if args.own_off: source = source.replace('constexpr bool kOwnFontNames = true;', 'constexpr bool kOwnFontNames = false;')
-if args.outdated_off: source = source.replace('constexpr bool kPictureForOutdatedPack = true;', 'constexpr bool kPictureForOutdatedPack = false;')
+if args.outdated_on: source = source.replace('constexpr bool kPictureForOutdatedPack = false;', 'constexpr bool kPictureForOutdatedPack = true;')
 (args.out / 'struct.inc').write_text(body(header, 'struct InstalledFont') + ';\n')
 helpers = ''
 if 'kPictureForOutdatedPack' not in source: helpers += 'constexpr bool kPictureForOutdatedPack = true;  // the source has no switch yet\n'
