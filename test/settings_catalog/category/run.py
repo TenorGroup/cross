@@ -118,6 +118,8 @@ for mode in modes:
     methods += method_slice(sources[paths[2]], 'bool SettingsActivity::listedAsRow(')
     methods += method_slice(sources[paths[2]], 'void SettingsActivity::rebuildSettingsLists(')
     methods += method_slice(sources[paths[2]], 'void SettingsActivity::releaseClosedTabs(')
+    methods += method_slice(sources[paths[2]], 'void SettingsActivity::selectCategory(')
+    methods += method_slice(sources[paths[2]], 'int SettingsActivity::focusFavorite(')
     (output / 'CategoryMethods.inc').write_text(methods)
     settings = read('src/CrossPointSettings.cpp')
     status_marker = 'namespace {\n// What each reader status bar mode shows'

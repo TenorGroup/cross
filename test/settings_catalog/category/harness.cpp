@@ -97,6 +97,12 @@ struct SettingsActivity {
   void rebuildSettingsLists(bool lockHeld = false);
   void releaseClosedTabs();
   bool closedTabsReleased_ = false;
+  static constexpr int categoryCount = settingstabs::TAB_COUNT;
+  Cursor& activeNav() { return tabNavs[selectedCategoryIndex]; }
+  void dapXuongNhom() {}
+  void focusForm(int) {}
+  void selectCategory(int categoryIndex);
+  int focusFavorite(const std::string& key);
 };
 // The About & updates screen (InfoUpdateActivity) is a boundary here: its rows stay on their tabs.
 namespace infoupdate { inline bool holds(settingstabs::Action, bool = false) { return false; } }
@@ -368,6 +374,20 @@ int main(int argc, char** argv) {
       activity.rebuildSettingsLists();
       ok &= check(signature(tab) == full[tab], "a tab built alone matches the full build");
     }
+    // A pin opened on a Settings that freed its closed tabs (Bluetooth screen) still finds its row on
+    // another tab, and the tab it lands on holds the rows a full build gives it.
+    const int system = static_cast<int>(settingstabs::Tab::SYSTEM);
+    activity.closedTabsReleased_ = false;
+    activity.rebuildSettingsLists();
+    std::string key;
+    for (const auto& row : activity.danhSachCuaThe(settingstabs::Tab::SYSTEM))
+      if (row.key) { key = std::string("settings/") + row.key; break; }
+    activity.selectedCategoryIndex = open;
+    activity.releaseClosedTabs();
+    const int found = activity.focusFavorite(key);
+    ok &= check(!key.empty() && found >= 0 && activity.selectedCategoryIndex == system &&
+                    signature(system) == full[system],
+                "a pin on a closed tab after the Bluetooth screen lands on its row");
     activity.closedTabsReleased_ = false;
   }
   ok &= dynamicLifetime();

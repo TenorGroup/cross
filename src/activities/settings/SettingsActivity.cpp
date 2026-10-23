@@ -1294,14 +1294,17 @@ int SettingsActivity::focusFavorite(const std::string& key) {
           ? "settings/globalStatusBarChoice"
       : (key == "settings/hideGlobalStatusBar") ? "settings/globalStatusBarMode"
           : key;
+  const int startTab = selectedCategoryIndex;
   for (int tab = 0; tab < categoryCount; ++tab) {
+    // Closed tabs freed for the radio (releaseClosedTabs) hold no rows: each is built in turn, as a tab step does.
+    if (closedTabsReleased_) selectCategory(tab);
     const auto& items = danhSachCuaThe(static_cast<settingstabs::Tab>(tab));
     for (size_t row = 0; row < items.size(); ++row) {
       const auto& item = items[row];
       const std::string candidate =
           item.key ? std::string("settings/") + item.key : "action/" + std::to_string(static_cast<int>(item.action));
       if (candidate != target) continue;
-      selectCategory(tab);
+      if (!closedTabsReleased_) selectCategory(tab);
       {
         RenderLock lock(*this);
         activeNav().selected = row + 1;
@@ -1311,5 +1314,6 @@ int SettingsActivity::focusFavorite(const std::string& key) {
       return static_cast<int>(row);
     }
   }
+  if (closedTabsReleased_) selectCategory(startTab);
   return -1;
 }
