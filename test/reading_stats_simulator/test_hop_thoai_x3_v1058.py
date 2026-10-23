@@ -45,8 +45,10 @@ def want_radius(kind, box):
     return RADIUS[kind]
 PAGE = lambda number: ['DOWN'] * 4 + ['RIGHT'] * number + ['CONFIRM']
 ROWS = [
-    ('hienthi', 0, [0, 1, 4, 5, 6, 7, 9]), ('ngu', 1, [1, 2]), ('trinhdoc', 2, [2, 3, 5, 6]), ('dieukhien', 3, [2]),
-    ('cuchi', 4, list(range(10))), ('banphim', 8, [0]),
+    # Home's Settings order since v1.0.69 (ce8ba308): Connections, Display, Reader, Controls, System, Device, Keyboard,
+    # Motion, Sleep, Other; Get fonts left the Reader tab (f3b010db).
+    ('hienthi', 1, [0, 1, 4, 5, 6, 7, 9]), ('ngu', 8, [1, 2]), ('trinhdoc', 2, [1, 2, 4, 5]), ('dieukhien', 3, [2]),
+    ('cuchi', 7, list(range(10))), ('banphim', 6, [0]),
 ]
 # a settings page, then the row (the first row is the one selected), then the press that opens its pop-up
 SCREENS = [(f'set-{page}-r{row}', POPUP, True, 1, PAGE(number) + ['RIGHT'] * row + ['CONFIRM'])
@@ -99,7 +101,7 @@ def shoot(name, home, style, keys, tier, port):
             d.mkdir(parents=True)
             shutil.copyfile(font, d / f'ThuFont{i:02d}_18.cpfont')
         settings = {'language': 'VI', 'uiShell': 0, 'uiTheme': 4, 'uiTextSize': tier, 'readerMenuStyle': style,
-                    'wakeIntoBook': 0 if home else 1, 'fontSize': 18, 'fontFamily': 0, 'textSpacingVersion': 3,
+                    'wakeIntoBook': 0 if home else 1, 'fontSize': 18, 'fontFamily': 1, 'fontFamilyVersion': 1, 'textSpacingVersion': 3,
                     'paragraphIndentVersion': 1, 'readerInkWeightVersion': 1, 'tenorPresetVersion': 1,
                     'uiShellSleepMemo': 0, 'sleepTimeout': 10, 'readerTapTip': 0, 'tipsEnabled': 1,
                     'tenorButtonSymbols': 1, 'tenorSideArrows': 1, 'readerFavoritesDaDat': 1,
@@ -159,7 +161,8 @@ class HopThoaiX3(unittest.TestCase):
                 continue
             want = want_radius(screen[1], box)
             fits = measure.corners(frames[1], frames[0], box, halo=screen[1] in (HOLD, CONFIRM, TOAST))
-            radii = sorted(fit[0] for fit in fits.values())
+            # A corner read as 0 lies on ink the frame before already had (the menu's rows since a5d167d0): unreadable.
+            radii = sorted(fit[0] for fit in fits.values() if fit[0]) or [0]
             with self.subTest(key=key, what='radius of the box'):
                 self.assertLessEqual(abs(radii[0] - want), 1, f'{key}: radii {({c: f[0] for c, f in fits.items()})}, want {want}')
                 near = [corner for corner, fit in fits.items() if abs(fit[0] - want) <= 1]

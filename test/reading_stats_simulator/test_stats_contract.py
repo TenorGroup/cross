@@ -86,17 +86,17 @@ def la_cuoi_tuan(ma):
     return datetime.date(ma // 10000, ma // 100 % 100, ma % 100).weekday() >= 5
 
 
-def _dem_dai_ink(image, y0, y1):
-    """So dai dong chu (nhom hang co muc) trong vung [y0, y1)."""
+def _dem_dai_ink(image, y0, y1, khoang=1):
+    """So dai dong chu (nhom hang co muc) trong vung [y0, y1); `khoang` hang trang moi tach hai dai."""
     px = image.load()
     x0, x1 = 24, image.width - 24
     dai = 0
-    trong = True
+    trong = khoang
     for y in range(max(0, y0), min(image.height, y1)):
         muc = any(sum(px[x, y]) < 300 for x in range(x0, x1, 2))
-        if muc and trong:
+        if muc and trong >= khoang:
             dai += 1
-        trong = not muc
+        trong = 0 if muc else trong + 1
     return dai
 
 
@@ -376,8 +376,9 @@ class StatsContractTest(unittest.TestCase):
         # Nhip 17/09/2026: fixture la 14 trang voi cai dat cua bai nay, nen 12 nhip chi toi
         # 13/14 = 93% (do lai), phai 13 nhip moi cham trang cuoi; 16 nhip thi vuot qua cuon
         # (activeBook doi sang sach khac). Giu nguyen moi ky vong, chi sua so nhip cho khop
-        # do dai that cua fixture.
-        script = "1000:CONFIRM;" + ";".join(f"{2400 + i * 260}:RIGHT" for i in range(13))
+        # do dai that cua fixture. Tu v1.0.69 (Noto Sans la font co san duy nhat) fixture con 13
+        # trang: 12 nhip cham trang cuoi.
+        script = "1000:CONFIRM;" + ";".join(f"{2400 + i * 260}:RIGHT" for i in range(12))
         kb.chay(script + ";7000:BACK;9000:QUIT")
         du_lieu = kb.doc()
         luu = kb.doc_sach()
@@ -583,7 +584,8 @@ class StatsContractTest(unittest.TestCase):
             image = kb.anh(f"cuoi-30-ngay-{nhan}")
             tl = _ty_le(image)
             do_duoc[nhan] = {
-                "so_dai_ink": _dem_dai_ink(image, int(140 * tl), int(image.height - 40 * tl)),
+                # chu xam cham diem co hang trang le ben trong: 2 hang trang moi la khe giua hai dong
+                "so_dai_ink": _dem_dai_ink(image, int(140 * tl), int(image.height - 40 * tl), khoang=2),
                 "hop_chon": _hop_chon(image, int(140 * tl)),
                 "cao": image.height, "rong": image.width, "anh": image,
             }

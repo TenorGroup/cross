@@ -169,12 +169,14 @@ class UglyIssue3Test(unittest.TestCase):
         routes = {
             'habits': ['DOWN'] * 4 + ['CONFIRM'],
             'days': ['DOWN'] * 4 + ['RIGHT', 'RIGHT', 'CONFIRM'],
-            'keyboard': ['UP'] + ['RIGHT'] * 7 + ['CONFIRM', 'RIGHT', 'CONFIRM'],
+            # the ugly shell's Settings list since v1.0.69 (ce8ba308): 0 Connections, 1 Display, 2 Reader, 3 Controls,
+            # 4 System, 5 Device, 6 Keyboard, 7 Gestures, 8 Sleep, 9 Other
+            'keyboard': ['UP'] + ['RIGHT'] * 5 + ['CONFIRM', 'RIGHT', 'CONFIRM'],
             'network': ['UP', 'CONFIRM'] + ['RIGHT'] * 2 + ['CONFIRM'],
-            'remap': ['UP'] + ['RIGHT'] * 4 + ['CONFIRM', 'CONFIRM'],
-            'clock': ['UP'] + ['RIGHT'] * 6 + ['CONFIRM', 'CONFIRM'],
-            'language': ['UP'] + ['RIGHT'] * 7 + ['CONFIRM', 'CONFIRM'],
-            'about': ['UP'] + ['RIGHT'] * 7 + ['CONFIRM'] + ['RIGHT'] * 4 + ['CONFIRM'],
+            'remap': ['UP'] + ['RIGHT'] * 3 + ['CONFIRM', 'CONFIRM'],
+            'clock': ['UP'] + ['RIGHT'] * 4 + ['CONFIRM', 'CONFIRM'],
+            'language': ['UP'] + ['RIGHT'] * 5 + ['CONFIRM', 'CONFIRM'],
+            'about': ['UP'] + ['RIGHT'] * 5 + ['CONFIRM'] + ['RIGHT'] * 4 + ['CONFIRM'],
             'koreader': ['UP'] + ['RIGHT'] * 9 + ['CONFIRM', 'CONFIRM'],
             'opds': ['UP'] + ['RIGHT'] * 9 + ['CONFIRM', 'RIGHT', 'CONFIRM'],
             'clear cache': ['UP'] + ['RIGHT'] * 9 + ['CONFIRM'] + ['RIGHT'] * 3 + ['CONFIRM'],
@@ -190,7 +192,7 @@ class UglyIssue3Test(unittest.TestCase):
             'diary': [],
             'notebook, hold to pin': ['DOWN'] * 4,
             'habits, the tip': ['DOWN'] * 4 + ['CONFIRM'],
-            'keyboard, the tips': ['UP'] + ['RIGHT'] * 7 + ['CONFIRM', 'RIGHT', 'CONFIRM'],
+            'keyboard, the tips': ['UP'] + ['RIGHT'] * 5 + ['CONFIRM', 'RIGHT', 'CONFIRM'],
             'answer sheet': ['UP', 'CONFIRM'],
         }
         for name, keys in routes.items():

@@ -16,7 +16,7 @@ from PIL import Image, ImageChops
 REPO=Path(__file__).resolve().parents[2]
 PROGRAM=Path(os.environ.get('X4PRO_PROGRAM',REPO/'.pio/build/simulator_x4pro/program'))
 SCRIPT=('1500:RIGHT;2500:TAP:240,775;3500:TAP:321,754;4300:TAP:240,433;'
-        '5100:TAP:240,495;6100:TAP:46,754;6900:TAP:240,557;'
+        '5100:TAP:240,433;6100:TAP:46,754;6900:TAP:240,557;'
         '7700:SWIPE:240,512,415,512,900;9500:TAP:46,754;10300:TAP:290,495;'
         '11300:TAP:360,495;12100:TAP:94,676;12900:TAP:94,676;13700:TAP:382,484;'
         '14500:TAP:238,676;15300:TAP:382,676;16300:TAP:46,754;'
@@ -39,7 +39,7 @@ def reader_menu_case(tier,output):
     folder=output/f'tier-{tier}';folder.mkdir(parents=True,exist_ok=True)
     sd=folder/'sd';store=sd/'.crosspoint';store.mkdir(parents=True,exist_ok=True);(sd/'books').mkdir(exist_ok=True)
     book=sd/'books/journey.epub';write_book(book);original=hashlib.sha256(book.read_bytes()).hexdigest()
-    (store/'settings.json').write_text(json.dumps({'textSpacingVersion':3,'paragraphIndentVersion':1,'readerInkWeightVersion':1,'tenorPresetVersion':1,'uiShellSleepMemo':0,'language':'VI','uiTextSize':tier,'wakeIntoBook':1,'fontSize':18,'fontFamily':0,'lineSpacing':0,'dropCapMode':1,'readerMenuStyle':0,'uiShell':0,'sleepTimeout':10,'readerTapTip':0}))
+    (store/'settings.json').write_text(json.dumps({'textSpacingVersion':3,'paragraphIndentVersion':1,'readerInkWeightVersion':1,'tenorPresetVersion':1,'uiShellSleepMemo':0,'language':'VI','uiTextSize':tier,'wakeIntoBook':1,'fontSize':18,'fontFamily':1,'fontFamilyVersion':1,'lineSpacing':0,'dropCapMode':1,'readerMenuStyle':0,'uiShell':0,'sleepTimeout':10,'readerTapTip':0}))
     (store/'state.json').write_text(json.dumps({'showBootScreen':False,'openEpubPath':'/books/journey.epub','lastSleepFromReader':True}))
     (store/'recent.json').write_text(json.dumps({'books':[{'path':'/books/journey.epub','title':'Reader menu journey'}]}))
     env={k:v for k,v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')}
@@ -67,6 +67,9 @@ def reader_menu_case(tier,output):
     assert ink('rows',(84,724,464,784))>0.01,'reader tools missing'
     assert ink('keypad',(84,724,464,784))<0.003,'keypad left tool icons visible'
     assert ImageChops.difference(shots['rows'],shots['fonts']).getbbox(),'font row did not open'
+    # Noto Sans is the one built-in font since v1.0.69 (131f1de2): the list holds one row, the one tapped at 5100.
+    assert ink('fonts',(24,420,240,455))>0.05,'no Noto Sans row in the font list'
+    assert ink('fonts',(24,460,240,700))==0,'a second row in the font list'
     assert ImageChops.difference(shots['spacing-held'],shots['spacing']).getbbox(),'held draft knob stayed fixed'
     assert ImageChops.difference(shots['numeric-30'],shots['keypad']).getbbox(),'numeric keys did not change the draft'
     for name in ('keypad','numeric-30'):

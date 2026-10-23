@@ -29,7 +29,7 @@ def main():
             rows += 1
             assert abs(cols[0] - LEFT) <= 3, f'Text row {i}: name starts at x {cols[0]}, not {LEFT}'
         assert rows >= 5, f'only {rows} Text rows found'
-        for i in range(2):
+        for i in range(1):     # Noto Sans is the one built-in font since v1.0.69 (131f1de2)
             y0, y1 = TOP + i * ROW + 14, TOP + i * ROW + ROW - 14
             cols = ink_cols(fonts, y0, y1, 20, 400)
             assert cols and abs(cols[0] - LEFT) <= 3, f'Font row {i}: name starts at x {cols[0] if cols else None}'
