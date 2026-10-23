@@ -656,8 +656,7 @@ void SettingsActivity::stepTab(const int direction) {
   // The new category keeps whatever row the cursor was last on there; the two
   // tab buttons sit on the device edge, so stepping away by accident and back
   // must not lose the reader's place.
-  selectedCategoryIndex = adjacentTab(direction);
-  selectCategory(selectedCategoryIndex);
+  selectCategory(adjacentTab(direction));  // it moves the index itself, after letting the tab left go
   dapXuongNhom();
   requestUpdate();
 }
