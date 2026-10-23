@@ -75,6 +75,7 @@ class SdCardFontSystem {
   // endsInRestart: a session that ends in a restart (Wi-Fi) lets it go without the memo too, since the boot after
   // walks the card anyway (79 families do not fit the memo: 14.9 KB stayed held). The caller takes it back with
   // registry() on a way out that does not restart.
+  // Caller holds RenderLock: the list it frees is the one a font menu draws from.
   bool releaseCatalog(bool endsInRestart = false);
 
   /// If the registry is dirty, re-scan the SD card now and clear the flag.

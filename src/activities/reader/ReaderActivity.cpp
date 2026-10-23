@@ -91,7 +91,10 @@ void ReaderActivity::onEnter() {
   sdFontSystem.ensureLoaded(renderer);
   // The font list (~4.5 KB in about a hundred small blocks on a 31-family card) is only read by
   // the font menus, which bring it back from the RTC memo without walking the card.
-  sdFontSystem.releaseCatalog();
+  {
+    RenderLock lock(*this);
+    sdFontSystem.releaseCatalog();
+  }
   applyInitialOrientation();
 #ifdef TENOR_TURN_TRACE
   const unsigned long fontsDone = millis();
