@@ -161,8 +161,11 @@ class HopThoaiX3(unittest.TestCase):
                 continue
             want = want_radius(screen[1], box)
             fits = measure.corners(frames[1], frames[0], box, halo=screen[1] in (HOLD, CONFIRM, TOAST))
-            # A corner read as 0 lies on ink the frame before already had (the menu's rows since a5d167d0): unreadable.
-            radii = sorted(fit[0] for fit in fits.values() if fit[0]) or [0]
+            if screen[0] == 'percent-slider':
+                # The slider's bottom-left sits on the reader menu's rows of the frame before (a5d167d0), which it erases:
+                # against that frame the corner reads 0. That one corner is read from the last frame alone.
+                fits['bl'] = measure.corners(frames[1], Image.new('L', frames[1].size, 255), box)['bl']
+            radii = sorted(fit[0] for fit in fits.values())
             with self.subTest(key=key, what='radius of the box'):
                 self.assertLessEqual(abs(radii[0] - want), 1, f'{key}: radii {({c: f[0] for c, f in fits.items()})}, want {want}')
                 near = [corner for corner, fit in fits.items() if abs(fit[0] - want) <= 1]

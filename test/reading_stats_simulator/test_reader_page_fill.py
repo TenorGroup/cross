@@ -6,7 +6,7 @@ cach thanh trang thai hon 10 px. Anh chup may that (Bookerly 16, Hep) cung thieu
 Luat moi: dong cuoi vua trang khi muc (ascender + descender) con cach muc thanh trang thai
 it nhat READER_TEXT_TO_STATUS_GAP = 2 px.
 """
-import json, os, shutil, subprocess, sys, tempfile, unittest, zipfile
+import json, os, shutil, struct, subprocess, sys, tempfile, unittest, zipfile
 from pathlib import Path
 
 import numpy as np
@@ -17,6 +17,7 @@ REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
 STATUS_INK_TOP = 22          # tenorchrome::STATUS_INK_TOP
 GAP = 2                      # tenorchrome::READER_TEXT_TO_STATUS_GAP
+SCREEN_MARGIN = 5            # screenMargin in chup()
 
 DOAN = ('Người thợ mộc già bào xong tấm ván cuối cùng khi trời vừa tắt nắng, rồi ngồi xuống bậc thềm đếm lại từng cái đinh còn trong hộp, vì sáng mai cả xóm sẽ tới dựng mái cho căn nhà nhỏ ở cuối con dốc, nơi mùa nào gió cũng thổi ngược lên từ phía bờ sông. ')
 
@@ -96,6 +97,10 @@ class ReaderPageFillTest(unittest.TestCase):
                    CROSSPOINT_SIM_SCREENSHOTS=f'6000:{shot}')
         run = subprocess.run([str(PROGRAM)], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        # The section file header (Section::writeSectionFileHeader) records the viewport the page was laid out in:
+        # u8 version, int fontId, float lineCompression, 5 x u8, then u16 width and u16 height at byte 14.
+        header = next(f for f in sorted(self.store.glob('epub_*/sections/0.bin*')) if '.lut' not in f.name).read_bytes()
+        self.viewport = struct.unpack_from('<HH', header, 14)
         bands, height = ink_bands(shot)
         bar_top = height - STATUS_INK_TOP
         text = [b for b in bands if b[1] < bar_top - GAP]
@@ -119,11 +124,19 @@ class ReaderPageFillTest(unittest.TestCase):
             self.assertGreater(text[-1][1] + pitch, bar[0][0] - GAP, f'level {level}: con cho cho mot dong nua: {text[-2:]} {bar}')
 
     def test_an_thanh_trang_thai_thi_chu_xuong_tan_day(self):
-        # Noto Serif left the firmware (131f1de2): fontFamily 0 reads in Noto Sans, whose last line at Sieu rong
-        # ends at 728 with the bar shown or hidden; level 3 reaches 757.
-        text, bar, height = self.chup('an', lineSpacing=3, readerStatusBarMode=0)
+        # ReaderActivity::readingMargins: with the bar hidden the page's bottom margin is screenMargin alone; with
+        # it shown it is max(screenMargin, READER_BOTTOM_RESERVE = STATUS_INK_TOP + GAP). So hiding the bar must
+        # hand the strip to the text: the viewport grows by exactly that difference. At Sieu rong in Noto Sans
+        # (pitch 51) the 19 px strip does not hold a 15th line on v1.0.65 or v1.0.76, so the gain is read from the
+        # viewport the page was laid out in, not from a line count.
+        text, bar, height = self.chup('an', lineSpacing=4, readerStatusBarMode=0)
+        an = self.viewport
         self.assertFalse(bar, bar)
-        self.assertGreater(text[-1][1], height - STATUS_INK_TOP - 30, text[-1])
+        self.assertLessEqual(text[-1][1], height - SCREEN_MARGIN, text[-1])
+        self.chup('hien', lineSpacing=4)
+        self.assertEqual(an[0], self.viewport[0], (an, self.viewport))
+        self.assertEqual(an[1] - self.viewport[1], STATUS_INK_TOP + GAP - SCREEN_MARGIN,
+                         f'an thanh phai tra dai {STATUS_INK_TOP + GAP} px cho chu: an {an}, hien {self.viewport}')
 
 
 if __name__ == '__main__':

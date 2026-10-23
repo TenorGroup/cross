@@ -86,17 +86,18 @@ def la_cuoi_tuan(ma):
     return datetime.date(ma // 10000, ma // 100 % 100, ma % 100).weekday() >= 5
 
 
-def _dem_dai_ink(image, y0, y1, khoang=1):
-    """So dai dong chu (nhom hang co muc) trong vung [y0, y1); `khoang` hang trang moi tach hai dai."""
+def _dem_dai_ink(image, y0, y1, toi_thieu=1):
+    """So dai dong chu (nhom hang co muc) trong vung [y0, y1); mot hang trang tach hai dai.
+    Hang co muc khi it nhat `toi_thieu` diem lay mau (cot chan) toi."""
     px = image.load()
     x0, x1 = 24, image.width - 24
     dai = 0
-    trong = khoang
+    trong = True
     for y in range(max(0, y0), min(image.height, y1)):
-        muc = any(sum(px[x, y]) < 300 for x in range(x0, x1, 2))
-        if muc and trong >= khoang:
+        muc = sum(sum(px[x, y]) < 300 for x in range(x0, x1, 2)) >= toi_thieu
+        if muc and trong:
             dai += 1
-        trong = 0 if muc else trong + 1
+        trong = not muc
     return dai
 
 
@@ -379,7 +380,8 @@ class StatsContractTest(unittest.TestCase):
         # do dai that cua fixture. Tu v1.0.69 (Noto Sans la font co san duy nhat) fixture con 13
         # trang: 12 nhip cham trang cuoi.
         script = "1000:CONFIRM;" + ";".join(f"{2400 + i * 260}:RIGHT" for i in range(12))
-        kb.chay(script + ";7000:BACK;9000:QUIT")
+        log = kb.chay(script + ";7000:BACK;9000:QUIT")
+        self.assertIn("Built complete page index: 13 pages", log, "12 nhip tu trang 1 chi cham trang cuoi khi sach co 13 trang")
         du_lieu = kb.doc()
         luu = kb.doc_sach()
         cuon2 = du_lieu["activeBook"]
@@ -584,8 +586,10 @@ class StatsContractTest(unittest.TestCase):
             image = kb.anh(f"cuoi-30-ngay-{nhan}")
             tl = _ty_le(image)
             do_duoc[nhan] = {
-                # chu xam cham diem co hang trang le ben trong: 2 hang trang moi la khe giua hai dong
-                "so_dai_ink": _dem_dai_ink(image, int(140 * tl), int(image.height - 40 * tl), khoang=2),
+                # Chu xam cham diem: hang le cua so phut (x 432-487, y 657 o v1.0.76) chi co mot diem roi
+                # dung cot lay mau khi thanh tat (x=440), khi bat thi khong co. Hang can >= 2 diem lay mau,
+                # mot hang trang van tach hai dong chu that.
+                "so_dai_ink": _dem_dai_ink(image, int(140 * tl), int(image.height - 40 * tl), toi_thieu=2),
                 "hop_chon": _hop_chon(image, int(140 * tl)),
                 "cao": image.height, "rong": image.width, "anh": image,
             }

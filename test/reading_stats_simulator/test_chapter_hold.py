@@ -84,6 +84,17 @@ class ChapterHoldTest(unittest.TestCase):
         """Cac vi tri da luu, theo thu tu: (spine, page)."""
         return [(int(s), int(p)) for s, p in re.findall(r'Progress saved: spine=(\d+) offset=\d+ page=(\d+)', log)]
 
+    def menu_mo_luc_giu(self, log, mo, giu):
+        """Menu doc dang MO luc nut bi giu: menu thanh cong cu (mac dinh tu v1.0.72) ve thanh X3 cua no sau nhip bam
+        mo menu va truoc nhip giu, roi khong co trang sach nao ve lai truoc nhip giu (dong menu la ve lai trang).
+        Trong EpubReader chi ReaderToolbarUi::buildX3Bar goi drawBarFrame, nen dong BARFRAME o day la cua menu."""
+        ve = [(int(t), d) for t, d in
+              re.findall(r'^\[(\d+)\] \[\w+\] (\[BARFRAME\] screen=EpubReader|\[ERS\] Rendered page)', log, re.M)]
+        thanh = [t for t, d in ve if 'BARFRAME' in d and mo <= t < giu]
+        self.assertTrue(thanh, f'menu phai mo sau nhip {mo} ms va truoc nhip giu {giu} ms: {ve}')
+        trang = [t for t, d in ve if 'Rendered page' in d and thanh[0] < t < giu]
+        self.assertFalse(trang, f'menu da dong (trang ve lai) truoc nhip giu {giu} ms: {ve}')
+
     def test_bam_ngan_lat_dung_mot_trang_ngay(self):
         # Mac dinh (OFF): nhip bam ngan phai lat NGAY, va chi mot trang.
         log = self.chay('1000:CONFIRM;3000:RIGHT;5000:RIGHT;7000:QUIT')
@@ -143,7 +154,7 @@ class ChapterHoldTest(unittest.TestCase):
     def test_giu_khi_menu_dang_mo_khong_dung_toi_sach(self):
         """Menu doc dang mo thi nut phai thuoc menu, sach khong duoc nhay chuong."""
         log = self.chay('1000:CONFIRM;3000:CONFIRM;5000:RIGHT:1000;8000:BACK;10000:QUIT', longPressButtonBehavior=1)
-        self.assertIn('[BARFRAME] screen=EpubReader', log)  # the toolbar menu, default since v1.0.72
+        self.menu_mo_luc_giu(log, mo=3000, giu=5000)
         viTri = self.moc(log)
         self.assertTrue(viTri, 'phai co vi tri duoc luu')
         self.assertEqual(viTri[-1][0], 0, f'sach khong duoc doi chuong khi menu mo: {viTri}')

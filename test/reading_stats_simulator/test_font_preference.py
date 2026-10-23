@@ -39,8 +39,15 @@ class PreferenceTest(unittest.TestCase):
   self.assertEqual(self.settings['sdFontFamilyName'],'Bokerlam')
   self.assertEqual(self.settings['readerInkWeight'],weight)  # level 1 stored shifted by 3
   self.assertEqual(log.count('Loaded /.fonts/Bokerlam/weight-2/Bokerlam_16.cpfont'),heavy,log)
- # The base-only font sets the level it draws (0); it stays 0 back on Bokerlam, which then loads its base file.
- def test_base_only_roundtrip(self):self.roundtrip('3000:LEFT;3500:CONFIRM;4200:RIGHT;4700:CONFIRM',weight=3,heavy=1)
+  return log
+ # 0b17260d ("ink level follows what the font has"), src/ReaderInkWeight.cpp: "A choice must never be kept while another
+ # level is drawn: the setting follows what the font really has". The base-only font draws level 0 and stores it (3 =
+ # level 0 shifted by 3); back on Bokerlam the stored 0 holds, so Bokerlam reloads its base file, not weight-2.
+ def test_base_only_roundtrip(self):
+  log=self.roundtrip('3000:LEFT;3500:CONFIRM;4200:RIGHT;4700:CONFIRM',weight=3,heavy=1)
+  loads=[l.split('Loaded ')[1].split()[0] for l in log.splitlines() if 'Loaded /.fonts/' in l]
+  self.assertEqual(loads,['/.fonts/Bokerlam/weight-2/Bokerlam_16.cpfont','/.fonts/ABaseOnly/ABaseOnly_16.cpfont',
+                          '/.fonts/Bokerlam/Bokerlam_16.cpfont'],'the base-only visit stores level 0 for good')
  def test_weighted_roundtrip(self):self.roundtrip('3000:RIGHT;3500:CONFIRM;4200:LEFT;4700:CONFIRM')
  def test_builtin_roundtrip(self):self.roundtrip('2700:LEFT;3000:LEFT;3500:CONFIRM;4000:RIGHT;4300:RIGHT;4700:CONFIRM')
  def test_corrupt_variant_does_not_retry_each_preview(self):
