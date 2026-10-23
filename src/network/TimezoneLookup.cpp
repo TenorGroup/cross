@@ -5,6 +5,7 @@
 #include "CrossPointSettings.h"
 #include "HttpDownloader.h"
 #include "TimezoneRootCA.h"
+#include <NetworkTrust.h>
 #include "util/NgayGio.h"
 
 bool timezone_lookup::updateOffset() {
@@ -25,18 +26,33 @@ bool timezone_lookup::updateOffset() {
     LOG_ERR("TZ", "Insufficient memory for timezone lookup");
     return false;
   }
-  std::string response;
-  response.reserve(8);
-  const bool ok = HttpDownloader::fetchUrl(
-      "https://ipapi.co/utc_offset/",
-      [&](const uint8_t* bytes, size_t count) {
-        if (count > 8 - response.size()) return false;
-        response.append(reinterpret_cast<const char*>(bytes), count);
-        return true;
-      },
-      "", "", TIMEZONE_ROOT_CA);
+  // Tenor's own endpoint first (Cloudflare places the caller's IP; the same "+0700" text), ipapi.co after:
+  // ipapi.co answers 429 to whole carriers sharing one IP, and a unit that never got an answer shows UTC.
+  static constexpr struct {
+    const char* url;
+    const char* rootCa;
+  } SOURCES[] = {{"https://cross.tenor.vn/tz", network_trust::roots},
+                 {"https://ipapi.co/utc_offset/", TIMEZONE_ROOT_CA}};
   uint8_t offset = 0;
-  if (!ok || !ngaygio::parseUtcOffset(response, offset)) {
+  bool found = false;
+  for (const auto& source : SOURCES) {
+    std::string response;
+    response.reserve(8);
+    const bool ok = HttpDownloader::fetchUrl(
+        source.url,
+        [&](const uint8_t* bytes, size_t count) {
+          if (count > 8 - response.size()) return false;
+          response.append(reinterpret_cast<const char*>(bytes), count);
+          return true;
+        },
+        "", "", source.rootCa);
+    if (ok && ngaygio::parseUtcOffset(response, offset)) {
+      found = true;
+      break;
+    }
+    LOG_ERR("TZ", "Timezone lookup failed at %s", source.url);
+  }
+  if (!found) {
     LOG_ERR("TZ", "Timezone lookup failed; keeping saved offset");
     return false;
   }
