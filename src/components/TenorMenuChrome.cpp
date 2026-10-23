@@ -666,6 +666,7 @@ void drawJumpBarFace(const GfxRenderer& r, const tenorchrome::TouchBarRect& bar,
 
 void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone) {
   HeaderBackTapTarget::clearFoot();
+  bool bandIsPage = false;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   const bool reader = readerFootBarActive();
   const bool jump = !reader && jumpBarActive();
@@ -677,10 +678,12 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
     // The way back after a jump owns it for a few seconds, the page's status footer included.
     bar = FootBar::BackOnly;
     clearFootBand(r, 0);
+    bandIsPage = true;  // under the jump bar a tap still opens the page's text menu
   }
 #endif
-  if (bar != FootBar::Full && bar != FootBar::BackOnly) return;
   const auto rect = touchTabBarRect(r.getScreenWidth(), r.getScreenHeight());
+  HeaderBackTapTarget::setFootBand(bar != FootBar::None && !bandIsPage ? rect.y + rect.height : 0, r.getScreenHeight());
+  if (bar != FootBar::Full && bar != FootBar::BackOnly) return;
   const int SIZE = rect.height;
   const int y = rect.y;
   int x = rect.x;

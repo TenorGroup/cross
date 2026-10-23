@@ -20,6 +20,14 @@
 
 namespace fui = freeink::ui;
 
+namespace {
+// Where a tap lands in the app's coordinates; under the dynamic bar it lands on the bar (HeaderBackTapTarget::footTapY).
+void tapPoint(const GfxRenderer& renderer, const float nx, const float ny, int& x, int& y) {
+  renderer.tapToLogical(nx, ny, x, y);
+  y = HeaderBackTapTarget::footTapY(y);
+}
+}  // namespace
+
 void MappedInputManager::update(const bool deferHomeButtonAction) const {
   gpio.update();
   homeAction = HomeButtonAction::Ignore;
@@ -260,7 +268,7 @@ bool MappedInputManager::wasScreenTapped(int& x, int& y) const {
   float nx = 0.0f;
   float ny = 0.0f;
   if (!gpio.wasTouchTap(nx, ny)) return false;
-  renderer.tapToLogical(nx, ny, x, y);
+  tapPoint(renderer, nx, ny, x, y);
   rememberTouchHeldTime();
   return true;
 }
@@ -271,7 +279,7 @@ bool MappedInputManager::wasScreenTouchDown(int& x, int& y) const {
   unsigned long heldMs = 0;
   if (!gpio.isTouchTapCandidate(nx, ny, heldMs)) return false;
   if (heldMs < TOUCH_DOWN_SELECT_DELAY_MS) return false;
-  renderer.tapToLogical(nx, ny, x, y);
+  tapPoint(renderer, nx, ny, x, y);
   return true;
 }
 
@@ -282,7 +290,7 @@ bool MappedInputManager::wasScreenLongPress(int& x, int& y) const {
   // Consuming the long-press implies acting on it: suppress the rest of the
   // contact so the finger lift can't also tap whatever the action opened.
   gpio.suppressTouchContact();
-  renderer.tapToLogical(nx, ny, x, y);
+  tapPoint(renderer, nx, ny, x, y);
   return true;
 }
 
@@ -291,7 +299,7 @@ bool MappedInputManager::wasScreenHold(int& x, int& y, const unsigned long thres
   unsigned long heldMs = 0;
   if (!gpio.isTouchTapCandidate(nx, ny, heldMs) || heldMs < thresholdMs) return false;
   gpio.suppressTouchContact();
-  renderer.tapToLogical(nx, ny, x, y);
+  tapPoint(renderer, nx, ny, x, y);
   return true;
 }
 

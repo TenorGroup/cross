@@ -71,6 +71,20 @@ inline void clearFoot() {
   nameW = 0;
 #endif
 }
+// Touch shell: the band under the dynamic bar, which stands 16 px over the bottom edge. A tap there, on a frame that
+// shows the bar, lands on the bar's bottom row: the founder's taps on it fall about 15 px under its centre, and 2 of 26
+// met this band and did nothing (v1.0.74). Set for every frame the panel gets (tenorchrome::drawFootBar), top 0 when
+// the frame has no bar or the band is the page's (the jump bar's 3 seconds). Taps only: drags and edge swipes keep
+// the raw point.
+inline int footBandTop = 0;
+inline int footBandBottom = 0;
+inline void setFootBand(const int top, const int bottom) {
+  footBandTop = top;
+  footBandBottom = bottom;
+}
+inline int footTapY(const int ty) {
+  return footBandTop > 0 && ty >= footBandTop && ty < footBandBottom ? footBandTop - 1 : ty;
+}
 inline bool zoneContains(const int tx, const int ty) {
   return zoneW > 0 && tx >= zoneX && tx < zoneX + zoneW && ty >= zoneY && ty < zoneY + zoneH;
 }
