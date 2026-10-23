@@ -19,6 +19,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "network/TimezoneLookup.h"
+#include "util/Timezones.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglyNote.h"
 
@@ -97,6 +98,8 @@ void ClockSyncActivity::runSync() {
 
   // Mark as synced so the auto-sync hook stops firing on future WiFi connects.
   const bool timezoneOk = !SETTINGS.clockAutoTimezone || timezone_lookup::updateOffset();
+  // The zone just looked up answers now, not after the next restart (the time below and the status bar showed UTC).
+  if (SETTINGS.clockAutoTimezone && timezoneOk) timezones::applyToClock();
   SETTINGS.clockHasBeenSynced = 1;
   SETTINGS.saveToFile();
 
