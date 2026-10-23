@@ -24,6 +24,7 @@
 #include "components/TenorMenuChrome.h"
 #include "FileTransferState.h"
 #include "MappedInputManager.h"
+#include "SettingsList.h"
 #include "WifiCredentialStore.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/TenorMenuChrome.h"
@@ -173,6 +174,9 @@ void WifiSelectionActivity::onEnter() {
   {
     RenderLock lock(*this);
     if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
+    // Every Wi-Fi session starts here: the settings catalog (16 KB on the X3, built by any Settings visit and kept
+    // until a book opens) goes before the radio and TLS want the heap. Settings keeps owned copies of its tabs.
+    releaseBaseSettingsList();
     WIFI_STORE.loadFromFile();
   }
 
