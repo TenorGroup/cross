@@ -36,7 +36,8 @@ class ReaderShortcutsV1017Test(unittest.TestCase):
             {'books': [{'path': '/audit.epub', 'title': 'Synonym Lookup Test'}]}))
 
     def write_settings(self, **fields):
-        settings = {'language': 'VI', 'sleepTimeout': 10}
+        # The list menu, a saved choice since the toolbar became the default (450b1564).
+        settings = {'language': 'VI', 'sleepTimeout': 10, 'readerMenuStyle': 0}
         settings.update(fields)
         (self.store / 'settings.json').write_text(json.dumps(truoc_tenor(settings)))
 

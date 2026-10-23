@@ -23,10 +23,10 @@ from cai_dat_truoc_tenor import truoc_tenor
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
 
-# Home: Up opens Settings on Display; 3 Right reach Controls; Select.
+# Home: Up opens Settings on Connections (ce8ba308); 3 Right reach Controls; Select.
 HOME_TO_CONTROLS = ['1000:UP', '1500:RIGHT', '2000:RIGHT', '2500:RIGHT', '3500:CONFIRM']
-# Motion sensor follows Controls: 4 Right from Display.
-HOME_TO_MOTION = ['1000:UP', '1500:RIGHT', '2000:RIGHT', '2500:RIGHT', '2800:RIGHT', '3500:CONFIRM']
+# Motion sensor follows Keyboard: 7 Right from Connections.
+HOME_TO_MOTION = ['1000:UP', *(f'{1300 + 300 * i}:RIGHT' for i in range(7)), '3500:CONFIRM']
 # Home: Select opens the recent book; Select again opens the reader menu; three Down to Tools.
 BOOK_TO_TOOLS = ['1000:CONFIRM', '3200:CONFIRM', '4400:DOWN', '5000:DOWN', '5600:DOWN']
 
@@ -50,7 +50,8 @@ class QuickActionsV1012Test(unittest.TestCase):
         self.write_settings()
 
     def write_settings(self, **fields):
-        settings = {'language': 'VI', 'sleepTimeout': 10}
+        # The list menu, a saved choice since the toolbar became the default (450b1564).
+        settings = {'language': 'VI', 'sleepTimeout': 10, 'readerMenuStyle': 0}
         settings.update(fields)
         (self.store / 'settings.json').write_text(json.dumps(truoc_tenor(settings)))
 

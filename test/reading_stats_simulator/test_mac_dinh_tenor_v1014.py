@@ -87,11 +87,13 @@ class MacDinhTenorTest(unittest.TestCase):
             # uiTheme: v1.0.52 no longer saves it. sleepBwRefresh: v1.0.52 reads and saves the switch as
             # sleepBwFold, so the old key (1 on every card, the old default) is dropped and the fold
             # starts off (checked below).
-            if khoa in BO_TENOR or khoa in DAU or khoa in ('uiTheme', 'sleepBwRefresh'):
+            # fontFamily: v1.0.69 stores 1 (Noto Sans) in every file, Noto Serif left the firmware (131f1de2).
+            if khoa in BO_TENOR or khoa in DAU or khoa in ('uiTheme', 'sleepBwRefresh', 'fontFamily'):
                 continue
             self.assertEqual(luu.get(khoa), gia_tri, khoa)
         self.assertNotIn('sleepBwRefresh', luu)
         self.assertEqual(luu.get('sleepBwFold'), 0, 'an old file turned the black and white fold back on')
+        self.assertEqual((luu.get('fontFamily'), luu.get('fontFamilyVersion')), (1, 1))
 
     def test_the_trong(self):
         luu, log = self.khoi_dong()
@@ -99,7 +101,9 @@ class MacDinhTenorTest(unittest.TestCase):
         self.assertEqual((luu['language'], luu['blePageTurnerEnabled'], luu['sleepTimeoutMinutes']), ('EN', 0, 10))
         self.assertEqual([luu[k] for k in ('frontButtonBack', 'frontButtonConfirm', 'frontButtonLeft',
                                            'frontButtonRight', 'sideButtonLayout')], [0, 1, 2, 3, 0])
-        self.giu_nguyen(BAN_TRUOC, luu)
+        # A fresh card wakes to where it slept (wakeTarget 2, fc4c5e27), written as wakeIntoBook 1 for older builds.
+        self.assertEqual(luu.get('wakeTarget'), 2)
+        self.giu_nguyen(dict(BAN_TRUOC, wakeIntoBook=1), luu)
 
     def test_file_ban_truoc_chi_dua_mot_lan(self):
         luu, log = self.khoi_dong(CUA_CHU_MAY)

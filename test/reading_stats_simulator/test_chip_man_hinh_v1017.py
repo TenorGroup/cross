@@ -6,9 +6,8 @@ record hw_calib/screenType. The simulator has neither probe nor NVS, so its row 
 alone. Evidence: the firmware logs the row value when the Device tab draws it, a Select on the
 row opens nothing and writes no setting, and the tab screenshot lands in CROSSPOINT_TEST_ARTIFACTS.
 
-Route (as test_ble_settings_screen.py): Home, DOWN x4 = Settings card, RIGHT x7 = Device group (after
-the Motion sensor and System groups),
-CONFIRM opens Settings on that tab at row 1, LEFT wraps to the last row.
+Route: Home, DOWN x4 = Settings card, RIGHT x10 = About & updates (the last row since v1.0.69),
+CONFIRM opens that screen on About, RIGHT moves to the chip row.
 """
 import json
 import os
@@ -49,19 +48,19 @@ class DisplayChipRowTest(unittest.TestCase):
         return log
 
     def test_device_tab_ends_with_the_panel_chip_read_only(self):
-        keys = ["DOWN"] * 4 + ["RIGHT"] * 7 + ["CONFIRM", "LEFT", "CONFIRM", "BACK", "QUIT"]
-        opened = 2000 + 11 * BEAT_MS
+        keys = ["DOWN"] * 4 + ["RIGHT"] * 10 + ["CONFIRM", "RIGHT", "CONFIRM", "BACK", "QUIT"]
+        opened = 2000 + 14 * BEAT_MS
         before = (self.store / "settings.json").read_text()
         log = self.run_keys(keys, [(opened + 900, "v1017-chip-thiet-bi"),
                                    (opened + 2 * BEAT_MS + 900, "v1017-chip-dong-cuoi")])
-        self.assertEqual(log.count("Entering activity: Settings"), 1, log[-3000:])
-        # The value is read when the Device tab draws the row, once per boot.
+        self.assertEqual(log.count("Entering activity: InfoUpdate"), 1, log[-3000:])
+        # The value is read when About & updates draws the row, once per boot.
         self.assertEqual(log.count("Display chip: UC8279"), 1, log[-3000:])
         self.assertNotIn("Display chip: UC8279, VER", log)
-        # Select on the last row opens nothing: Settings is the only activity entered after Home.
+        # Select on the chip row opens nothing: InfoUpdate is the only activity entered after Home.
         entered = [line.split("Entering activity: ", 1)[1].strip() for line in log.splitlines()
                    if "Entering activity: " in line]
-        self.assertEqual(entered[entered.index("Settings") + 1:], [], entered)
+        self.assertEqual(entered[entered.index("InfoUpdate") + 1:], [], entered)
         after = json.loads((self.store / "settings.json").read_text())
         self.assertEqual({k: v for k, v in after.items() if k in json.loads(before)}, json.loads(before))
 

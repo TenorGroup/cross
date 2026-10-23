@@ -143,7 +143,7 @@ class ChapterHoldTest(unittest.TestCase):
     def test_giu_khi_menu_dang_mo_khong_dung_toi_sach(self):
         """Menu doc dang mo thi nut phai thuoc menu, sach khong duoc nhay chuong."""
         log = self.chay('1000:CONFIRM;3000:CONFIRM;5000:RIGHT:1000;8000:BACK;10000:QUIT', longPressButtonBehavior=1)
-        self.assertIn('Entering activity: EpubReaderMenu', log)
+        self.assertIn('[BARFRAME] screen=EpubReader', log)  # the toolbar menu, default since v1.0.72
         viTri = self.moc(log)
         self.assertTrue(viTri, 'phai co vi tri duoc luu')
         self.assertEqual(viTri[-1][0], 0, f'sach khong duoc doi chuong khi menu mo: {viTri}')

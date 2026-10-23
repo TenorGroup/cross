@@ -119,7 +119,9 @@ class ReaderPageFillTest(unittest.TestCase):
             self.assertGreater(text[-1][1] + pitch, bar[0][0] - GAP, f'level {level}: con cho cho mot dong nua: {text[-2:]} {bar}')
 
     def test_an_thanh_trang_thai_thi_chu_xuong_tan_day(self):
-        text, bar, height = self.chup('an', lineSpacing=4, readerStatusBarMode=0)
+        # Noto Serif left the firmware (131f1de2): fontFamily 0 reads in Noto Sans, whose last line at Sieu rong
+        # ends at 728 with the bar shown or hidden; level 3 reaches 757.
+        text, bar, height = self.chup('an', lineSpacing=3, readerStatusBarMode=0)
         self.assertFalse(bar, bar)
         self.assertGreater(text[-1][1], height - STATUS_INK_TOP - 30, text[-1])
 

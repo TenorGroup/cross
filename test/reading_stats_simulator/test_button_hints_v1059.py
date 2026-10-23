@@ -81,9 +81,9 @@ def ink_box(im, box):
 
 
 def switch(out):
-    # Home Settings opens on Display: UI size, then the merged Status bar row.
+    # Home Settings opens on Connections; one RIGHT reaches Display: UI size, then the merged Status bar row.
     # The old bottom-small choice is index 3. Two UP presses select top-small (index 1).
-    _, saved = run(out, 'switch', '1000:UP;1600:CONFIRM;2600:RIGHT;3200:CONFIRM;3800:UP;4400:UP;5000:CONFIRM;5600:BACK',
+    _, saved = run(out, 'switch', '1000:UP;1300:RIGHT;1600:CONFIRM;2600:RIGHT;3200:CONFIRM;3800:UP;4400:UP;5000:CONFIRM;5600:BACK',
                    {4400: 'row'}, {})
     assert saved.get('tenorButtonHints') == 0, ('Status bar popup selects top-small', saved.get('tenorButtonHints'))
     assert saved['tipsEnabled'] == 1 and saved['globalStatusBarMode'] == 0, 'only the Status bar row changes'
@@ -94,7 +94,7 @@ def choices(out):
     expected = {0: (1, 0), 1: (0, 0), 2: (2, 0), 3: (0, 1), 4: (2, 1)}
     moves = {0: ('UP', 'UP', 'UP'), 1: ('UP', 'UP'), 2: ('UP',), 3: (), 4: ('DOWN',)}
     for choice, pair in expected.items():
-        events = ['1000:UP', '1600:CONFIRM', '2200:RIGHT', '2800:CONFIRM']
+        events = ['1000:UP', '1300:RIGHT', '1600:CONFIRM', '2200:RIGHT', '2800:CONFIRM']
         at = 3400
         for key in moves[choice]:
             events.append(f'{at}:{key}')

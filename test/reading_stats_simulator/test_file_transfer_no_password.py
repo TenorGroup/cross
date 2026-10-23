@@ -11,8 +11,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get("CROSSPOINT_SIM_PROGRAM", REPO / ".pio/build/simulator_x3_uc8279/program"))
 
-# Home: UP mở Cài đặt tại Hiển thị; RIGHT x5 tới Gửi file, đầu nhóm máy.
-DI_DEN_CHOOSER = "1500:UP;1800:RIGHT;2100:RIGHT;2400:RIGHT;2700:RIGHT;2900:RIGHT;3100:CONFIRM"
+# Home: UP mở Cài đặt tại Kết nối (Gửi file), dòng đầu danh sách.
+DI_DEN_CHOOSER = "1500:UP;3100:CONFIRM"
 ENTERING = re.compile(r"Entering activity: (\S+)")
 
 

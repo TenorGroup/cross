@@ -34,12 +34,13 @@ class PreferenceTest(unittest.TestCase):
   self.assertEqual(run.returncode,0,run.stdout+run.stderr)
   self.settings=json.loads((self.store/'settings.json').read_text())
   return run.stdout+run.stderr
- def roundtrip(self, steps):
+ def roundtrip(self, steps, weight=4, heavy=2):
   log=self.run_sim('800:DOWN;1300:DOWN;1800:CONFIRM;'+steps+';6200:QUIT')
   self.assertEqual(self.settings['sdFontFamilyName'],'Bokerlam')
-  self.assertEqual(self.settings['readerInkWeight'],4)  # level 1 stored shifted by 3
-  self.assertEqual(log.count('Loaded /.fonts/Bokerlam/weight-2/Bokerlam_16.cpfont'),2,log)
- def test_base_only_roundtrip(self):self.roundtrip('3000:LEFT;3500:CONFIRM;4200:RIGHT;4700:CONFIRM')
+  self.assertEqual(self.settings['readerInkWeight'],weight)  # level 1 stored shifted by 3
+  self.assertEqual(log.count('Loaded /.fonts/Bokerlam/weight-2/Bokerlam_16.cpfont'),heavy,log)
+ # The base-only font sets the level it draws (0); it stays 0 back on Bokerlam, which then loads its base file.
+ def test_base_only_roundtrip(self):self.roundtrip('3000:LEFT;3500:CONFIRM;4200:RIGHT;4700:CONFIRM',weight=3,heavy=1)
  def test_weighted_roundtrip(self):self.roundtrip('3000:RIGHT;3500:CONFIRM;4200:LEFT;4700:CONFIRM')
  def test_builtin_roundtrip(self):self.roundtrip('2700:LEFT;3000:LEFT;3500:CONFIRM;4000:RIGHT;4300:RIGHT;4700:CONFIRM')
  def test_corrupt_variant_does_not_retry_each_preview(self):

@@ -124,8 +124,9 @@ def scrub_row(image):
 
 
 def cursor_pill(image):
-    """A list's selected row: the ring along its top and its foot, 3 px thick and over 400 px long."""
-    return sum(thick >= 3 and longest >= 400 for thick, longest in bands(image, 300)) >= 2
+    """A list's selected row: the ring along its top and its foot, 3 px thick and over 400 px long. v1.0.72 (a5d167d0): the
+    toolbar sheet stands over the progress line, so its first row starts higher (y 287)."""
+    return sum(thick >= 3 and longest >= 400 for thick, longest in bands(image, 300, top=250)) >= 2
 
 
 def ink_bands(image, top, bottom, left=24, right=504):
@@ -250,12 +251,15 @@ class FavoritesHintTest(unittest.TestCase):
 
     def test_10_toolbar_menu_empty_holds_the_hint_in_its_sheet(self):
         foot = sheet_bottom(self.bar_empty)
-        self.assertGreaterEqual(foot, 680, f'the sheet ends at {foot}: room is kept under it for the hint')
+        # v1.0.72 (a5d167d0): the progress line stands between the sheet and the bar, under every tab.
+        self.assertGreaterEqual(foot, 640, f'the sheet ends at {foot}: it stands on the progress line')
+        self.assertEqual(ink_bands(self.bar_empty, foot + 2, 694), 1, f'the sheet ends at {foot}: the progress line under it')
         self.assertEqual(ink_bands(self.bar_empty, 380, foot - 4, 40, 488), 2, 'the hint (2 lines) alone, no empty text')
 
     def test_10_toolbar_menu_with_a_pin_has_no_hint_and_its_sheet_stands_on_the_bar(self):
         foot = sheet_bottom(self.bar_pinned)
-        self.assertGreaterEqual(foot, 680, f'the sheet ends at {foot}: room is kept under it for the hint')
+        self.assertGreaterEqual(foot, 640, f'the sheet ends at {foot}: it stands on the progress line')
+        self.assertEqual(ink_bands(self.bar_pinned, foot + 2, 694), 1, f'the sheet ends at {foot}: the progress line under it')
 
 
 class ChapterListShowsWhereYouStandTest(unittest.TestCase):
