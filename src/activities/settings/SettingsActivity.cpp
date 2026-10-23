@@ -130,15 +130,12 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
   if (!lockHeld) lock.emplace(*this);
   form_.invalidate();
   formPaintReady_.store(false);
-  displaySettings.clear();
-  readerSettings.clear();
-  controlsSettings.clear();
-  systemSettings.clear();
-  deviceSettings.clear();
-  otherSettings.clear();
-  keyboardSettings.clear();
-  sleepSettings.clear();
-  motionSettings.clear();
+  // After the Bluetooth screen opened, only the open tab is built (releaseClosedTabs): building all nine
+  // with the radio up left about 9 KB of heap on the X3.
+  const int onlyTab = closedTabsReleased_ ? selectedCategoryIndex : -1;
+  const auto want = [onlyTab](const settingstabs::Tab tab) { return onlyTab < 0 || static_cast<int>(tab) == onlyTab; };
+  for (int tab = 0; tab < settingstabs::TAB_COUNT; ++tab)
+    if (want(static_cast<settingstabs::Tab>(tab))) danhSachCuaThe(static_cast<settingstabs::Tab>(tab)).clear();
 
   // Pick up any fonts uploaded/deleted over the web server since the last
   // reader activity ran - otherwise the font-family picker shows stale list.
@@ -191,11 +188,11 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
   ++rowCounts[static_cast<int>(settingstabs::Tab::DEVICE)];
   rowCounts[static_cast<int>(settingstabs::Tab::READER)] += 2 + (!dictionaries.empty() ? 1 : 0);
   for (size_t tab = 0; tab < rowCounts.size(); ++tab)
-    danhSachCuaThe(static_cast<settingstabs::Tab>(tab)).reserve(rowCounts[tab]);
+    if (want(static_cast<settingstabs::Tab>(tab))) danhSachCuaThe(static_cast<settingstabs::Tab>(tab)).reserve(rowCounts[tab]);
 
   for (const auto& setting : catalog) {
     const int tab = deviceSettingsTab(setting);
-    if (tab < 0) continue;
+    if (tab < 0 || !want(static_cast<settingstabs::Tab>(tab))) continue;
     if (x3StatusLayout && (setting.valuePtr == &CrossPointSettings::globalStatusBarMode ||
                            setting.valuePtr == &CrossPointSettings::tenorButtonHints)) {
       if (setting.valuePtr == &CrossPointSettings::globalStatusBarMode)
@@ -215,37 +212,43 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
   }
   // This descriptor and its closures own the copied dictionary names across
   // child pickers and Back, after the discovery vector is destroyed.
-  if (!dictionaries.empty()) readerSettings.push_back(buildDictionarySetting(dictionaries));
+  if (!dictionaries.empty() && want(settingstabs::Tab::READER))
+    readerSettings.push_back(buildDictionarySetting(dictionaries));
 
-  if (!BoardConfig::hasTouch()) {
+  if (!BoardConfig::hasTouch() && want(settingstabs::Tab::CONTROLS)) {
     controlsSettings.insert(controlsSettings.begin(),
                             SettingInfo::Action(StrId::STR_REMAP_FRONT_BUTTONS, SettingAction::RemapFrontButtons));
   }
   for (const auto& dong : DONG_HANH_DONG) {
     if (infoupdate::holds(dong.viec)) continue;  // X4 Pro: on the About & updates screen
+    if (!want(settingstabs::nhaCua(dong.viec))) continue;
     danhSachCuaThe(settingstabs::nhaCua(dong.viec)).push_back(SettingInfo::Action(dong.nhan, dong.viec));
   }
   // One layout leaves nothing to pick, so the row would be a dead press.
-  if (keyboard_layouts::COUNT > 1) {
+  if (keyboard_layouts::COUNT > 1 && want(settingstabs::Tab::KEYBOARD)) {
     keyboardSettings.insert(keyboardSettings.begin(),
                             SettingInfo::Action(StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts));
   }
   // Home button shortcuts (#3516): a physical Home key only.
-  if (BoardConfig::hasHomeKey()) {
+  if (BoardConfig::hasHomeKey() && want(settingstabs::Tab::CONTROLS)) {
     controlsSettings.insert(controlsSettings.begin(),
                             SettingInfo::Action(StrId::STR_HOME_BUTTON, SettingAction::HomeButton));
   }
   // Clock precedes file-management preferences. It stays on boards without an
   // RTC: the time comes from NTP there, and the zone and format still apply.
-  const auto files = std::find_if(systemSettings.begin(), systemSettings.end(), [](const SettingInfo& row) {
-    return row.valuePtr == &CrossPointSettings::showHiddenFiles;
-  });
-  systemSettings.insert(files, SettingInfo::Action(StrId::STR_CLOCK, SettingAction::ClockSettings));
-  readerSettings.insert(readerSettings.begin(),
-                        SettingInfo::Action(StrId::STR_TEXT_SETTINGS, SettingAction::TextSettings));
-  readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
+  if (want(settingstabs::Tab::SYSTEM)) {
+    const auto files = std::find_if(systemSettings.begin(), systemSettings.end(), [](const SettingInfo& row) {
+      return row.valuePtr == &CrossPointSettings::showHiddenFiles;
+    });
+    systemSettings.insert(files, SettingInfo::Action(StrId::STR_CLOCK, SettingAction::ClockSettings));
+  }
+  if (want(settingstabs::Tab::READER)) {
+    readerSettings.insert(readerSettings.begin(),
+                          SettingInfo::Action(StrId::STR_TEXT_SETTINGS, SettingAction::TextSettings));
+    readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
+  }
   // Read only, last on Device: the panel chip, for a photo sent with an ink report.
-  if (!infoupdate::holds(SettingAction::None, /*chip=*/true)) {
+  if (!infoupdate::holds(SettingAction::None, /*chip=*/true) && want(settingstabs::Tab::DEVICE)) {
     SettingInfo chip = SettingInfo::Action(StrId::STR_DISPLAY_CHIP, SettingAction::None);
     chip.stringGetter = [] { return panelchip::current(); };
     deviceSettings.push_back(std::move(chip));
@@ -253,6 +256,7 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
 
   // A theme or conditional row can shorten an inactive category as well.
   for (size_t tab = 0; tab < tabNavs.size(); ++tab) {
+    if (!want(static_cast<settingstabs::Tab>(tab))) continue;
     const int count = static_cast<int>(danhSachCuaThe(static_cast<settingstabs::Tab>(tab)).size());
     auto& cursor = tabNavs[tab];
     cursor.selected = count == 0 ? 0 : std::clamp(cursor.selected.load(), mappedInput.hasTouch() ? 0 : 1, count);
@@ -262,6 +266,14 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
   settingsCount = static_cast<int>(currentSettings->size());
   rebuildRowItems();
   if (shell::isUgly()) bindForm();
+  if (closedTabsReleased_) releaseBaseSettingsList();  // the catalog is the other ~16 KB; nothing borrows it now
+}
+
+void SettingsActivity::releaseClosedTabs() {
+  RenderLock lock(*this);
+  for (int tab = 0; tab < settingstabs::TAB_COUNT; ++tab)
+    if (tab != selectedCategoryIndex) std::vector<SettingInfo>().swap(danhSachCuaThe(static_cast<settingstabs::Tab>(tab)));
+  closedTabsReleased_ = true;
 }
 
 void SettingsActivity::onEnter() {
@@ -319,7 +331,11 @@ void SettingsActivity::selectCategory(const int categoryIndex) {
   // render task reads currentSettings/rowItems_ mid-build while a tab step
   // replaces them from the unlocked button path.
   RenderLock lock(*this);
+  // The tab left goes too, so tabs visited with the radio up do not pile up.
+  if (closedTabsReleased_ && categoryIndex != selectedCategoryIndex)
+    std::vector<SettingInfo>().swap(danhSachCuaThe(static_cast<settingstabs::Tab>(selectedCategoryIndex)));
   selectedCategoryIndex = categoryIndex;
+  if (closedTabsReleased_) rebuildSettingsLists(/*lockHeld=*/true);  // builds this tab alone
   currentSettings = &danhSachCuaThe(static_cast<settingstabs::Tab>(selectedCategoryIndex));
   settingsCount = static_cast<int>(currentSettings->size());
   // Pull the viewport to this tab's remembered row. UiTabListActivity owns the
@@ -813,6 +829,7 @@ void SettingsActivity::toggleCurrentSetting() {
         activityManager.goToBrowser();
         break;
       case SettingAction::BlePageTurner:
+        releaseClosedTabs();
         startActivityForResult(std::make_unique<BlePageTurnerActivity>(renderer, mappedInput), resultHandler);
         break;
       case SettingAction::DeviceName:

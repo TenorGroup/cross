@@ -117,6 +117,7 @@ for mode in modes:
                            'std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe')
     methods += method_slice(sources[paths[2]], 'bool SettingsActivity::listedAsRow(')
     methods += method_slice(sources[paths[2]], 'void SettingsActivity::rebuildSettingsLists(')
+    methods += method_slice(sources[paths[2]], 'void SettingsActivity::releaseClosedTabs(')
     (output / 'CategoryMethods.inc').write_text(methods)
     settings = read('src/CrossPointSettings.cpp')
     status_marker = 'namespace {\n// What each reader status bar mode shows'

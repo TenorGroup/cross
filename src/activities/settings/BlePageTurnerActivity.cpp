@@ -14,6 +14,7 @@
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "MenuTiltInput.h"
+#include "SettingsList.h"
 #include "activities/reader/ReaderUtils.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
@@ -88,6 +89,13 @@ namespace fui = freeink::ui;
 
 void BlePageTurnerActivity::onEnter() {
   UiListActivity::onEnter();
+  // The settings catalog (16.6 KB on the X3) stays built under this screen when it opens from Settings,
+  // and the radio's start gate then fails by about that much (65.9 KB free against 81.9 KB). The rows
+  // Settings shows are its own copies, so the catalog goes, as the OTA screen does.
+  {
+    RenderLock lock(*this);
+    releaseBaseSettingsList();
+  }
   nav.selected = 0;
   lastPollMs = millis();
   lastStateSig = 0;

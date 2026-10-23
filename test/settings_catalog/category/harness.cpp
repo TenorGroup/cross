@@ -95,6 +95,8 @@ struct SettingsActivity {
   std::atomic<bool> formPaintReady_{false};
   void bindForm() {}
   void rebuildSettingsLists(bool lockHeld = false);
+  void releaseClosedTabs();
+  bool closedTabsReleased_ = false;
 };
 // The About & updates screen (InfoUpdateActivity) is a boundary here: its rows stay on their tabs.
 namespace infoupdate { inline bool holds(settingstabs::Action, bool = false) { return false; } }
@@ -340,6 +342,33 @@ int main(int argc, char** argv) {
     ok &= check(std::none_of(activity.displaySettings.begin(), activity.displaySettings.end(), [](const auto& row) {
                   return row.valuePtr == &CrossPointSettings::uglyRootScreen;
                 }), "leaving ugly hides Root again");
+  }
+  {
+    // Bluetooth from Settings (23/10/2026): the closed tabs go, the open one stays, and a tab built
+    // again later has the rows, in the order, a full build gives it.
+    const auto signature = [&activity](const int tab) {
+      std::string out;
+      for (const auto& row : activity.danhSachCuaThe(static_cast<settingstabs::Tab>(tab)))
+        out += std::to_string(static_cast<int>(row.nameId)) + ":" + std::to_string(static_cast<int>(row.action)) +
+               ":" + (row.key ? row.key : "") + ";";
+      return out;
+    };
+    activity.rebuildSettingsLists();
+    std::array<std::string, settingstabs::TAB_COUNT> full;
+    for (int tab = 0; tab < settingstabs::TAB_COUNT; ++tab) full[tab] = signature(tab);
+    const int open = static_cast<int>(settingstabs::Tab::DEVICE);
+    activity.selectedCategoryIndex = open;
+    activity.releaseClosedTabs();
+    bool closedEmpty = true;
+    for (int tab = 0; tab < settingstabs::TAB_COUNT; ++tab)
+      if (tab != open) closedEmpty &= activity.danhSachCuaThe(static_cast<settingstabs::Tab>(tab)).capacity() == 0;
+    ok &= check(closedEmpty && signature(open) == full[open], "the Bluetooth screen keeps the open tab and frees the rest");
+    for (int tab = 0; tab < settingstabs::TAB_COUNT; ++tab) {
+      activity.selectedCategoryIndex = tab;
+      activity.rebuildSettingsLists();
+      ok &= check(signature(tab) == full[tab], "a tab built alone matches the full build");
+    }
+    activity.closedTabsReleased_ = false;
   }
   ok &= dynamicLifetime();
   ok &= longFontNames();

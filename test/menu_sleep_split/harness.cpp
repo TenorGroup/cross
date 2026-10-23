@@ -54,6 +54,8 @@ struct SettingsActivity {
   void bindForm() {}
   void focusForm(int) {}
   void rebuildSettingsLists(bool lockHeld = false);
+  void releaseClosedTabs();
+  bool closedTabsReleased_ = false;
   std::string favoriteKey(int) const;
   int focusFavorite(const std::string&);
 };
