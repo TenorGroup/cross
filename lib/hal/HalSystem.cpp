@@ -61,8 +61,10 @@ void IRAM_ATTR __wrap_panic_print_backtrace(const void* frame, int core) {
   const uint32_t sp = (uint32_t)((XtExcFrame*)frame)->a1;
 #endif
   constexpr uint32_t captureBytes = 1024;
+  // The X4 Pro's render task keeps its stack in PSRAM (ActivityManager::begin): external RAM is a stack too.
+  const void* windowEnd = reinterpret_cast<const void*>(sp + captureBytes - 1);
   if (!esp_stack_ptr_is_sane(sp) || sp > UINT32_MAX - captureBytes ||
-      !esp_ptr_in_dram(reinterpret_cast<const void*>(sp + captureBytes - 1))) {
+      !(esp_ptr_in_dram(windowEnd) || esp_ptr_external_ram(windowEnd))) {
     __real_panic_print_backtrace(frame, core);
     return;
   }
