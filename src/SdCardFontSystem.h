@@ -72,7 +72,10 @@ class SdCardFontSystem {
   void markRegistryDirty();
   // Frees the catalog list when the RTC memo can bring it back: the next registry() restores it
   // without walking the card. False when it stays (unread, fonts changed, or not kept).
-  bool releaseCatalog();
+  // endsInRestart: a session that ends in a restart (Wi-Fi) lets it go without the memo too, since the boot after
+  // walks the card anyway (79 families do not fit the memo: 14.9 KB stayed held). The caller takes it back with
+  // registry() on a way out that does not restart.
+  bool releaseCatalog(bool endsInRestart = false);
 
   /// If the registry is dirty, re-scan the SD card now and clear the flag.
   /// Used by the web UI so uploaded/deleted fonts appear in the list

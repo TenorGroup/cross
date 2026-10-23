@@ -568,6 +568,24 @@ TEST_F(SdFontBoot, CatalogTheMemoCannotBringBackIsKept) {
   EXPECT_EQ(hostDiscoveries, 1);
 }
 
+// A card with more families than the memo holds (79 on a customer's X4 Pro: 14.9 KB of the internal heap). A book
+// keeps the list; a Wi-Fi session that ends in a restart lets it go, and a way out without the restart walks the
+// card once to bring it back (v1.0.75).
+TEST_F(SdFontBoot, CatalogTooBigForTheMemoGoesOnlyForARestart) {
+  for (int i = 0; i < 128; ++i) putOnCard(family("Audit" + std::to_string(1000 + i), {8, 10, 12, 14, 16, 18, 20}));
+  SdCardFontSystem system;
+  GfxRenderer renderer;
+  boot(ESP_RST_POWERON, system, renderer);
+  ASSERT_EQ(hostDiscoveries, 1);
+  EXPECT_FALSE(system.releaseCatalog()) << "the memo cannot bring this list back";
+  EXPECT_TRUE(system.releaseCatalog(/*endsInRestart=*/true));
+  EXPECT_EQ(hostDiscoveries, 1);
+  EXPECT_EQ(system.registry().getFamilyCount(), 130);
+  EXPECT_EQ(hostDiscoveries, 2) << "brought back by one walk of the card";
+  system.ensureLoaded(renderer);
+  EXPECT_STREQ(hostSettings.sdFontFamilyName, "Bokerlam") << "the reader's family was lost";
+}
+
 // After a wake the boot memo's family answered for the catalog until its first read. A released
 // catalog must not bring that old family back: a size added since the wake would snap away.
 TEST_F(SdFontBoot, ReleasedCatalogDoesNotAnswerWithTheWakeFamily) {

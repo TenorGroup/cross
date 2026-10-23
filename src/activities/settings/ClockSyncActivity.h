@@ -47,6 +47,7 @@ class ClockSyncActivity final : public Activity {
   char syncedTime[16] = {0};
   bool runtimeStarted = false;
   bool shouldTearDownWifiOnExit = false;
+  bool catalogReleased = false;  // the font catalog went for the radio (onEnter)
   uint32_t idleSince = 0;
   bool idleTimerStarted = false;
 

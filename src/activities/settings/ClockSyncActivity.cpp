@@ -14,6 +14,7 @@
 #include "CrossPointSettings.h"
 #include "FileTransferState.h"
 #include "MappedInputManager.h"
+#include "SdCardFontSystem.h"
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
@@ -37,6 +38,12 @@ void ClockSyncActivity::onEnter() {
   Activity::onEnter();
   state = SYNCING;
   syncedTime[0] = '\0';
+  {
+    // TLS needs 40 KB of the internal heap with Wi-Fi up. The session ends in a restart, whose boot reads the
+    // catalog again; one that ends without (Wi-Fi cancelled) takes it back in onExit.
+    RenderLock lock(*this);
+    catalogReleased = sdFontSystem.releaseCatalog(/*endsInRestart=*/true);
+  }
 
   if (WiFi.status() == WL_CONNECTED) {
     shouldTearDownWifiOnExit = true;
@@ -55,7 +62,10 @@ void ClockSyncActivity::onExit() {
     WiFi.disconnect(false);
     delay(30);
     silentRestart();
+  } else if (catalogReleased) {
+    sdFontSystem.registry();  // no restart after all: the catalog comes back now, with the radio off
   }
+  catalogReleased = false;
 
   filetransfer::release();
 }

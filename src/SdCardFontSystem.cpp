@@ -188,9 +188,11 @@ void SdCardFontSystem::markRegistryDirty() {
   registryDirty_.store(true, std::memory_order_release);
 }
 
-bool SdCardFontSystem::releaseCatalog() {
+bool SdCardFontSystem::releaseCatalog(const bool endsInRestart) {
   // Only a list the memo still holds goes: the memo is cleared when fonts change in the app.
-  if (catalogMemo.magic != sdfontmemo::CATALOG_MAGIC || registryDirty_.load(std::memory_order_acquire)) return false;
+  if ((!endsInRestart && catalogMemo.magic != sdfontmemo::CATALOG_MAGIC) ||
+      registryDirty_.load(std::memory_order_acquire))
+    return false;
   uint8_t expected = CATALOG_READY;
   if (!catalog_.compare_exchange_strong(expected, CATALOG_PENDING, std::memory_order_acq_rel)) return false;
   registry_.adopt({});
