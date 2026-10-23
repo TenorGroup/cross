@@ -30,7 +30,7 @@ if 'bool MappedInputManager::wasScreenHold(' in hold_source:
 else:
     hold=method(hold_source, 'bool MappedInputManager::wasScreenLongPress(').replace(
         'wasScreenLongPress(int& x, int& y)', 'wasScreenHold(int& x, int& y, unsigned long thresholdMs)')
-hold=hold.replace('MappedInputManager::','')
+hold=hold.replace('MappedInputManager::','').replace('tapPoint(renderer, nx, ny, x, y)', 'renderer.tapToLogical(nx, ny, x, y)')
 caller = "Home context actions"
 lines = ""
 home=(a.repo / "src/activities/home/HomeActivity.cpp").read_text()

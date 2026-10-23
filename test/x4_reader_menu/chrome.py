@@ -45,6 +45,7 @@ namespace HeaderBackTapTarget {
   void setFoot(int,int,int,int) { ++foot; }
   void setZone(int,int,int,int) { ++zone; }
   void setName(int,int,int,int) {}
+  void setFootBand(int,int) {}
 }
 namespace freeink { struct Icon { const unsigned char* bits=nullptr; int w=0,h=0; }; }
 freeink::Icon icon_tenor_reader_position_40,icon_tenor_reader_reading_40,icon_tenor_reader_tools_40;
