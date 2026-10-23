@@ -13,6 +13,9 @@
 
 #include <algorithm>
 #include <cstring>
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)
+#include <esp_heap_caps.h>
+#endif
 
 #include "CrossPointSettings.h"
 #include "BlePageTurnerHost.h"
@@ -297,6 +300,14 @@ void ActivityManager::begin() {
   constexpr uint32_t renderTaskStackBytes = 16384;
 #else
   constexpr uint32_t renderTaskStackBytes = 8192;
+#endif
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)
+  // X4 Pro: the 16 KB stack goes to PSRAM. Wi-Fi takes ~49 KB of the internal heap and TLS needs 40 KB more, which
+  // this stack left short (time zone lookup refused, v1.0.74). A task with its stack in PSRAM must never touch flash
+  // (setup reads the one NVS value a frame shows, panelchip::current, before this). PSRAM refused: the internal heap.
+  xTaskCreatePinnedToCoreWithCaps(&renderTaskTrampoline, "ActivityManagerRender", renderTaskStackBytes, this, 1,
+                                  &renderTaskHandle, renderTaskCore, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (!renderTaskHandle)
 #endif
   xTaskCreatePinnedToCore(&renderTaskTrampoline, "ActivityManagerRender",
                           renderTaskStackBytes,  // Stack size

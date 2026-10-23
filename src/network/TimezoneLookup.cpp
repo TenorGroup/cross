@@ -23,9 +23,10 @@ bool timezone_lookup::updateOffset() {
   previousResult = false;
   if (ESP.getFreeHeap() < HttpDownloader::MIN_TLS_FREE_HEAP ||
       ESP.getMaxAllocHeap() < HttpDownloader::MIN_TLS_MAX_ALLOC) {
-    LOG_ERR("TZ", "Insufficient memory for timezone lookup");
+    LOG_ERR("TZ", "Insufficient memory for timezone lookup free=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     return false;
   }
+  LOG_INF("TZ", "Timezone begin free=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   // Tenor's own endpoint first (Cloudflare places the caller's IP; the same "+0700" text), ipapi.co after:
   // ipapi.co answers 429 to whole carriers sharing one IP, and a unit that never got an answer shows UTC.
   static constexpr struct {

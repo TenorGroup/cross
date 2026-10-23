@@ -73,6 +73,7 @@
 #include "QuickAction.h"
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
+#include "PanelChip.h"
 #include "SdCardFontSystem.h"
 #include "FontPackInstaller.h"
 #include "activities/Activity.h"
@@ -653,6 +654,11 @@ void setupDisplayAndFonts(bool seamless = false, bool sdFonts = true) {
   display.begin(seamless);
   logHeapMark("display.begin");
   renderer.begin();
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)
+  // The render task's stack is in PSRAM here (ActivityManager::begin) and must not reach flash; the chip row is the
+  // one frame that reads NVS. Read it once now, on this task, after the controller is known.
+  panelchip::current();
+#endif
   activityManager.begin();
   logHeapMark("render-task");
   LOG_DBG("MAIN", "Display initialized");
