@@ -12,6 +12,9 @@ if case == 'T5':
              'FILE_TRANSFER', 'TILT_PAGE_TURN', 'SAVE_QUOTE', 'CONNECT_REMOTE']
     for number, name in enumerate(names):
         assert re.search(r'LP_MENU_' + name + r'\s*=\s*' + str(number) + r'\b', settings), name
+    # The upstream actions come after the last number the saved settings use (D4): their numbers are 9 and 10.
+    for number, name in ((9, 'CREATE_CLIPPING'), (10, 'FOOTNOTES')):
+        assert re.search(r'LP_MENU_' + name + r'\s*=\s*' + str(number) + r'\b', settings), name
     threshold = reader.split('unsigned long EpubReaderActivity::confirmLongPressThreshold() const {')[1]
     threshold = threshold.split('void EpubReaderActivity::toggleTiltFromReader')[0]
     assert 'case CrossPointSettings::LP_MENU_CONNECT_REMOTE:' in threshold
@@ -21,7 +24,8 @@ if case == 'T5':
     source = subprocess.check_output(['git', '-C', str(root), 'show', 'v1.0.55:src/activities/reader/EpubReaderActivity.cpp'], text=True)
     def old_cases(text):
         switch = text.split('switch (SETTINGS.longPressMenuFunction) {')[1].split('\n  // Home-key boards')[0]
-        switch = re.sub(r'      case CrossPointSettings::LP_MENU_CONNECT_REMOTE:.*?(?=      case |      default:)', '', switch, flags=re.S)
+        # The remote hold, and the two actions upstream added after it, are not part of the handler saved settings relied on.
+        switch = re.sub(r'      case CrossPointSettings::LP_MENU_(?:CONNECT_REMOTE|CREATE_CLIPPING|FOOTNOTES):.*?(?=      case |      default:)', '', switch, flags=re.S)
         return switch
     assert old_cases(reader) == old_cases(source), 'legacy handler changed'
     print('T5 stored numbers 0-7 and legacy handler unchanged; new hold 400 ms: GREEN')
@@ -115,6 +119,7 @@ module = root / 'lib/BlePageTurner'
 binary = output / 'action'
 subprocess.run([compiler, '-std=c++20', '-DBLETURNER_TESTING', '-DFREEINK_CAP_BLE_HID_HOST=1',
                 '-I' + str(module / 'include'), '-I' + str(module / 'src'), '-I' + str(module / 'test'),
+                '-I' + str(root / 'freeink-sdk/libs/network/BleKeyboardHost/include'),
                 str(projection), str(module / 'src/Runtime.cpp'), str(module / 'test/Fakes.cpp'),
                 '-o', str(binary)], check=True)
 subprocess.run([str(binary)], check=True)

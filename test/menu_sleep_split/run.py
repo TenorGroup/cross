@@ -60,7 +60,8 @@ fields = header[header.index('  std::vector<SettingInfo> displaySettings;'):head
 sigs = ['std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe', 'bool SettingsActivity::listedAsRow(',
         'void SettingsActivity::rebuildSettingsLists(',
         'std::string SettingsActivity::favoriteKey(', 'int SettingsActivity::focusFavorite(']
-methods = ''.join(method(source, s) for s in sigs)
+# The row filters call the file-local board check (Picco has no self-update rows); compile it in with them.
+methods = method(source, 'bool actionOnThisBoard(') + ''.join(method(source, s) for s in sigs)
 (out / 'Methods.inc').write_text(methods)
 # The Settings page rows are listed by homerows::settingsGroups(), shared by both shells: compile that.
 rows = (r / 'src/activities/home/HomeRows.cpp').read_text()
@@ -82,8 +83,9 @@ for name in ['HalTiltSensor', 'HalClock']:
     instance = name[0].lower() + name[1:]
     (out / (name+'.h')).write_text('#pragma once\nclass '+name+' { public: bool available=false; bool isAvailable() const { return available; } };\nextern '+name+' '+instance+';\n')
 incs = ['test/host_stubs', 'src', '.pio/libdeps/gh_release/ArduinoJson/src', 'lib/Epub', 'lib/Logging',
-        'lib/EpdFont', 'lib/Serialization', 'lib/KOReaderSync',
-        'freeink-sdk/libs/hardware/BoardConfig/include', 'lib/BlePageTurner/include', 'freeink-sdk/libs/ui/FreeInkUI/include']
+        'lib/EpdFont', 'lib/Serialization', 'lib/KOReaderSync', 'lib/HttpHeader',
+        'freeink-sdk/libs/hardware/BoardConfig/include', 'lib/BlePageTurner/include', 'freeink-sdk/libs/network/BleKeyboardHost/include',
+        'freeink-sdk/libs/ui/FreeInkUI/include']
 common = [os.environ.get('CXX', 'c++'), '-std=c++20', '-O1', '-g', '-ffunction-sections', '-fdata-sections',
           '-Wl,-dead_strip' if platform.system() == 'Darwin' else '-Wl,--gc-sections',
           '-DENABLE_ARDUINO_FEATURES=0', '-DCROSSPOINT_VERSION="sleep-split"', '-I'+str(out)]

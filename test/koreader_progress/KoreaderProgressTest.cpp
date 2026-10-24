@@ -16,7 +16,7 @@ HalMemory::HeapStats HalMemory::getDefaultHeap() { return {200000, 300000, 15000
 bool KOReaderCredentialStore::hasCredentials() const { return true; }
 std::string KOReaderCredentialStore::getMd5Password() const { return "md5"; }
 std::string KOReaderCredentialStore::getBaseUrl() const { return "http://sync.test"; }
-bool KOReaderCredentialStore::usesCrossPointSyncServer() const { return false; }
+
 
 namespace {
 

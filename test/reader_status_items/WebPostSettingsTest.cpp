@@ -39,6 +39,9 @@ int applied = 0;
 inline void applyToClock() { ++applied; }
 }  // namespace timezones
 
+// The handler lists the dictionaries on the card for the settings rows; this card has none.
+void DictionaryRegistry::discover(std::vector<DictionaryEntry>&) {}
+
 struct CrossPointWebServer {
   FakeRequest* server = nullptr;
   Language requestLanguage() const { return Language::EN; }

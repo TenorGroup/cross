@@ -98,6 +98,8 @@ class ActivityManager {
   std::atomic<bool> requestedUpdate{false};
   bool sleepTransition = false;
   uint32_t activityGeneration_ = 0;
+  uint32_t screenVisit = 0;               // the screen's visit counter and the visit the render task last painted
+  std::atomic<uint32_t> paintedVisit{0};
   int mappedInput = 0;
   std::unique_ptr<Activity> currentActivity;
   [[noreturn]] void renderTaskLoop();

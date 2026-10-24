@@ -25,7 +25,7 @@ event=manager[begin:end]
 pop=block(manager,manager.index('        if (homeAfterInput)'))
 empty_pop=block(manager,manager.index('      if (stackActivities.empty())'))
 restart=block(manager,manager.index('void ActivityManager::closeForRestart()'))
-replace_begin=manager.index('      if (pendingAction == PendingAction::Replace)')
+replace_begin=manager.index('      if (pendingAction == PendingAction::Replace')
 replace_end=manager.index('        // Destroy the current activity',replace_begin)
 replace_reset=manager[replace_begin:replace_end]+'}\n'
 fields=header[header.index('  bool homeAfterInput ='):header.index('  bool toReaderPage =')]
@@ -68,7 +68,7 @@ struct ActivityManager {
   HomeMenuItem preference=HomeMenuItem::FILE_BROWSER,reached=HomeMenuItem::NONE;int homeCalls=0;
   HomeMenuItem homeKeyTarget()const{return preference;}
   void goHome(HomeMenuItem target=HomeMenuItem::NONE){reached=target;++homeCalls;}
-  enum class PendingAction{Replace};PendingAction pendingAction=PendingAction::Replace;
+  enum class PendingAction{Replace,ReplaceForSleep};PendingAction pendingAction=PendingAction::Replace;
   std::vector<int> stackActivities;
   void exitActivity(RenderLock&){} void flushDeferredWrites(){}
   void receive();void completePop();void emptyPop();void replaceComplete();void closeForRestart();

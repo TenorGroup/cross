@@ -240,6 +240,11 @@ bool extension(const std::string& p, const char* suffix) {
 }
 bool hasEpubExtension(const std::string& p) { return extension(p, ".epub"); }
 bool hasTxtExtension(const std::string& p) { return extension(p, ".txt"); }
+bool hasMarkdownExtension(const std::string& p) { return extension(p, ".md"); }
+// EPUB, TXT and Markdown share one reflowable cache.
+bool hasReflowableBookExtension(const std::string& p) {
+  return hasEpubExtension(p) || hasTxtExtension(p) || hasMarkdownExtension(p);
+}
 bool hasXtcExtension(const std::string& p) { return extension(p, ".xtc"); }
 }
 struct CachedBook {

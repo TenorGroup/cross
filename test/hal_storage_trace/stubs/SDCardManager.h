@@ -26,6 +26,7 @@ class SDCardManager {
   bool exists(const char*) { return true; }
   bool remove(const char*) { return true; }
   bool rename(const char*, const char*) { return true; }
+  bool replaceFile(const char*, const char*) { return true; }
   bool rmdir(const char*) { return true; }
   bool openFileForRead(const char*, const char* path, FsFile& file) {
     file = openFile(path);

@@ -10,6 +10,7 @@ add_executable(TabNavigationTest
   SettingsLinkStubs.cpp
   ${REPO_ROOT}/src/MenuFavorites.cpp
   ${REPO_ROOT}/src/CrossPointSettings.cpp
+  ${REPO_ROOT}/src/SettingsList.cpp
   ${REPO_ROOT}/src/ReaderFontSizes.cpp
   ${REPO_ROOT}/test/mapped_input/FakeHal.cpp
   ${REPO_ROOT}/test/host_stubs/FakeUi.cpp

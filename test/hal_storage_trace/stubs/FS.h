@@ -13,6 +13,7 @@ class FsFile {
   bool isOpen() const { return opened; }
   bool close() { opened = false; return true; }
   void flush() {}
+  bool truncate(uint64_t) { return true; }
   bool sync() { return name != "/badsync"; }
   size_t getName(char* dst, size_t size) const {
     if (size == 0) return 0;

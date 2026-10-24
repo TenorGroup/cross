@@ -40,7 +40,7 @@ def main():
     binary = output / 'clock-ntp-regression'
     command = [args.cxx, '-std=c++17', '-Wall', '-Wextra', '-Werror',
                '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
-               '-I' + str(here / 'stubs'), '-I' + str(repo / 'lib/hal'),
+               '-I' + str(here / 'stubs'), '-I' + str(repo / 'lib/hal'), '-I' + str(repo / 'src/network'),
                '-I' + str(repo / 'freeink-sdk/libs/network/SecureNet/include'),
                '-I' + str(output), str(clock), str(here / 'ClockNtpBehavior.cpp'),
                '-o', str(binary)]

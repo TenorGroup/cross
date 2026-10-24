@@ -130,6 +130,7 @@ class OpdsBookBrowserActivity final : public CatalogActivity {
   void startBrowse() override;
   void downloadFinished(bool cancelled) override;
   void performSearch(const std::string& query) override;
+  void launchSearch() override;
   void onBackButton() override;
   // Pagination side buttons; everything else
   // falls through to the shared catalog input handling.

@@ -10,7 +10,7 @@ a = p.parse_args()
 repo = Path(__file__).resolve().parents[2]
 s = (repo / 'src/activities/util/BmpViewerActivity.cpp').read_text()
 start = s.index('void BmpViewerActivity::onExit()')
-end = s.index('\nvoid BmpViewerActivity::doSetSleepCover()', start)
+end = s.index('\nbool BmpViewerActivity::saveJpegSleepCover()', start)
 a.output.mkdir(parents=True, exist_ok=True)
 source = a.output / 'exit.cpp'
 source.write_text('''#include <cstdio>

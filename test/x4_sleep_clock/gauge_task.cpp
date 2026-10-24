@@ -18,17 +18,6 @@
 
 #include "fakes.inc"
 
-namespace X3GPIO {
-int16_t current = 10;
-bool readable = true;
-bool readBQ27220CurrentMA(int16_t* currentMa) {
-  ++fakebattery::gaugeReads;
-  *currentMa = current;
-  return readable;
-}
-// readI2CReg16LE (the About screen's extra registers) has an inline fake in stubs/HalGPIO.h.
-}  // namespace X3GPIO
-
 #include "usb.inc"
 
 // HalPowerManager.cpp's getDisplayedBatteryPercentage() links against the production global
@@ -114,8 +103,8 @@ void x3FirstPaintChargingCheck() {
 void x3ChargingPollIsBounded() {
   boot(BoardConfig::Board::X3);
   HalGPIO local;
-  X3GPIO::current = 10;
-  X3GPIO::readable = true;
+  fakebattery::current = 10;
+  fakebattery::readable = true;
   const int before = fakebattery::gaugeReads;
   check(local.isUsbConnected(), "first charging sample is immediate");
   for (int i = 1; i < 250; ++i) {
@@ -123,12 +112,12 @@ void x3ChargingPollIsBounded() {
     check(local.isUsbConnected(), "cached charging stays true before deadline");
   }
   check(fakebattery::gaugeReads == before + 1, "249 loop checks reuse one I2C sample");
-  X3GPIO::current = -10;
+  fakebattery::current = -10;
   ++fake::ms;
   check(!local.isUsbConnected(), "unplug is seen at 250 ms");
   check(fakebattery::gaugeReads == before + 2, "deadline polls exactly once");
   fake::ms += 250;
-  X3GPIO::readable = false;
+  fakebattery::readable = false;
   check(!local.isUsbConnected(), "failed gauge retains disconnected fallback");
   const int failedReads = fakebattery::gaugeReads;
   for (int i = 0; i < 100; ++i) local.isUsbConnected();
@@ -138,8 +127,8 @@ void x3ChargingPollIsBounded() {
   local.isUsbConnected();
   check(fakebattery::gaugeReads == failedReads, "render never polls an overdue gauge");
   faketask::current = &faketask::loop;
-  X3GPIO::readable = true;
-  X3GPIO::current = 10;
+  fakebattery::readable = true;
+  fakebattery::current = 10;
   fake::ms = UINT32_MAX - 100;
   check(local.isUsbConnected(), "poll before clock wrap");
   const int wrapReads = fakebattery::gaugeReads;

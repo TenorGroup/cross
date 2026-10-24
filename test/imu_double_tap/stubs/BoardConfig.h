@@ -7,7 +7,7 @@
 
 namespace BoardConfig {
 enum class RtcType : uint8_t { None, Pcf8563, Ds3231 };
-enum class ImuType : uint8_t { None, Lsm6ds3, Qmi8658 };
+enum class ImuType : uint8_t { None, Lsm6ds3, Qmi8658, Sc7a20h };
 struct SensorsConfig {
   int8_t i2cSda;
   int8_t i2cScl;

@@ -6,7 +6,7 @@ root = sys.argv[1]
 fav = open(f"{root}/src/MenuFavorites.cpp", encoding="utf-8").read()
 act = open(f"{root}/src/activities/settings/KOReaderSettingsActivity.cpp", encoding="utf-8").read()
 table = {int(m.group(3)): (m.group(1), m.group(2))
-         for m in re.finditer(r'\{"(kosync/[A-Za-z]+)",\s*StrId::(\w+),\s*"kosync",\s*0,\s*(\d+)\}', fav)}
+         for m in re.finditer(r'\{"(kosync/[A-Za-z0-9]+)",\s*StrId::(\w+),\s*"kosync",\s*0,\s*(\d+)\}', fav)}
 block = re.search(r'menuNames\[[^\]]*\]\s*=\s*\{(.*?)\};', act, re.S).group(1)
 rows = re.findall(r'StrId::(\w+)', block)
 bad = 0

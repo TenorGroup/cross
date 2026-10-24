@@ -97,6 +97,10 @@ struct UITheme {
   struct Metrics {};
   const Metrics& getMetrics() const { static Metrics metrics; return metrics; }
 };
+// Turning plugins on or off re-reads which events are subscribed; there is no plugin directory here.
+namespace pluginevents {
+void refreshSubscriptions() {}
+}  // namespace pluginevents
 namespace BoardConfig {
 inline bool hasHomeKey() { return false; }
 }

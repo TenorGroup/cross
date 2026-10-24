@@ -550,6 +550,15 @@ struct PagedListFixture : public ::testing::Test {
     screen.state().drawnCount = screen.count;
     screen.state().followOnBuild = false;
   }
+  // The front pair steps rows on the press (#3754); the edge pair (Up, Down) pages on the release.
+  void press(uint8_t b) {
+    faketest::reset();
+    faketest::pressed[b] = true;
+    input.update();
+    screen.loop();
+    faketest::reset();
+    input.update();
+  }
   void release(uint8_t b) {
     faketest::reset();
     faketest::released[b] = true;
@@ -579,13 +588,13 @@ TEST_F(PagedListFixture, EdgeButtonsMoveTheWholeViewportBackAndForward) {
 TEST_F(PagedListFixture, FrontTapMovesOneRowAndHoldJumpsOnceToBoundary) {
   screen.state().selected = 100;
   screen.state().top = 100;
-  release(HalGPIO::BTN_RIGHT);
+  press(HalGPIO::BTN_RIGHT);
   EXPECT_EQ(screen.state().selected, 101);
   hold(HalGPIO::BTN_RIGHT);
   EXPECT_EQ(screen.state().selected, 112);
   EXPECT_EQ(screen.state().top, 100);
   hold(HalGPIO::BTN_RIGHT);
-  release(HalGPIO::BTN_RIGHT);
+  release(HalGPIO::BTN_RIGHT);  // the release that ends a hold is swallowed
   EXPECT_EQ(screen.state().selected, 112);
   hold(HalGPIO::BTN_LEFT);
   release(HalGPIO::BTN_LEFT);
@@ -596,36 +605,36 @@ TEST_F(PagedListFixture, FrontTapMovesOneRowAndHoldJumpsOnceToBoundary) {
 TEST_F(PagedListFixture, StepPastLastRowFlipsToNextPageWithSelectionOnItsFirstRow) {
   screen.state().top = 100;
   screen.state().selected = 111;
-  release(HalGPIO::BTN_RIGHT);
+  press(HalGPIO::BTN_RIGHT);
   EXPECT_EQ(screen.state().selected, 112);
   EXPECT_EQ(screen.state().top, 100);  // still the last row of the page
-  release(HalGPIO::BTN_RIGHT);
+  press(HalGPIO::BTN_RIGHT);
   EXPECT_EQ(screen.state().selected, 113);
   EXPECT_EQ(screen.state().top, 113);
 }
 TEST_F(PagedListFixture, StepBeforeFirstRowFlipsBackWithSelectionOnItsLastRow) {
   screen.state().top = 113;
   screen.state().selected = 113;
-  release(HalGPIO::BTN_LEFT);
+  press(HalGPIO::BTN_LEFT);
   EXPECT_EQ(screen.state().selected, 112);
   EXPECT_EQ(screen.state().top, 100);
 }
 TEST_F(PagedListFixture, StepInsideThePageKeepsTheViewport) {
   screen.state().top = 100;
   screen.state().selected = 104;
-  release(HalGPIO::BTN_RIGHT);
-  release(HalGPIO::BTN_LEFT);
-  release(HalGPIO::BTN_LEFT);
+  press(HalGPIO::BTN_RIGHT);
+  press(HalGPIO::BTN_LEFT);
+  press(HalGPIO::BTN_LEFT);
   EXPECT_EQ(screen.state().selected, 103);
   EXPECT_EQ(screen.state().top, 100);
 }
 TEST_F(PagedListFixture, WrapKeepsPageFlipAtBothEnds) {
   screen.state().top = 0;
   screen.state().selected = 0;
-  release(HalGPIO::BTN_LEFT);
+  press(HalGPIO::BTN_LEFT);
   EXPECT_EQ(screen.state().selected, 2087);
   EXPECT_EQ(screen.state().top, 2075);  // last page full, selection on its last row
-  release(HalGPIO::BTN_RIGHT);
+  press(HalGPIO::BTN_RIGHT);
   EXPECT_EQ(screen.state().selected, 0);
   EXPECT_EQ(screen.state().top, 0);
 }
@@ -633,7 +642,7 @@ TEST_F(PagedListFixture, FlipUsesRowsTheLastBuildDrewNotTheEstimate) {
   screen.state().drawnRows = 7;  // wrapped names: 7 of the 13 estimated rows fit
   screen.state().top = 0;
   screen.state().selected = 6;
-  release(HalGPIO::BTN_RIGHT);
+  press(HalGPIO::BTN_RIGHT);
   EXPECT_EQ(screen.state().selected, 7);
   EXPECT_EQ(screen.state().top, 7);
 }
@@ -642,7 +651,7 @@ TEST_F(PagedListFixture, ShortListNeverFlips) {
   screen.state().drawnCount = 9;
   screen.state().top = 0;
   screen.state().selected = 8;
-  release(HalGPIO::BTN_RIGHT);
+  press(HalGPIO::BTN_RIGHT);
   EXPECT_EQ(screen.state().selected, 0);
   EXPECT_EQ(screen.state().top, 0);
 }

@@ -69,6 +69,7 @@ class CrossPointWebServerActivity : public Activity {
   bool runtimeStarted = false;
   bool autoJoinForTest = true;
   bool openFontStore = false;  // restart into the font store: onEnter goes straight to it
+  bool startInJoinNetwork = false;  // back from the silent restart: onEnter skips the chooser
   GfxRenderer renderer;
   MappedInputManager mappedInput;
   WebServerActivityState state{};

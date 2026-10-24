@@ -74,6 +74,7 @@ struct PhysicalInput {
   void updateConfirmBackHold(unsigned long) {}
   void updateConfirmPowerHold(unsigned long) {}
   void updateDigitalTwoButton(unsigned long) {}
+  void updateToggleSwitch(unsigned long) {}
   void applyStateChange(uint8_t, unsigned long);
   void update();
 };
@@ -174,6 +175,8 @@ struct {
   void markRegistryDirty() {}
   void ensureLoaded(FakeRenderer&) {}
 } sdFontSystem;
+// Joining a station network drains the plugin outboxes; nothing is queued here.
+namespace pluginevents { template <class R> void drain(R*, size_t = 4) {} }
 static int renderLockAcquisitions = 0;
 struct RenderLock {
   template<class T> explicit RenderLock(T&) { ++renderLockAcquisitions; }

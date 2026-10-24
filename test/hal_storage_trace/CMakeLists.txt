@@ -15,6 +15,7 @@ foreach(trace_mode IN ITEMS off on)
   target_include_directories(${trace_target} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs
     ${REPO_ROOT}/lib/hal
+    ${REPO_ROOT}/lib/Memory
   )
   target_compile_definitions(${trace_target} PRIVATE FREEINK_CAP_USB_MSC=0)
   if(trace_mode STREQUAL "on")

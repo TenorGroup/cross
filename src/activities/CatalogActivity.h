@@ -60,7 +60,7 @@ class CatalogActivity : public UiListActivity {
   void beginLoading();
   void checkAndConnectWifi();
   void launchWifiSelection();
-  void launchSearch();
+  virtual void launchSearch();
   void beginDownload(const std::string& title);
   void finishDownload(HttpDownloader::DownloadError result);
   // postBody non-null turns the transfer into a POST of that body (e.g. an

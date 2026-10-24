@@ -72,7 +72,8 @@ if new:
     for n in ['pageTurnLocked', 'processExternalPageTurn', 'cancelExternalPageTurn', 'queuePageTurn']:
         if n + '(' in body or n + '(' in head:
             functions.append(reader_fn(n))
-for fmt in ['Txt', 'Xtc', 'Epub']:
+# TXT opens through the EPUB reader (there is no TXT reader to extract from any more).
+for fmt in ['Xtc', 'Epub']:
     text = read('src/activities/reader/' + fmt + 'ReaderActivity.cpp')
     for n in ['latTrangThat', 'isAtEndOfBook', 'onReturnFromEndOfBook']:
         functions.append(function(text, fmt + 'ReaderActivity::' + n))
@@ -133,7 +134,7 @@ mainfixture = P(__file__).with_name('main_fixture.hpp').read_text() + '\n' + glu
 pump = 'struct MainPump { unsigned long lastActivityTime=millis(),lastSleepResetTime=millis(); void pump(){\nfreeink::ble::runQueuedStart();\n' + tick + tilt_capture.group() + timers + '\nfreeink::ble::runQueuedStart();\n}};\n'
 source = prefix + '\n\n' + '\n\n'.join(functions) + '\n\n' + mainfixture + pump + suffix
 (out / 'reader_production.cpp').write_text(source)
-files = ['src/activities/reader/ReaderPace.h', 'lib/BlePageTurner/src/Runtime.cpp', 'lib/BlePageTurner/include/BlePageTurner.h', 'src/BlePageTurnerHost.cpp', 'src/main.cpp', 'src/activities/reader/ReaderActivity.h', 'src/activities/reader/ReaderActivity.cpp', 'src/activities/reader/EpubReaderActivity.cpp', 'src/activities/reader/TxtReaderActivity.cpp', 'src/activities/reader/XtcReaderActivity.cpp', 'src/activities/ActivityManager.cpp']
+files = ['src/activities/reader/ReaderPace.h', 'lib/BlePageTurner/src/Runtime.cpp', 'lib/BlePageTurner/include/BlePageTurner.h', 'src/BlePageTurnerHost.cpp', 'src/main.cpp', 'src/activities/reader/ReaderActivity.h', 'src/activities/reader/ReaderActivity.cpp', 'src/activities/reader/EpubReaderActivity.cpp', 'src/activities/reader/XtcReaderActivity.cpp', 'src/activities/ActivityManager.cpp']
 (out / 'source-hashes.json').write_text(json.dumps({p: hashlib.sha256((root / p).read_bytes()).hexdigest() for p in files}, indent=2) + '\n')
 module = root / 'lib/BlePageTurner'
 compile = subprocess.run([args.compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter', '-fsanitize=address,undefined', '-g', '-DBLETURNER_TESTING', '-I' + str(root / 'src'), '-I' + str(module / 'include'), '-I' + str(module / 'src'), '-I' + str(root / 'freeink-sdk/libs/network/BleKeyboardHost/include'), str(out / 'reader_production.cpp'), str(module / 'src/Runtime.cpp'), '-o', str(out / 'reader_production')], capture_output=True, text=True)

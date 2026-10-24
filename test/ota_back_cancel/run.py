@@ -20,7 +20,9 @@ end = activity.index('\nbool OtaUpdateActivity::idleExitDue(', start)
 (out / 'production-install.inc').write_text(activity[start:end])
 # The fake transport implements whichever streaming fetch the production header declares.
 header = (repo / 'src/network/HttpDownloader.h').read_text()
-streaming = re.search(r'static bool fetchUrl\(const std::string& url, const DataCallback& onData[^;]*;', header).group(0)
+# Two streaming overloads exist; OTA calls the pinned-root one (the one that names rootCA).
+streaming = next(m.group(0) for m in re.finditer(r'static bool fetchUrl\(const std::string& url, const DataCallback& onData[^;]*;', header)
+                 if 'rootCA' in m.group(0))
 takes_cancel = 'cancelFlag' in streaming
 binary = out / 'ota-back-cancel'
 subprocess.run([a.cxx, '-std=c++17', '-pthread', '-Wall', '-Wextra', '-Werror', '-fsanitize=address,undefined',

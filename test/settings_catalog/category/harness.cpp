@@ -73,6 +73,8 @@ void KOReaderCredentialStore::setServerUrl(const std::string&) {}
 void KOReaderCredentialStore::setMatchMethod(DocumentMatchMethod) {}
 void KOReaderCredentialStore::setSendMetadata(bool) {}
 void KOReaderCredentialStore::setSyncBehavior(KOReaderSyncBehavior) {}
+void KOReaderCredentialStore::setServerType(KOReaderServerType) {}
+void KOReaderCredentialStore::setCustomHeader(size_t, const std::string&, const std::string&) {}
 filebrowser::SortMode filebrowser::settingsSort() { return SortMode::Name; }
 void filebrowser::chooseSettingsSort(SortMode) {}
 

@@ -14,7 +14,7 @@ struct SDCardManager;
 struct FsFile {
  SDCardManager* store=nullptr; std::string path; size_t position=0;
  size_t fileSize();int read(void*,size_t);int read();bool available();
- size_t print(const String& s); size_t write(const uint8_t* s,size_t len); bool close();bool sync();
+ size_t print(const String& s); size_t write(const uint8_t* s,size_t len); bool close();bool sync();bool isOpen()const{return store!=nullptr;}
 };
 struct SDCardManager {
  bool initialized=true;
@@ -47,10 +47,11 @@ using HalFile=FsFile;
 inline SDCardManager Storage;
 struct Stream{};
 #include "HttpDownloader.h"
-struct Sink {std::function<bool(const uint8_t*,size_t)>write;HttpDownloader::ProgressCallback progress;bool*cancelFlag=nullptr;size_t total=0,downloaded=0;};
+struct Sink {std::function<bool(const uint8_t*,size_t)>write;HttpDownloader::ProgressCallback progress;const bool*cancelFlag=nullptr;size_t total=0,downloaded=0;};
 inline HttpDownloader::DownloadError transferResult=HttpDownloader::OK;
 inline std::string transferBody="new-book";
-HttpDownloader::DownloadError runGetSecure(const std::string&,const std::string&,const std::string&,Sink&s,bool){
+// The plain GET the downloader resumes through; the fake never cuts the body short, so no rewind is asked.
+HttpDownloader::DownloadError runGetResumable(const std::string&,const std::string&,const std::string&,const std::vector<HttpDownloader::Header>&,Sink&s,const std::function<bool()>& =nullptr,bool=false){
  if(transferResult==HttpDownloader::HTTP_ERROR)return transferResult;
  if(!s.write(reinterpret_cast<const uint8_t*>(transferBody.data()),transferBody.size()))return HttpDownloader::FILE_ERROR;
  s.downloaded+=transferBody.size();return transferResult;

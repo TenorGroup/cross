@@ -211,7 +211,7 @@ int main() {
     Action::BOOKMARKS, Action::TOGGLE_BOOKMARK, Action::SCREENSHOT, Action::DISPLAY_QR, Action::GO_HOME,
     Action::SYNC, Action::DELETE_CACHE, Action::DICTIONARY, Action::FONT_SIZE, Action::FONT_FAMILY, Action::SAVE_QUOTE};
   for (int i = 0; i < 20; ++i) require(static_cast<int>(legacy[i]) == i, "legacy saved action changed");
-  require(readermenu::ACTION_COUNT == 25, "File transfer, tilt toggle and Search in book extend action bounds to 25 after Bluetooth");
+  require(readermenu::ACTION_COUNT == 27, "File transfer, tilt toggle, Search in book and the two clipping actions extend action bounds to 27 after Bluetooth");
   for (int flags = 0; flags < 8; ++flags) {
     std::vector<readermenu::Item> items;
     readermenu::buildItems(items, flags & 1, flags & 2, flags & 4);

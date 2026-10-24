@@ -63,7 +63,7 @@ else:
             "pendingMark = {}" in failed_hash_path):
         problems.append("flushMark must retain the pending path and mark when document hashing fails")
 settings = open(f"{root}/src/activities/settings/KOReaderSettingsActivity.cpp", encoding="utf-8").read()
-branch = settings[settings.index("index == 6"):settings.index("index == 8")]
+branch = settings[settings.index("index == R::ROW_AUTO_SYNC"):settings.index("index == R::ROW_SYNC_CLIPPINGS")]
 if not re.search(r"setAutoSync\(!KOREADER_STORE\.getAutoSync\(\)\);\s*if \(!KOREADER_STORE\.getAutoSync\(\)\) koautosync::switchedOff\(\);", branch):
     problems.append("the Automatic sync row must call koautosync::switchedOff() when the switch goes off")
 manager = open(f"{root}/src/activities/ActivityManager.cpp", encoding="utf-8").read()

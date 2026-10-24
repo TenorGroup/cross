@@ -24,6 +24,7 @@ fixture = r'''
 #include <cassert>
 #include <string>
 namespace BoardConfig { bool hasTouch() { return true; } }
+namespace haptic_feedback { int taps = 0; void touchAction(bool = false) { ++taps; } }
 namespace HeaderBackTapTarget {
 int sets = 0; bool strip = false; bool foot = false;
 void set(int, int, int, int) { ++sets; }
@@ -63,7 +64,7 @@ int main() {
   // A sub-screen that draws the strip: a tap on it opens the top menu.
   m.currentActivity = &sub; HeaderBackTapTarget::strip = true;
   m.mappedInput.tapped = true; m.mappedInput.y = 10;
-  m.route(); assert(m.menus == 1 && m.loops == 0);
+  m.route(); assert(m.menus == 1 && m.loops == 0 && haptic_feedback::taps == 1);
   // Below the strip: the screen's own row.
   m.mappedInput.y = 32; m.route(); assert(m.menus == 1 && m.loops == 1);
   // A screen without the strip keeps its taps.

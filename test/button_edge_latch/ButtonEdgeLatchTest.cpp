@@ -319,10 +319,13 @@ TEST(HalGpioSampling, TheOwnReaderIsBuiltUnderTheTouchCapability) {
 
   std::ifstream file(REPO_ROOT_PATH "/freeink-sdk/libs/hardware/BoardConfig/include/BoardConfig.h");
   const std::string sdk((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-  const size_t define = sdk.find("#define FREEINK_CAP_TOUCH ");
-  ASSERT_NE(define, std::string::npos) << "the SDK no longer defines FREEINK_CAP_TOUCH";
-  const size_t x4pro = sdk.find("FREEINK_DEVICE_X4PRO", define);
-  EXPECT_LT(x4pro, sdk.find("#endif", define)) << "FREEINK_CAP_TOUCH is not set on the X4 Pro";
+  // The capability follows the list of devices that have a touch controller; the X4 Pro is on that list.
+  const size_t define = sdk.find("#define FREEINK_CAP_TOUCH FREEINK_TOUCH_DEVICE_SELECTED");
+  ASSERT_NE(define, std::string::npos) << "the SDK no longer derives FREEINK_CAP_TOUCH from the touch device list";
+  const size_t list = sdk.find("#define FREEINK_TOUCH_DEVICE_SELECTED");
+  ASSERT_NE(list, std::string::npos) << "the SDK no longer lists the devices with a touch controller";
+  const size_t x4pro = sdk.find("FREEINK_DEVICE_X4PRO", list);
+  EXPECT_LT(x4pro, define) << "FREEINK_CAP_TOUCH is not set on the X4 Pro";
 }
 
 // A key held while the timer starts (the power key held to wake) must read as held, not as a fresh

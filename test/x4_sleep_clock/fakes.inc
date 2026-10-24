@@ -55,6 +55,10 @@ int64_t esp_timer_get_time() { return static_cast<int64_t>(fake::ms) * 1000; }
 int esp_deep_sleep_enable_gpio_wakeup(uint64_t mask, int level) {
   fake::event("gpio-wake:" + std::to_string(mask) + ":" + std::to_string(level)); return ESP_OK;
 }
+int rtc_gpio_pulldown_dis(gpio_num_t pin) { fake::pin("rtc-pulldown-dis", pin); return ESP_OK; }
+int rtc_gpio_pullup_en(gpio_num_t pin) { fake::pin("rtc-pullup-en", pin); return ESP_OK; }
+int rtc_gpio_pullup_dis(gpio_num_t pin) { fake::pin("rtc-pullup-dis", pin); return ESP_OK; }
+int rtc_gpio_pulldown_en(gpio_num_t pin) { fake::pin("rtc-pulldown-en", pin); return ESP_OK; }
 int esp_sleep_enable_ext1_wakeup(uint64_t mask, int level) {
   fake::event("ext1-wake:" + std::to_string(mask) + ":" + std::to_string(level)); return ESP_OK;
 }

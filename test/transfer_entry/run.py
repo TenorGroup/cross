@@ -121,8 +121,12 @@ class TransferEntryContract(unittest.TestCase):
         self.assertIn("bool toBook = false", self.fonts_header)
         self.assertRegex(self.main, r"SILENT_REBOOT_TARGET_FONTS = 5;")
         # v1.0.76: the fresh-boot Wi-Fi tasks (6 and up) come after the store; the store keeps 5.
-        self.assertRegex(self.main, r"SILENT_REBOOT_TARGET_TASK = 6;\s*constexpr uint32_t SILENT_REBOOT_TARGET_MAX =\s*"
+        # The task targets end at KOReaderSignUp; Join Network is 9 (D4) and is the highest target the boot reads back.
+        self.assertRegex(self.main, r"SILENT_REBOOT_TARGET_TASK = 6;\s*constexpr uint32_t SILENT_REBOOT_TARGET_TASK_LAST =\s*"
                          r"SILENT_REBOOT_TARGET_TASK \+ static_cast<uint32_t>\(FreshBootTask::KOReaderSignUp\);")
+        self.assertRegex(self.main, r"SILENT_REBOOT_TARGET_JOIN_NETWORK = 9;\s*static_assert\(SILENT_REBOOT_TARGET_TASK_LAST < "
+                         r"SILENT_REBOOT_TARGET_JOIN_NETWORK[^;]*;\s*constexpr uint32_t SILENT_REBOOT_TARGET_MAX = "
+                         r"SILENT_REBOOT_TARGET_JOIN_NETWORK;")
         transfer = function_body(self.main, "void silentRestartToFontStore()")
         self.assertIn("silentRestartTo(SILENT_REBOOT_TARGET_FONTS", transfer)
         self.assertRegex(self.main, r"snapshotTarget == SILENT_REBOOT_TARGET_FONTS\) \{[^}]*activityManager\.goToFileTransfer\(/\*openFontStore=\*/true\);")

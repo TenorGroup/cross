@@ -15,6 +15,8 @@
 #include <HalTiltSensor.h>
 #include <SdCardFontRegistry.h>
 
+#include "util/PluginLocations.h"
+
 // The catalogue asks the tilt sensor whether the hardware is present.
 HalTiltSensor halTiltSensor;
 
@@ -122,7 +124,12 @@ void KOReaderCredentialStore::setServerUrl(const std::string&) {}
 void KOReaderCredentialStore::setMatchMethod(DocumentMatchMethod) {}
 void KOReaderCredentialStore::setSendMetadata(bool) {}
 void KOReaderCredentialStore::setSyncBehavior(KOReaderSyncBehavior) {}
+void KOReaderCredentialStore::setServerType(KOReaderServerType) {}
+void KOReaderCredentialStore::setCustomHeader(size_t, const std::string&, const std::string&) {}
 void KOReaderCredentialStore::toJson(JsonDocument&) const {}
+
+// Settings migration asks whether a plugin is already on the card; a host test card has none.
+bool PluginLocations::anyPluginInstalledOnDisk() { return false; }
 
 // Only used by saveToFile(), which this suite does not call.
 bool PersistableStoreBase::writeDocToFile(const char*, const JsonDocument&) { return true; }

@@ -999,6 +999,9 @@ bool Imu::read(Sample& out) {
   return begun_ && imu.readOk;
 }
 
+// The part under test is the QMI8658 class: accelerometer and gyroscope.
+bool Imu::hasGyroscope() const { return begun_; }
+
 bool Imu::sleep() {
   ++imu.sleepCalls;
   return begun_ && imu.sleepOk;

@@ -45,16 +45,19 @@ bool longPressValuesMatch(const std::vector<SettingInfo>& catalog, const bool ha
 #if FREEINK_CAP_BLE_HID_HOST
   expected.push_back(StrId::STR_BLE_CONNECT_REMOTE);
 #endif
+  // The two actions upstream added come after every number the saved settings used (9 and 10).
+  expected.push_back(StrId::STR_SAVE_CLIPPING);
+  expected.push_back(StrId::STR_FOOTNOTES);
   return longPress->enumValues == expected &&
          expected.size() == CrossPointSettings::LONG_PRESS_MENU_FUNCTION_COUNT - (hasImu ? 0U : 1U) -
                                 (FREEINK_CAP_BLE_HID_HOST ? 0U : 1U);
 }
 
-// Label of each stored Confirm-hold number (0-7), whatever list position a board shows it at.
+// Label of each stored Confirm-hold number (0-10), whatever list position a board shows it at.
 constexpr StrId LONG_PRESS_LABELS[] = {StrId::STR_KOSYNC,     StrId::STR_DISABLED,    StrId::STR_BOOKMARK_OPTION,
                                        StrId::STR_DICTIONARY, StrId::STR_READER_MENU, StrId::STR_FILE_TRANSFER,
                                        StrId::STR_TILT_PAGE_TURN, StrId::STR_QUOTES_SAVE_ACTION,
-                                       StrId::STR_BLE_CONNECT_REMOTE};
+                                       StrId::STR_BLE_CONNECT_REMOTE, StrId::STR_SAVE_CLIPPING, StrId::STR_FOOTNOTES};
 
 // Every stored Confirm-hold number reads back as itself and saves as itself; the list shows its label at the
 // position the board offers it. Without an IMU the tilt number (6) is not offered and falls back to Off, while
@@ -65,13 +68,13 @@ bool longPressStoreKept(const std::vector<SettingInfo>& catalog, const bool hasI
     return false;
   }
   bool ok = true;
-  for (int stored = 0; stored < 10; ++stored) {
+  for (int stored = 0; stored < 13; ++stored) {
     JsonDocument in;
     in["tenorPresetVersion"] = CrossPointSettings::TENOR_PRESET_VERSION;
     in["longPressMenuFunction"] = stored;
     SETTINGS.longPressMenuFunction = CrossPointSettings::LP_MENU_DISABLED;
     ok = expect(SETTINGS.fromJson(in.as<JsonVariantConst>()), "Confirm-hold JSON loads") && ok;
-    const bool offered = stored < 9 && (hasImu || stored != 6) && (FREEINK_CAP_BLE_HID_HOST || stored != 8);
+    const bool offered = stored < 11 && (hasImu || stored != 6) && (FREEINK_CAP_BLE_HID_HOST || stored != 8);
     const uint8_t want = offered ? static_cast<uint8_t>(stored) : CrossPointSettings::LP_MENU_DISABLED;
     ok = expect(SETTINGS.longPressMenuFunction == want, "stored Confirm-hold number is kept, an unoffered one falls to Off") && ok;
     JsonDocument out;
@@ -459,8 +462,9 @@ int main(int argc, char** argv) {
   // existing row kept its place. v1.0.52 then dropped the UI theme row and added the starting up notice row,
   // v1.0.53 the touch back tap zone and tap zone tip rows, the persisted-only rows of tenor/ugly
   // (uiShellClockMemo, uglyBatteryHidden) and the clock shown once (uiShellClockOnce). v1.0.59 added Button hints.
-  // v1.0.60 adds the File order row of Settings, System.
-  bool ok = expect(catalog.size() == (hasImu ? 111U : 99U), "X3 descriptor count");
+  // v1.0.60 adds the File order row of Settings, System. v1.1.0 adds the eight rows of the merged upstream:
+  // KOReader server type, two custom headers (name and value each), Sync clippings, and the two plugin rows.
+  bool ok = expect(catalog.size() == (hasImu ? 119U : 107U), "X3 descriptor count");
   const auto* homeStyle = findSetting(catalog, "homeStyle");
   ok &= expect(homeStyle && settingHiddenOnThisBoard(*homeStyle), "X3 hides the Home style descriptor");
   const SettingInfo* tips = findSetting(catalog, "tipsEnabled");

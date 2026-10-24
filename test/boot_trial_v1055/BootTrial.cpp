@@ -61,9 +61,10 @@ void advance(uint64_t us) {
 
 enum class BootResume { Splash, Silent, SplashlessWake };
 constexpr unsigned SILENT_REBOOT_TARGET_READER = 1, SILENT_REBOOT_TARGET_SETTINGS = 2, SILENT_REBOOT_TARGET_TRANSFER = 4,
-                SILENT_REBOOT_TARGET_FONTS = 5, SILENT_REBOOT_TARGET_TASK = 6;
+                SILENT_REBOOT_TARGET_FONTS = 5, SILENT_REBOOT_TARGET_TASK = 6, SILENT_REBOOT_TARGET_JOIN_NETWORK = 9;
 // The fresh-boot Wi-Fi tasks (v1.0.76): the routing builds one, the harness only needs it to exist.
 enum class FreshBootTask { ClockSync, KOReaderLogin, KOReaderSignUp };
+constexpr unsigned SILENT_REBOOT_TARGET_TASK_LAST = SILENT_REBOOT_TARGET_TASK + static_cast<unsigned>(FreshBootTask::KOReaderSignUp);
 struct Activity { virtual ~Activity() = default; };
 int clockTasks = 0, logins = 0, signUps = 0, freshTasks = 0;
 struct ClockSyncActivity : Activity {
@@ -104,6 +105,7 @@ struct {
   void goToCrashReport() {}
   void goToSettings() {}
   void goToFileTransfer(bool openFontStore = false) { ++transfers; fontStores += openFontStore; }
+  void goToJoinNetwork() { ++transfers; }  // the restart on the way into Join Network lands in File Transfer
   void goHome(HomeMenuItem tab = HomeMenuItem::NONE, bool = false) { home = tab; }
   template<class P> void goToWakePlace(const P&, bool) {}
   void goToReader(const std::string&) { ++readers; advance(35000000); }

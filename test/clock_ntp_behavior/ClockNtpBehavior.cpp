@@ -79,9 +79,7 @@ struct HttpDownloader {
   using ProgressCallback = std::function<void(size_t, size_t)>;
   enum DownloadError { OK, HTTP_ERROR, FILE_ERROR, ABORTED };
 };
-using esp_err_t = int;
-constexpr int ESP_OK = 0, WIFI_PS_NONE = 0, WIFI_PS_MIN_MODEM = 1;
-int esp_wifi_set_ps(int) { return ESP_OK; }
+#include "WifiPowerSaveGuard.h"  // the production guard, over the radio stub in stubs/esp_wifi.h
 namespace base64 { String encode(const char*) { return ""; } }
 namespace network_trust { const char* forUrl(const std::string&) { return "test-CA"; } }
 namespace freeink {

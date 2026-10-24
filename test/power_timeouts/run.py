@@ -77,7 +77,7 @@ def main() -> int:
         r'const auto\* keyboardResult = std::get_if<KeyboardResult>\(&result\.data\);\s*'
         r'if \(keyboardResult != nullptr && keyboardResult->timedOut\) \{\s*'
         r'onGoHome\(\);\s*return;\s*\}\s*'
-        r'idleTimerStarted = false;\s*state = BrowserState::BROWSING;',
+        r'idleTimerStarted = false;\s*state = State::BROWSING;',
         sources["opds_cpp"], re.DOTALL) is not None
 
     checks = [
@@ -120,7 +120,7 @@ def main() -> int:
         ("font-terminal-timeout", "terminalStateIdleExpired(millis())" in sources["font_cpp"],
          "Font terminal screens do not release the radio on idle"),
         ("opds-idle-policy", "namespace opds_power" in sources["opds_h"] and
-         "state == BrowserState::BROWSING || state == BrowserState::ERROR" in sources["opds_cpp"],
+         "state == State::BROWSING || state == State::ERROR" in sources["opds_cpp"],
          "OPDS waiting phases do not use the production idle policy"),
         ("opds-idle-cleanup", re.search(
             r'if \(idleExitDue\(millis\(\), interaction\)\).*?onGoHome\(\)',
@@ -158,7 +158,7 @@ def main() -> int:
             r'keyboardResult->timedOut\).*?onGoHome\(\)', sources["opds_cpp"], re.DOTALL) is not None,
          "OPDS search timeout does not route through parent cleanup"),
         ("opds-search-normal-cancel", re.search(
-            r'if \(result\.isCancelled\).*?keyboardResult->timedOut.*?onGoHome\(\).*?state = BrowserState::BROWSING;.*?requestUpdate\(\)',
+            r'if \(result\.isCancelled\).*?keyboardResult->timedOut.*?onGoHome\(\).*?state = State::BROWSING;.*?requestUpdate\(\)',
             sources["opds_cpp"], re.DOTALL) is not None,
          "OPDS normal keyboard cancellation does not return to the browsing list"),
     ]

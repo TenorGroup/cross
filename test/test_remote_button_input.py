@@ -38,6 +38,7 @@ struct HalGPIO {
 harness = r"""
 #include <cassert>
 #include "MappedInputManager.h"
+#include "components/HeaderBackTapTarget.h"
 class GfxRenderer {};
 unsigned long millis() { return 1000; }
 constexpr unsigned long TOUCH_HELD_OVERRIDE_WINDOW_MS = 250;
@@ -56,6 +57,7 @@ bool MappedInputManager::mapButton(Button b, bool (HalGPIO::*fn)(uint8_t) const)
   return (gpio.*fn)(static_cast<uint8_t>(b));
 }
 bool MappedInputManager::wasBackGesture() const { return false; }
+bool MappedInputManager::wasScreenTapped(int&, int&) const { return false; }
 MappedInputManager::SwipeDir MappedInputManager::wasSwipe(int*, int*) const { return SwipeDir::None; }
 """ + "\n".join(methods) + r"""
 int main() {

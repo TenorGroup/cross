@@ -44,6 +44,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -130,6 +131,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -216,6 +218,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -303,6 +306,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -388,6 +392,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -474,6 +479,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -560,6 +566,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -647,6 +654,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -731,6 +739,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -801,6 +810,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -871,6 +881,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -942,6 +953,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -1011,6 +1023,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -1081,6 +1094,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -1151,6 +1165,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -1222,6 +1237,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -1291,6 +1307,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -1364,6 +1381,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -1437,6 +1455,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -1511,6 +1530,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -1583,6 +1603,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -1656,6 +1677,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -1729,6 +1751,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],
@@ -1803,6 +1826,7 @@
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
       "STR_BLE_PAGE_TURNER:17:",
+      "STR_PLUGINS:20:",
       "STR_ABOUT:19:",
       "STR_DISPLAY_CHIP:0:"
     ],

@@ -12,8 +12,14 @@
 #define LOG_WARN(...) ((void)0)
 
 static uint32_t clockMs;
-static uint32_t bleReadyAt;
+static uint32_t bleReadyAt;         // when Bluetooth lets go of the radio
 static bool bleNeverReady;
+static uint32_t exitReadyAt;        // when the outgoing screen has finished its own teardown
+static bool exitNeverReady;
+static int bleStopCalls;
+static uint32_t bleStopWaitedMs;
+static int pluginDeliveries;
+static bool pluginNetworkAllowed;
 static int loopCalls;
 static int exitCalls;
 static int sleepEnterCalls;
@@ -57,7 +63,7 @@ struct CheckedSleepFlag {
 };
 struct WakePlace {};
 struct ActivityManager {
-  enum class PendingAction { None, Replace };
+  enum class PendingAction { None, Replace, ReplaceForSleep };
   Renderer renderer;
   Input mappedInput;
   CheckedSleepFlag sleepTransition{};
@@ -82,7 +88,9 @@ struct ActivityManager {
     ++loopCalls;
     if (lockDepth) throw std::string("activity loop called under RenderLock");
     if (pendingAction == PendingAction::None) return;
-    if (bleNeverReady || clockMs < bleReadyAt) return;
+    // A sleep replace does not wait for Bluetooth (enterDeepSleep stops it first); the outgoing screen may still
+    // need several polls to give up what it holds.
+    if (exitNeverReady || clockMs < exitReadyAt) return;
     events.push_back("reader-exit");
     ++exitCalls;
     currentActivity = std::move(pendingActivity);
@@ -195,6 +203,33 @@ static void saveSleepFrameBuffer() { ++retainedFrameCalls; events.push_back("fra
 static void sleepUntilPowerButton() { ++deepSleepCalls; events.push_back("deep-sleep"); }
 
 namespace CrossPointTiltPageTurn { constexpr uint8_t TILT_OFF = 0; }
+namespace trustedtime {
+void note() { events.push_back("clock-floor"); }
+}  // namespace trustedtime
+namespace bleturner {
+// Waits for Bluetooth to let go of the radio, for at most timeoutMs, like the production stop.
+bool beforeSleep(uint32_t timeoutMs) {
+  ++bleStopCalls;
+  const uint32_t begun = clockMs;
+  while (bleNeverReady || clockMs < bleReadyAt) {
+    if (clockMs - begun >= timeoutMs) {
+      bleStopWaitedMs = clockMs - begun;
+      events.push_back("ble-timeout");
+      return false;
+    }
+    delay(10);
+  }
+  bleStopWaitedMs = clockMs - begun;
+  events.push_back("ble-stopped");
+  return true;
+}
+}  // namespace bleturner
+// Sleep-event delivery: allowNetwork is false when Bluetooth did not stop, which defers the join.
+static void deliverSleepPluginEvents(const bool allowNetwork) {
+  ++pluginDeliveries;
+  pluginNetworkAllowed = allowNetwork;
+  events.push_back(allowNetwork ? "plugin-events" : "plugin-events-deferred");
+}
 @TILT_ROUTE@
 @GO_TO_SLEEP@
 
@@ -224,6 +259,11 @@ static void reset() {
   clockMs = 100;
   bleReadyAt = 100;
   bleNeverReady = false;
+  exitReadyAt = 100;
+  exitNeverReady = false;
+  bleStopCalls = pluginDeliveries = 0;
+  bleStopWaitedMs = 0;
+  pluginNetworkAllowed = false;
   loopCalls = exitCalls = sleepEnterCalls = lockDepth = 0;
   storageOffCalls = displayOffCalls = deepSleepCalls = retainedFrameCalls = 0;
   deepSleepInProgress = false;
@@ -255,15 +295,15 @@ int main() {
           "inactive foreground polling must still discard the consumed tab event");
 
   reset();
-  bleReadyAt = 140;
+  exitReadyAt = 140;
   const bool eventuallyCompleted = invokeGoToSleep(activityManager);
   require(eventuallyCompleted && exitCalls == 1 && sleepEnterCalls == 1 &&
               activityManager.pendingAction == ActivityManager::PendingAction::None,
-          "pending-completes", "must wait until deferred BLE suspension permits reader exit and sleep render");
-  require(loopCalls >= 2, "pending-completes", "pending BLE needs more than one activity-loop poll");
+          "pending-completes", "must wait until the outgoing screen has finished its exit, then render the sleep screen");
+  require(loopCalls >= 2, "pending-completes", "a slow exit needs more than one activity-loop poll");
 
   reset();
-  bleNeverReady = true;
+  exitNeverReady = true;
   const bool timedOut = invokeGoToSleep(activityManager);
   require(!timedOut, "deadline-cancels", "deadline must report incomplete transition");
   require(clockMs >= 5100 && clockMs <= 5200, "deadline-cancels", "wait must be bounded at five seconds");
@@ -274,7 +314,7 @@ int main() {
           "deadline-cancels", "cancelled transition must resume rendering and request repaint");
 
   reset();
-  bleNeverReady = true;
+  exitNeverReady = true;
   enterDeepSleep(true);
   require(storageOffCalls == 0 && displayOffCalls == 0 && deepSleepCalls == 0 && retainedFrameCalls == 0,
           "caller-abort", "failed activity transition must not retain a stale frame or power down storage/display/device");
@@ -286,6 +326,12 @@ int main() {
   enterDeepSleep(false);
   require(exitCalls == 1 && sleepEnterCalls == 1 && storageOffCalls == 1 && displayOffCalls == 1 && deepSleepCalls == 1,
           "caller-success", "completed transition must execute one reader exit, sleep render and hardware shutdown");
+  require(bleStopCalls == 1 && eventIndex("clock-floor") < eventIndex("ble-stopped") &&
+              eventIndex("ble-stopped") < eventIndex("plugin-events") &&
+              eventIndex("plugin-events") < eventIndex("reader-exit"),
+          "caller-success", "the clock floor is kept, then Bluetooth stops, then sleep events go out, before the reader exits");
+  require(pluginDeliveries == 1 && pluginNetworkAllowed, "caller-success",
+          "sleep events may use the network once Bluetooth has stopped");
   require(eventIndex("reader-exit") < eventIndex("sleep-render") &&
               eventIndex("sleep-render") < eventIndex("storage-off") &&
               eventIndex("storage-off") < eventIndex("deep-sleep"),
@@ -294,6 +340,16 @@ int main() {
 
   reset();
   bleNeverReady = true;
+  enterDeepSleep(false);
+  require(bleStopWaitedMs >= 2000 && bleStopWaitedMs <= 2100, "ble-stuck-bounded",
+          "the Bluetooth stop must be bounded at two seconds");
+  require(pluginDeliveries == 1 && !pluginNetworkAllowed, "ble-stuck-bounded",
+          "sleep events must not start Wi-Fi while Bluetooth still holds the radio");
+  require(deepSleepCalls == 1 && exitCalls == 1, "ble-stuck-bounded",
+          "a Bluetooth that will not stop must not keep the device from sleeping");
+
+  reset();
+  exitNeverReady = true;
   enterDeepSleep(true);
   const int attemptsAfterAbort = loopCalls;
   // Move beyond several historical retry deadlines while no input arrives.
@@ -304,7 +360,7 @@ int main() {
   require(loopCalls == attemptsAfterAbort && deepSleepCalls == 0,
           "abort-blocks-autoretry", "failed sleep must stay blocked across idle ticks until accepted input");
   const int attemptsBeforeInput = loopCalls;
-  bleNeverReady = false;
+  exitNeverReady = false;
   runMainSleepGate(true);
   require(loopCalls == attemptsBeforeInput && deepSleepCalls == 0 && lastSleepResetTime == clockMs,
           "input-rearms", "accepted input must rearm a complete inactivity interval without immediate sleep");
@@ -328,13 +384,13 @@ int main() {
           "uptime-wrap", "inactivity arithmetic must keep autosleep working across uint32 wrap");
 
   reset();
-  bleNeverReady = true;
+  exitNeverReady = true;
   enterDeepSleep(true);
-  bleNeverReady = false;
+  exitNeverReady = false;
   enterDeepSleep(false);
   require(deepSleepCalls == 1,
           "manual-retry", "explicit sleep must remain available after a failed automatic attempt");
 
-  std::cout << "BLE-02 sleep regression: 10 scenarios, " << failures << " failed assertions\n";
+  std::cout << "BLE-02 sleep regression: 11 scenarios, " << failures << " failed assertions\n";
   return failures ? 1 : 0;
 }

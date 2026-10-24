@@ -143,6 +143,34 @@ bool OpdsBookBrowserActivity::idleExitDue(const unsigned long now, const bool in
                                  idleTimerStarted);
 }
 
+// The search keyboard keeps the radio up, so it carries the same five-minute limit as the list: a timed-out
+// keyboard leaves through the activity's own exit, a plain Back returns to the list.
+void OpdsBookBrowserActivity::launchSearch() {
+  auto keyboard = makeUniqueNoThrow<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_SEARCH), searchPrefill(), 0,
+                                                           InputType::Text, true, opds_power::IDLE_TIMEOUT_MS);
+  if (!keyboard) {
+    fail(StrId::STR_MEMORY_ERROR);
+    return;
+  }
+  state = State::SEARCH_INPUT;
+  requestUpdate();
+  startActivityForResult(std::move(keyboard), [this](const ActivityResult& result) {
+    if (result.isCancelled) {
+      const auto* keyboardResult = std::get_if<KeyboardResult>(&result.data);
+      if (keyboardResult != nullptr && keyboardResult->timedOut) {
+        onGoHome();
+        return;
+      }
+      idleTimerStarted = false;
+      state = State::BROWSING;
+      requestUpdate();
+      return;
+    }
+    state = State::BROWSING;
+    performSearch(std::get<KeyboardResult>(result.data).text);
+  });
+}
+
 void OpdsBookBrowserActivity::loop() {
   if (tenorchrome::x3ScreenLayoutEnabled() && state != State::BROWSING &&
       x3Info.turn(mappedInput.wasReleased(MappedInputManager::Button::Up)     ? -1

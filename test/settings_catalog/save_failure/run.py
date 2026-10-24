@@ -47,6 +47,7 @@ include_paths = [
     'lib/KOReaderSync', 'freeink-sdk/libs/hardware/BoardConfig/include', 'lib/BlePageTurner/include',
     'freeink-sdk/libs/ui/FreeInkUI/include',
     'freeink-sdk/libs/assets/Icons/include',
+    'freeink-sdk/libs/network/BleKeyboardHost/include', 'lib/HttpHeader',
 ]
 includes = ['-I' + str(ROOT / path) for path in include_paths]
 manifest = {}

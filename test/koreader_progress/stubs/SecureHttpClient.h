@@ -21,7 +21,7 @@ class SecureHttpClient {
   void setCACert(const char*) {}
   void setTimeout(uint32_t) {}
   bool begin(const std::string&) { return true; }
-  void addHeader(const char*, const std::string&) {}
+  void addHeader(const std::string&, const std::string&) {}
   int GET() {
     body_ = replyBody;
     complete_ = true;

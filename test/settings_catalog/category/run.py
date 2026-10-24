@@ -123,8 +123,10 @@ for mode in modes:
         '#else\n'
         'constexpr bool kTouchShell = false;\n'
         '#endif\n}\n' + descriptor)
-    methods = method_slice(sources[paths[2]],
-                           'std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe')
+    # The row filters call the file-local board check (the Picco has no self-update rows).
+    methods = method_slice(sources[paths[2]], 'bool actionOnThisBoard(')
+    methods += method_slice(sources[paths[2]],
+                            'std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe')
     methods += method_slice(sources[paths[2]], 'bool SettingsActivity::listedAsRow(')
     methods += method_slice(sources[paths[2]], 'void SettingsActivity::rebuildSettingsLists(')
     methods += method_slice(sources[paths[2]], 'void SettingsActivity::releaseClosedTabs(')
