@@ -49,7 +49,8 @@ namespace coverink { bool restore(const std::string&) { return true; } }  // the
 struct GrayThumb { explicit GrayThumb(int) {} void alsoFeed(GrayThumb*) {} bool ready() const { return true; }
   bool writeTo(HalFile& f) const { *f.data={1}; return true; } bool writeScaled(int,HalFile& f) const { return writeTo(f); } };
 struct FsHelpers { static bool hasJpgExtension(const std::string& s) { return s.ends_with(".jpg"); }
-  static bool hasPngExtension(const std::string& s) { return s.ends_with(".png"); } };
+  static bool hasPngExtension(const std::string& s) { return s.ends_with(".png"); }
+  static bool hasGifExtension(const std::string& s) { return s.ends_with(".gif"); } };
 struct JpegToBmpConverter {
   static bool jpegFileToInkBmpStream(HalFile&,HalFile& f,int,int,bool) { ++decodes; *f.data={4}; return true; }
   static bool jpegFileToGrayThumb(HalFile&,GrayThumb&,int*) { ++decodes; return true; }
@@ -59,6 +60,13 @@ struct PngToBmpConverter {
   static bool pngFileToInkBmpStream(HalFile& c,HalFile& f,int w,int h,bool four) { return JpegToBmpConverter::jpegFileToInkBmpStream(c,f,w,h,four); }
   static bool pngFileTo1BitBmpStreamWithSize(HalFile& c,HalFile& f,int w,int h,bool=false) { return JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(c,f,w,h); }
 };
+struct Print {};
+namespace Txt { inline bool isTxtOrMd(const std::string&) { return false; }
+  inline bool convertCoverImageToBmp(const std::string&, const std::string&, int, bool = false, bool = false) { return false; } }
+struct GifToBmpConverter {
+  static bool gifFileTo1BitBmpStreamWithSize(HalFile&, Print&, int, int) { return false; }
+  static bool gifFileToBmpStream(HalFile&, Print&, bool, bool) { return false; }
+};
 struct EspStub { unsigned getFreeHeap() const { return 1000000; } unsigned getMaxAllocHeap() const { return 1000000; } } ESP;
 unsigned long millis() { return 0; }
 int thumbWidthFor(int h) { return h*298/450; }
@@ -66,6 +74,7 @@ int thumbWidthFor(int h) { return h*298/450; }
 #define LOG_INF(...) ((void)0)
 #define LOG_PROBE(...) ((void)0)
 struct Epub {
+  std::string filepath="/books/a.epub";
   std::string cachePath="/.crosspoint/epub_123";
   std::string getCachePath() const { return cachePath; }
   std::string getThumbBmpPath() const;
@@ -76,6 +85,10 @@ struct Epub {
   void generateThumbBmps(const std::string&,const int*,int) const;
   void generateThumbBmps(const std::string&,const int*,const int*,int,bool=false,bool=true) const;
 };
+
+// GIF covers are not exercised here (their own cases live with the GIF converter): a GIF cover generates nothing.
+template <typename Convert>
+bool generateGifBmp(const Epub&, const std::string&, const std::string&, Convert) { return false; }
 '''
 main = r'''
 int main() {

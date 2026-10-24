@@ -14,6 +14,7 @@ target_include_directories(SdFontBootTest PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${REPO_ROOT}/src
   ${REPO_ROOT}/lib/EpdFont
+  ${REPO_ROOT}/lib/GfxRenderer
 )
 target_link_libraries(SdFontBootTest PRIVATE GTest::gtest_main)
 gtest_discover_tests(SdFontBootTest)

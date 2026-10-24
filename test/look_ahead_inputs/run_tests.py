@@ -58,12 +58,16 @@ start = fixture.index('struct Gpio {') if 'struct Gpio {' in fixture else fixtur
 end = fixture.index('} gpio;', start) + len('} gpio;')
 fixture = fixture[:start] + fixture[end:]
 fixture = fixture.replace('struct Manager {', '''struct ReaderActivity;
+enum class RemoteButton { None, Confirm, Back, Next, Previous };
 struct Manager {
   struct Current { ReaderActivity* value=nullptr; ReaderActivity* get() const { return value; } } currentActivity;
   bool sleepTransition=false;
   bool isForegroundReaderReady() const { return currentActivity.get() != nullptr; }
   bool pageTurn(bool);
-  bool chapterSkip(bool) { throw std::runtime_error("unexpected chapter turn"); }''')
+  bool chapterSkip(bool) { throw std::runtime_error("unexpected chapter turn"); }
+  // A menu or overlay in front takes the remote's button as a click; none stands in front here.
+  bool remoteTurn(bool, bool) { return false; }
+  bool remoteClick(RemoteButton) { return false; }''')
 fixture = re.sub(r'  struct Input \{.*?\} mappedInput;', '  struct Input { bool wasAnyPressed() const { return gpio.wasAnyPressed(); } bool wasAnyReleased() const { return gpio.wasAnyReleased(); } } mappedInput;', fixture, flags=re.S)
 fixture = fixture.replace('require(RenderLock::busy, "build without render lock"); ++ticks; clockMs += tickMs;', 'require(RenderLock::busy, "build without render lock"); beforeQuantum(); ++ticks; clockMs += tickMs; afterQuantum();')
 fixture = re.sub(r'clockMs \+= ([A-Za-z0-9_]+);', r'fakeble::advanceMillis(\1);', fixture)

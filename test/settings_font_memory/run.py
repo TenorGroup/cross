@@ -58,6 +58,14 @@ end = boundary.index('struct RenderLock {') if 'struct RenderLock {' in boundary
 boundary = boundary[boundary.index('HalTiltSensor halTiltSensor;'):end]
 boundary = boundary.replace('struct FontBoundary {',
     'struct FontBoundary { template<class Renderer> void releaseReaderForDownload(Renderer&) {}')
+# Owners the catalog reaches that the shared boundary does not stand in for (KOReader server profile and headers,
+# the plugin scan): nothing here reads them, so the linker gets empty bodies.
+for symbol, body in (('KOReaderCredentialStore::setServerType', 'void KOReaderCredentialStore::setServerType(KOReaderServerType) {}\n'),
+                     ('KOReaderCredentialStore::setCustomHeader',
+                      'void KOReaderCredentialStore::setCustomHeader(size_t, const std::string&, const std::string&) {}\n'),
+                     ('anyPluginInstalledOnDisk', 'namespace PluginLocations { bool anyPluginInstalledOnDisk() { return false; } }\n')):
+    if symbol not in boundary:
+        boundary += '\n' + body
 (out / 'Boundaries.inc').write_text(boundary)
 for name in ['HalTiltSensor', 'HalClock']:
     instance = name[0].lower() + name[1:]
@@ -65,8 +73,8 @@ for name in ['HalTiltSensor', 'HalClock']:
         ' { public: bool available=false; bool isAvailable() const { return available; } };\nextern ' +
         name + ' ' + instance + ';\n')
 incs = ['test/host_stubs', 'src', '.pio/libdeps/gh_release/ArduinoJson/src',
-        'lib/Epub', 'lib/Logging', 'lib/EpdFont', 'lib/Serialization', 'lib/KOReaderSync',
-        'freeink-sdk/libs/hardware/BoardConfig/include', 'lib/BlePageTurner/include', 'freeink-sdk/libs/ui/FreeInkUI/include', 'lib/I18n']
+        'lib/Epub', 'lib/Logging', 'lib/EpdFont', 'lib/Serialization', 'lib/KOReaderSync', 'lib/HttpHeader',
+        'freeink-sdk/libs/hardware/BoardConfig/include', 'lib/BlePageTurner/include', 'freeink-sdk/libs/network/BleKeyboardHost/include', 'freeink-sdk/libs/ui/FreeInkUI/include', 'lib/I18n']
 cmd = [os.environ.get('CXX', 'c++'), '-std=c++20', '-O1', '-g', '-ffunction-sections',
        '-fdata-sections', '-Wl,-dead_strip' if platform.system() == 'Darwin' else '-Wl,--gc-sections',
        '-DFREEINK_DEVICE_X3=1', '-DFREEINK_DEVICE_X4=1', '-DENABLE_ARDUINO_FEATURES=0',

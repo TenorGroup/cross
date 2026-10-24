@@ -22,6 +22,7 @@ class NotoSelection(unittest.TestCase):
 #include <cassert>
 #include <cstdint>
 #include <string>
+#include <vector>
 struct CrossPointSettings { enum {NOTOSANS=0}; };
 struct Settings {
  uint8_t fontFamily=0,fontPointSize=14,readerInkWeight=3;
@@ -65,6 +66,8 @@ struct System {
  bool notoPackMissing_=false,present=true;
  Family family;
  std::string asked;
+ std::vector<int> cpfontVariants_;
+ void unloadCpfonts(Renderer& renderer){cpfontVariants_.clear();manager_.unloadAll(renderer);}
  const Family* familyNamed(const char* name){asked=name;return present?&family:nullptr;}
  bool walkIfCatalogKept(){return false;}
  void apply(Renderer& renderer,bool registryWasDirty=false) {

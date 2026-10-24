@@ -268,7 +268,11 @@ TEST(CacheSerialization, SparseRubyUsesSpaceForActualAnnotations) {
                   std::vector<EpdFontFamily::Style>(10000, EpdFontFamily::REGULAR), {}, {}, BlockStyle(), ruby);
   HalFile file;
   ASSERT_TRUE(block.serialize(file));
-  for (size_t cap : {SIZE_MAX, size_t(100000)}) {
+  // Every word's arena entry carries its 8-byte chapter source range since the merge with upstream (the block took
+  // 70,200 B for these words before, 150,240 B now); the headroom over the block, 30 KB, is what a ruby entry per
+  // word would not fit in.
+  constexpr size_t kLoadCap = 100000 + 10000 * 8;
+  for (size_t cap : {SIZE_MAX, kLoadCap}) {
     file.offset = 0;
     pageAllocProbe::start(cap);
     std::unique_ptr<TextBlock> result;

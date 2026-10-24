@@ -15,7 +15,12 @@ repo = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser()
 parser.add_argument('--epub', type=Path, default=repo / 'lib/Epub/Epub.cpp')
 source = parser.parse_args().epub.read_text()
-body = source[source.index('std::string Epub::getCoverBmpPath('):source.index('// Keep thumb2 caches')]
+path_start = source.index('std::string Epub::getCoverBmpPath(')
+# The GIF cover machinery (semaphore, extractor, generateGifBmp) sits between the two functions; GIF covers are not
+# this test's subject, so a stub stands in for it.
+body = (source[path_start:source.index('namespace {', path_start)] +
+        source[source.index('bool Epub::extractItemToFile('):].split('\n}\n', 1)[0] + '\n}\n' +
+        source[source.index('bool Epub::generateCoverBmp('):source.index('// Keep thumb2 caches')])
 stubs = r'''
 #include <cassert>
 #include <cstdio>
@@ -31,7 +36,8 @@ const std::string kBmp(64, 'B');
 struct HalFile {
   std::string* data = nullptr;
   explicit operator bool() const { return data != nullptr; }
-  void close() { data = nullptr; }
+  bool close() { data = nullptr; return true; }
+  void flush() {}
   size_t size() const { return data ? data->size() : 0; }
 };
 struct Store {
@@ -52,7 +58,12 @@ namespace progressivejpeg { bool supported() { return true; } }
 struct FsHelpers {
   static bool hasJpgExtension(const std::string& s) { return s.ends_with(".jpg"); }
   static bool hasPngExtension(const std::string& s) { return s.ends_with(".png"); }
+  static bool hasGifExtension(const std::string& s) { return s.ends_with(".gif"); }
 };
+struct Print {};
+namespace Txt { inline bool isTxtOrMd(const std::string&) { return false; }
+  inline bool convertCoverImageToBmp(const std::string&, const std::string&, int, bool = false, bool = false) { return false; } }
+struct GifToBmpConverter { static bool gifFileToBmpStream(HalFile&, Print&, bool, bool) { return false; } };
 bool convert(HalFile& dst) {
   ++converted;
   dst.data->append(kBmp, 0, kBmp.size() / 2);
@@ -73,13 +84,19 @@ unsigned long millis() { return 0; }
 struct Meta { std::string coverItemHref; };
 struct Cache { Meta coreMetadata; bool isLoaded() const { return true; } };
 struct Epub {
+  std::string filepath = "/books/a.epub";
   std::string cachePath = "/.crosspoint/epub_123";
   Cache* bookMetadataCache = nullptr;
   std::string getCachePath() const { return cachePath; }
   bool readItemContentsToStream(const std::string&, HalFile& f, int) const { *f.data = "cover-image"; return true; }
+  bool extractItemToFile(const std::string&, const std::string&) const;
   std::string getCoverBmpPath(bool cropped = false, bool originalThresholds = false, bool oneBit = false) const;
   bool generateCoverBmp(bool cropped = false, bool originalThresholds = false, bool oneBit = false) const;
 };
+
+// GIF covers are not exercised here: a GIF cover generates nothing.
+template <typename Convert>
+bool generateGifBmp(const Epub&, const std::string&, const std::string&, Convert) { return false; }
 '''
 main = r'''
 int main() {

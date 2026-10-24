@@ -23,7 +23,7 @@ std::vector<std::vector<std::string>> layout(const std::vector<const char*>& wor
   BlockStyle style;
   style.alignment = CssTextAlign::Justify;
   style.textIndentDefined = true;
-  ParsedText text(false, true, false, style);
+  ParsedText text(true, false, style);
   for (const char* word : words) text.addWord(word, EpdFontFamily::REGULAR);
   std::vector<std::vector<std::string>> lines;
   text.layoutAndExtractLines(renderer, 0, width, [&](std::unique_ptr<TextBlock> block, auto) {

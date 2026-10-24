@@ -21,7 +21,7 @@ class HalFile {
   int read(void*, size_t) { return 0; }
   bool seek(size_t) { return true; }
   size_t size() const { return 0; }
-  void close() { open_ = false; }
+  bool close() { open_ = false; return true; }
   std::string path_;
   bool open_ = false;
 };

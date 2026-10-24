@@ -1,33 +1,52 @@
 struct CheckFailure : std::runtime_error { using std::runtime_error::runtime_error; };
 #define CHECK(value) do { if (!(value)) throw CheckFailure(std::string(#value) + " at line " + std::to_string(__LINE__)); } while (false)
 
-static std::unique_ptr<Txt> book(const std::string& text = "one\ntwo\nthree\nfour\nfive\nsix\n") {
+static void book(const std::string& text = "one\ntwo\nthree\nfour\nfive\nsix\n") {
   Storage = {};
   Storage.put("/book.txt", text);
-  auto txt = std::make_unique<Txt>(); txt->fileSize = text.size(); return txt;
+}
+// The body of the HTML a TXT book is streamed as: what follows the title block, up to the closing tags.
+static std::string bodyOf(const Print& out) {
+  const std::string html(out.bytes.begin(), out.bytes.end());
+  const std::string open = "<body>\n", close = "\n</body>";
+  const auto start = html.find(open), end = html.rfind(close);
+  CHECK(start != std::string::npos && end != std::string::npos);
+  return html.substr(start + open.size(), end - start - open.size());
 }
 
+// A TXT book goes through the EPUB pipeline as HTML (Txt::streamTxtToHtml, D17): a failed read must fail the
+// conversion, and a source that arrives in pieces must come out whole.
 static void txtReadError() {
-  auto txt = book("abcdefgh");
+  book("abcdefgh");
   Storage.files.at("/book.txt")->readPlan = {-1};
-  uint8_t data[8] = {};
-  CHECK(!txt->readContent(data, 0, sizeof(data)));
+  Print out; out.allowedSpan = 1 << 20;
+  CHECK(!Txt::streamTxtToHtml("/book.txt", out));
 }
-static void txtShortEof() {
-  auto txt = book("abcdefgh");
-  Storage.files.at("/book.txt")->readPlan = {3, 0};
-  uint8_t data[8] = {};
-  CHECK(!txt->readContent(data, 0, sizeof(data)));
+static void txtShortThenError() {
+  book("abcdefgh"); Storage.files.at("/book.txt")->readPlan = {3, -1};
+  Print out; out.allowedSpan = 1 << 20;
+  CHECK(!Txt::streamTxtToHtml("/book.txt", out));
 }
 static void txtShortCompletes() {
-  auto txt = book("abcdefgh");
+  book("abc & <d>\nefgh");
   Storage.files.at("/book.txt")->readPlan = {3, 2, 3};
-  uint8_t data[8] = {};
-  CHECK(txt->readContent(data, 0, sizeof(data)));
-  CHECK(std::memcmp(data, "abcdefgh", 8) == 0);
+  Print out; out.allowedSpan = 1 << 20;
+  CHECK(Txt::streamTxtToHtml("/book.txt", out));
+  CHECK(bodyOf(out) == "abc &amp; &lt;d&gt;<br />efgh");
+}
+static void txtMissingFile() {
+  book("abcdefgh");
+  Print out; out.allowedSpan = 1 << 20;
+  CHECK(!Txt::streamTxtToHtml("/missing.txt", out));
+  CHECK(out.bytes.empty());
+}
+static void txtSinkFailure() {
+  book("abcdefgh");
+  Print out; out.allowedSpan = 4;  // the sink refuses the converter's 8 KB block: a card that is full
+  CHECK(!Txt::streamTxtToHtml("/book.txt", out));
 }
 static void zipReadError() {
-  auto txt = book("abcdefgh");
+  book("abcdefgh");
   ZipFile zip; zip.file.data = Storage.files.at("/book.txt");
   zip.file.data->readPlan = {-1}; zip.stat.uncompressedSize = 8;
   Print out; out.allowedSpan = 4;
@@ -35,7 +54,7 @@ static void zipReadError() {
   CHECK(out.maxSpan <= 4);
 }
 static void zipShortCompletes() {
-  auto txt = book("abcdefgh");
+  book("abcdefgh");
   ZipFile zip; zip.file.data = Storage.files.at("/book.txt");
   zip.file.data->readPlan = {2, 1, 4, 1}; zip.stat.uncompressedSize = 8;
   Print out; out.allowedSpan = 4;
@@ -43,13 +62,13 @@ static void zipShortCompletes() {
   CHECK(std::string(out.bytes.begin(), out.bytes.end()) == "abcdefgh");
 }
 static void zipEarlyStop() {
-  auto txt = book("abcdefgh");
+  book("abcdefgh");
   ZipFile zip; zip.file.data = Storage.files.at("/book.txt"); zip.stat.uncompressedSize = 8;
   Print out; out.limit = 2; CHECK(zip.readFileToStream("book", out, 4, true));
   zip.file.pos = 0; CHECK(!zip.readFileToStream("book", out, 4, false));
 }
 static void zipReadZero() {
-  auto txt = book("abcdefgh");
+  book("abcdefgh");
   ZipFile zip; zip.file.data = Storage.files.at("/book.txt");
   zip.file.data->readPlan = {0}; zip.stat.uncompressedSize = 8;
   Print out; out.allowedSpan = 4;
@@ -57,7 +76,7 @@ static void zipReadZero() {
   CHECK(out.bytes.empty());
 }
 static void zipShortThenError() {
-  auto txt = book("abcdefgh");
+  book("abcdefgh");
   ZipFile zip; zip.file.data = Storage.files.at("/book.txt");
   zip.file.data->readPlan = {2, -1}; zip.stat.uncompressedSize = 8;
   Print out; out.allowedSpan = 4;
@@ -65,7 +84,7 @@ static void zipShortThenError() {
   CHECK(out.maxSpan <= 4);
 }
 static void zipInflateErrorEarlyStop() {
-  auto txt = book("abcdefgh");
+  book("abcdefgh");
   ZipFile zip; zip.file.data = Storage.files.at("/book.txt");
   zip.stat = {ZIP_METHOD_DEFLATED, 8, 8, 0};
   Print out; out.allowedSpan = 4; out.limit = 2;
@@ -74,46 +93,29 @@ static void zipInflateErrorEarlyStop() {
   CHECK(!zip.readFileToStream("book", out, 4, true));
   InflateStream::enabled = false;
 }
-static void txtReadZero() {
-  auto txt = book("abcdefgh"); Storage.files.at("/book.txt")->readPlan = {0};
-  uint8_t bytes[8] = {}; CHECK(!txt->readContent(bytes, 0, sizeof(bytes)));
-}
-static void txtShortThenError() {
-  auto txt = book("abcdefgh"); Storage.files.at("/book.txt")->readPlan = {3, -1};
-  uint8_t bytes[8] = {}; CHECK(!txt->readContent(bytes, 0, sizeof(bytes)));
-}
 static void readSeekFailure() {
-  auto txt = book("abcdefgh"); Storage.files.at("/book.txt")->seekOk = false;
-  uint8_t bytes[8] = {}; CHECK(!txt->readContent(bytes, 0, sizeof(bytes)));
+  book("abcdefgh"); Storage.files.at("/book.txt")->seekOk = false;
   ZipFile zip; zip.file.data = Storage.files.at("/book.txt"); zip.stat.uncompressedSize = 8;
   Print out; CHECK(!zip.readFileToStream("book", out, 4)); CHECK(out.bytes.empty());
 }
 static void zipZeroChunk() {
-  auto txt = book("abcdefgh"); ZipFile zip; zip.file.data = Storage.files.at("/book.txt");
+  book("abcdefgh"); ZipFile zip; zip.file.data = Storage.files.at("/book.txt");
   zip.stat.uncompressedSize = 8; Print out;
   CHECK(!zip.readFileToStream("book", out, 0)); CHECK(out.bytes.empty());
 }
-static void txtRangeBounds() {
-  auto txt = book("abcdefgh"); uint8_t bytes[8] = {};
-  CHECK(!txt->readContent(bytes, std::numeric_limits<size_t>::max(), 4));
-  CHECK(!txt->readContent(bytes, 2, std::numeric_limits<size_t>::max()));
-  CHECK(!txt->readContent(nullptr, 0, 1));
-  CHECK(txt->readContent(nullptr, 8, 0));
-}
-
 
 int main(int argc, char** argv) {
   const std::string filter = argc > 1 ? argv[1] : "all";
   int total = 0, failures = 0;
   const std::vector<std::pair<const char*, std::function<void()>>> cases = {
-    {"READ-03 negative read", txtReadError}, {"READ-03 short then EOF", txtShortEof},
-    {"READ-03 short reads complete", txtShortCompletes}, {"IO-01 negative stored read", zipReadError},
+    {"READ-03 negative read", txtReadError}, {"READ-03 short reads complete", txtShortCompletes},
+    {"READ-03 missing file", txtMissingFile}, {"READ-03 refused output", txtSinkFailure},
+    {"IO-01 negative stored read", zipReadError},
     {"IO-01 short reads complete", zipShortCompletes}, {"IO-01 early stop contract", zipEarlyStop},
     {"IO-01 zero read", zipReadZero}, {"IO-01 partial then read error preserves failure", zipShortThenError},
     {"IO-01 inflate error retains failure before early stop", zipInflateErrorEarlyStop},
-    {"READ-03 zero read", txtReadZero}, {"READ-03 partial then read error", txtShortThenError},
-    {"IO-01 READ-03 failed seek", readSeekFailure}, {"IO-01 zero chunk", zipZeroChunk},
-    {"READ-03 requested range bounds", txtRangeBounds},
+    {"READ-03 partial then read error", txtShortThenError},
+    {"IO-01 failed seek", readSeekFailure}, {"IO-01 zero chunk", zipZeroChunk},
   };
   for (const auto& test : cases) {
     if (filter != "all" && std::string(test.first).find(filter) == std::string::npos) continue;

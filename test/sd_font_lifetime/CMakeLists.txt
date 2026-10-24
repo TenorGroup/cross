@@ -76,8 +76,8 @@ get_filename_component(RUBY_BLOCK_DIR "${RUBY_TEXT_SOURCE}" DIRECTORY)
 file(READ "${RUBY_TEXT_SOURCE}" RUBY_BLOCK_CODE)
 string(REPLACE "#include \"TextBlock.h\"" "#include \"${RUBY_BLOCK_DIR}/TextBlock.h\"" RUBY_BLOCK_CODE "${RUBY_BLOCK_CODE}")
 string(REPLACE "../../../../src/fontIds.h" "${REPO_ROOT}/src/fontIds.h" RUBY_BLOCK_CODE "${RUBY_BLOCK_CODE}")
-string(REPLACE "void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int x, const int y) const {"
-  "void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int x, const int y) const { ++rasterBlockCalls;"
+string(REPLACE "void TextBlock::render(const GfxRenderer& renderer, const int sectionFontId, const int x, const int y) const {"
+  "void TextBlock::render(const GfxRenderer& renderer, const int sectionFontId, const int x, const int y) const { ++rasterBlockCalls;"
   RUBY_BLOCK_CODE "${RUBY_BLOCK_CODE}")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/RubyBlock.cpp" "extern unsigned long rasterBlockCalls;\n${RUBY_BLOCK_CODE}")
 file(READ "${REPO_ROOT}/lib/GfxRenderer/GfxRenderer.cpp" RUBY_RENDER_CODE)

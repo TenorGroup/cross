@@ -78,17 +78,21 @@ TEST_F(SdFontRegistryTest, HiddenRootWinsAndKeepsItsOwnRoot) {
 }
 
 TEST_F(SdFontRegistryTest, OverlongPathsAreSkippedAtDiscovery) {
-  // "/.fonts/" + 100 + "/" + 100 + "_14.cpfont" = 219 bytes: over PATH_BUFFER_SIZE.
-  const std::string longName(100, 'L');
-  fake::add("/.fonts/" + longName + "/" + longName + "_14.cpfont");
-  fake::add("/.fonts/" + longName + "/Short_16.cpfont");  // 124 bytes: fits
-  // The 120-byte filename fits the 128-byte name buffer, but the 239-byte path
-  // does not fit PATH_BUFFER_SIZE.
-  const std::string onlyLong(110, 'O');
-  fake::add("/.fonts/" + onlyLong + "/" + onlyLong + "_12.cpfont");
+  // A family folder name holds at most MAX_FAMILY_NAME_BYTES (63: the settings keep it in a 64-byte field), so a
+  // long path comes from a long file name: "/.fonts/" + 63 + "/" + 100 + "_14.cpfont" = 182 bytes, over PATH_BUFFER_SIZE.
+  const std::string longName(63, 'L');
+  fake::add("/.fonts/" + longName + "/" + std::string(100, 'L') + "_14.cpfont");
+  fake::add("/.fonts/" + longName + "/Short_16.cpfont");  // 87 bytes: fits
+  // The 110-byte filename fits the 128-byte name buffer, but the 182-byte path does not fit PATH_BUFFER_SIZE.
+  const std::string onlyLong(63, 'O');
+  fake::add("/.fonts/" + onlyLong + "/" + std::string(100, 'O') + "_12.cpfont");
+  // A folder name over the cap never becomes a family, whatever it holds.
+  const std::string tooLongName(SdCardFontRegistry::MAX_FAMILY_NAME_BYTES + 1, 'N');
+  fake::add("/.fonts/" + tooLongName + "/Short_14.cpfont");
 
   ASSERT_TRUE(registry.discover());
   EXPECT_EQ(registry.findFamily(onlyLong), nullptr);  // no loadable file left
+  EXPECT_EQ(registry.findFamily(tooLongName), nullptr);
   const auto* family = registry.findFamily(longName);
   ASSERT_NE(family, nullptr);
   ASSERT_EQ(family->files.size(), 1u);

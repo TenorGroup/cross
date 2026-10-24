@@ -15,6 +15,7 @@ target_include_directories(CssNumberTest PRIVATE
   ${CMAKE_CURRENT_BINARY_DIR}
   ${REPO_ROOT}/test/css_parser/stubs
   ${REPO_ROOT}/lib/Epub/Epub/css
+  ${REPO_ROOT}/lib/AsciiText
   ${REPO_ROOT}/lib/Memory
 )
 target_link_libraries(CssNumberTest PRIVATE crosspoint_test_common GTest::gtest_main)

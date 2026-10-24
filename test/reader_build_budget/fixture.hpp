@@ -229,7 +229,7 @@ struct Section {
   bool laidOutTo(float share) const { return complete || builtPages >= static_cast<int>(share * 40); }
   template <class F> bool startBuild(const ReaderRenderSpec& spec, F&&) { return startBuild(spec); }
   bool startBuild(const ReaderRenderSpec&) { require(RenderLock::busy, "start without render lock"); ++starts; clockMs += startMs; if (failStart) return false; building = true; parked = false; builtPages = restoredPagesAfterStart; if (dropAfterStart) ESP.free = 29000; return true; }
-  bool buildSomeMore(int n) {
+  bool buildSomeMore(int n, bool (*)() = nullptr) {
     require(RenderLock::busy, "build without render lock"); ++ticks; clockMs += tickMs;
     if (panelRefreshing) ++ticksWhileRefreshing;
     if (parked) {
@@ -306,6 +306,16 @@ struct Gpio {
   bool usbChanged = false;
   bool wasUsbStateChanged() const { return usbChanged; }
 } gpio;
+// The input contact the layout tick watches between pages (EpubReaderActivity.cpp: gpio.rawInputActive()).
+inline bool buttonContactClosed() { return gpio.rawInputActive(); }
+// The plugin event bus (util/PluginEvents.h): the open emits one event; nothing subscribes here.
+namespace pluginevents {
+enum class Event : uint8_t { ReaderOpen, ReaderExit, ReaderSession, BookDownloaded, SleepEnter, COUNT };
+struct Var { const char* key; const char* value; };
+inline int emitted = 0;
+inline bool anySubscriber(Event) { return false; }
+inline void emit(Event, const Var*, size_t) { ++emitted; }
+}  // namespace pluginevents
 struct Manager {
   bool sleepTransitionState = false;
   uint32_t activityGeneration() const { return 1; }
@@ -337,8 +347,11 @@ struct ReadingStats {
   void observeHabits(uint32_t, uint16_t, uint32_t) {}
   bool saveToFile() { ++openWrites.statsSaves; return true; }
 } READING_STATS;
+// The reading session of the plugin events: only the turn count is touched by the projected code.
+struct ReaderSessionStub { void noteTurn(bool, bool) {} };
 struct ReaderActivity {
   readerstatus::Pace readingPace;
+  ReaderSessionStub readerSession;
   virtual readerstatus::Pace::Position pacePosition() const { return {}; }
   int pendingExternalTurn = 0, requests = 0, trangDaLat = 0;
   uint32_t pendingExternalGeneration = 0;

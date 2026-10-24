@@ -46,6 +46,7 @@ target_include_directories(HugeBookSectionTest PRIVATE
   ${REPO_ROOT}/lib/Serialization ${REPO_ROOT}/lib/MiniBidi ${REPO_ROOT}/lib/FsHelpers
   ${REPO_ROOT}/lib/XmlParserUtils
   ${REPO_ROOT}/lib/BlePageTurner/include ${REPO_ROOT}/lib/BlePageTurner/src
+  ${REPO_ROOT}/freeink-sdk/libs/network/BleKeyboardHost/include
   ${REPO_ROOT}/freeink-sdk/libs/hardware/SDCardManager/include)
 target_link_libraries(HugeBookSectionTest PRIVATE GTest::gtest_main expat)
 gtest_discover_tests(HugeBookSectionTest PROPERTIES RUN_SERIAL TRUE TIMEOUT 300)

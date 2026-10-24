@@ -91,7 +91,7 @@ class CheckedReader {
     return valid;
   }
   bool read(void* dst, size_t length) {
-    valid = has(length) && (length == 0 || file.read(dst, length) == length);
+    valid = has(length) && (length == 0 || static_cast<size_t>(std::max(file.read(dst, length), 0)) == length);
     return valid;
   }
   template <typename T>
@@ -149,10 +149,10 @@ inline bool readString(HalFile& file, std::string& s, size_t maxBytes = 4096) {
 inline bool tryReadString(HalFile& file, std::string& s, const size_t maxLength) {
   uint32_t len = 0;
   if (!tryReadPod(file, len)) return false;
-  const int remaining = file.available();
-  if (static_cast<size_t>(len) > maxLength || static_cast<size_t>(len) > s.max_size() ||
-      len > static_cast<uint32_t>(std::numeric_limits<int>::max()) || remaining < 0 ||
-      len > static_cast<uint32_t>(remaining)) {
+  const size_t position = file.position();
+  const size_t size = file.size();
+  const size_t remaining = position <= size ? size - position : 0;
+  if (static_cast<size_t>(len) > maxLength || static_cast<size_t>(len) > s.max_size() || len > remaining) {
     return false;
   }
   s.resize(len);

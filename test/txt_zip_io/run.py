@@ -58,10 +58,14 @@ def main():
     root = args.source.resolve()
     here = Path(__file__).resolve().parent
     args.output.mkdir(parents=True, exist_ok=True)
-    source_paths = ["lib/Txt/Txt.cpp", "lib/ZipFile/ZipFile.cpp", "lib/Serialization/Serialization.h"]
+    source_paths = ["lib/Txt/Txt.cpp", "lib/ZipFile/ZipFile.cpp", "lib/Serialization/Serialization.h", "lib/Txt/TxtToHtml.cpp"]
     sources = {name: (root / name).read_text() for name in source_paths}
     generated = '#include "Harness.h"\n#include "Serialization.h"\n#include "Memory.h"\n#include "HeapFloor.h"\n#include "RecoverableFile.h"\n'
-    generated += method(sources[source_paths[0]], "Txt::readContent") + "\n"
+    generated += '#include "TxtToHtml.h"\n'
+    generated += method(sources[source_paths[0]], "Txt::streamTxtToHtml") + "\n"
+    generated += method(sources[source_paths[3]], "TxtToHtml::cacheVersionTag") + "\n"
+    # The first overload: the one that reads through a callback, which is what a file goes through.
+    generated += method(sources[source_paths[3]], "TxtToHtml::stream") + "\n"
     generated += method(sources[source_paths[1]], "ZipFile::readFileToStream") + "\n"
     generated += '\n#include "Cases.cpp"\n'
     cpp = args.output / "production-slices.cpp"
@@ -69,14 +73,14 @@ def main():
     (args.output / "provenance.json").write_text(json.dumps({
         "source": str(root),
         "replay": str(args.replay) if args.replay else None,
-        "methods": ["Txt::readContent", "ZipFile::readFileToStream"],
+        "methods": ["Txt::streamTxtToHtml", "TxtToHtml::cacheVersionTag", "TxtToHtml::stream", "ZipFile::readFileToStream"],
         "sha256": {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in source_paths},
     }, indent=2) + "\n")
     executable = args.output / "txt-zip-io"
     flags = ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"] if args.sanitize else []
     subprocess.run([args.cxx, "-std=c++20", "-O2", "-DNDEBUG", "-Wall", "-Wextra", "-Wno-unused-parameter", "-g", *flags,
                     "-I" + str(here), "-I" + str(here / "stubs"), "-I" + str(root / "lib/Serialization"),
-                    "-I" + str(root / "lib/Memory"),
+                    "-I" + str(root / "lib/Memory"), "-I" + str(root / "lib/Txt"),
                     "-I" + str(root / "freeink-sdk/libs/hardware/SDCardManager/include"),
                     str(cpp), "-o", str(executable)], check=True)
     return subprocess.run([str(executable), args.case]).returncode

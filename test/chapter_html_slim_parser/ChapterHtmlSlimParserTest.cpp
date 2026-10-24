@@ -1802,8 +1802,10 @@ TEST(TextSpacingLayout, TrackingSeparatesCjkTokensAndScalesWordSpaces) {
           EXPECT_EQ(line->wordXpos(0), 0);
           EXPECT_EQ(line->wordXpos(1), 7);  // 8 px glyph, -1 px tracking
           EXPECT_EQ(line->wordXpos(2), 14);
-          EXPECT_EQ(line->wordXpos(3), 28);  // 8 px glyph plus 150% of a 4 px space, no tracking
-          EXPECT_EQ(line->wordXpos(4), 35);
+          // 8 px glyph plus 150% of a 4 px space, and the tracking on both sides of the space: the reader
+          // of v1.0.76 spaced every glyph advance, the space's neighbours included (ParsedText::spaceGap).
+          EXPECT_EQ(line->wordXpos(3), 26);
+          EXPECT_EQ(line->wordXpos(4), 33);
         },
         true, -1, 150);
     EXPECT_EQ(lines, 1u);
@@ -1858,7 +1860,7 @@ TEST(TextSpacingLayout, CachedPageRestoresSpacing) {
         ASSERT_NE(cached, nullptr);
         EXPECT_EQ(cached->getBlockStyle().characterSpacing, -2);
         ASSERT_EQ(cached->wordCount(), 5);
-        EXPECT_EQ(cached->wordXpos(3) - cached->wordXpos(2), 10);  // 8 + half-width space
+        EXPECT_EQ(cached->wordXpos(3) - cached->wordXpos(2), 6);  // 8 + half-width space, less the tracking on both sides
         EXPECT_EQ(file.position(), file.size());
         ASSERT_EQ(cached->wordCount(), original->wordCount());
         for (uint16_t i = 0; i < original->wordCount(); ++i) EXPECT_EQ(cached->wordXpos(i), original->wordXpos(i));
@@ -1885,7 +1887,7 @@ TEST_F(ChapterHtmlSlimParserTest, ParserAppliesTextSpacingToParagraphs) {
     ASSERT_EQ(block.wordCount(), 5);
     EXPECT_EQ(block.getBlockStyle().characterSpacing, -1);
     EXPECT_EQ(block.wordXpos(1) - block.wordXpos(0), 7);   // 8 px glyph, -1 px tracking
-    EXPECT_EQ(block.wordXpos(3) - block.wordXpos(2), 14);  // glyph plus 150% of a 4 px space
+    EXPECT_EQ(block.wordXpos(3) - block.wordXpos(2), 12);  // glyph plus 150% of a 4 px space, less 1 px tracking each side
   }
   EXPECT_EQ(lines, 1u);
 }

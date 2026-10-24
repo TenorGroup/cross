@@ -120,6 +120,7 @@ class HalFile {
     return *this;
   }
   bool open(const char* path, const char* mode) { close(); path_ = path; file_ = std::fopen(path, mode); return file_; }
+  size_t fileSize() const { return size(); }
   int available() const { return file_ ? static_cast<int>(size() - position()) : 0; }
   int read(void* buffer, size_t count) {
     const size_t at = position();

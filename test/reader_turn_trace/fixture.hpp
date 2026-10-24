@@ -100,8 +100,11 @@ inline bool holdSkipsChapters() { return SETTINGS.longPressButtonBehavior == SET
 namespace bleturner {
 inline void acknowledgeLinkNote() {}
 }  // namespace bleturner
+// The reading session of the plugin events: the turn count is all the projected code touches.
+struct ReaderSessionStub { void noteTurn(bool, bool) {} };
 struct ReaderActivity {
   readerstatus::Pace readingPace;
+  ReaderSessionStub readerSession;
   virtual readerstatus::Pace::Position pacePosition() const { return {}; }
   static constexpr int8_t MAX_QUEUED_TURNS = 8;
   int8_t pendingExternalTurn = 0;

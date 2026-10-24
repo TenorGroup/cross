@@ -66,6 +66,9 @@ EpdFont bodyFont(&geist_12_regular), bodyBoldFont(&geist_12_bold);
 EpdFontFamily smallFontFamily(&captionFont), ui10FontFamily(&subtitleRegularFont, &subtitleBoldFont);
 EpdFontFamily ui12FontFamily(&bodyFont, &bodyBoldFont);
 EpdFontFamily notoserif14FontFamily(&bodyFont);
+// main.cpp registers the 14 point built-in face outside OMIT_FONTS (the upstream place), so a build without the
+// larger sizes still needs it.
+EpdFontFamily notosans14FontFamily(&bodyFont);
 void setupDisplayAndFonts(bool, bool);
 
 void assertTier(GfxRenderer& target, uint8_t tier) {

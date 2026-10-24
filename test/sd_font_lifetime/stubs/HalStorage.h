@@ -20,6 +20,7 @@ struct HalFile {
   inline static size_t openCalls = 0;
   size_t position() const { return offset_; }
   size_t size() const { return bytes ? bytes->size() : 0; }
+  size_t fileSize() const { return size(); }
   bool seek(size_t offset) { return seekSet(offset); }
   bool seekSet(size_t offset) {
     if (!bytes || offset == failSeekAt || offset > bytes->size()) return false;

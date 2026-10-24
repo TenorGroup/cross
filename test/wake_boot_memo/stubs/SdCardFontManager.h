@@ -2,6 +2,7 @@
 #include <GfxRenderer.h>
 #include <SdCardFontRegistry.h>
 
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -32,15 +33,28 @@ class SdCardFontManager {
     renderer.fonts[id_] = HostFontFace{hostCjk};
     return true;
   }
-  int loadFamilyExtraSize(const SdCardFontFamilyInfo& family, GfxRenderer&, uint8_t pointSize) {
+  int loadFamilyExtraSize(const SdCardFontFamilyInfo& family, GfxRenderer&, uint8_t pointSize, int fontId = 0) {
     const auto* file = family.findFile(pointSize);
     if (!file) return 0;
     extra_.push_back(pointSize);
-    return 100 + pointSize;
+    extraIds_[pointSize] = fontId ? fontId : 100 + pointSize;
+    return extraIds_[pointSize];
   }
+  // A sized variant of the reader font: loaded from the card file of exactly that size.
+  bool loadFamilyVariant(const SdCardFontFamilyInfo& family, GfxRenderer& renderer, uint8_t pointSize, int fontId) {
+    const auto* file = family.findFile(pointSize);
+    if (!file) return false;
+    const std::string path = family.filePath(*file);
+    hostLoads.push_back(path);
+    if (!hostCardFiles.count(path)) return false;
+    renderer.fonts[fontId] = HostFontFace{hostCjk};
+    return true;
+  }
+  void unloadFont(GfxRenderer& renderer, int fontId) { renderer.fonts.erase(fontId); }
   void unloadExtraSizes(GfxRenderer& renderer) {
     renderer.fallbacks.clear();
     extra_.clear();
+    extraIds_.clear();
   }
   void unloadAll(GfxRenderer& renderer) {
     renderer.fallbacks.clear();
@@ -48,8 +62,14 @@ class SdCardFontManager {
     name_.clear();
     size_ = 0;
     extra_.clear();
+    extraIds_.clear();
   }
-  int getFontId(const std::string& name) const { return !name_.empty() && name == name_ ? id_ : 0; }
+  int getFontId(const std::string& name, uint8_t pointSize = 0) const {
+    if (name_.empty() || name != name_) return 0;
+    if (pointSize == 0 || pointSize == size_) return id_;
+    const auto it = extraIds_.find(pointSize);
+    return it == extraIds_.end() ? 0 : it->second;
+  }
   const std::string& currentFamilyName() const { return name_; }
   uint8_t currentPointSize() const { return size_; }
   uint8_t currentWeight() const { return weight_; }
@@ -61,4 +81,5 @@ class SdCardFontManager {
   uint8_t size_ = 0;
   uint8_t weight_ = 0;
   std::vector<uint8_t> extra_;
+  std::map<uint8_t, int> extraIds_;
 };

@@ -1,8 +1,8 @@
 # TXT and ZIP I/O regression
 
-`run.py` extracts unchanged production method bodies from Txt.cpp and ZipFile.cpp and compiles them with the real Memory.h, Serialization.h and SDK RecoverableFile.h. Generated source and SHA-256 provenance are retained in the output directory.
+`run.py` extracts unchanged production method bodies from Txt.cpp, TxtToHtml.cpp and ZipFile.cpp and compiles them with the real Memory.h, Serialization.h and SDK RecoverableFile.h. Generated source and SHA-256 provenance are retained in the output directory.
 
-TXT books open through the EPUB pipeline (TxtToHtml), so the TXT reader and its page index are gone with their cases; what stays is the TXT byte reader, Txt::readContent. ZIP exercises the production readFileToStream method. HalFile, Storage, renderer metrics, ZIP catalog lookup and InflateStream are deterministic boundaries. The compressed error test injects a decoder Error with produced bytes; full decompression is outside this suite. The renderer does not draw physical pixels and no SD controller or power-loss behavior is emulated.
+TXT books open through the EPUB pipeline (TxtToHtml), so the TXT reader, its page index and the byte reader Txt::readContent are gone with their cases; what is covered of a TXT book is its conversion to HTML, Txt::streamTxtToHtml and TxtToHtml::stream (failed reads fail the conversion, a source that arrives in pieces comes out whole, a refused output fails). The conversion does not compare the bytes it read with the file size, so a read that ends early with 0 is an end of file to it. ZIP exercises the production readFileToStream method. HalFile, Storage, renderer metrics, ZIP catalog lookup and InflateStream are deterministic boundaries. The compressed error test injects a decoder Error with produced bytes; full decompression is outside this suite. The renderer does not draw physical pixels and no SD controller or power-loss behavior is emulated.
 
 CHECK failures throw regardless of NDEBUG. The harness compiles with -O2 -DNDEBUG so Release builds retain all checks. Allocation probes intercept new and nothrow array new; chunk malloc has a separate deterministic failure gate.
 

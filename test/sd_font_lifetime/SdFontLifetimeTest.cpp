@@ -159,7 +159,9 @@ std::vector<uint8_t> makeAdvanceFont() {
   u32(bytes, 56, bytes.size());
   for (uint32_t i = 0; i < cps.size(); ++i) append(bytes, EpdUnicodeInterval{cps[i], cps[i], i});
   for (uint32_t i = 0; i < cps.size(); ++i) {
-    append(bytes, EpdGlyph{uint8_t(advanceFor(cps[i]) / 16), 1, advanceFor(cps[i]), 0, 1, 1, i});
+    // One bitmap byte per glyph: the entry must say how many bytes its pixels pack into, or the loader
+    // draws it as a corrupt one and its advance reads 0.
+    append(bytes, EpdGlyph{uint8_t(std::min<unsigned>(advanceFor(cps[i]) / 16, 8)), 1, advanceFor(cps[i]), 0, 1, 1, i});
   }
   bytes.insert(bytes.end(), cps.size(), 0xff);
   return bytes;
@@ -252,32 +254,37 @@ void testAdvanceCjk() {
               firstReads, HalFile::readCalls, static_cast<unsigned long long>(digest));
 }
 void testAdvanceCap() {
+  // The collection keeps the LOWEST 768 codepoints of a page (the table's limit), whatever the order they come in:
+  // 4095 filler codepoints from U+5000, a marker below them and one repeated marker.
   std::string filler;
   for (uint32_t cp = 0x5000; cp < 0x5000 + 4095; ++cp) {
     appendUtf8(filler, cp);
     if ((cp - 0x5000) % 512 == 0) appendUtf8(filler, cp);
   }
   const std::string included = utf8Text({0x4e10});
-  const std::string excluded = utf8Text({0x4e00});
+  const std::string lowest = utf8Text({0x4e00});
   SdCardFont plain;
   loadAdvanceFont(plain);
-  require(plain.buildAdvanceTable((filler + included + included + excluded).c_str(), 1) == 0,
-          "4096-unique cap build succeeds");
-  require(plain.getAdvance(0x4e10, 0) == advanceFor(0x4e10), "4096th unique marker is retained");
-  require(plain.getAdvance(0x4e00, 0) == 0, "4097th unique marker is excluded");
+  require(plain.buildAdvanceTable((filler + included + included + lowest).c_str(), 1) == 0,
+          "capped build succeeds");
+  require(plain.getAdvance(0x4e10, 0) == advanceFor(0x4e10), "a marker below the filler is retained");
+  require(plain.getAdvance(0x4e00, 0) == advanceFor(0x4e00), "the lowest codepoint is retained");
   require(plain.getAdvance(0x5000, 0) == advanceFor(0xfffd), "first missing filler uses replacement metric");
+  require(plain.getAdvance(0x5000 + 765, 0) == advanceFor(0xfffd), "the 768th lowest codepoint is retained");
+  require(plain.getAdvance(0x5000 + 766, 0) == 0, "the 769th lowest codepoint is excluded");
   require(plain.getAdvance(0x5000 + 4094, 0) == 0, "persistent cache retains only first 768 sorted entries");
 
   SdCardFont batch;
   loadAdvanceFont(batch);
   std::deque<std::string> words{filler, filler.substr(0, 3)};
-  const std::string extra = included + included + excluded;
+  const std::string extra = included + included + lowest;
   require(buildWordAdvances(batch, words, true, 1, extra.c_str()) == 0, "cap with extra text builds");
-  require(batch.getAdvance(0x4e10, 0) == advanceFor(0x4e10), "extra text fills 4096th input slot");
-  require(batch.getAdvance(0x4e00, 0) == 0, "extra text excludes 4097th unique input");
+  require(batch.getAdvance(0x4e10, 0) == advanceFor(0x4e10), "extra text is collected with the words");
+  require(batch.getAdvance(0x4e00, 0) == advanceFor(0x4e00), "extra text keeps the lowest codepoint");
   require(batch.getAdvance(' ', 0) == advanceFor(' '), "space uses reserved cap slot");
   require(batch.getAdvance('-', 0) == advanceFor('-'), "hyphen uses reserved cap slot");
-  std::printf("ADVANCE_CAP unique_input=4096 excluded=4097 persistent_limit=768 included_advance=%u space_advance=%u hyphen_advance=%u\n",
+  require(batch.getAdvance(0x5000 + 766, 0) == 0, "the same 768 lowest bound the batch");
+  std::printf("ADVANCE_CAP unique_input=4097 persistent_limit=768 included_advance=%u space_advance=%u hyphen_advance=%u\n",
               batch.getAdvance(0x4e10, 0), batch.getAdvance(' ', 0), batch.getAdvance('-', 0));
 }
 void testAdvanceFullMetadata() {
@@ -317,9 +324,9 @@ void testAdvanceGrowthFailure() {
   const std::string text = utf8Text(cps);
   HalFile::readCalls = 0;
   allocationProbe::reset();
-  // Refuse the codepoint buffer's growth (128 -> 256 slots, +2 reserved). The advance table's
-  // pre-grow before it is optional and its failure is not this case.
-  allocationProbe::failMin = allocationProbe::failMax = (256 + 2) * sizeof(uint32_t);
+  // Refuse the codepoint buffer: one slot per byte of the text (the bound of what it can hold), +2 reserved.
+  // The advance table's pre-grow before it is optional and its failure is not this case.
+  allocationProbe::failMin = allocationProbe::failMax = (text.size() + 2) * sizeof(uint32_t);
   allocationProbe::failOnce = allocationProbe::enabled = true;
   const int result = font.buildAdvanceTable(text.c_str(), 1);
   allocationProbe::enabled = false;
@@ -470,13 +477,17 @@ int main(int argc, char** argv) {
     require(scene.font.getEpdFont(0)->getLigature('f', 'i') == 0xfb01, "successful retry republishes ligature");
   } else if (scenario == "failed-reload") {
     Scene scene(true, true);
-    auto* heldFont = scene.font.getEpdFont(0);
+    // The font owns its style records and frees them on a failed full load, so nothing may hold a pointer into them
+    // across it: the manager takes a font off the renderer before it loads and drops the object after.
+    scene.renderer.removeFont(42);
     require(!scene.font.load("/missing.cpfont"), "missing font reload fails");
-    require(heldFont->getLigature('f', 'i') == 0, "held exposed font has no expired alias after failed reload");
-    require(heldFont->data->ligaturePairs == nullptr && heldFont->data->ligaturePairCount == 0,
-            "failed full reload cleared exposed aliases");
+    require(scene.font.getEpdFont(0) == nullptr && scene.font.getEpdFont(1) == nullptr,
+            "failed full reload leaves no style behind");
+    require(!scene.font.hasStyle(0) && !scene.font.hasStyle(1), "failed full reload reports no style");
     require(scene.font.load("/fixture.cpfont"), "load succeeds after failed full reload");
     require(scene.font.prewarm("fi", 3) == 0, "prewarm after full reload");
+    scene.renderer.insertFont(42, EpdFontFamily(scene.font.getEpdFont(0), scene.font.getEpdFont(1)));
+    scene.renderer.registerSdCardFont(42, &scene.font);
     scene.scanAndDraw(false);
   } else if (scenario == "advance-low-heap") {
     testAdvanceLowHeap();

@@ -44,6 +44,9 @@ struct InputManager {
   void applyStateChange(uint8_t, unsigned long); void update();
   bool wasAnyPressed() const; bool wasAnyReleased() const; bool isPressed(uint8_t) const;
   uint8_t serviceTouch() { return 0; }
+  // The slide switch and the off-screen page keys belong to other boards; the projected board has neither.
+  void updateToggleSwitch(unsigned long) {}
+  uint8_t capacitivePageButtonMask() const { return 0; }
   void updateConfirmBackHold(unsigned long) { throw std::runtime_error("unexpected board"); }
   void updateConfirmPowerHold(unsigned long) { throw std::runtime_error("unexpected board"); }
   void updateDigitalTwoButton(unsigned long) { throw std::runtime_error("unexpected board"); }
@@ -53,6 +56,8 @@ struct HalGPIO {
   bool sampleTimer=false;
   InputManager* sampledInput=nullptr;
   bool lastUsbConnected=false, usbStateChanged=false;
+  bool capacitivePagePressed=false;
+  uint8_t previousCapacitivePageButtons=0;
   void injectPresses(uint8_t, uint16_t, uint16_t, uint16_t);
   void update(); bool rawInputActive();
   bool isUsbConnected() const { return false; }

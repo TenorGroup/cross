@@ -130,7 +130,7 @@ TEST(BookSearch, CountMatchesRealChapterParserForThreeFixtures) {
     std::ofstream(file) << html;
     std::string path = file.string();
     ChapterHtmlSlimParser parser{nullptr, path, renderer, 0, 1.0f, false, 0, 528, 792,
-                                 false, false, {}, true, "", "", 0, {}, nullptr, &css};
+                                 false, false, 0, {}, true, "", "", 0, {}, nullptr, &css};
     parser.completePageFn = [](std::unique_ptr<Page>, uint16_t, uint16_t, uint32_t) {};
     ASSERT_TRUE(parser.beginParse());
     struct Observer {

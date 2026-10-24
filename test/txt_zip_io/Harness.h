@@ -12,6 +12,7 @@
 #include <new>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 inline size_t allocationLimit = std::numeric_limits<size_t>::max();
@@ -45,6 +46,18 @@ struct AllocationProbe {
 #define LOG_INF(...) ((void)0)
 #define LOG_WARN(...) ((void)0)
 inline void vTaskDelay(int) {}
+inline uint32_t millis() { return 0; }
+// What TxtToHtml and Txt use of FsHelpers (lib/FsHelpers/FsHelpers.cpp), the title and the Markdown tag.
+namespace FsHelpers {
+inline bool hasMarkdownExtension(std::string_view name) { return name.size() > 3 && name.substr(name.size() - 3) == ".md"; }
+inline std::string getFileNameWithoutExtension(std::string_view filePath) {
+  const auto lastSlash = filePath.find_last_of("/\\");
+  std::string_view filename = (lastSlash != std::string_view::npos) ? filePath.substr(lastSlash + 1) : filePath;
+  const auto lastDot = filename.find_last_of('.');
+  if (lastDot != std::string_view::npos && lastDot > 0) filename = filename.substr(0, lastDot);
+  return std::string(filename);
+}
+}  // namespace FsHelpers
 
 struct FileData {
   std::vector<uint8_t> bytes;
@@ -126,14 +139,11 @@ struct FakeStorage {
   }
 } inline Storage;
 
+class Print;
+// Txt::streamTxtToHtml is the only member the cases use: it is compiled from lib/Txt/Txt.cpp.
 class Txt {
  public:
-  std::string filepath = "/book.txt";
-  bool loaded = true;
-  size_t fileSize = 0;
-  size_t getFileSize() const { return fileSize; }
-  std::string getCachePath() const { return "/cache"; }
-  bool readContent(uint8_t*, size_t, size_t) const;
+  static bool streamTxtToHtml(const std::string& filepath, Print& out);
 };
 
 class Print {

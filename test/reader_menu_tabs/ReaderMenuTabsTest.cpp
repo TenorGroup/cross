@@ -76,7 +76,7 @@ TEST(ReaderMenuTabs, FavoritesHintStandsOnlyWhileNothingIsPinned) {
 TEST(ReaderMenuTabs, BluetoothAppendsSavedActionAndKeepsFavoriteOrder) {
   EXPECT_EQ(static_cast<int>(MenuAction::SAVE_QUOTE), 19);
   EXPECT_EQ(static_cast<int>(MenuAction::BLUETOOTH), 20);
-  EXPECT_EQ(readermenu::ACTION_COUNT, 25);  // Search in book is the 25th (24 is its number)
+  EXPECT_EQ(readermenu::ACTION_COUNT, 27);  // Search in book is 24; the two clipping actions are 25 and 26
   const MenuAction pins[] = {MenuAction::SAVE_QUOTE, MenuAction::BLUETOOTH, MenuAction::SYNC};
   for (int flags = 0; flags < 16; ++flags) {
     const auto all = menu(flags & 1, flags & 2, flags & 4, flags & 8);
@@ -95,7 +95,7 @@ constexpr auto kQuotesOfBook = static_cast<MenuAction>(21);
 
 TEST(ReaderMenuTabs, QuotesOfBookIsAppendedAsActionTwentyOne) {
   EXPECT_EQ(static_cast<int>(MenuAction::BLUETOOTH), 20);
-  EXPECT_EQ(readermenu::ACTION_COUNT, 25);  // Search in book is the 25th (24 is its number)
+  EXPECT_EQ(readermenu::ACTION_COUNT, 27);  // Search in book is 24; the two clipping actions are 25 and 26
   const MenuAction pins[] = {kQuotesOfBook, MenuAction::SAVE_QUOTE, MenuAction::SYNC};
   for (int flags = 0; flags < 8; ++flags) {
     const auto all = menu(flags & 1, flags & 2, flags & 4);
@@ -108,7 +108,8 @@ TEST(ReaderMenuTabs, QuotesOfBookIsAppendedAsActionTwentyOne) {
 // "Tools, third row" still saves a quote.
 TEST(ReaderMenuTabs, QuotesOfBookSitsUnderSaveQuotation) {
   const MenuAction expected[] = {MenuAction::SYNC,       MenuAction::DICTIONARY,   MenuAction::SAVE_QUOTE,
-                                 kQuotesOfBook,          MenuAction::SCREENSHOT,   MenuAction::DISPLAY_QR,
+                                 kQuotesOfBook,          MenuAction::SAVE_CLIPPING, MenuAction::SCREENSHOT,
+                                 MenuAction::DISPLAY_QR,
                                  MenuAction::DELETE_CACHE, MenuAction::GO_HOME,    MenuAction::BLUETOOTH,
                                  MenuAction::FILE_TRANSFER};
   for (int flags = 0; flags < 8; ++flags) {
@@ -339,8 +340,8 @@ TEST(ToolbarMore, KeepsLegacyOrderForEveryOptionalItemCombination) {
                                  MenuAction::DICTIONARY,    MenuAction::ROTATE_SCREEN,  MenuAction::AUTO_PAGE_TURN,
                                  MenuAction::GO_TO_PERCENT, MenuAction::SCREENSHOT,     MenuAction::DISPLAY_QR,
                                  MenuAction::GO_HOME,       MenuAction::SYNC,           MenuAction::DELETE_CACHE,
-                                 MenuAction::SAVE_QUOTE,    kQuotesOfBook,              MenuAction::BLUETOOTH,
-                                 MenuAction::FILE_TRANSFER};
+                                 MenuAction::SAVE_QUOTE,    kQuotesOfBook,              MenuAction::SAVE_CLIPPING,
+                                 MenuAction::BLUETOOTH,     MenuAction::FILE_TRANSFER};
   for (int flags = 0; flags < 8; ++flags) {
     std::vector<readermenu::Item> items;
     readermenu::buildMoreItems(items, flags & 1, flags & 2, flags & 4);
@@ -369,9 +370,25 @@ TEST(ToolbarMore, SearchRowStandsFirstOnlyWhenTheBoardCanSearch) {
   }
   // A pin stores the action's number: the new one goes last, the numbers before it stay.
   EXPECT_EQ(static_cast<int>(MenuAction::BOOK_SEARCH), static_cast<int>(MenuAction::TILT_PAGE_TURN) + 1);
-  EXPECT_EQ(readermenu::ACTION_COUNT, static_cast<int>(MenuAction::BOOK_SEARCH) + 1);
+  EXPECT_EQ(static_cast<int>(MenuAction::SAVE_CLIPPING), static_cast<int>(MenuAction::BOOK_SEARCH) + 1);
+  EXPECT_EQ(readermenu::ACTION_COUNT, static_cast<int>(MenuAction::VIEW_CLIPPINGS) + 1);
   EXPECT_TRUE(readermenu::rowOpens(MenuAction::BOOK_SEARCH));
   EXPECT_EQ(readermenu::rowEnd(MenuAction::BOOK_SEARCH), readermenu::RowEnd::Opens);
+}
+
+// Save clipping is in every book, right under the quotes; View clippings closes the Tools tab of a book that has some.
+TEST(ToolbarMore, ClippingRowsFollowTheBook) {
+  for (const bool hasClippings : {false, true}) {
+    std::vector<MenuItem> tabs;
+    readermenu::buildItems(tabs, true, true, true, true, hasClippings);
+    const auto tools = rows(tabs, MenuTab::TOOLS);
+    EXPECT_EQ(std::count(tools.begin(), tools.end(), MenuAction::SAVE_CLIPPING), 1);
+    EXPECT_EQ(std::count(tools.begin(), tools.end(), MenuAction::VIEW_CLIPPINGS), hasClippings ? 1 : 0);
+    if (hasClippings) EXPECT_EQ(tools.back(), MenuAction::VIEW_CLIPPINGS);
+    std::vector<readermenu::Item> more;
+    readermenu::buildMoreItems(more, true, true, true, true, true, hasClippings);
+    EXPECT_EQ(more.back().action, hasClippings ? MenuAction::VIEW_CLIPPINGS : MenuAction::TILT_PAGE_TURN);
+  }
 }
 
 }  // namespace

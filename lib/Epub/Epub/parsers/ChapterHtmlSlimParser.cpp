@@ -50,6 +50,10 @@ constexpr size_t TEXT_BLOCK_SOFT_FLUSH_WORDS_WITH_CSS = 320;
 // every text fragment (e.g. Kobo KePub spans). The cap prevents unbounded heap growth
 // on resource-constrained devices (~380KB heap). TOC anchors bypass this cap.
 constexpr size_t MAX_ANCHORS_PER_CHAPTER = 1024;
+// Heap an ordinary id leaves to the page build (recordPendingAnchor), and the table size below which the heap is
+// not asked: the query walks the allocator and ids arrive by the thousand.
+constexpr size_t ANCHOR_GROWTH_HEADROOM = 16 * 1024;
+constexpr size_t ANCHOR_HEAP_CHECK_FROM = 64;
 
 namespace {
 constexpr uint32_t CHECKPOINT_MAGIC = 0x43504b31;
@@ -395,6 +399,14 @@ bool ChapterHtmlSlimParser::isTocAnchor(const std::string& id) const {
 // Appends pendingAnchorId. Entries are only ever appended (a park rolls the table back by count). The
 // table is a deque, so it grows in small chunks and never needs one large free block.
 void ChapterHtmlSlimParser::recordPendingAnchor() {
+  // The deque needs no large block, but a thousand ordinary ids (footnote and link targets) of 32 B each are 32 KB
+  // that the page build lacks with the page-turner radio up. Below the headroom an ordinary id is not recorded;
+  // chapter targets always are, they decide where a jump lands.
+  if (anchorData.size() >= ANCHOR_HEAP_CHECK_FROM && !isTocAnchor(pendingAnchorId) &&
+      HalMemory::getDefaultHeap().freeBytes < ANCHOR_GROWTH_HEADROOM) {
+    pendingAnchorId.clear();
+    return;
+  }
   anchorData.push_back({std::move(pendingAnchorId), static_cast<uint16_t>(completedPageCount)});
   pendingAnchorId.clear();
 }

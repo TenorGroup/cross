@@ -44,6 +44,8 @@ void check(const std::string& kind) {
   require(fakeble::isSubscribed(report), "HID notification is not subscribed");
   bleturner::Config config{};
   config.enabled=1;
+  // A book starts the radio only for a chosen remote (Config::peerAddr); the fake link below is that remote.
+  std::strcpy(config.peerAddr, "AA:BB:CC:DD:EE:FF");
   bleturner::begin(host, config);
   EpubReaderActivity reader;
   activityManager.currentActivity.value=&reader;

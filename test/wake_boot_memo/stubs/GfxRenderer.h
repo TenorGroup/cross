@@ -1,6 +1,8 @@
 #pragma once
 #include <cstdint>
 #include <map>
+
+#include <FontVariantProvider.h>
 // Only what SdCardFontSystem asks of the renderer: whether the loaded reader font covers CJK,
 // and which UI face falls back to which SD font.
 struct HostFontFace {
@@ -13,4 +15,6 @@ class GfxRenderer {
   std::map<int, int> fallbacks;
   const std::map<int, HostFontFace>& getFontMap() const { return fonts; }
   void setFallbackFont(int uiId, int sdId) { fallbacks[uiId] = sdId; }
+  FontVariantProvider variantProvider;
+  void setFontVariantProvider(const FontVariantProvider& provider) { variantProvider = provider; }
 };

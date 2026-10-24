@@ -112,6 +112,8 @@ struct HalDisplay {
   Controller getController() const { return controller; }
 } display;
 struct Gpio { bool x3 = true; bool deviceIsX3() const { return x3; } } gpio;
+// The A4 board draws the clippings and the status bar in the gray passes too; the boards under test are not it.
+namespace BoardConfig { inline bool isEegoA4() { return false; } }
 std::function<void()> baseHook, stripHook, waitHook, uploadHook;
 struct GfxRenderer {
   enum RenderMode { BW, GRAYSCALE_LSB, GRAYSCALE_MSB };
@@ -172,6 +174,7 @@ class EpubReaderActivity {
   TextGrayContext textGrayContext() const;
   void renderStatusBar() { if (renderer.mode != GfxRenderer::BW) { if (renderer.absolute) ++counts.bwText; else ++counts.text; } }
   void drawQuoteHighlights(Page&, int, int, int) {}
+  void drawClippingHighlights(Page&, int, int, int) {}
   void paint(bool images = false) {
     Page storage; storage.images = images; Page* page = &storage;
     int fontId = 0, orientedMarginTop = 0, orientedMarginLeft = 0;

@@ -27,6 +27,14 @@ def run_case(body):
             names.append(name)
         elif name == 'pushPulledReturn':
             pulled = 'void EpubReaderActivity::pushPulledReturn() {}\n'
+    # The progress sync handler's body and the percent-to-chapter helper are functions of their own since the
+    # TXT place resume shares the latter; an older source keeps them inside the lambda and jumpToPercent.
+    if 'void EpubReaderActivity::applyProgressChange(' in text:
+        names.append('applyProgressChange')
+    percent_target = ''
+    if 'static bool percentTarget(' in text:
+        begin = text.index('static bool percentTarget(')
+        percent_target = text[begin:text.index('\n}\n', begin) + 3]
     for name in ['hasReturnPosition', 'returnPageNumber', 'chapterTargetDiffers']:
         if f'EpubReaderActivity::{name}(' in text:
             names.append(name)
@@ -204,12 +212,13 @@ struct EpubReaderActivity {
   void loadCachedBookmarks() {}
   void openReaderMenu() {}
   void changeProgress(const ActivityResult&);
+  void applyProgressChange(const ProgressChangeResult&);
   void toolbarJump(int, bool);
   bool hasReturnPosition() const;
   int returnPageNumber() const;
   bool chapterTargetDiffers(int, const std::string&) const;
 };
-''' + namespace + methods + pulled + progress + toolbar + '\nint main() {\n' + body + '\n}\n'
+''' + namespace + percent_target + methods + pulled + progress + toolbar + '\nint main() {\n' + body + '\n}\n'
     with tempfile.TemporaryDirectory(prefix='cross-return-runtime-') as folder:
         cpp, program = Path(folder) / 'test.cpp', Path(folder) / 'test'
         cpp.write_text(source)

@@ -331,14 +331,21 @@ TEST_F(SdFontBoot, CjkFamilyGivesTheSameUiFallbacksFromTheMemo) {
   SdCardFontSystem cold, wake;
   GfxRenderer r1, r2;
   boot(ESP_RST_POWERON, cold, r1);
-  const std::map<int, int> expected{{SMALL_FONT_ID, 108}, {UI_10_FONT_ID, 110}, {UI_12_FONT_ID, 112}};
-  EXPECT_EQ(r1.fallbacks, expected);
+  // A UI fallback is registered under the persisted variant id of its size (the reader's id and the point size),
+  // so UI and reader text of one size share a font. The ids are hashes: compare them with each other.
+  const auto& expected = r1.fallbacks;
+  ASSERT_EQ(expected.size(), 3u);
+  for (const int ui : {SMALL_FONT_ID, UI_10_FONT_ID, UI_12_FONT_ID}) EXPECT_NE(expected.at(ui), 0);
   boot(ESP_RST_DEEPSLEEP, wake, r2);
   EXPECT_EQ(r2.fallbacks, expected);
   // The boot applies the saved UI text size right after (applyUiFontSize), still from the memo.
   wake.refreshUiFallbacks(r2, 1);
-  const std::map<int, int> larger{{SMALL_FONT_ID, 110}, {UI_10_FONT_ID, 112}, {UI_12_FONT_ID, 114}};
-  EXPECT_EQ(r2.fallbacks, larger);
+  // One tier up moves every face to the next point size: each takes the id the face above it had, the last a new one.
+  ASSERT_EQ(r2.fallbacks.size(), 3u);
+  EXPECT_EQ(r2.fallbacks.at(SMALL_FONT_ID), expected.at(UI_10_FONT_ID));
+  EXPECT_EQ(r2.fallbacks.at(UI_10_FONT_ID), expected.at(UI_12_FONT_ID));
+  EXPECT_NE(r2.fallbacks.at(UI_12_FONT_ID), 0);
+  for (const auto& [ui, id] : expected) EXPECT_NE(r2.fallbacks.at(UI_12_FONT_ID), id);
   EXPECT_EQ(hostDiscoveries, 0);
 }
 
