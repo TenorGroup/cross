@@ -1002,7 +1002,7 @@ void setup() {
 #endif
   const WakePlace wakePlace =
       wakeTarget == CrossPointSettings::WAKE_RESUME
-          ? wakeplace::resolve(deepSleepReset, SETTINGS.uiShell, APP_STATE.wake, RECENT_BOOKS.getBooks(), onCard,
+          ? wakeplace::resolve(deepSleepReset, isSleepWake, SETTINGS.uiShell, APP_STATE.wake, RECENT_BOOKS.getBooks(), onCard,
                                [](const std::string& path) {
                                  auto dir = Storage.open(path.c_str());
                                  return dir && dir.isDirectory();
@@ -1031,6 +1031,9 @@ void setup() {
 #endif
 #endif
   APP_STATE.wake = {};
+  // A power-on reopening the book (the sleep lost its power) spends the place on the card first: a book that hangs
+  // before its first frame is then not reopened by the next power cut, the one way out the user has.
+  if (wakePlace.kind == WakeKind::Book && !deepSleepReset) APP_STATE.saveToFile();
   std::string wakeBook =
       wakebook::bookToOpen(isSleepWake, wakeTarget == CrossPointSettings::WAKE_BOOK, APP_STATE.openEpubPath,
                            RECENT_BOOKS.getBooks(), onCard, shell::isUgly() && normalUglyBoot && normalColdBoot);

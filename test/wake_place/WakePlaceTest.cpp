@@ -33,8 +33,10 @@ constexpr int JOIN_NETWORK = 0, CREATE_HOTSPOT = 2, USB_DRIVE = 3, WEB_DAV = 4, 
 const auto x3Rows = [](const int mode) { return mode == 0 || mode == 1 || mode == 2 || mode == 5; };
 const auto x4Rows = [](const int mode) { return mode >= 0 && mode <= 5; };
 
-WakePlace resolve(const WakePlace& p, const bool deepSleepReset = true, const uint8_t shell = 0) {
-  return wakeplace::resolve(deepSleepReset, shell, p, recents, onCard, isFolder, x4Rows);
+WakePlace resolve(const WakePlace& p, const bool deepSleepReset = true, const uint8_t shell = 0,
+                  const bool powerButtonStart = false) {
+  return wakeplace::resolve(deepSleepReset, powerButtonStart || deepSleepReset, shell, p, recents, onCard, isFolder,
+                            x4Rows);
 }
 
 WakePlace connect(const int mode, const std::string& book = "", const uint8_t shell = 0) {
@@ -45,10 +47,26 @@ WakePlace connect(const int mode, const std::string& book = "", const uint8_t sh
 // The caller passes true only when the chip's reset reason is deep sleep: a power-on (power lost, USB), a watchdog,
 // a brownout or a panic is a start, and gets Home.
 TEST(WakePlace, OnlyAWakeOutOfDeepSleepReopensAnything) {
+  // Neither a deep-sleep wake nor a power-button start (a watchdog, a brownout, USB power): nothing, a book neither.
   EXPECT_EQ(resolve(place(WakeKind::Book, "/a.epub"), false).kind, WakeKind::None);
   EXPECT_EQ(resolve(place(WakeKind::Files, "/books"), false).kind, WakeKind::None);
   EXPECT_EQ(resolve(place(WakeKind::SettingsTab, "", "", 2, 3), false).kind, WakeKind::None);
   EXPECT_EQ(resolve(connect(FONT_STORE, "/a.epub"), false).kind, WakeKind::None);
+}
+
+// A sleep that lost its power (the X4 Classic lets go of its power latch with no valid clock; any unit on a flat
+// battery) comes back as a power-on started by the power button. The book the reader was in still opens, as
+// "wake into the book" opens it; the other places keep the deep-sleep rule (founder 24/10/2026: picking up where I left
+// off includes being in the book).
+TEST(WakePlace, ABookOpensAfterASleepThatLostItsPower) {
+  const auto book = resolve(place(WakeKind::Book, "/a.epub"), false, 0, /*powerButtonStart=*/true);
+  EXPECT_EQ(book.kind, WakeKind::Book);
+  EXPECT_EQ(book.path, "/a.epub");
+  EXPECT_EQ(resolve(place(WakeKind::Book, "/gone-from-recent.epub"), false, 0, true).kind, WakeKind::None);
+  EXPECT_EQ(resolve(place(WakeKind::Book, "/a.epub"), false, 1, true).kind, WakeKind::None);  // the other shell's
+  EXPECT_EQ(resolve(place(WakeKind::Files, "/books"), false, 0, true).kind, WakeKind::None);
+  EXPECT_EQ(resolve(place(WakeKind::SettingsTab, "", "", 2, 3), false, 0, true).kind, WakeKind::None);
+  EXPECT_EQ(resolve(connect(FONT_STORE, "/a.epub"), false, 0, true).kind, WakeKind::None);
 }
 
 TEST(WakePlace, ABookIsReopenedUnderTheWakeIntoBookRules) {
@@ -58,7 +76,7 @@ TEST(WakePlace, ABookIsReopenedUnderTheWakeIntoBookRules) {
   EXPECT_EQ(resolve(place(WakeKind::Book, "/gone-from-recent.epub")).kind, WakeKind::None);
   EXPECT_EQ(resolve(place(WakeKind::Book, "")).kind, WakeKind::None);
   const auto gone = [](const std::string&) { return false; };
-  EXPECT_EQ(wakeplace::resolve(true, 0, place(WakeKind::Book, "/a.epub"), recents, gone, isFolder, x4Rows).kind,
+  EXPECT_EQ(wakeplace::resolve(true, true, 0, place(WakeKind::Book, "/a.epub"), recents, gone, isFolder, x4Rows).kind,
             WakeKind::None);
 }
 
@@ -149,7 +167,7 @@ TEST(WakePlace, ConnectionsKeepsTheModeOfTheSessionAndTheBookItCameFrom) {
 
 TEST(WakePlace, AModeTheBoardHasNoRowForGoesHome) {
   const auto on = [](const auto& rows, const int mode) {
-    return wakeplace::resolve(true, 0, connect(mode), recents, onCard, isFolder, rows).kind;
+    return wakeplace::resolve(true, true, 0, connect(mode), recents, onCard, isFolder, rows).kind;
   };
   EXPECT_EQ(on(x3Rows, USB_DRIVE), WakeKind::None);
   EXPECT_EQ(on(x3Rows, WEB_DAV), WakeKind::None);
@@ -167,7 +185,7 @@ TEST(WakePlace, ABookThatIsGoneLeavesThePlaceWithoutIt) {
   EXPECT_EQ(gone.row, FONT_STORE);
   EXPECT_EQ(gone.path, "");  // the list or the store still opens; Back goes Home, not to a book that is not there
   const auto offCard = [](const std::string&) { return false; };
-  const auto lost = wakeplace::resolve(true, 0, connect(JOIN_NETWORK, "/a.epub"), recents, offCard, isFolder, x4Rows);
+  const auto lost = wakeplace::resolve(true, true, 0, connect(JOIN_NETWORK, "/a.epub"), recents, offCard, isFolder, x4Rows);
   EXPECT_EQ(lost.kind, WakeKind::Connect);
   EXPECT_EQ(lost.path, "");
 }

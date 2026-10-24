@@ -26,18 +26,22 @@ namespace wakeplace {
 constexpr int HOME_TABS = 5;
 constexpr int SETTINGS_TABS = 9;
 
-// The place a wake reopens, or kind None for Home. Only a wake out of deep sleep (the chip's reset reason,
-// not a power-on, a watchdog or a brownout) reopens anything, and only in the shell it was left in. A book follows the
-// "wake into the book" rules (still in Recent, still on the card); a folder that is gone gives way to the nearest
+// The place a wake reopens, or kind None for Home, only in the shell it was left in. A book follows the "wake into the
+// book" rules: a power-button start opens it too (a sleep that lost its power comes back as a power-on), when it is
+// still in Recent and on the card. Any other place needs a wake out of deep sleep (the chip's reset reason, not a
+// power-on, a watchdog or a brownout). A folder that is gone gives way to the nearest
 // one above it. A Connections place needs a mode this board has a row for (the X3 has no USB drive and no WebDAV);
 // the book it came from, if that is gone, is dropped and the place kept.
 template <typename Book, typename OnCard, typename IsFolder, typename ModeOnBoard>
-WakePlace resolve(const bool deepSleepReset, const uint8_t shell, WakePlace place, const std::vector<Book>& recents,
-                  OnCard&& onCard, IsFolder&& isFolder, ModeOnBoard&& modeOnBoard) {
-  if (!deepSleepReset || place.shell != shell) return {};
+WakePlace resolve(const bool deepSleepReset, const bool powerButtonStart, const uint8_t shell, WakePlace place,
+                  const std::vector<Book>& recents, OnCard&& onCard, IsFolder&& isFolder, ModeOnBoard&& modeOnBoard) {
+  if (place.shell != shell) return {};
+  if (place.kind == WakeKind::Book)
+    return wakebook::bookToOpen(deepSleepReset || powerButtonStart, true, place.path, recents, onCard).empty()
+               ? WakePlace{}
+               : place;
+  if (!deepSleepReset) return {};
   switch (place.kind) {
-    case WakeKind::Book:
-      return wakebook::bookToOpen(true, true, place.path, recents, onCard).empty() ? WakePlace{} : place;
     case WakeKind::Files:
       if (place.path.empty()) return {};
       while (place.path != "/" && !isFolder(place.path)) {
