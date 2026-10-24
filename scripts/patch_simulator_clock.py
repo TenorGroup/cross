@@ -26,7 +26,9 @@ class HalClock {
   bool _available = false;
 
  public:
-  void begin();
+  // seedSystemClock is the firmware's switch; the simulator reads the host clock either way, and has no RTC.
+  void begin(bool seedSystemClock = true);
+  bool rtcEpoch(int64_t &) const { return false; }
   bool isAvailable() const { return _available; }
   bool hasValidTime() const;
   void setTimezone(const char *posixTz);
@@ -65,7 +67,7 @@ bool readUtc(std::tm &utc) {
 }
 }  // namespace
 
-void HalClock::begin() {
+void HalClock::begin(bool) {
 #if defined(SIMULATOR_DEVICE_X3) || defined(SIMULATOR_DEVICE_X4_PRO) || defined(SIMULATOR_DEVICE_X4_CLASSIC) || \\
     defined(SIMULATOR_DEVICE_STICKY) || defined(SIMULATOR_DEVICE_PAPERMONO)
   _available = true;
