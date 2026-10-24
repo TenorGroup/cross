@@ -95,6 +95,8 @@
 #define CROSSPOINT_BLE_HID_HOST 0
 #endif
 #include "activities/settings/ClockSyncActivity.h"
+#include "activities/settings/KOReaderAuthActivity.h"
+#include "SilentRestart.h"
 #ifdef TENOR_PRESS_PROBE
 #include "activities/util/KeyboardEntryActivity.h"
 #endif
@@ -293,9 +295,9 @@ constexpr uint32_t SILENT_REBOOT_TARGET_OTA = 3;
 constexpr uint32_t SILENT_REBOOT_TARGET_TRANSFER = 4;
 // Tải font inside Connections: the store's own Wi-Fi restart (a download or an update done) comes back to the store.
 constexpr uint32_t SILENT_REBOOT_TARGET_FONTS = 5;
-// A clock sync asked for on any screen runs on the heap of a fresh boot (silentRestartToClockSync).
-constexpr uint32_t SILENT_REBOOT_TARGET_CLOCK = 6;
-constexpr uint32_t SILENT_REBOOT_TARGET_MAX = SILENT_REBOOT_TARGET_CLOCK;
+// A Wi-Fi task on the heap of a fresh boot (startsOnFreshBoot): 6 + FreshBootTask.
+constexpr uint32_t SILENT_REBOOT_TARGET_TASK = 6;
+constexpr uint32_t SILENT_REBOOT_TARGET_MAX = SILENT_REBOOT_TARGET_TASK + static_cast<uint32_t>(FreshBootTask::KOReaderSignUp);
 constexpr uint32_t SILENT_REBOOT_LIGHT_ON = cardrescue::PAYLOAD_LIGHT_ON;
 
 // How the device is coming back to life, resolved once at boot. Both resume
@@ -405,7 +407,16 @@ void silentRestartToReader() { silentRestartTo(SILENT_REBOOT_TARGET_READER, "rea
 
 void silentRestartToSettings() { silentRestartTo(SILENT_REBOOT_TARGET_SETTINGS, "settings"); }
 
-void silentRestartToClockSync() { silentRestartTo(SILENT_REBOOT_TARGET_CLOCK, "clock"); }
+bool startsOnFreshBoot(const bool freshBoot, const FreshBootTask task) {
+#ifdef SIMULATOR
+  return false;  // the simulator's heap is the host's
+#else
+  if (freshBoot || WiFi.status() == WL_CONNECTED) return false;
+  RenderLock lock;  // the restart notice paints straight to the panel
+  silentRestartTo(SILENT_REBOOT_TARGET_TASK + static_cast<uint32_t>(task), "task");
+  return true;  // sleep took over the restart: the task is not run either
+#endif
+}
 
 void silentRestartForCard() {
   if (deepSleepInProgress) return;
@@ -1160,10 +1171,20 @@ void setup() {
   } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_READER &&
              !APP_STATE.openEpubPath.empty()) {
     activityManager.goToReader(APP_STATE.openEpubPath);
-  } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_CLOCK) {
-    // Straight to the clock sync, on the heap of a fresh boot; it restarts to Home on its way out, as before.
-    if (auto sync = makeUniqueNoThrow<ClockSyncActivity>(renderer, mappedInputManager, /*freshBoot=*/true))
-      activityManager.replaceActivity(std::move(sync));
+  } else if (resume == BootResume::Silent && snapshotTarget >= SILENT_REBOOT_TARGET_TASK) {
+    // Straight to the Wi-Fi task, on the heap of a fresh boot; it restarts to Home on its way out, as before.
+    const auto task = static_cast<FreshBootTask>(snapshotTarget - SILENT_REBOOT_TARGET_TASK);
+    std::unique_ptr<Activity> run;
+    if (task == FreshBootTask::ClockSync)
+      run = makeUniqueNoThrow<ClockSyncActivity>(renderer, mappedInputManager, /*freshBoot=*/true);
+    else
+      run = makeUniqueNoThrow<KOReaderAuthActivity>(
+          renderer, mappedInputManager,
+          task == FreshBootTask::KOReaderSignUp ? KOReaderAuthActivity::Mode::SIGN_UP
+                                                : KOReaderAuthActivity::Mode::AUTHENTICATE,
+          /*freshBoot=*/true);
+    if (run)
+      activityManager.replaceActivity(std::move(run));
     else
       activityManager.goHome();
   } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_SETTINGS) {

@@ -18,8 +18,10 @@ class KOReaderAuthActivity final : public Activity {
   std::string x3NavigationLabel() const override { return I18N.get(StrId::STR_KOREADER_AUTH); }
   enum class Mode { AUTHENTICATE, SIGN_UP };
 
-  explicit KOReaderAuthActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, Mode mode = Mode::AUTHENTICATE)
-      : Activity("KOReaderAuth", renderer, mappedInput), mode(mode) {}
+  // freshBoot: opened by the boot startsOnFreshBoot() asked for.
+  explicit KOReaderAuthActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, Mode mode = Mode::AUTHENTICATE,
+                                bool freshBoot = false)
+      : Activity("KOReaderAuth", renderer, mappedInput), mode(mode), freshBoot(freshBoot) {}
 
   void onEnter() override;
   void onExit() override;
@@ -31,6 +33,7 @@ class KOReaderAuthActivity final : public Activity {
   enum State { WIFI_SELECTION, CONNECTING, AUTHENTICATING, SUCCESS, FAILED };
 
   Mode mode = Mode::AUTHENTICATE;
+  const bool freshBoot;
   State state = WIFI_SELECTION;
   bool runtimeStarted = false;
   std::string statusMessage;

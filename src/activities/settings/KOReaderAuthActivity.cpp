@@ -61,6 +61,10 @@ void KOReaderAuthActivity::performAuthentication() {
 
 void KOReaderAuthActivity::onEnter() {
   runtimeStarted = false;
+  if (startsOnFreshBoot(freshBoot, mode == Mode::SIGN_UP ? FreshBootTask::KOReaderSignUp : FreshBootTask::KOReaderLogin)) {
+    finish();
+    return;
+  }
   // Keep BLE stopped for Wi-Fi selection and the blocking auth request.
   if (!filetransfer::acquire()) {
     LOG_ERR("KORAUTH", "BLE teardown incomplete; leaving KOReader auth");
