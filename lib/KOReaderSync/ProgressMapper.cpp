@@ -822,10 +822,10 @@ KOReaderProgress ProgressMapper::toUploadRecord(const std::string& documentHash,
   progress.progress = saved.xpath;
   progress.percentage = saved.percentage;
 
-  // Rich CrossPoint position for the default CrossPoint sync server (lossless
+  // Rich CrossPoint position for servers whose profile supports it (lossless
   // CrossPoint<->CrossPoint sync). The HTTP client also enforces this boundary
   // before serializing the extension.
-  if (KOREADER_STORE.usesCrossPointSyncServer()) {
+  if (KOREADER_STORE.supportsRichProgress()) {
     KOReaderRichPosition pos;
     const float pct = saved.percentage < 0.0f ? 0.0f : saved.percentage > 1.0f ? 1.0f : saved.percentage;
     pos.pctQ = static_cast<uint32_t>(pct * 1000000.0f + 0.5f);
@@ -949,9 +949,8 @@ CrossPointPosition ProgressMapper::toCrossPoint(const std::shared_ptr<Epub>& epu
   if (xpathSpine >= 0 && xpathSpine < spineCount) {
     result.spineIndex = xpathSpine;
     result.hasResolvedSpineIndex = true;
-  } else {
-    const int found = epub->getSpineIndexForSize(targetBytes);
-    if (found >= 0) result.spineIndex = found;
+  } else if (const int found = epub->getSpineIndexForSize(targetBytes); found >= 0) {
+    result.spineIndex = found;
   }
 
   const size_t prevCum = (result.spineIndex > 0) ? epub->getCumulativeSpineItemSize(result.spineIndex - 1) : 0;

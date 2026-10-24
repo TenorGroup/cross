@@ -34,6 +34,7 @@ elif a.catalog_release_noop:
     catalog = catalog.replace(method(catalog, release_signature), release_signature + ' {}\n')
 (out / 'SettingsList.h').write_text(catalog)
 (out / 'CrossPointSettings.cpp').write_text((r / 'src/CrossPointSettings.cpp').read_text())
+(out / 'SettingsList.cpp').write_text((r / 'src/SettingsList.cpp').read_text())
 header = (r / 'src/activities/settings/SettingsActivity.h').read_text()
 (out / 'activities/settings').mkdir(parents=True, exist_ok=True)
 descriptor = header[header.index('enum class SettingType'):header.index('class SettingsActivity final')]
@@ -74,13 +75,13 @@ if a.sanitize:
     cmd += ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
 cmd += ['-I' + str(r / x) for x in incs]
 cmd += [str(Path(__file__).with_name('harness.cpp')), str(r / 'src/ReaderFontSizes.cpp'),
-        str(out / 'CrossPointSettings.cpp'),
+        str(out / 'CrossPointSettings.cpp'), str(out / 'SettingsList.cpp'),
         str(r / 'src/activities/settings/SettingsTabs.cpp'), str(r / 'lib/I18n/I18n.cpp'),
         str(r / 'lib/I18n/I18nStrings.cpp'), '-o', str(out / 'probe')]
 (out / 'command.json').write_text(json.dumps(cmd, indent=2) + '\n')
 (out / 'source-manifest.json').write_text(json.dumps({str(path.relative_to(r)): hashlib.sha256(path.read_bytes()).hexdigest()
     for path in [r / 'src/activities/settings/SettingsActivity.cpp', r / 'src/activities/settings/SettingsActivity.h',
-                 r / 'src/SettingsList.h', r / 'src/activities/Activity.h',
+                 r / 'src/SettingsList.h', r / 'src/SettingsList.cpp', r / 'src/activities/Activity.h',
                  r / 'src/activities/settings/FontDownloadActivity.cpp', r / 'src/CrossPointSettings.cpp']}, indent=2) + '\n')
 build = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 (out / 'build.log').write_text(build.stdout)

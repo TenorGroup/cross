@@ -82,10 +82,6 @@ std::atomic<LinkNote> linkNoteNow{LinkNote::None};
 // Since when the radio has been up without a break in this book visit. Main loop only.
 bool noteRadioUp = false;
 uint32_t noteRadioUpSinceMs = 0;
-// Remotes paired on the device: the host's count from storage at boot, then the stack's own list once it
-// is up (a remote paired or forgotten since). Until the host tells, a bond is assumed and the radio behaves
-// as it did before the count existed. Main loop only.
-uint8_t savedBonds = UINT8_MAX;
 
 void say(const bool error, const char* format, ...) {
   va_list args;
@@ -104,7 +100,7 @@ RadioInputs inputsFor(const Phase phase, const Scene& s) {
   in.storageBusy = s.storageBusy;
   in.heldForBuild = heldForBuild.load(std::memory_order_relaxed);
   in.idleStopped = radioIdleStopped.load(std::memory_order_relaxed);
-  in.hasBond = savedBonds > 0;
+  in.hasBond = config->peerAddr[0] != '\0';
   in.linked = true;
   return in;
 }
@@ -257,8 +253,7 @@ bool serveReader() {
   if (router.linked && !router.chosen) {
     // Edges queued while the book was not in front (the remote stays linked on Home) do not
     // belong to this page: an old press must not skip a chapter when the book opens.
-    while (port::popRaw(raw)) {
-    }
+    drainRemote();
     const Peer peer = port::linked();
     router.table = tableFor(config->remotes, config->remoteCount, peer.addr, peer.name);
     router.chosen = true;
@@ -305,7 +300,7 @@ void stepLinkNote(const bool entered, const bool acknowledged) {
                !attemptInFlight.load(std::memory_order_acquire);
   in.runningMs = noteRadioUp ? port::nowMs() - noteRadioUpSinceMs : 0;
   in.acknowledged = acknowledged;
-  in.hasBond = savedBonds > 0;
+  in.hasBond = config->peerAddr[0] != '\0';
   LinkNote note = nextLinkNote(linkNoteNow.load(std::memory_order_relaxed), in);
   if (visit.manualConnect && in.refused && note == LinkNote::Failed) {
     const Why refused = startRefusal.load(std::memory_order_relaxed);
@@ -391,7 +386,6 @@ void resetForTests() {
   linkNoteNow.store(LinkNote::None);
   noteRadioUp = false;
   noteRadioUpSinceMs = 0;
-  savedBonds = UINT8_MAX;
 }
 #endif
 
@@ -402,8 +396,6 @@ void begin(const Host& h, Config& c) {
   config = &c;
 }
 
-void setSavedBonds(const uint8_t count) { savedBonds = count; }
-
 void requestConnect() { connectRequested = true; }
 
 bool tick(const Scene& s) {
@@ -411,8 +403,6 @@ bool tick(const Scene& s) {
   // A book visit starts: the book comes in front, or another visit of it does.
   const bool entered = s.where == Where::Reader && (lastScene.where != Where::Reader || s.visit != lastScene.visit);
   lastScene = s;
-  // Not while a start is in flight: begin() empties the stack's list before it loads it again.
-  if (port::running() && !attemptInFlight.load(std::memory_order_acquire)) savedBonds = port::bondCount();
   // Finish a stop in the background without blocking input.
   if (port::stopping() && port::nowMs() - lastCleanupMs >= 250) {
     lastCleanupMs = port::nowMs();
@@ -551,8 +541,8 @@ bool tick(const Scene& s) {
 
   // A heap in pieces keeps the radio off until a restart. Restart into the book only from a
   // shown page with no radio start in flight, no sleep, no card or Wi-Fi session.
-  if (detail::heapRestartWanted() && !visit.manualConnect && config->enabled && visit.attempted && reader && s.pageShown &&
-      !s.sleeping && !s.storageBusy && !busy() && !s.wifiOn) {
+  if (detail::heapRestartWanted() && !visit.manualConnect && config->enabled && visit.attempted && reader &&
+      s.pageShown && !s.sleeping && !s.storageBusy && !busy() && !s.wifiOn) {
     const Heap heap = host->heap();
     say(false, "Heap fragmented for radio: free=%u largest=%u; silent restart to reader\n",
         static_cast<unsigned>(heap.freeBytes), static_cast<unsigned>(heap.largestBlock));
@@ -598,7 +588,8 @@ void settleStart() {
 
 BuildRelease beforeChapterBuild() {
   if (!config->enabled || radioIdleStopped.load(std::memory_order_relaxed) ||
-      heldForBuild.load(std::memory_order_relaxed)) return BuildRelease::NotHeld;
+      heldForBuild.load(std::memory_order_relaxed))
+    return BuildRelease::NotHeld;
   settleStart();
   if (attemptInFlight.load(std::memory_order_acquire)) return BuildRelease::NotHeld;
   heldForBuild.store(true, std::memory_order_relaxed);
@@ -679,20 +670,18 @@ void scan(const uint32_t durationMs) { port::scan(durationMs); }
 
 bool pair(const char* addr, const char* name) {
   // Only a candidate until it links: a pairing that fails must not replace a bonded choice with
-  // an address the stack cannot reconnect (the reader takes presses from the chosen remote only).
+  // an address the stack cannot reconnect.
   pairing = Pairing{};
+  if (!config->enabled || !switchOn() || !port::connect(addr)) return false;
   strncpy(pairing.addr, addr, sizeof(pairing.addr) - 1);
   strncpy(pairing.name, name, sizeof(pairing.name) - 1);
-  return config->enabled && switchOn() && port::connect(addr);
+  return true;
 }
 
 void disconnect() { port::disconnect(); }
 
 bool forget(const char* addr) {
-  const uint8_t before = port::bondCount();
   port::forget(addr);
-  // tick() refreshes the count only while the radio runs: stopped, the next book would start it for nothing.
-  if (port::bondCount() < before) savedBonds = port::bondCount();
   // Forgetting a device forgets its button table too.
   bool changed = forgetRemote(config->remotes, config->remoteCount, addr);
   // A forgotten address left as the choice would be a reconnect into nothing next time.

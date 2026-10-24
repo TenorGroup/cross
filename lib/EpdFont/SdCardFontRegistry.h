@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -19,6 +20,11 @@ struct SdCardFontFileInfo {
 };
 
 struct SdCardFontFamilyInfo {
+  // Buffer size for filePath(), matching the installer's own path buffers.
+  // Discovery drops files whose path would not fit, so every registered file
+  // can be opened through filePath() with a buffer of this size.
+  static constexpr size_t PATH_BUFFER_SIZE = 160;
+
   std::string name;  // directory name, e.g. "NotoSansCJK"
   // Filename part before "_<size>.cpfont" (e.g. "Bookerly-SD"), one entry for
   // nearly every family. Keeping the stem once instead of a full path per file
@@ -26,13 +32,19 @@ struct SdCardFontFamilyInfo {
   std::vector<std::string> stems;
   std::vector<SdCardFontFileInfo> files;
   bool hiddenRoot = true;  // "/.fonts" when true, "/fonts" otherwise
-  // true for a loose TrueType/OpenType family rendered at any size (PSRAM
-  // boards only, see VectorFontSupport.h). false = pre-rasterized .cpfont files.
+  // true for TrueType/OpenType files (.ttf/.otf/.ttc) rendered at any size via
+  // the FreeInkFont engine (PSRAM boards only, see VectorFontSupport.h): `files`
+  // holds one entry per style role, each with its full path in `path` and
+  // pointSize 0 (size-free). false = a directory of pre-rasterized .cpfont files.
   bool vector = false;
 
   std::string dir() const;  // "/<root>/<name>"
-  // "/<root>/<name>/<stem>_<size>.cpfont", or its "weight-N" variant.
+  // "/<root>/<name>/<stem>_<size>.cpfont", or its "weight-N" variant. A vector family answers with the file's own
+  // `path` (no weight variants). Empty when the file does not belong to this family.
   std::string filePath(const SdCardFontFileInfo& file, uint8_t weight = 0) const;
+  // The same base path (weight 0) written into a caller buffer of PATH_BUFFER_SIZE bytes, for loaders that hold
+  // no heap string. Returns false when `outSize` is too small or the file has no path; `out` is then truncated.
+  bool filePath(const SdCardFontFileInfo& file, char* out, size_t outSize) const;
   // Highest weight directory a family can have: weight-2 to weight-6 hold the heavier variants, weight-7 to
   // weight-9 the thinner ones (readerInk physical numbers).
   static constexpr uint8_t MAX_WEIGHT = 9;
@@ -70,7 +82,8 @@ class SdCardFontRegistry {
   // the two roots exists, otherwise the hidden root.
   static const char* defaultWriteRoot();
 
-  // Scan SD card, populate families_. Returns true if any families found.
+  // Scan SD card, populate families_. Invalidates pointers and references
+  // obtained from getFamilies()/findFamily(). Returns true if any families found.
   bool discover();
 
   const std::vector<SdCardFontFamilyInfo>& getFamilies() const { return families_; }

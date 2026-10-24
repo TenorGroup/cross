@@ -41,7 +41,7 @@ class LargeFolderNavigationTest(unittest.TestCase):
             log = result.stdout + result.stderr
             self.assertEqual(result.returncode, 0, log[-8000:])
             self.assertIn('Entering activity: FileBrowser', log)
-            self.assertIn('Entering activity: TxtReader', log)
+            self.assertIn('Entering activity: EpubReader', log)
             recent = json.loads((store / 'recent.json').read_text())
             self.assertEqual(recent['books'][0]['path'], f'/books/book{count - 1:05d}-測試-a\u0301.txt')
             self.assertEqual(len(list(folder.iterdir())), count)

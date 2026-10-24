@@ -126,7 +126,7 @@ class ReaderFormatJourneysTest(unittest.TestCase):
         log = run.stdout + run.stderr
         (self.sd / f'stage-{self.stage}.log').write_text(log)
         self.assertEqual(run.returncode, 0, log)
-        activity = {'epub': 'EpubReader', 'txt': 'TxtReader', 'md': 'TxtReader', 'xtc': 'XtcReader'}[self.extension]
+        activity = {'epub': 'EpubReader', 'txt': 'EpubReader', 'md': 'EpubReader', 'xtc': 'XtcReader'}[self.extension]
         self.assertIn('Entering activity: ' + activity, log)
         self.assertNotRegex(log, r'Guru Meditation|assert failed|Failed to load page|Page index incomplete')
         if preview:

@@ -6,52 +6,104 @@
   <title data-i18n="files.docTitle">Tệp - tenor/cross</title>
   <script src="/js/jszip.min.js"></script>
   <style>
-    :root {
-      --font-color: #333;
-      --bg: #f5f5f5;
-      --title-color: #2c3e50;
-      --card-bg: #FFF;
-      --label-color: #7f8c8d;
-      --border-color: #eee;
-      --accent-color: rgb(110, 154, 130);
-      --accent-color-10: rgba(110, 154, 130, 0.1);
-      --accent-hover-color: #5a8c73;
+    /* Shared presentation for SD-card plugins mounted in the File Manager.
+       Plugin markup stays portable; the host page owns its visual treatment. */
+    #plugin-container {
+      display: grid;
+      gap: 15px;
+      margin: 15px 0;
+    }
+    #plugin-container .card {
+      margin: 0;
+      border: 1px solid var(--border-color);
+    }
+    #plugin-container p {
+      line-height: 1.5;
+    }
+    #plugin-container .setting-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(180px, 280px);
+      align-items: center;
+      gap: 16px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border-color);
+    }
+    #plugin-container .setting-name {
+      color: var(--label-color);
+      font-weight: 600;
+    }
+    #plugin-container .setting-control {
+      min-width: 0;
+    }
+    #plugin-container input[type="text"],
+    #plugin-container input[type="password"],
+    #plugin-container input[type="number"],
+    #plugin-container select,
+    #plugin-container textarea {
+      width: 100%;
+      min-height: 38px;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background: var(--card-bg);
+      color: var(--font-color);
+      font: inherit;
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.04);
+    }
+    #plugin-container textarea {
+      min-height: 96px;
+      resize: vertical;
+    }
+    #plugin-container input:focus-visible,
+    #plugin-container select:focus-visible,
+    #plugin-container textarea:focus-visible {
+      border-color: var(--accent-color);
+      outline: 2px solid var(--accent-color);
+      outline-offset: -1px;
+    }
+    #plugin-container .btn-small {
+      min-height: 36px;
+      padding: 8px 12px;
+      border: 1px solid var(--accent-color);
+      border-radius: 6px;
+      background: var(--accent-color-10);
+      color: var(--accent-color);
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.9em;
+      font-weight: 600;
+    }
+    #plugin-container .btn-small:hover:not(:disabled) {
+      background: var(--border-color);
+    }
+    #plugin-container .btn-add {
+      background: var(--accent-color);
+      color: var(--button-text);
+    }
+    #plugin-container .btn-add:hover:not(:disabled) {
+      background: var(--accent-hover-color);
+    }
+    #plugin-container button:focus-visible {
+      outline: 2px solid var(--accent-color);
+      outline-offset: 2px;
+    }
+    #plugin-container button:disabled,
+    #plugin-container input:disabled,
+    #plugin-container select:disabled,
+    #plugin-container textarea:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+    #plugin-container hr {
+      margin: 18px 0;
+      border: 0;
+      border-top: 1px solid var(--border-color);
     }
     @media (prefers-color-scheme: dark) {
-      :root {
-        --font-color: #f5f5f5;
-        --bg: #333;
-        --title-color: #ecf0f1;
-        --card-bg: #444;
-        --label-color: #bdc3c7;
-        --border-color: #555;
-        color-scheme: dark;
+      #plugin-container .card {
+        box-shadow: none;
       }
-    }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-      Oxygen, Ubuntu, sans-serif;
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 20px;
-      background-color: var(--bg);
-      color: var(--font-color);
-    }
-    h1 {
-      color: var(--title-color);
-      border-bottom: 2px solid var(--accent-color);
-      padding-bottom: 10px;
-    }
-    h2 {
-      color: var(--title-color);
-      margin: 0;
-    }
-    .card {
-      background: var(--card-bg);
-      border-radius: 8px;
-      padding: 20px;
-      margin: 15px 0;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
     .page-header {
       display: flex;
@@ -67,9 +119,14 @@
       gap: 12px;
       flex-wrap: wrap;
     }
+    .web-ui .page-header-left h2 {
+      margin: 0;
+    }
     .breadcrumb-inline {
       color: var(--label-color);
-      font-size: 1.1em;
+      font-size: 1em;
+      font-family: Georgia, serif;
+      font-weight: 400;
     }
     .breadcrumb-inline a {
       color: var(--accent-color);
@@ -84,26 +141,6 @@
     }
     .breadcrumb-inline .current {
       color: var(--title-color);
-      font-weight: 600;
-    }
-    .nav-links {
-      margin: 20px 0;
-      display: flex;
-      gap: 10px;
-    }
-    .nav-links a {
-      padding: 10px 20px;
-      color: var(--font-color);
-      text-decoration: none;
-      border-radius: 4px;
-    }
-    .nav-links a.active {
-      background-color: var(--accent-color);
-      color: white;
-    }
-    .nav-links a:not(.active):hover {
-      background-color: var(--accent-hover-color);
-      color: white;
     }
     /* Action buttons */
     .action-buttons {
@@ -111,7 +148,7 @@
       gap: 10px;
     }
     .action-btn {
-      color: white;
+      color: var(--button-text);
       padding: 10px 16px;
       border: none;
       border-radius: 4px;
@@ -123,54 +160,65 @@
       gap: 6px;
     }
     .upload-action-btn {
-      background-color: #27ae60;
+      background-color: var(--success-color);
     }
     .upload-action-btn:hover {
-      background-color: #219a52;
+      background-color: var(--accent-hover-color);
     }
     .folder-action-btn {
-      background-color: #f39c12;
+      background-color: var(--warning-color);
     }
     .folder-action-btn:hover {
-      background-color: #d68910;
+      background-color: var(--warning-hover);
     }
     .delete-action-btn {
-      background-color: #e74c3c;
+      background-color: var(--danger-color);
     }
     .delete-action-btn:hover {
-      background-color: #c0392b;
+      background-color: var(--danger-hover);
     }
     /* Upload modal */
     .modal-overlay {
-      display: none;
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.5);
-      z-index: 200;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      max-width: none;
+      max-height: none;
+      margin: auto;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      overflow: visible;
       justify-content: center;
       align-items: center;
     }
-    .modal-overlay.open {
+    .modal-overlay[open] {
       display: flex;
+    }
+    .modal-overlay::backdrop {
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(8px);
     }
     .modal {
       background: var(--card-bg);
       border-radius: 8px;
       padding: 25px;
       max-width: 450px;
-      width: 90%;
+      width: min(450px, calc(100vw - 24px));
+      box-sizing: border-box;
       max-height: 90vh;
       overflow-y: auto;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
     }
     .modal.picker-mode {
       max-width: 920px;
+      width: min(920px, calc(100vw - 24px));
     }
     .modal.image-preview-mode {
       max-width: 640px;
+      width: min(640px, calc(100vw - 24px));
     }
     .image-preview-stage {
       display: flex;
@@ -264,16 +312,16 @@
     .epub-badge {
       display: inline-block;
       padding: 2px 8px;
-      background-color: #27ae60;
-      color: white;
+      background-color: var(--success-color);
+      color: var(--button-text);
       border-radius: 10px;
       font-size: 0.75em;
     }
     .folder-badge {
       display: inline-block;
       padding: 2px 8px;
-      background-color: #f39c12;
-      color: white;
+      background-color: var(--warning-color);
+      color: var(--button-text);
       border-radius: 10px;
       font-size: 0.75em;
     }
@@ -292,16 +340,13 @@
       color: var(--accent-hover-color);
       text-decoration: underline;
     }
-    .upload-form {
-      margin-bottom: 10px;
-    }
     .upload-form input[type="file"] {
       margin: 10px 0;
       width: 100%;
     }
     .upload-form input[type="file"]::file-selector-button {
-      background-color: #27ae60;
-      color: white;
+      background-color: var(--success-color);
+      color: var(--button-text);
       border: none;
       padding: 6px 14px;
       border-radius: 4px;
@@ -310,7 +355,7 @@
       margin-right: 8px;
     }
     .upload-form input[type="file"].has-files::file-selector-button {
-      background-color: #95a5a6;
+      background-color: var(--label-color);
     }
     .drop-zone {
       border: 2px dashed var(--border-color);
@@ -334,8 +379,8 @@
       color: var(--accent-color);
     }
     .upload-btn {
-      background-color: #27ae60;
-      color: white;
+      background-color: var(--success-color);
+      color: var(--button-text);
       padding: 10px 20px;
       border: none;
       border-radius: 4px;
@@ -345,16 +390,16 @@
       margin-top: 12px;
     }
     .upload-btn:hover {
-      background-color: #219a52;
+      background-color: var(--accent-hover-color);
     }
     .upload-btn.optimize {
-      background-color: #9b59b6;
+      background-color: var(--accent-color);
     }
     .upload-btn.optimize:hover {
-      background-color: #8e44ad;
+      background-color: var(--accent-hover-color);
     }
     .upload-btn:disabled {
-      background-color: #95a5a6;
+      background-color: var(--label-color);
       cursor: not-allowed;
     }
     /* Convert options */
@@ -383,9 +428,9 @@
     }
     .convert-warning {
       font-size: 0.85em;
-      color: #d68910;
+      color: var(--warning-hover);
       background-color: rgba(214, 137, 16, 0.1);
-      border: 1px solid #d68910;
+      border: 1px solid var(--warning-hover);
       border-radius: 4px;
       padding: 8px 12px;
       margin-top: 8px;
@@ -605,7 +650,7 @@
     }
     .quality-preset.active {
       background: var(--accent-color);
-      color: white;
+      color: var(--button-text);
       box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     }
     /* Toggle Switch */
@@ -685,7 +730,7 @@
     }
     .rotation-btn.active {
       background: var(--accent-color);
-      color: white;
+      color: var(--button-text);
       box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     }
     .rotation-btn .rot-icon {
@@ -717,7 +762,7 @@
     }
     .overlap-btn.active {
       background: var(--accent-color);
-      color: white;
+      color: var(--button-text);
       box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     }
     /* Image Picker Grid Styles */
@@ -766,46 +811,46 @@
       border-color: var(--border-color);
     }
     .image-item.state-1 {
-      border-color: #3498db;
+      border-color: var(--info-color);
       background: rgba(52, 152, 219, 0.1);
     }
     .image-item.state-2 {
-      border-color: #e74c3c;
+      border-color: var(--danger-color);
       background: rgba(231, 76, 60, 0.1);
     }
     .image-item.state-3 {
-      border-color: #9b59b6;
+      border-color: var(--secondary-color);
       background: rgba(155, 89, 182, 0.1);
     }
     .image-item.crop-preview {
-      border-color: #16a085;
+      border-color: var(--accent-hover-color);
       background: rgba(22, 160, 133, 0.1);
     }
     .image-item.cover-locked {
-      border-color: #e67e22;
+      border-color: var(--warning-color);
       background: rgba(230, 126, 34, 0.1);
       cursor: default;
       opacity: 0.85;
     }
     .image-item.cover-locked:hover {
       transform: none;
-      border-color: #e67e22;
+      border-color: var(--warning-color);
     }
     .image-item.cover-locked .image-state-badge {
-      background: #e67e22;
+      background: var(--warning-color);
     }
     .image-item.separator-locked {
-      border-color: #1abc9c;
+      border-color: var(--accent-color);
       background: rgba(26, 188, 156, 0.1);
       cursor: default;
       opacity: 0.85;
     }
     .image-item.separator-locked:hover {
       transform: none;
-      border-color: #1abc9c;
+      border-color: var(--accent-color);
     }
     .image-item.separator-locked .image-state-badge {
-      background: #1abc9c;
+      background: var(--accent-color);
     }
     .image-item img {
       width: 100%;
@@ -822,22 +867,22 @@
       border-radius: 4px;
       font-size: 0.65em;
       font-weight: 600;
-      color: white;
+      color: var(--button-text);
     }
     .state-0 .image-state-badge {
       background: var(--label-color);
     }
     .state-1 .image-state-badge {
-      background: #3498db;
+      background: var(--info-color);
     }
     .state-2 .image-state-badge {
-      background: #e74c3c;
+      background: var(--danger-color);
     }
     .state-3 .image-state-badge {
-      background: #9b59b6;
+      background: var(--secondary-color);
     }
     .crop-preview .image-state-badge {
-      background: #16a085;
+      background: var(--accent-hover-color);
     }
     /* Preview Overlay (shown on hover) */
     .image-preview-overlay {
@@ -874,11 +919,11 @@
       border-radius: 2px;
     }
     .split-line.split-h {
-      background: linear-gradient(180deg, #3498db 0%, #2980b9 100%);
+      background: linear-gradient(180deg, var(--info-color) 0%, var(--accent-hover-color) 100%);
       box-shadow: 0 0 6px rgba(0, 0, 0, 0.5), 0 0 2px rgba(52, 152, 219, 0.8);
     }
     .split-line.split-v {
-      background: linear-gradient(180deg, #e74c3c 0%, #c0392b 100%);
+      background: linear-gradient(180deg, var(--danger-color) 0%, var(--danger-hover) 100%);
       box-shadow: 0 0 6px rgba(0, 0, 0, 0.5), 0 0 2px rgba(231, 76, 60, 0.8);
     }
     /* Rotate image on hover for rotation states */
@@ -931,7 +976,7 @@
       border: 1px solid var(--btn-color);
       border-radius: 4px;
       background: transparent;
-      color: var(--text-color);
+      color: var(--font-color);
       cursor: pointer;
       transition: all 0.15s;
       font-size: inherit;
@@ -939,7 +984,7 @@
     }
     .legend-btn:hover {
       background: var(--btn-color);
-      color: white;
+      color: var(--button-text);
     }
     .legend-btn .legend-color {
       background: var(--btn-color);
@@ -956,7 +1001,7 @@
     }
     .no-files {
       text-align: center;
-      color: #95a5a6;
+      color: var(--label-color);
       padding: 40px;
       font-style: italic;
     }
@@ -966,20 +1011,23 @@
       margin: 15px 0;
     }
     .message.success {
-      background-color: #d4edda;
-      color: #155724;
-      border: 1px solid #c3e6cb;
+      background-color: var(--accent-color-10);
+      color: var(--accent-color);
+      border: 1px solid var(--border-color);
     }
     .message.error {
-      background-color: #f8d7da;
-      color: #721c24;
-      border: 1px solid #f5c6cb;
+      background-color: var(--danger-bg);
+      color: var(--danger-color);
+      border: 1px solid var(--danger-border);
     }
     .contents-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       margin-bottom: 12px;
+    }
+    .web-ui .contents-header h2 {
+      margin: 0;
     }
     .summary-inline {
       color: var(--label-color);
@@ -992,13 +1040,13 @@
     #progress-bar {
       width: 100%;
       height: 20px;
-      background-color: #e0e0e0;
+      background-color: var(--border-color);
       border-radius: 10px;
       overflow: hidden;
     }
     #progress-fill {
       height: 100%;
-      background-color: #27ae60;
+      background-color: var(--success-color);
       width: 0%;
       transition: width 0.3s;
     }
@@ -1017,15 +1065,27 @@
     .folder-input {
       width: 100%;
       padding: 10px;
-      border: 1px solid #ddd;
+      border: 1px solid var(--border-color);
       border-radius: 4px;
       font-size: 1em;
       margin-bottom: 10px;
       box-sizing: border-box;
     }
+    .modal-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 10px;
+      justify-content: flex-end;
+    }
+    .modal-actions > button,
+    .modal-actions > a {
+      width: auto;
+      margin-top: 0;
+    }
     .folder-btn {
-      background-color: #f39c12;
-      color: white;
+      background-color: var(--warning-color);
+      color: var(--button-text);
       padding: 10px 20px;
       border: none;
       border-radius: 4px;
@@ -1034,10 +1094,10 @@
       width: 100%;
     }
     .folder-btn:hover {
-      background-color: #d68910;
+      background-color: var(--warning-hover);
     }
     .folder-btn:disabled {
-      background-color: #bdc3c7;
+      background-color: var(--border-color);
       cursor: not-allowed;
     }
     /* Action button styles */
@@ -1053,23 +1113,23 @@
       transition: all 0.15s;
     }
     .delete-btn {
-      color: #95a5a6;
+      color: var(--label-color);
     }
     .delete-btn:hover {
-      background-color: #fee;
-      color: #e74c3c;
+      background-color: var(--danger-bg);
+      color: var(--danger-color);
     }
     .rename-btn {
-      color: #2980b9;
+      color: var(--accent-hover-color);
     }
     .rename-btn:hover {
-      background-color: #e8f4fd;
+      background-color: var(--accent-color-10);
     }
     .move-btn {
-      color: #16a085;
+      color: var(--accent-hover-color);
     }
     .move-btn:hover {
-      background-color: #e6f7f4;
+      background-color: var(--accent-color-10);
     }
     .actions-col {
       width: 140px;
@@ -1083,8 +1143,8 @@
     }
     /* Failed uploads banner */
     .failed-uploads-banner {
-      background-color: #fff3cd;
-      border: 1px solid #ffc107;
+      background-color: var(--warning-bg);
+      border: 1px solid var(--warning-color);
       border-radius: 4px;
       padding: 15px;
       margin-bottom: 15px;
@@ -1101,7 +1161,7 @@
     }
     .failed-uploads-title {
       font-weight: 600;
-      color: #856404;
+      color: var(--warning-text);
       margin: 0;
     }
     .dismiss-btn {
@@ -1109,19 +1169,19 @@
       border: none;
       font-size: 1.2em;
       cursor: pointer;
-      color: #856404;
+      color: var(--warning-text);
       padding: 0;
       line-height: 1;
     }
     .dismiss-btn:hover {
-      color: #533f03;
+      color: var(--warning-text);
     }
     .failed-file-item {
       display: flex;
       justify-content: space-between;
       align-items: center;
       padding: 8px 0;
-      border-bottom: 1px solid #ffe69c;
+      border-bottom: 1px solid var(--warning-border);
     }
     .failed-file-item:last-child {
       border-bottom: none;
@@ -1131,16 +1191,16 @@
     }
     .failed-file-name {
       font-weight: 500;
-      color: #856404;
+      color: var(--warning-text);
     }
     .failed-file-error {
       font-size: 0.85em;
-      color: #856404;
+      color: var(--warning-text);
       opacity: 0.8;
     }
     .retry-btn {
-      background-color: #ffc107;
-      color: #533f03;
+      background-color: var(--warning-color);
+      color: var(--warning-text);
       border: none;
       padding: 6px 12px;
       border-radius: 4px;
@@ -1149,11 +1209,11 @@
       font-weight: 600;
     }
     .retry-btn:hover {
-      background-color: #e0a800;
+      background-color: var(--warning-hover);
     }
     .retry-all-btn {
-      background-color: #ffc107;
-      color: #533f03;
+      background-color: var(--warning-color);
+      color: var(--warning-text);
       border: none;
       padding: 8px 16px;
       border-radius: 4px;
@@ -1163,11 +1223,11 @@
       margin-top: 10px;
     }
     .retry-all-btn:hover {
-      background-color: #e0a800;
+      background-color: var(--warning-hover);
     }
     /* Delete modal */
     .delete-warning {
-      color: #e74c3c;
+      color: var(--danger-color);
       font-weight: 600;
       margin: 10px 0;
     }
@@ -1177,8 +1237,8 @@
       word-break: break-all;
     }
     .delete-btn-confirm {
-      background-color: #e74c3c;
-      color: white;
+      background-color: var(--danger-color);
+      color: var(--button-text);
       padding: 10px 20px;
       border: none;
       border-radius: 4px;
@@ -1187,11 +1247,11 @@
       width: 100%;
     }
     .delete-btn-confirm:hover {
-      background-color: #c0392b;
+      background-color: var(--danger-hover);
     }
     .delete-btn-cancel {
-      background-color: #95a5a6;
-      color: white;
+      background-color: var(--label-color);
+      color: var(--button-text);
       padding: 10px 20px;
       border: none;
       border-radius: 4px;
@@ -1204,8 +1264,8 @@
       background-color: var(--label-color);
     }
     .rename-btn-confirm {
-      background-color: #3498db;
-      color: white;
+      background-color: var(--accent-color);
+      color: var(--button-text);
       padding: 10px 20px;
       border: none;
       border-radius: 4px;
@@ -1214,11 +1274,11 @@
       width: 100%;
     }
     .rename-btn-confirm:hover {
-      background-color: #2e86c1;
+      background-color: var(--accent-hover-color);
     }
     .move-btn-confirm {
-      background-color: #16a085;
-      color: white;
+      background-color: var(--accent-hover-color);
+      color: var(--button-text);
       padding: 10px 20px;
       border: none;
       border-radius: 4px;
@@ -1227,7 +1287,7 @@
       width: 100%;
     }
     .move-btn-confirm:hover {
-      background-color: #138d75;
+      background-color: var(--accent-hover-color);
     }
     .loader-container {
       display: flex;
@@ -1238,7 +1298,7 @@
     .loader {
       width: 48px;
       height: 48px;
-      border: 5px solid #AAA;
+      border: 5px solid var(--border-color);
       border-bottom-color: transparent;
       border-radius: 50%;
       display: inline-block;
@@ -1264,6 +1324,31 @@
         padding: 12px;
         margin: 10px 0;
       }
+      #plugin-container {
+        gap: 10px;
+        margin: 10px 0;
+      }
+      #plugin-container .card {
+        margin: 0;
+      }
+      #plugin-container .setting-row {
+        grid-template-columns: 1fr;
+        gap: 7px;
+        padding: 12px 0;
+      }
+      #plugin-container input[type="text"],
+      #plugin-container input[type="password"],
+      #plugin-container input[type="number"],
+      #plugin-container select,
+      #plugin-container textarea {
+        min-height: 44px;
+        font-size: 16px;
+      }
+      #plugin-container .btn-small {
+        min-height: 48px;
+        padding: 10px 12px;
+        font-size: 1em;
+      }
       .page-header {
         gap: 10px;
         margin-bottom: 12px;
@@ -1282,6 +1367,9 @@
         padding: 8px 12px;
         margin-right: 6px;
         font-size: 0.9em;
+      }
+      .modal-actions {
+        flex-direction: column-reverse;
       }
       .action-buttons {
         gap: 6px;
@@ -1395,13 +1483,13 @@
       color: var(--accent-color);
     }
     .log-entry.error {
-      color: #e74c3c;
+      color: var(--danger-color);
     }
     .log-entry.warning {
-      color: #f39c12;
+      color: var(--warning-color);
     }
     .log-entry.info {
-      color: #3498db;
+      color: var(--accent-color);
     }
     .log-timestamp {
       color: var(--label-color);
@@ -1424,27 +1512,27 @@
     }
     .log-tag.split {
       background: rgba(243, 156, 18, 0.15);
-      color: #f39c12;
+      color: var(--warning-color);
     }
     .log-tag.fix {
       background: rgba(39, 174, 96, 0.15);
-      color: #27ae60;
+      color: var(--success-color);
     }
     .log-tag.skip {
       background: rgba(127, 140, 141, 0.15);
-      color: #7f8c8d;
+      color: var(--label-color);
     }
     .log-tag.info {
       background: rgba(52, 152, 219, 0.15);
-      color: #3498db;
+      color: var(--accent-color);
     }
     .log-tag.error {
       background: rgba(231, 76, 60, 0.15);
-      color: #e74c3c;
+      color: var(--danger-color);
     }
     .log-tag.done {
       background: rgba(39, 174, 96, 0.15);
-      color: #27ae60;
+      color: var(--success-color);
     }
     .log-message {
       flex: 1;
@@ -1493,24 +1581,18 @@
       color: var(--accent-color);
     }
     .log-summary-table .saved {
-      color: #27ae60;
+      color: var(--success-color);
     }
     .log-summary-table .increased {
-      color: #f39c12;
+      color: var(--warning-color);
     }
   </style>
-<link rel="stylesheet" href="/theme.css" />
+  <link rel="stylesheet" href="/assets/web.css" />
+  <link rel="stylesheet" href="/theme.css" />
 </head>
-<body class="tenor-transfer">
-<!--TENOR_BRAND-->
-
-<div class="nav-links">
-  <a href="/" data-i18n="nav.device">Thiết bị</a>
-  <a href="/files" class="active" data-i18n="nav.files">Tệp</a>
-  <a href="/settings" data-i18n="nav.settings">Cài đặt</a>
-  <a href="/fonts" data-i18n="nav.fonts">Font chữ</a>
-  <div class="tenor-lang-slot" data-tenor-lang-selector></div>
-</div>
+<body class="web-ui tenor-transfer">
+<!--#include file="shared/Header.html.inc" -->
+<main class="page-content">
 
 <div class="page-header">
   <div class="page-header-left">
@@ -1518,17 +1600,17 @@
   </div>
 
   <div class="action-buttons">
-    <button class="action-btn upload-action-btn" onclick="openUploadModal()" data-i18n="files.upload">Gửi tệp</button>
-    <button class="action-btn folder-action-btn" onclick="openFolderModal()" data-i18n="files.newFolder">Thư mục mới</button>
+    <button class="action-btn upload-action-btn" onclick="openUploadModal()"><svg class="icon"><use href="/assets/icons.svg#upload"></use></svg> <span data-i18n="files.upload">Gửi tệp</span></button>
+    <button class="action-btn folder-action-btn" onclick="openFolderModal()"><svg class="icon"><use href="/assets/icons.svg#folder"></use></svg> <span data-i18n="files.newFolder">Thư mục mới</span></button>
     <a class="action-btn folder-action-btn" href="/api/quotes/export" data-i18n="files.exportQuotes">Xuất trích dẫn</a>
-    <button class="action-btn delete-action-btn" onclick="openDeleteSelectedModal()" aria-label="Xóa mục đã chọn" title="Xóa mục đã chọn" data-i18n-aria-label="files.deleteSelected" data-i18n-title="files.deleteSelected"><span class="tc-icon tc-delete" aria-hidden="true"></span></button>
+    <button class="action-btn delete-action-btn" onclick="openDeleteSelectedModal()" aria-label="Xóa mục đã chọn" title="Xóa mục đã chọn" data-i18n-aria-label="files.deleteSelected" data-i18n-title="files.deleteSelected"><svg class="icon"><use href="/assets/icons.svg#trash"></use></svg></button>
   </div>
 </div>
 
 <!-- Failed Uploads Banner -->
 <div class="failed-uploads-banner" id="failedUploadsBanner">
   <div class="failed-uploads-header">
-    <h3 class="failed-uploads-title" data-i18n="files.failedUploadsTitle">Một số tệp gửi chưa thành công</h3>
+    <h3 class="failed-uploads-title"><svg class="icon"><use href="/assets/icons.svg#warning"></use></svg> <span data-i18n="files.failedUploadsTitle">Một số tệp gửi chưa thành công</span></h3>
     <button class="dismiss-btn" onclick="dismissFailedUploads()" title="Dismiss" data-i18n-title="files.dismiss" aria-label="Dismiss" data-i18n-aria-label="files.dismiss">&times;</button>
   </div>
   <div id="failedFilesList"></div>
@@ -1537,7 +1619,7 @@
 
 <div class="card">
   <div class="contents-header">
-    <div class="breadcrumb-inline" id="directory-breadcrumbs"></div>
+    <h2 class="breadcrumb-inline" id="directory-breadcrumbs"></h2>
     <span class="summary-inline" id="folder-summary"></span>
   </div>
 
@@ -1548,13 +1630,16 @@
   </div>
 </div>
 
-<footer class="tenor-footer"><span data-i18n="home.footerLibrary">Thư viện trên thiết bị</span><a href="https://cross.tenor.vn" target="_blank" rel="noopener noreferrer">cross.tenor.vn ↗</a></footer>
+<div id="plugin-container"></div>
+
+</main>
+<!--#include file="shared/Footer.html.inc" -->
 
 <!-- Upload Modal -->
-<div class="modal-overlay" id="uploadModal">
+<dialog class="modal-overlay" id="uploadModal" aria-labelledby="uploadModalTitle">
   <div class="modal">
-    <button class="modal-close" id="uploadModalClose" onclick="closeUploadModal()">&times;</button>
-    <h3 data-i18n="files.upload">Gửi tệp</h3>
+    <button class="modal-close" data-i18n-aria-label="common.close" aria-label="Đóng" id="uploadModalClose" onclick="closeUploadModal()">&times;</button>
+    <h3 id="uploadModalTitle"><svg class="icon"><use href="/assets/icons.svg#upload"></use></svg> <span data-i18n="files.upload">Gửi tệp</span></h3>
     <div class="upload-form">
       <p class="file-info"><span data-i18n="files.chooseFilesInto">Chọn tệp để gửi vào</span> <strong id="uploadPathDisplay"></strong></p>
       <div class="drop-zone" id="dropZone">
@@ -1597,15 +1682,15 @@
 
           <div class="convert-settings" id="convertSettings" style="display:block;">
             <span data-i18n="files.trueGrayscale">⚫ True-Grayscale</span>
-            <span id="convertSizeSummary">📏 Max 480×800px</span>
-          <span id="qualityDisplaySimple">📦 85% JPEG</span>
-          <span data-i18n="files.fixSvg">🔧 Fix SVG</span>
+          <span id="convertSizeSummary">Max 480×800px</span>
+          <span id="qualityDisplaySimple">85% JPEG</span>
+          <span data-i18n="files.fixSvg">Fix SVG</span>
         </div>
         <!-- Advanced Settings Content -->
         <div class="advanced-settings-content" id="advancedSettingsContent">
           <!-- JPEG Quality -->
           <div class="advanced-setting-row quality-row">
-            <div class="setting-title" data-i18n="files.jpegQuality">📦 JPEG Quality</div>
+            <div class="setting-title" data-i18n="files.jpegQuality">JPEG Quality</div>
             <div class="quality-presets">
               <button class="quality-preset" data-value="30" onclick="setQualityPreset(30)" data-i18n-title="files.qualityMin" title="Minimum quality">30%</button>
               <button class="quality-preset" data-value="45" onclick="setQualityPreset(45)" data-i18n-title="files.qualityLow" title="Low quality">45%</button>
@@ -1647,7 +1732,7 @@
           </div>
           <!-- Target Device -->
           <div class="advanced-setting-row" id="deviceSettingRow">
-            <div class="setting-title" data-i18n="files.targetDevice">📱 Target Device</div>
+            <div class="setting-title" data-i18n="files.targetDevice">Target Device</div>
             <div class="setting-controls">
               <div class="rotation-buttons">
                 <button class="rotation-btn device-btn active" data-value="auto" onclick="setDeviceTarget('auto')">
@@ -1674,7 +1759,7 @@
           </div>
           <!-- Overlap Settings -->
           <div class="advanced-setting-row" id="overlapSettingRow">
-            <div class="setting-title" data-i18n="files.minOverlap">📐 Min Overlap</div>
+            <div class="setting-title" data-i18n="files.minOverlap">Min Overlap</div>
             <div class="setting-controls">
               <div class="overlap-selector">
                 <button class="overlap-btn active" data-value="5" onclick="setOverlap(5)">5%</button>
@@ -1686,7 +1771,7 @@
           <!-- Conversion Log Export -->
           <div class="advanced-setting-row">
             <div class="setting-label">
-              <div class="setting-title" data-i18n="files.autoDownloadLog">📥 Auto-download Log</div>
+              <div class="setting-title" data-i18n="files.autoDownloadLog">Auto-download Log</div>
               <div class="setting-desc" data-i18n="files.autoDownloadLogDesc">Export detailed log with statistics</div>
             </div>
             <div class="setting-controls">
@@ -1713,31 +1798,31 @@
       <!-- Image Picker Section - in picker-columns for two-column layout -->
       <div class="image-picker-section" id="imagePickerSection" style="display:none;">
         <div class="image-picker-header">
-          <span class="image-picker-title" data-i18n="files.imageOptions">🖼️ Image Processing Options</span>
+          <span class="image-picker-title" data-i18n="files.imageOptions">Image Processing Options</span>
           <span class="image-picker-count" id="imagePickerCount">0 images</span>
         </div>
         <div class="state-legend">
           <div class="legend-item locked">
-            <span>🔒</span>
+            <svg class="icon"><use href="/assets/icons.svg#lock"></use></svg>
             <span data-i18n="files.legendCover">Cover</span>
           </div>
           <div class="legend-item locked">
-            <span style="color:#1abc9c">✦</span>
+            <span style="color:var(--accent-color)">✦</span>
             <span data-i18n="files.legendSeparator">Separator</span>
           </div>
           <button class="legend-btn" style="--btn-color:var(--label-color)" onclick="applyStateToAll(0)">
             <div class="legend-color"></div>
             <span data-i18n="files.stateNormal">Normal</span>
           </button>
-          <button class="legend-btn" style="--btn-color:#3498db" onclick="applyStateToAll(1)">
+          <button class="legend-btn" style="--btn-color:var(--info-color)" onclick="applyStateToAll(1)">
             <div class="legend-color"></div>
             <span data-i18n="files.stateHSplit">H-Split</span>
           </button>
-          <button class="legend-btn" style="--btn-color:#e74c3c" onclick="applyStateToAll(2)">
+          <button class="legend-btn" style="--btn-color:var(--danger-color)" onclick="applyStateToAll(2)">
             <div class="legend-color"></div>
             <span data-i18n="files.stateVSplit">V-Split</span>
           </button>
-          <button class="legend-btn" style="--btn-color:#9b59b6" onclick="applyStateToAll(3)">
+          <button class="legend-btn" style="--btn-color:var(--secondary-color)" onclick="applyStateToAll(3)">
             <div class="legend-color"></div>
             <span data-i18n="files.stateRotate">Rotate</span>
           </button>
@@ -1752,88 +1837,98 @@
         <span data-i18n="files.convertWarningBackup">Please back up or disable sync before proceeding.</span>
       </div>
       <!-- Optimize & Upload button - shown when picker is visible, replaces Upload -->
-      <button id="startConversionBtn" class="upload-btn optimize" style="display:none;" onclick="startConversionWithImageStates()" data-i18n="files.optimizeAndUpload">Tối ưu và gửi</button>
-      <button id="uploadBtn" class="upload-btn" onclick="uploadFile()" disabled data-i18n="files.upload">Gửi tệp</button>
-      <button class="delete-btn-cancel" onclick="handleCancelUploadModal()" data-i18n="files.cancel">Hủy</button>
+      <div class="modal-actions">
+        <button class="delete-btn-cancel" onclick="handleCancelUploadModal()" data-i18n="files.cancel">Hủy</button>
+        <button id="uploadBtn" class="upload-btn" onclick="uploadFile()" disabled data-i18n="files.upload">Gửi tệp</button>
+        <button id="startConversionBtn" class="upload-btn optimize" style="display:none;" onclick="startConversionWithImageStates()" data-i18n="files.optimizeAndUpload">Tối ưu và gửi</button>
+      </div>
       <div id="progress-container">
         <div id="progress-bar"><div id="progress-fill"></div></div>
         <div id="progress-text"></div>
       </div>
       <div class="log-section" id="log-section">
         <div class="log-header">
-          <div class="log-title" data-i18n="files.conversionLog">📋 Conversion Log</div>
+          <div class="log-title" data-i18n="files.conversionLog">Conversion Log</div>
         </div>
         <div class="log-container" id="log-container"></div>
       </div>
     </div>
   </div>
-</div>
+</dialog>
 
 <!-- New Folder Modal -->
-<div class="modal-overlay" id="folderModal">
+<dialog class="modal-overlay" id="folderModal" aria-labelledby="folderModalTitle">
   <div class="modal">
-    <button class="modal-close" onclick="closeFolderModal()">&times;</button>
-    <h3 data-i18n="files.newFolder">Thư mục mới</h3>
+    <button class="modal-close" data-i18n-aria-label="common.close" aria-label="Đóng" onclick="closeFolderModal()">&times;</button>
+    <h3 id="folderModalTitle"><svg class="icon"><use href="/assets/icons.svg#folder"></use></svg> <span data-i18n="files.newFolder">Thư mục mới</span></h3>
     <div class="folder-form">
       <p class="file-info"><span data-i18n="files.createFolderIn">Create a new folder in</span> <strong id="folderPathDisplay"></strong></p>
       <input type="text" id="folderName" class="folder-input" data-i18n-placeholder="files.folderNamePlaceholder" placeholder="Folder name..." oninput="document.getElementById('createFolderBtn').disabled = !this.value.trim();">
-      <button class="folder-btn" id="createFolderBtn" onclick="createFolder()" disabled data-i18n="files.createFolder">Tạo thư mục</button>
-      <button class="delete-btn-cancel" onclick="closeFolderModal()" data-i18n="files.cancel">Hủy</button>
+      <div class="modal-actions">
+        <button class="delete-btn-cancel" onclick="closeFolderModal()" data-i18n="files.cancel">Hủy</button>
+        <button class="folder-btn" id="createFolderBtn" onclick="createFolder()" disabled data-i18n="files.createFolder">Tạo thư mục</button>
+      </div>
     </div>
   </div>
-</div>
+</dialog>
 
 <!-- Delete Confirmation Modal -->
-<div class="modal-overlay" id="deleteModal">
+<dialog class="modal-overlay" id="deleteModal" aria-labelledby="deleteModalTitle">
   <div class="modal">
-    <button class="modal-close" onclick="closeDeleteModal()">&times;</button>
-    <h3 data-i18n="files.deleteSelected">Xóa mục đã chọn</h3>
+    <button class="modal-close" data-i18n-aria-label="common.close" aria-label="Đóng" onclick="closeDeleteModal()">&times;</button>
+    <h3 id="deleteModalTitle"><svg class="icon"><use href="/assets/icons.svg#trash"></use></svg> <span data-i18n="files.deleteSelected">Xóa mục đã chọn</span></h3>
     <div class="folder-form">
-      <p class="delete-warning" data-i18n="files.deleteWarning">⚠️ This action cannot be undone!</p>
+      <p class="delete-warning"><svg class="icon"><use href="/assets/icons.svg#warning"></use></svg> <span data-i18n="files.deleteWarning">This action cannot be undone!</span></p>
       <p class="file-info" data-i18n="files.deleteConfirmText">Are you sure you want to delete the following item(s)?</p>
       <div id="deleteItemList" style="max-height:240px; overflow:auto; margin-bottom:10px;"></div>
-      <button class="delete-btn-confirm" onclick="confirmDelete()" data-i18n="files.delete">Xóa</button>
-      <button class="delete-btn-cancel" onclick="closeDeleteModal()" data-i18n="files.cancel">Hủy</button>
+      <div class="modal-actions">
+        <button class="delete-btn-cancel" onclick="closeDeleteModal()" data-i18n="files.cancel">Hủy</button>
+        <button class="delete-btn-confirm" onclick="confirmDelete()" data-i18n="files.delete">Xóa</button>
+      </div>
     </div>
   </div>
-</div>
+</dialog>
 
 <!-- Rename Modal -->
-<div class="modal-overlay" id="renameModal">
+<dialog class="modal-overlay" id="renameModal" aria-labelledby="renameModalTitle">
   <div class="modal">
-    <button class="modal-close" onclick="closeRenameModal()">&times;</button>
-    <h3 data-i18n="files.renameTitle">Đổi tên tệp</h3>
+    <button class="modal-close" data-i18n-aria-label="common.close" aria-label="Đóng" onclick="closeRenameModal()">&times;</button>
+    <h3 id="renameModalTitle"><svg class="icon"><use href="/assets/icons.svg#edit"></use></svg> <span data-i18n="files.renameTitle">Đổi tên tệp</span></h3>
     <div class="folder-form">
       <p class="file-info"><span data-i18n="files.renaming">Renaming</span> <strong id="renameItemName"></strong></p>
       <input type="text" id="renameNewName" class="folder-input" data-i18n-placeholder="files.newNamePlaceholder" placeholder="New file name...">
       <input type="hidden" id="renameItemPath">
-      <button class="rename-btn-confirm" onclick="confirmRename()" data-i18n="files.rename">Đổi tên</button>
-      <button class="delete-btn-cancel" onclick="closeRenameModal()" data-i18n="files.cancel">Hủy</button>
+      <div class="modal-actions">
+        <button class="delete-btn-cancel" onclick="closeRenameModal()" data-i18n="files.cancel">Hủy</button>
+        <button class="rename-btn-confirm" onclick="confirmRename()" data-i18n="files.rename">Đổi tên</button>
+      </div>
     </div>
   </div>
-</div>
+</dialog>
 
 <!-- Move Modal -->
-<div class="modal-overlay" id="moveModal">
+<dialog class="modal-overlay" id="moveModal" aria-labelledby="moveModalTitle">
   <div class="modal">
-    <button class="modal-close" onclick="closeMoveModal()">&times;</button>
-    <h3 data-i18n="files.moveTitle">Di chuyển tệp</h3>
+    <button class="modal-close" data-i18n-aria-label="common.close" aria-label="Đóng" onclick="closeMoveModal()">&times;</button>
+    <h3 id="moveModalTitle"><svg class="icon"><use href="/assets/icons.svg#move"></use></svg> <span data-i18n="files.moveTitle">Di chuyển tệp</span></h3>
     <div class="folder-form">
       <p class="file-info"><span data-i18n="files.moving">Moving</span> <strong id="moveItemName"></strong></p>
       <input type="text" id="moveDestPath" class="folder-input" list="moveFolderOptions" data-i18n-placeholder="files.moveDestPlaceholder" placeholder="/Destination/Folder">
       <datalist id="moveFolderOptions"></datalist>
       <input type="hidden" id="moveItemPath">
-      <button class="move-btn-confirm" onclick="confirmMove()" data-i18n="files.move">Di chuyển</button>
-      <button class="delete-btn-cancel" onclick="closeMoveModal()" data-i18n="files.cancel">Hủy</button>
+      <div class="modal-actions">
+        <button class="delete-btn-cancel" onclick="closeMoveModal()" data-i18n="files.cancel">Hủy</button>
+        <button class="move-btn-confirm" onclick="confirmMove()" data-i18n="files.move">Di chuyển</button>
+      </div>
     </div>
   </div>
-</div>
+</dialog>
 
 <!-- Image Preview Modal -->
-<div class="modal-overlay" id="imagePreviewModal">
+<dialog class="modal-overlay" id="imagePreviewModal" aria-labelledby="imagePreviewModalTitle">
   <div class="modal image-preview-mode">
-    <button class="modal-close" onclick="closeImagePreview()">&times;</button>
-    <h3 data-i18n="files.imagePreview">Xem ảnh</h3>
+    <button class="modal-close" data-i18n-aria-label="common.close" aria-label="Đóng" onclick="closeImagePreview()">&times;</button>
+    <h3 id="imagePreviewModalTitle" data-i18n="files.imagePreview">Xem ảnh</h3>
     <div class="folder-form">
       <p class="file-info"><strong id="imagePreviewName"></strong></p>
       <div class="image-preview-stage">
@@ -1842,12 +1937,9 @@
       <a id="imagePreviewDownload" class="move-btn-confirm" rel="noopener noreferrer" target="_blank" href="#" data-i18n="files.download">Download</a>
     </div>
   </div>
-</div>
+</dialog>
 
-<script src="/js/web-i18n.js"></script>
 <script>
-  // The shared masthead tagline (BrandHeader.inc) carries its own data-i18n
-  // marker, so it needs no binding here.
   TenorI18n.init();
 
   // get current path from query parameter
@@ -1912,12 +2004,15 @@
       document.body.appendChild(notification);
     }
 
+    clearTimeout(notification.hideTimer);
+    clearTimeout(notification.removeTimer);
+
     // Set styles based on type
     const styles = {
-      'success': 'background-color: #27ae60;',
-      'error': 'background-color: #e74c3c;',
-      'warning': 'background-color: #f39c12;',
-      'info': 'background-color: #3498db;'
+      'success': 'background-color: var(--button-bg); color: var(--button-text);',
+      'error': 'background-color: var(--danger-bg); color: var(--danger-color);',
+      'warning': 'background-color: var(--warning-bg); color: var(--warning-text);',
+      'info': 'background-color: var(--accent-color-10); color: var(--accent-color);'
     };
     notification.style.cssText += styles[type] || styles['info'];
     notification.textContent = message;
@@ -1927,15 +2022,19 @@
     notification.style.transform = 'translateX(0)';
 
     // Auto-hide after 5 seconds
-    setTimeout(() => {
+    notification.hideTimer = setTimeout(() => {
       notification.style.opacity = '0';
       notification.style.transform = 'translateX(100%)';
-      setTimeout(() => {
+      notification.removeTimer = setTimeout(() => {
         if (notification.parentNode) {
           notification.parentNode.removeChild(notification);
         }
       }, 300);
     }, 5000);
+  }
+
+  function fileIcon(name) {
+    return `<svg class="icon"><use href="/assets/icons.svg#${name}"></use></svg>`;
   }
 
   function formatFileSize(bytes) {
@@ -1950,25 +2049,31 @@
     // Fetch CrossPoint version
     fetchVersion();
 
-    // Close modals when clicking overlay - call proper cleanup functions
+    // Load any SD-hosted plugins that mount on the File Manager page.
+    loadPlugins('files');
+
+    // Keep upload cleanup rules when a dialog is cancelled or its backdrop is clicked.
+    // The press must also start on the backdrop, so selecting text in a field and
+    // releasing over the backdrop does not close the dialog.
+    const closeModal = {
+      uploadModal: closeUploadModal,
+      folderModal: closeFolderModal,
+      deleteModal: closeDeleteModal,
+      renameModal: closeRenameModal,
+      moveModal: closeMoveModal,
+      imagePreviewModal: closeImagePreview
+    };
     let clickTarget = null;
-    document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
-      overlay.addEventListener('mousedown', (e) => {
-        clickTarget = e.target;
+    document.querySelectorAll('dialog.modal-overlay').forEach(function(modal) {
+      modal.addEventListener('cancel', function(event) {
+        event.preventDefault();
+        closeModal[modal.id]();
       });
-
-      overlay.addEventListener('click', function(e) {
-        if (clickTarget === overlay && e.target === overlay) {
-          // Call the appropriate close function for each modal to ensure cleanup
-          if (overlay.id === 'uploadModal') return closeUploadModal();
-          if (overlay.id === 'folderModal') return closeFolderModal();
-          if (overlay.id === 'deleteModal') return closeDeleteModal();
-          if (overlay.id === 'renameModal') return closeRenameModal();
-          if (overlay.id === 'moveModal') return closeMoveModal();
-          if (overlay.id === 'imagePreviewModal') return closeImagePreview();
-          overlay.classList.remove('open');
-        }
-
+      modal.addEventListener('mousedown', function(event) {
+        clickTarget = event.target;
+      });
+      modal.addEventListener('click', function(event) {
+        if (clickTarget === modal && event.target === modal) closeModal[modal.id]();
         clickTarget = null;
       });
     });
@@ -2047,10 +2152,10 @@
     if (files.length === 0) {
       fileTable.innerHTML = '<div class="no-files" data-i18n="files.emptyFolder">Thư mục trống</div>';
     } else {
-      let fileTableContent = '<table class="file-table">';
+      let fileTableContent = '<table class="file-table"><thead>';
 
 				// Add select-all checkbox column
-      fileTableContent += '<tr><th style="width:40px"><input type="checkbox" id="selectAllCheckbox" aria-label="Chọn tất cả" data-i18n-aria-label="files.selectAll" onchange="toggleSelectAll(this)"></th><th><label for="selectAllCheckbox" data-i18n="files.selectAll">Chọn tất cả</label></th><th data-i18n="files.type">Loại</th><th data-i18n="files.sizeColumn">Dung lượng</th><th class="actions-col" data-i18n="files.actions">Thao tác</th></tr>';
+      fileTableContent += '<tr><th style="width:40px"><label><input type="checkbox" id="selectAllCheckbox" aria-label="Chọn tất cả" data-i18n-aria-label="files.selectAll" onchange="toggleSelectAll(this)"><span class="select-all-label" data-i18n="files.selectAll">Chọn tất cả</span></label></th><th data-i18n="files.name">Tên</th><th data-i18n="files.type">Loại</th><th data-i18n="files.sizeColumn">Dung lượng</th><th class="actions-col" data-i18n="files.actions">Thao tác</th></tr></thead><tbody>';
 
 
       const sortedFiles = files.sort((a, b) => {
@@ -2071,10 +2176,10 @@
          // Checkbox cell + folder row
           fileTableContent += `<tr class="folder-row">`;
           fileTableContent += `<td><input type="checkbox" class="select-item" aria-label="${escapeHtml(TenorI18n.t('files.selectItem', { name: file.name }))}" data-path="${encodeURIComponent(folderPath)}" data-name="${escapeHtml(file.name)}" data-type="folder"></td>`;
-          fileTableContent += `<td><span class="file-icon tc-icon tc-folder" aria-hidden="true"></span><a href="${TenorI18n.apiUrl('/files?path=' + encodeURIComponent(folderPath))}" class="folder-link">${escapeHtml(file.name)}</a></td>`;
+          fileTableContent += `<td><span class="file-icon">${fileIcon('folder')}</span><a href="${TenorI18n.apiUrl('/files?path=' + encodeURIComponent(folderPath))}" class="folder-link">${escapeHtml(file.name)}</a></td>`;
           fileTableContent += '<td><span class="folder-badge" data-i18n="files.folderBadge">Thư mục</span></td>';
           fileTableContent += '<td>-</td>';
-          fileTableContent += `<td class="actions-col"><div class="action-icon-group"><button class="delete-btn" data-action="delete" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(folderPath)}" data-folder="true" title="Xóa thư mục" data-i18n-title="files.deleteFolderTitle" aria-label="Xóa thư mục" data-i18n-aria-label="files.deleteFolderTitle"><span class="tc-icon tc-delete" aria-hidden="true"></span></button></div></td>`;
+          fileTableContent += `<td class="actions-col"><div class="action-icon-group"><button class="delete-btn" data-action="delete" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(folderPath)}" data-folder="true" title="Xóa thư mục" data-i18n-title="files.deleteFolderTitle" aria-label="Xóa thư mục" data-i18n-aria-label="files.deleteFolderTitle">${fileIcon('trash')}</button></div></td>`;
           fileTableContent += '</tr>';
         } else {
           let filePath = currentPath;
@@ -2085,25 +2190,25 @@
           fileTableContent += `<tr class="${file.isEpub ? 'epub-file' : ''}">`;
           fileTableContent += `<td><input type="checkbox" class="select-item" aria-label="${escapeHtml(TenorI18n.t('files.selectItem', { name: file.name }))}" data-path="${encodeURIComponent(filePath)}" data-name="${escapeHtml(file.name)}" data-type="file"></td>`;
           const fileIsImage = isImageFile(file.name);
-          fileTableContent += `<td><span class="file-icon tc-icon tc-${file.isEpub ? 'book' : (fileIsImage ? 'image' : 'file')}" aria-hidden="true"></span>`;
+          fileTableContent += `<td><span class="file-icon">${fileIcon(file.isEpub ? 'book' : (fileIsImage ? 'image' : 'file'))}</span>`;
           if (fileIsImage) {
             fileTableContent += `<a href="${downloadUrl(filePath)}" class="file-link image-preview-link">${escapeHtml(file.name)}</a>`;
           } else {
             fileTableContent += `<a rel="noopener noreferrer" target="_blank" href="${downloadUrl(filePath)}" class="file-link">${escapeHtml(file.name)}</a>`;
           }
           fileTableContent += '</td>';
-          fileTableContent += file.isEpub ? '<td><span class="epub-badge">EPUB</span></td>' : `<td>${escapeHtml(file.name.split('.').pop().toUpperCase())}</td>`;
+          fileTableContent += file.isEpub ? '<td>EPUB</td>' : `<td>${escapeHtml(file.name.split('.').pop().toUpperCase())}</td>`;
           fileTableContent += `<td>${formatFileSize(file.size)}</td>`;
           fileTableContent += `<td class="actions-col"><div class="action-icon-group">`;
-          fileTableContent += `<button class="move-btn" data-action="move" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" title="Di chuyển tệp" data-i18n-title="files.moveFileTitle" aria-label="Di chuyển tệp" data-i18n-aria-label="files.moveFileTitle"><span class="tc-icon tc-move" aria-hidden="true"></span></button>`;
-          fileTableContent += `<button class="rename-btn" data-action="rename" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" title="Đổi tên tệp" data-i18n-title="files.renameFileTitle" aria-label="Đổi tên tệp" data-i18n-aria-label="files.renameFileTitle"><span class="tc-icon tc-edit" aria-hidden="true"></span></button>`;
-          fileTableContent += `<button class="delete-btn" data-action="delete" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" data-folder="false" title="Xóa tệp" data-i18n-title="files.deleteFileTitle" aria-label="Xóa tệp" data-i18n-aria-label="files.deleteFileTitle"><span class="tc-icon tc-delete" aria-hidden="true"></span></button>`;
+          fileTableContent += `<button class="move-btn" data-action="move" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" title="Di chuyển tệp" data-i18n-title="files.moveFileTitle" aria-label="Di chuyển tệp" data-i18n-aria-label="files.moveFileTitle">${fileIcon('move')}</button>`;
+          fileTableContent += `<button class="rename-btn" data-action="rename" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" title="Đổi tên tệp" data-i18n-title="files.renameFileTitle" aria-label="Đổi tên tệp" data-i18n-aria-label="files.renameFileTitle">${fileIcon('edit')}</button>`;
+          fileTableContent += `<button class="delete-btn" data-action="delete" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" data-folder="false" title="Xóa tệp" data-i18n-title="files.deleteFileTitle" aria-label="Xóa tệp" data-i18n-aria-label="files.deleteFileTitle">${fileIcon('trash')}</button>`;
           fileTableContent += `</div></td>`;
           fileTableContent += '</tr>';
         }
       });
 
-      fileTableContent += '</table>';
+      fileTableContent += '</tbody></table>';
       fileTable.innerHTML = fileTableContent;
       // Table chrome is annotated with data-i18n as it is generated, so the
       // freshly inserted nodes are translated and their links localised here.
@@ -2182,17 +2287,27 @@
     return TenorI18n.apiUrl(`/download?path=${encodeURIComponent(filePath)}`);
   }
 
+  function openWebModal(id) {
+    const modal = document.getElementById(id);
+    if (!modal.open) modal.showModal();
+  }
+
+  function closeWebModal(id) {
+    const modal = document.getElementById(id);
+    if (modal.open) modal.close();
+  }
+
   function openImagePreview(url, name) {
     const img = document.getElementById('imagePreviewImg');
     document.getElementById('imagePreviewName').textContent = name;
     img.src = url;
     img.alt = name;
     document.getElementById('imagePreviewDownload').href = url;
-    document.getElementById('imagePreviewModal').classList.add('open');
+    openWebModal('imagePreviewModal');
   }
 
   function closeImagePreview() {
-    document.getElementById('imagePreviewModal').classList.remove('open');
+    closeWebModal('imagePreviewModal');
     // Clear src to free the decoded image and avoid showing the stale one on reopen.
     document.getElementById('imagePreviewImg').src = '';
   }
@@ -2214,8 +2329,8 @@
     const logContainer = document.getElementById('log-container');
     if (logContainer) logContainer.innerHTML = '';
 
-    document.getElementById('uploadPathDisplay').textContent = currentPath === '/' ? '/' : currentPath;
-    document.getElementById('uploadModal').classList.add('open');
+    document.getElementById('uploadPathDisplay').textContent = currentPath;
+    openWebModal('uploadModal');
   }
 
   function handleCancelUploadModal() {
@@ -2239,8 +2354,8 @@
     const progressFill = document.getElementById('progress-fill');
     const progressText = document.getElementById('progress-text');
     progressFill.style.width = '0%';
-    progressFill.style.backgroundColor = '#e74c3c';
-    progressText.style.color = '#e74c3c';
+    progressFill.style.backgroundColor = 'var(--danger-color)';
+    progressText.style.color = 'var(--danger-color)';
     progressText.textContent = TenorI18n.t('files.uploadCancelled');
     // Re-enable the action button (uploadBtn is always visible at this point;
     // its text is already "Upload" or "Optimize & Upload" depending on checkbox state)
@@ -2252,7 +2367,7 @@
     if (isUploadInProgress) {
       return;
     }
-    document.getElementById('uploadModal').classList.remove('open');
+    closeWebModal('uploadModal');
     const fileInput = document.getElementById('fileInput');
     fileInput.value = '';
     fileInput.classList.remove('has-files');
@@ -2265,7 +2380,7 @@
     document.getElementById('startConversionBtn').style.display = 'none';
     document.getElementById('progress-container').style.display = 'none';
     document.getElementById('progress-fill').style.width = '0%';
-    document.getElementById('progress-fill').style.backgroundColor = '#27ae60';
+    document.getElementById('progress-fill').style.backgroundColor = 'var(--success-color)';
     const convertOptions = document.getElementById('convertOptions');
     if (convertOptions) convertOptions.style.display = 'none';
     document.getElementById('convertInfo').style.display = 'none';
@@ -2526,7 +2641,7 @@
           if (id === coverId) coverImagePath = fullPath;
         }
 
-        // Cover-page reconciliation — if the cover XHTML references a different
+        // Cover-page reconciliation - if the cover XHTML references a different
         // but byte-identical image, prefer the one actually displayed on the page.
         if (coverImagePath) {
           try {
@@ -2841,7 +2956,7 @@
     // Check if JSZip is available
     if (typeof JSZip === 'undefined') {
       console.error('JSZip not loaded');
-      alert(TenorI18n.t('files.jsZipMissing'));
+      showWebAlert(TenorI18n.t('files.jsZipMissing'));
       startConversionWithImageStates();
       return;
     }
@@ -2887,7 +3002,7 @@
 
     } catch (error) {
       console.error('Failed to extract images:', error);
-      alert(TenorI18n.t('files.previewFailed', { message: error.message }));
+      showWebAlert(TenorI18n.t('files.previewFailed', { message: error.message }));
       // Fallback: start conversion directly
       startConversionWithImageStates();
     }
@@ -2916,7 +3031,7 @@
         item.className = 'image-item cover-locked';
         item.title = TenorI18n.t('files.imageCoverLocked', { width: img.width, height: img.height });
         item.innerHTML = `
-          <span class="image-state-badge cover-badge">🔒</span>
+          <span class="image-state-badge cover-badge">${fileIcon('lock')}</span>
           <img src="${img.dataUrl}" alt="${img.name}" loading="lazy">
           <div class="image-name">${img.name}</div>
         `;
@@ -3083,6 +3198,11 @@
 
   // Initialize quality settings handlers
   document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('file-table').addEventListener('change', function(event) {
+      if (event.target.matches('.select-item')) {
+        event.target.closest('tr').classList.toggle('selected', event.target.checked);
+      }
+    });
     // Delegated so it survives file-table re-renders. Names and paths are
     // user-controlled text, so they travel as data attributes rather than
     // being interpolated into inline onclick strings.
@@ -3153,15 +3273,15 @@
   });
 
   function openFolderModal() {
-    document.getElementById('folderPathDisplay').textContent = currentPath === '/' ? '/' : currentPath;
-    document.getElementById('folderModal').classList.add('open');
+    document.getElementById('folderPathDisplay').textContent = currentPath;
+    openWebModal('folderModal');
     document.getElementById('folderName').value = '';
     setTimeout(() => document.getElementById('folderName').focus(), 50);
     document.getElementById('folderName').onkeydown = (e) => { if (e.key === 'Enter' && e.target.value.trim()) createFolder(); };
   }
 
   function closeFolderModal() {
-    document.getElementById('folderModal').classList.remove('open');
+    closeWebModal('folderModal');
   }
 
   // Toggle select-all checkbox
@@ -3169,6 +3289,7 @@
     const checked = master.checked;
     document.querySelectorAll('.select-item').forEach(cb => {
       cb.checked = checked;
+      cb.closest('tr').classList.toggle('selected', checked);
     });
   }
 
@@ -3188,7 +3309,7 @@
   function openDeleteSelectedModal() {
     const items = getSelectedItems();
     if (items.length === 0) {
-      alert(TenorI18n.t('files.selectItemToDelete'));
+      showWebAlert(TenorI18n.t('files.selectItemToDelete'));
       return;
     }
     openDeleteModalForItems(items);
@@ -3211,11 +3332,11 @@
       div.textContent = it.path;
       listEl.appendChild(div);
     });
-    document.getElementById('deleteModal').classList.add('open');
+    openWebModal('deleteModal');
   }
 
   function closeDeleteModal() {
-    document.getElementById('deleteModal').classList.remove('open');
+    closeWebModal('deleteModal');
   }
 
   function confirmDelete() {
@@ -3241,11 +3362,11 @@
         window.location.reload();
       } else {
         const text = await res.text();
-        alert(TenorI18n.t('files.deleteFailed', { message: text }));
+        showWebAlert(TenorI18n.t('files.deleteFailed', { message: text }));
         closeDeleteModal();
       }
     }).catch(() => {
-      alert(TenorI18n.t('files.deleteNetworkError'));
+      showWebAlert(TenorI18n.t('files.deleteNetworkError'));
       closeDeleteModal();
     });
   }
@@ -3295,7 +3416,7 @@
       let dragDepth = 0;
 
       // An in-flight transfer can't be interrupted, so the zone is inert while
-      // uploading: no picker, no hover highlight — matching the disabled upload
+      // uploading: no picker, no hover highlight - matching the disabled upload
       // button and the drop handler's guard below.
       const uploadBusy = () =>
         typeof isUploadInProgress !== 'undefined' && isUploadInProgress;
@@ -3375,7 +3496,7 @@
       if (advancedContent.classList.contains('visible') && files.length === 1 && convertEnabled && files[0].name.toLowerCase().endsWith('.epub')) {
         showImagePicker(files[0]).catch(err => console.error('Image picker error:', err));
       } else {
-        // New selection no longer matches single-EPUB-with-advanced-expanded —
+        // New selection no longer matches single-EPUB-with-advanced-expanded -
         // tear down any picker from a previous file so the grid and picker-mode
         // layout don't linger. clearImagePicker is idempotent.
         clearImagePicker();
@@ -3666,7 +3787,7 @@ function logImage(name, origW, origH, origFormat, origSize, newW, newH, newSize,
 
   // Get state label and color
   const stateKeys = ['', 'files.stateHSplit', 'files.stateVSplit', 'files.stateRotate'];
-  const stateColors = ['', '#3498db', '#e74c3c', '#9b59b6'];
+  const stateColors = ['', 'var(--info-color)', 'var(--danger-color)', 'var(--secondary-color)'];
   const stateLabel = stateKeys[imageState] ? TenorI18n.t(stateKeys[imageState]) : '';
   const stateColor = stateColors[imageState] || '';
 
@@ -3681,7 +3802,7 @@ function logImage(name, origW, origH, origFormat, origSize, newW, newH, newSize,
         `${baseName}${p.suffix}.jpg (${p.width}×${p.height}, ${formatBytes(p.size)})`
       ).join(', ');
     }
-    const savedInfo = saved > 0 ? `, <span style="color:#27ae60">-${savedPct}%</span>` : '';
+    const savedInfo = saved > 0 ? `, <span style="color:var(--success-color)">-${savedPct}%</span>` : '';
     const stateIndicator = imageState > 0 ? ` <span style="color:${stateColor};font-weight:600;">[${stateLabel}]</span>` : '';
     log(`<strong>${escapeHtml(name)}</strong>${stateIndicator} <span class="log-detail">(${dims} ${origFormat.toUpperCase()}, ${formatBytes(origSize)}) → ${TenorI18n.t('files.logPartsCount', { count: splitCount })}${savedInfo}</span>`, '', 'SPLIT');
     if (partsDetail) {
@@ -3691,7 +3812,7 @@ function logImage(name, origW, origH, origFormat, origSize, newW, newH, newSize,
     conversionStats.images++;
     const stateIndicator = imageState > 0 ? ` <span style="color:${stateColor};font-weight:600;">[${stateLabel}]</span>` : '';
     const detail = saved > 0
-      ? `<span class="log-detail">(${dims} → ${newDims}, ${formatBytes(origSize)} → ${formatBytes(newSize)}, <span style="color:#27ae60">-${savedPct}%</span>)</span>`
+      ? `<span class="log-detail">(${dims} → ${newDims}, ${formatBytes(origSize)} → ${formatBytes(newSize)}, <span style="color:var(--success-color)">-${savedPct}%</span>)</span>`
       : `<span class="log-detail">(${dims} → ${newDims}, ${formatBytes(newSize)})</span>`;
     log(`<strong>${escapeHtml(name)}</strong>${stateIndicator} ${detail}`, '', 'CONVERT');
   }
@@ -3735,7 +3856,7 @@ function logSummary(originalSize, newSize, timeElapsed) {
         <tr><td>${TenorI18n.t('files.logImagesFound')}</td><td class="highlight">${totalImages}</td></tr>
         <tr><td>${TenorI18n.t('files.logImagesProcessed')}</td><td>${totalOutput}${splitExtra}</td></tr>
         <tr><td>${TenorI18n.t('files.logRepairs')}</td><td>${fixesText}</td></tr>
-        ${conversionStats.errors > 0 ? `<tr><td>${TenorI18n.t('files.logErrors')}</td><td style="color:#e74c3c">${conversionStats.errors}</td></tr>` : ''}
+        ${conversionStats.errors > 0 ? `<tr><td>${TenorI18n.t('files.logErrors')}</td><td style="color:var(--danger-color)">${conversionStats.errors}</td></tr>` : ''}
         <tr><td>${TenorI18n.t('files.logOriginalSize')}</td><td>${formatBytes(originalSize)}</td></tr>
         <tr><td>${TenorI18n.t('files.logOptimizedSize')}</td><td>${formatBytes(newSize)}</td></tr>
         <tr><td>${TenorI18n.t('files.logSaved')}</td><td class="${saved > 0 ? 'saved' : 'increased'}">${saved > 0 ? formatBytes(saved) + ' (' + savedPct + '%)' : '+' + formatBytes(-saved)}</td></tr>
@@ -3788,7 +3909,7 @@ function saveToFileBatchLog(fileName, succeeded, originalSize = 0, newSize = 0) 
   batchStats.totalSplits += conversionStats.splits;
   batchStats.totalFixes += conversionStats.fixes;
   batchStats.totalErrors += conversionStats.errors;
-  // Defaults of 0 keep failure-path callers safe — files that never
+  // Defaults of 0 keep failure-path callers safe - files that never
   // produced a converted blob contribute nothing to the totals.
   batchStats.totalOriginalSize += originalSize;
   batchStats.totalNewSize += newSize;
@@ -3815,7 +3936,7 @@ function finalizeBatchLog() {
     fileHeader.style.marginTop = index > 0 ? '15px' : '5px';
     fileHeader.style.borderTop = index > 0 ? '1px solid var(--border-color)' : 'none';
     fileHeader.style.paddingTop = index > 0 ? '10px' : '0';
-    fileHeader.innerHTML = `<span class="log-timestamp"></span><span class="log-message"><strong>${escapeHtml(fileLog.fileName)}</strong> - ${fileLog.succeeded ? `<span style="color:#27ae60">✓ ${TenorI18n.t('files.logSuccessful')}</span>` : `<span style="color:#e74c3c">✗ ${TenorI18n.t('files.logFailed')}</span>`}</span>`;
+    fileHeader.innerHTML = `<span class="log-timestamp"></span><span class="log-message"><strong>${escapeHtml(fileLog.fileName)}</strong> - ${fileLog.succeeded ? `<span style="color:var(--success-color)">✓ ${TenorI18n.t('files.logSuccessful')}</span>` : `<span style="color:var(--danger-color)">✗ ${TenorI18n.t('files.logFailed')}</span>`}</span>`;
     logContainer.appendChild(fileHeader);
 
     fileLog.entries.forEach(entry => {
@@ -3846,12 +3967,12 @@ function finalizeBatchLog() {
       <div class="log-summary-title">${TenorI18n.t('files.logBatchSummaryTitle')}</div>
       <table class="log-summary-table">
         <tr><td>${TenorI18n.t('files.logFilesProcessed')}</td><td class="highlight">${batchStats.filesProcessed}</td></tr>
-        <tr><td>${TenorI18n.t('files.logSuccessful')}</td><td style="color:#27ae60">${batchStats.filesSucceeded}</td></tr>
-        <tr><td>${TenorI18n.t('files.logFailed')}</td><td style="color:${batchStats.filesFailed > 0 ? '#e74c3c' : '#7f8c8d'}">${batchStats.filesFailed}</td></tr>
+        <tr><td>${TenorI18n.t('files.logSuccessful')}</td><td style="color:var(--success-color)">${batchStats.filesSucceeded}</td></tr>
+        <tr><td>${TenorI18n.t('files.logFailed')}</td><td style="color:${batchStats.filesFailed > 0 ? 'var(--danger-color)' : 'var(--label-color)'}">${batchStats.filesFailed}</td></tr>
         <tr><td>${TenorI18n.t('files.logTotalImages')}</td><td>${batchStats.totalImages}</td></tr>
         <tr><td>${TenorI18n.t('files.logTotalSplits')}</td><td>${batchStats.totalSplits}</td></tr>
         <tr><td>${TenorI18n.t('files.logTotalFixes')}</td><td>${batchStats.totalFixes}</td></tr>
-        ${batchStats.totalErrors > 0 ? `<tr><td>${TenorI18n.t('files.logTotalErrors')}</td><td style="color:#e74c3c">${batchStats.totalErrors}</td></tr>` : ''}${sizeRowsHtml}
+        ${batchStats.totalErrors > 0 ? `<tr><td>${TenorI18n.t('files.logTotalErrors')}</td><td style="color:var(--danger-color)">${batchStats.totalErrors}</td></tr>` : ''}${sizeRowsHtml}
         <tr><td>${TenorI18n.t('files.logTotalTime')}</td><td>${batchTime.toFixed(1)}s</td></tr>
       </table>
     </div>
@@ -3943,10 +4064,10 @@ function exportLogToFile(filename = null, isBatch = false) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// EPUB Utilities — ported from EPUB Optimizer Pro
+// EPUB Utilities - ported from EPUB Optimizer Pro
 // ═══════════════════════════════════════════════════════════════════
 
-/** Defensive CSS injected into every XHTML <head> — prevents e-ink overflow. */
+/** Defensive CSS injected into every XHTML <head> - prevents e-ink overflow. */
 const DEFENSIVE_STYLE = '<style type="text/css">img,svg{max-width:100%;height:auto}body{overflow-wrap:break-word}table{max-width:100%;table-layout:fixed}pre,code{white-space:pre-wrap;word-wrap:break-word}*{box-sizing:border-box}</style>';
 
 /** Escape a string for safe insertion into XML attribute values / text content. */
@@ -4581,7 +4702,7 @@ function fixSvgWrappedImages(content) {
   }
 }
 
-// Ensure cover meta tag exists in OPF — DOMParser with regex fallback
+// Ensure cover meta tag exists in OPF - DOMParser with regex fallback
 function ensureCoverMeta(opfString) {
   try {
     const parser = new DOMParser();
@@ -5419,7 +5540,7 @@ async function convertEpubFile(file, progressCallback) {
     if (progressCallback) progressCallback((i / entries.length) * 60);
   }
 
-  // Embedded fonts are dropped entirely — CrossPoint never renders with them.
+  // Embedded fonts are dropped entirely - CrossPoint never renders with them.
   // Counters cover font files, @font-face rules (incl. data: URI fonts), and
   // encryption.xml shrinkage; they count uncompressed content bytes removed
   // (the final archive-size delta is reported separately by logSummary).
@@ -5537,7 +5658,7 @@ async function convertEpubFile(file, progressCallback) {
               matchingImgs.push(img);
             }
 
-            // Process each matching img — Pro's strip+inject approach
+            // Process each matching img - Pro's strip+inject approach
             for (const img of matchingImgs) {
               const src = img.getAttribute('src') || '';
 
@@ -5556,7 +5677,7 @@ async function convertEpubFile(file, progressCallback) {
                 const safeContainers = ['div', 'p', 'figure', 'aside', 'section', 'body'];
                 while (container && !safeContainers.includes(container.tagName.toLowerCase())) container = container.parentElement;
                 const insertTarget = container || img.parentElement;
-                // Strip constraining classes/styles from container — they were for the unsplit image
+                // Strip constraining classes/styles from container - they were for the unsplit image
                 if (insertTarget && insertTarget.tagName.toLowerCase() !== 'body') {
                   insertTarget.removeAttribute('class');
                   insertTarget.removeAttribute('style');
@@ -5592,7 +5713,7 @@ async function convertEpubFile(file, progressCallback) {
       console.warn('DOMParser error for', xhtmlPath, e.message);
     }
 
-    // Strip @font-face rules from inline <style> blocks — embedded font files
+    // Strip @font-face rules from inline <style> blocks - embedded font files
     // are removed, so leftover rules would reference missing resources
     t = t.replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi, (m, open, css, close) => {
       const ff = stripFontFaceRules(css);
@@ -5606,7 +5727,7 @@ async function convertEpubFile(file, progressCallback) {
       return open + ff.css + close;
     });
 
-    // Inject universal image constraint — prevents overflow on e-ink displays
+    // Inject universal image constraint - prevents overflow on e-ink displays
     if (t.includes('</head>')) {
       t = t.replace('</head>', DEFENSIVE_STYLE + '</head>');
     }
@@ -5889,7 +6010,7 @@ async function uploadFile() {
   const convertEnabled = document.getElementById('convertBeforeUpload').checked;
 
   if (files.length === 0) {
-    alert(TenorI18n.t('files.selectAtLeastOneFile'));
+    showWebAlert(TenorI18n.t('files.selectAtLeastOneFile'));
     return;
   }
 
@@ -5899,7 +6020,7 @@ async function uploadFile() {
     usedFileNames = await fetchExistingUploadNames();
   } catch (error) {
     isUploadInProgress = false;
-    alert(TenorI18n.t('files.checkExistingFailed', { message: error.message }));
+    showWebAlert(TenorI18n.t('files.checkExistingFailed', { message: error.message }));
     return;
   }
 
@@ -5935,7 +6056,7 @@ async function uploadFile() {
     if (currentIndex >= files.length) {
       // All files processed - show summary
       if (failedFiles.length === 0) {
-        progressFill.style.backgroundColor = '#4caf50';
+        progressFill.style.backgroundColor = 'var(--success-color)';
         progressText.textContent = TenorI18n.t('files.allUploadsComplete');
 
         // Finalize batch log if in batch mode
@@ -5950,7 +6071,7 @@ async function uploadFile() {
           }, 1000);
         }
       } else {
-        progressFill.style.backgroundColor = '#e74c3c';
+        progressFill.style.backgroundColor = 'var(--danger-color)';
         const failedList = failedFiles.map(f => f.name).join(', ');
         progressText.textContent = TenorI18n.t('files.uploadedPartial', {
           done: files.length - failedFiles.length,
@@ -5988,7 +6109,7 @@ async function uploadFile() {
     // Reset progress bar instantly without transition when starting a new file
     progressFill.classList.add('no-transition');
     progressFill.style.width = '0%';
-    progressFill.style.backgroundColor = '#27ae60';
+    progressFill.style.backgroundColor = 'var(--success-color)';
     // Re-enable transition after a brief delay
     setTimeout(() => progressFill.classList.remove('no-transition'), 50);
 
@@ -6111,7 +6232,7 @@ async function uploadFile() {
     try {
       // Convert EPUB if needed
       if (needsConversion) {
-        progressFill.style.backgroundColor = '#9b59b6'; // Purple for conversion
+        progressFill.style.backgroundColor = 'var(--secondary-color)'; // Purple for conversion
         progressText.textContent = TenorI18n.t('files.convertingFile', {
           file: file.name,
           index: currentIndex + 1,
@@ -6136,7 +6257,7 @@ async function uploadFile() {
 
           // Create new File from converted blob
           file = new File([convertedBlob], file.name, { type: 'application/epub+zip' });
-          progressFill.style.backgroundColor = '#27ae60'; // Back to green for upload
+          progressFill.style.backgroundColor = 'var(--success-color)'; // Back to green for upload
           conversionSucceeded = true;
           if (renamedAway) log(TenorI18n.t('files.logKeepSyncRenamed', { file: escapeHtml(file.name) }), 'warning', 'INFO');
           convOriginalSize = origFileSize;
@@ -6158,7 +6279,7 @@ async function uploadFile() {
 
           // If conversion fails, try uploading original file
           progressText.textContent = TenorI18n.t('files.conversionFailedUploadOriginal', { file: file.name });
-          progressFill.style.backgroundColor = '#e67e22'; // Orange for fallback
+          progressFill.style.backgroundColor = 'var(--warning-color)'; // Orange for fallback
           // Reset progress bar to 0% for original file upload
           progressFill.style.width = '0%';
         }
@@ -6218,7 +6339,7 @@ function showFailedUploadsBanner() {
       : errorText;
     item.innerHTML = `
       <div class="failed-file-info">
-        <div class="failed-file-name">${escapeHtml(failedFile.name)}</div>
+        <div class="failed-file-name">${fileIcon('file')} ${escapeHtml(failedFile.name)}</div>
         <div class="failed-file-error">${renderedError}</div>
       </div>
       <button class="retry-btn" onclick="retrySingleUpload(${index})">${TenorI18n.t('files.retry')}</button>
@@ -6288,14 +6409,14 @@ function retryAllFailedUploads() {
     const folderName = document.getElementById('folderName').value.trim();
 
     if (!folderName) {
-      alert(TenorI18n.t('files.folderNameRequired'));
+      showWebAlert(TenorI18n.t('files.folderNameRequired'));
       return;
     }
 
     // Validate folder name
     const validName = /^(?!\.{1,2}$)[^"*:<>?\/\\|]+$/.test(folderName);
     if (!validName) {
-      alert(TenorI18n.t('files.folderNameInvalid'));
+      showWebAlert(TenorI18n.t('files.folderNameInvalid'));
       return;
     }
 
@@ -6310,12 +6431,12 @@ function retryAllFailedUploads() {
       if (xhr.status === 200) {
         window.location.reload();
       } else {
-        alert(TenorI18n.t('files.createFolderFailed', { message: xhr.responseText }));
+        showWebAlert(TenorI18n.t('files.createFolderFailed', { message: xhr.responseText }));
       }
     };
 
     xhr.onerror = function() {
-      alert(TenorI18n.t('files.createFolderNetworkError'));
+      showWebAlert(TenorI18n.t('files.createFolderNetworkError'));
     };
 
     xhr.send(formData);
@@ -6326,7 +6447,7 @@ function retryAllFailedUploads() {
     document.getElementById('renameItemName').textContent = name;
     document.getElementById('renameItemPath').value = path;
     document.getElementById('renameNewName').value = name;
-    document.getElementById('renameModal').classList.add('open');
+    openWebModal('renameModal');
     setTimeout(() => {
       const input = document.getElementById('renameNewName');
       input.focus();
@@ -6335,7 +6456,7 @@ function retryAllFailedUploads() {
   }
 
   function closeRenameModal() {
-    document.getElementById('renameModal').classList.remove('open');
+    closeWebModal('renameModal');
   }
 
   function confirmRename() {
@@ -6343,11 +6464,11 @@ function retryAllFailedUploads() {
     const newName = document.getElementById('renameNewName').value.trim();
 
     if (!newName) {
-      alert(TenorI18n.t('files.newNameRequired'));
+      showWebAlert(TenorI18n.t('files.newNameRequired'));
       return;
     }
     if (newName.includes('/') || newName.includes('\\')) {
-      alert(TenorI18n.t('files.nameNoSlashes'));
+      showWebAlert(TenorI18n.t('files.nameNoSlashes'));
       return;
     }
 
@@ -6362,13 +6483,13 @@ function retryAllFailedUploads() {
       if (xhr.status === 200) {
         window.location.reload();
       } else {
-        alert(TenorI18n.t('files.renameFailed', { message: xhr.responseText }));
+        showWebAlert(TenorI18n.t('files.renameFailed', { message: xhr.responseText }));
       }
       closeRenameModal();
     };
 
     xhr.onerror = function() {
-      alert(TenorI18n.t('files.renameNetworkError'));
+      showWebAlert(TenorI18n.t('files.renameNetworkError'));
       closeRenameModal();
     };
 
@@ -6441,7 +6562,7 @@ function retryAllFailedUploads() {
     document.getElementById('moveItemName').textContent = name;
     document.getElementById('moveItemPath').value = path;
     document.getElementById('moveDestPath').value = currentPath === '/' ? '/' : currentPath;
-    document.getElementById('moveModal').classList.add('open');
+    openWebModal('moveModal');
     loadMoveFolderOptions();
     setTimeout(() => {
       document.getElementById('moveDestPath').focus();
@@ -6449,7 +6570,7 @@ function retryAllFailedUploads() {
   }
 
   function closeMoveModal() {
-    document.getElementById('moveModal').classList.remove('open');
+    closeWebModal('moveModal');
   }
 
   function confirmMove() {
@@ -6457,7 +6578,7 @@ function retryAllFailedUploads() {
     const destPath = normalizePath(document.getElementById('moveDestPath').value);
 
     if (!destPath) {
-      alert(TenorI18n.t('files.moveDestRequired'));
+      showWebAlert(TenorI18n.t('files.moveDestRequired'));
       return;
     }
 
@@ -6472,13 +6593,13 @@ function retryAllFailedUploads() {
       if (xhr.status === 200) {
         window.location.reload();
       } else {
-        alert(TenorI18n.t('files.moveFailed', { message: xhr.responseText }));
+        showWebAlert(TenorI18n.t('files.moveFailed', { message: xhr.responseText }));
       }
       closeMoveModal();
     };
 
     xhr.onerror = function() {
-      alert(TenorI18n.t('files.moveNetworkError'));
+      showWebAlert(TenorI18n.t('files.moveNetworkError'));
       closeMoveModal();
     };
 
@@ -6488,6 +6609,7 @@ function retryAllFailedUploads() {
   updateImagePickerCount();
   TenorI18n.onChange(applyLocaleToDynamicChrome);
 
+<!--#include file="shared/PluginHost.js.inc" -->
   hydrate();
 </script>
 </body>

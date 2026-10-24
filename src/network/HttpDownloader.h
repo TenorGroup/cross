@@ -1,9 +1,12 @@
 #pragma once
 #include <HalStorage.h>
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace freeink { class SecureHttpClient; }
 
@@ -39,8 +42,9 @@ class HttpDownloader {
     HTTP_ERROR,
     FILE_ERROR,
     ABORTED,
-    CACHE_ERROR,  // File committed, but stale reading cache could not be removed.
+    CACHE_ERROR,   // File committed, but stale reading cache could not be removed.
     INVALID_EPUB,  // Arrived whole, but is not a readable EPUB; nothing was replaced.
+    UNAUTHORIZED,  // 401/403: callers holding a refreshable credential can retry
   };
 
   // Pre-flight floor for starting a TLS transfer. Below this the session or
@@ -68,6 +72,8 @@ class HttpDownloader {
     uint32_t largestMin = 0;
   };
 
+  using Header = std::pair<std::string, std::string>;
+
   /**
    * HTTP status of the last request, or 0 when it never got a response (DNS,
    * connect, TLS, timeout). fetchUrl() returns only success or failure; this
@@ -84,39 +90,92 @@ class HttpDownloader {
   static bool lastAnswerRedirected();
 
   /**
-   * Fetch text content from a URL with optional credentials.
+   * Fetch text content from a URL with optional credentials. `headers` are
+   * added to the request, as for downloadToFile().
    */
-  static bool fetchUrl(const std::string& url, std::string& outContent, const std::string& username = "",
-                       const std::string& password = "");
-
   static bool fetchUrl(const std::string& url, Stream& stream, const std::string& username = "",
-                       const std::string& password = "");
+                       const std::string& password = "", const std::vector<Header>& headers = {});
 
   /**
-   * Stream the response body to onData as it arrives, without buffering it. progress also runs
-   * while the server is silent; a true *cancelFlag then ends the transfer, as in downloadToFile.
+   * Stream the response body to onData as it arrives, without buffering it.
    */
   static bool fetchUrl(const std::string& url, const DataCallback& onData, const std::string& username = "",
-                       const std::string& password = "", const char* rootCA = nullptr, bool allowRedirects = true,
+                       const std::string& password = "", const std::vector<Header>& headers = {});
+
+  /**
+   * Pinned-root fetch (OTA, time zone, tenor-only callers): rootCA, when set, is the only trust anchor and
+   * allowRedirects false refuses any redirect. rootCA has no default so a call with only user and password
+   * stays the headers overload above. progress also runs while the server is silent; a true *cancelFlag
+   * ends the transfer, as in downloadToFile. Without rootCA the chain is judged by network_trust::forUrl.
+   */
+  static bool fetchUrl(const std::string& url, const DataCallback& onData, const std::string& username,
+                       const std::string& password, const char* rootCA, bool allowRedirects = true,
                        ProgressCallback progress = nullptr, bool* cancelFlag = nullptr, TransferStats* stats = nullptr);
 
   /**
    * Bytes first..last of a resource over a connection of its own, pinned to rootCA, no redirects:
    * a 206 whose Content-Range starts at `first` streams its part to onData. A 200 (the whole body)
-   * is taken only when first is 0, and sets *whole. Otherwise as the streaming fetchUrl above.
+   * is taken only when first is 0, and sets *whole. Otherwise as the pinned-root fetchUrl above.
    */
   static bool fetchRange(const std::string& url, size_t first, size_t last, const DataCallback& onData,
                          const char* rootCA, ProgressCallback progress, bool* cancelFlag, TransferStats* stats,
                          bool* whole, RangeSession* session = nullptr);
 
   /**
-   * Download a file to the SD card with optional credentials.
+   * Authentication and response inspection options for fetchUrl/postForm.
+   * `bearer`, when set, sends "Authorization: Bearer <token>" and overrides
+   * Basic credentials. `statusOut` receives the final HTTP status (0 when the
+   * request never reached a response). `captureErrorBody` also streams a 401
+   * response body to the callback - OPDS authentication documents are served
+   * as 401 bodies.
+   */
+  struct FetchOptions {
+    std::string username;
+    std::string password;
+    std::string bearer;
+    // Accept header for content negotiation (e.g. preferring OPDS 2.0 JSON
+    // from servers that also speak Atom); empty sends none.
+    std::string accept;
+    // Accept-Language header, so servers that localize the catalog return it
+    // in the reader's UI language; empty sends none.
+    std::string acceptLanguage;
+    // Extra headers (per-server custom headers), sent to the starting origin only.
+    std::vector<Header> headers;
+    int* statusOut = nullptr;
+    bool captureErrorBody = false;
+  };
+
+  static bool fetchUrl(const std::string& url, const DataCallback& onData, const FetchOptions& options);
+
+  /**
+   * POST an application/x-www-form-urlencoded body (e.g. an OAuth token
+   * request) and collect the response body (any status) into outResponse,
+   * capped at a few KB. Returns true when the response status is 2xx.
+   */
+  static bool postForm(const std::string& url, const std::string& formBody, std::string& outResponse,
+                       int* statusOut = nullptr);
+
+  /**
+   * Download a file to the SD card with optional credentials. `headers` are
+   * added to the request (e.g. a Bearer Authorization), alongside any Basic
+   * auth derived from username/password.
    *
    * The legacy downgradeRedirectsToHttp flag is rejected by the TLS backend.
    * validate, when given, judges the staged file before it replaces destPath: false is INVALID_EPUB.
    */
   static DownloadError downloadToFile(const std::string& url, const std::string& destPath,
-                                      ProgressCallback progress = nullptr, bool* cancelFlag = nullptr,
+                                      ProgressCallback progress = nullptr, const bool* cancelFlag = nullptr,
                                       const std::string& username = "", const std::string& password = "",
-                                      bool downgradeRedirectsToHttp = false, bool (*validate)(const char* path) = nullptr);
+                                      const std::vector<Header>& headers = {}, bool downgradeRedirectsToHttp = false,
+                                      bool (*validate)(const char* path) = nullptr);
+
+  /**
+   * POST a body (e.g. an LCP license to the fulfillment service) and stream
+   * the response to the SD card, staged through "<dest>.part" like
+   * downloadToFile. Single attempt, no redirects or Range resume: the
+   * endpoint is ours and answers directly.
+   */
+  static DownloadError postToFile(const std::string& url, const std::string& body, const std::string& contentType,
+                                  const std::string& destPath, ProgressCallback progress = nullptr,
+                                  const bool* cancelFlag = nullptr);
 };

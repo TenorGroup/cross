@@ -1,7 +1,8 @@
 #pragma once
-#include "activities/X3ActivityLayout.h"
-#include "shells/ugly/UglyMarkSeed.h"
-#include <OpdsParser.h>
+#include <LcpLicense.h>
+#include <OpdsClient.h>
+#include <OpdsEntry.h>
+#include <OpdsPublicationDoc.h>
 
 #include <cstdint>
 #include <string>
@@ -9,9 +10,12 @@
 #include <vector>
 
 #include "OpdsServerStore.h"
-#include "activities/Activity.h"
-#include "components/UiAppHost.h"
-#include "util/ButtonNavigator.h"
+#include "activities/CatalogActivity.h"
+#include "activities/X3ActivityLayout.h"
+#include "activities/settings/X3SettingsLayout.h"
+#include "network/OpdsHttpTransport.h"
+
+struct DetailsSpec;
 
 namespace opds_power {
 constexpr uint32_t IDLE_TIMEOUT_MS = 5u * 60u * 1000u;
@@ -35,14 +39,12 @@ inline bool idleExitDue(const uint32_t now, const bool waiting, const bool radio
  * Activity for browsing and downloading books from an OPDS server.
  * Supports navigation through catalog hierarchy and downloading EPUBs.
  */
-class OpdsBookBrowserActivity final : public Activity, private UiAppHost {
+class OpdsBookBrowserActivity final : public CatalogActivity {
   x3activity::InfoPages x3Info;
 
  public:
   tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Network; }
   std::string x3NavigationLabel() const override { return I18N.get(StrId::STR_OPDS_BROWSER); }
-  enum class BrowserState { CHECK_WIFI, WIFI_SELECTION, LOADING, BROWSING, DOWNLOADING, ERROR, SEARCH_INPUT };
-
   explicit OpdsBookBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, OpdsServer server);
 
   void onEnter() override;
@@ -51,9 +53,9 @@ class OpdsBookBrowserActivity final : public Activity, private UiAppHost {
   void render(RenderLock&&) override;
 
  private:
-  mutable ugly::MarkState mark_;
-  ButtonNavigator buttonNavigator;
-  BrowserState state = BrowserState::LOADING;
+  // Subclass actions after the base's ACTION_SEARCH/ACTION_CANCEL.
+  static constexpr freeink::ui::ActionId ACTION_PAGE = ACTION_USER + 2;
+
   std::vector<OpdsEntry> entries;
   // Row buffer, built whenever entries changes (fetchFeed()/releaseEntries())
   // so buildBrowsingScreen() reuses it on every repaint instead of rebuilding
@@ -62,58 +64,131 @@ class OpdsBookBrowserActivity final : public Activity, private UiAppHost {
   void rebuildRowItems();
   std::vector<std::string> navigationHistory;
   std::string currentPath;
+  // The active search query. While browsing its results the header shows it
+  // (quoted, library-view convention) instead of the server name, and
+  // reopening search pre-fills the keyboard with it.
+  std::string searchQuery;
+  // Quoted form of searchQuery for the header; derived by setSearchQuery().
+  std::string headerSearchTitle;
+  // searchQuery per navigationHistory entry, pushed/popped in lockstep, so
+  // Back restores the search term (or its absence) of the feed it returns to.
+  std::vector<std::string> searchQueryHistory;
+  // Raw pagination hrefs of the current feed: following them keeps the
+  // search-term header (page 2 of results is still the same search).
+  std::string pageNextHref;
+  std::string pagePrevHref;
+  std::string pageFirstHref;
+  std::string pageLastHref;
+  bool isPaginationHref(const std::string& href) const {
+    return (!href.empty()) &&
+           (href == pageNextHref || href == pagePrevHref || href == pageFirstHref || href == pageLastHref);
+  }
+  // Title of the current feed (shown in the header when no search is active).
+  std::string feedTitle;
+  // Feed-reported pagination ("Page N of M" between the arrows); 0 = unknown.
+  int pageCurrent = 0;
+  int pageTotal = 0;
+  void setSearchQuery(const std::string& query);
+  // The book the open details page acquires, and its cover art on an SD temp
+  // (removed when the page closes).
+  OpdsEntry detailBook;
+  std::string detailCoverPath;
+  // Raw search URL template ({searchTerms} or RFC 6570 {?query} style),
+  // either inlined in the feed or fetched from an OpenSearch description.
   std::string searchTemplate;
-  int selectorIndex = 0;
-  void renderUglyNote();
-  std::string errorMessage;
-  std::string statusMessage;
-  size_t downloadProgress = 0;
-  size_t downloadTotal = 0;
+  // OpenSearch description document URL (OPDS 1.x feeds that don't inline a
+  // template); fetched lazily on first search.
+  std::string searchDescriptionUrl;
+  // Base URL the template is relative to: the OpenSearch description URL, or
+  // empty when the template came from the feed itself (resolve against feed).
+  std::string searchTemplateBase;
 
   OpdsServer server;  // Copied at construction - safe even if the store changes during browsing
 
-  // Viewport memory (top/visibleRows) for the browsing list; `selected` is
-  // mirrored from selectorIndex at build/move time.
-  freeink::ui::ListNav listNav;
-  // Read by HttpDownloader between chunks; set by the Cancel button handler or
-  // a Back press, both pumped from the download's progress callback.
-  bool cancelDownload = false;
-  // Set when the cancel came from the home gesture (consumed by the download
-  // callback's own input pump); exit to home after the abort unwinds.
-  bool goHomeAfterCancel = false;
+  // All OPDS network orchestration (feed fetch, 401 auth, token refresh,
+  // indirect acquisition, OpenSearch, publication docs) lives in the SDK
+  // client; this activity only builds UI and drives file I/O. The transport
+  // must outlive the client, so it is declared first.
+  OpdsHttpTransport opdsTransport;
+  freeink::opds::OpdsClient opdsClient{opdsTransport};
+
+  // Tenor: leave after five idle minutes with the radio up (browsing or an error on screen).
   uint32_t idleSince = 0;
   bool idleTimerStarted = false;
   bool runtimeStarted = false;
-
-  // Single screen fn dispatching on `state`: every state shares the themed
-  // header and gets built through FreeInkUI.
-  static void rootScreen(UiScreen& screen, void* user);
-  static void onRowEvent(const freeink::ui::ActionEvent& event, void* user);
-  static void onSearchEvent(const freeink::ui::ActionEvent& event, void* user);
-  static void onCancelEvent(const freeink::ui::ActionEvent& event, void* user);
-  static void onBackEvent(const freeink::ui::ActionEvent& event, void* user);
-  void screenHeader(UiScreen& screen, bool withSearch);
-  void buildBrowsingScreen(UiScreen& screen);
-  void buildDownloadScreen(UiScreen& screen);
-  void buildStatusScreen(UiScreen& screen);
-  void activateSelected();
-
-  void checkAndConnectWifi();
-  void launchWifiSelection();
-  void onWifiSelectionComplete(bool connected);
   bool idleExitDue(unsigned long now, bool interaction);
+  // Non-list states (loading, error, download) draw as X3 info pages or the notebook note.
+  void renderUglyNote();
+
+  // --- CatalogActivity / UiListActivity contract -----------------------------
+  int listCount() const override { return state == State::BROWSING ? static_cast<int>(entries.size()) : 0; }
+  bool hasSearch() const override { return !searchTemplate.empty() || !searchDescriptionUrl.empty(); }
+  std::string searchPrefill() const override { return searchQuery; }
+  void activateIndex(int index) override;
+  void buildScreen(UiScreen& screen) override;
+  void drawFooter() override;
+  void startBrowse() override;
+  void downloadFinished(bool cancelled) override;
+  void performSearch(const std::string& query) override;
+  void onBackButton() override;
+  // Pagination side buttons; everything else
+  // falls through to the shared catalog input handling.
+  bool handleCustomInput() override;
+  void drawChrome() override {
+    if (tenorchrome::x3ScreenLayoutEnabled()) x3settings::drawPath(renderer, browserTitle());
+    else UiListActivity::drawChrome();
+  }
+
+  // Bottom pagination tab bar (arrow icons); drawn only when the feed
+  // advertises next/previous/first/last links.
+  void buildPaginationBar(UiScreen& screen);
+  void followPageLink(const std::string& href);
+  void buildBrowsingScreen(UiScreen& screen);
+  static void onPageEvent(const freeink::ui::ActionEvent& event, void* user);
+
+  // LCP acquisition: fetch the license, fulfill through the LCP service,
+  // then prompt for the passphrase and store the device-wrapped book key.
+  void downloadLcpBook(const OpdsEntry& book);
+  enum class LcpUnlock { Ok, WrongPassphrase, Failed };
+  // Content key wrapped to this device's enrolled X25519 key (base64 fields).
+  struct LcpWrappedKey {
+    std::string epk, iv, ct, tag;
+  };
+  LcpUnlock requestLcpUnlock(const std::string& userKeyHex);
+  // Saved per-provider hash first; the keyboard only on a miss or a 403.
+  void startLcpUnlock();
+  void promptLcpPassphrase(bool retry);
+  // Decodes the /unlock response ({content_key: b64, expires: epoch}).
+  static bool parseUnlockResponse(const std::string& response, LcpWrappedKey* wrapped, int64_t* expiresAt);
+  std::string downloadDestination(const OpdsEntry& book) const;
+  bool verifyAndRegisterEpub(const std::string& filename);
+  // Fulfilled LCP book awaiting its passphrase (path + parsed license).
+  freeink::content::LcpLicense pendingLcpLicense;
+  // Raw license JSON, kept verbatim for the /unlock request body.
+  std::string pendingLcpLicenseText;
+  std::string pendingLcpPath;
+
   void fetchFeed(const std::string& path);
   void releaseEntries();
   void navigateToEntry(const OpdsEntry& entry);
   void navigateBack();
   void downloadBook(const OpdsEntry& book);
-  void launchSearch();
-  void performSearch(const std::string& query);
-  // Chi chan tu ngu khi that su dang ban. Truoc day day la `return true` vo dieu
-  // kien, nen mo man duyet ra la may khong bao gio tu ngu nua; BROWSING, ERROR va
-  // SEARCH_INPUT deu la luc may ngoi cho nguoi.
-  bool preventAutoSleep() override {
-    return state == BrowserState::CHECK_WIFI || state == BrowserState::LOADING ||
-           state == BrowserState::DOWNLOADING;
-  }
+  void openPublicationDetail(const OpdsEntry& entry);
+  static void fillDetailInfo(const OpdsPublication& publication, DetailsSpec& spec);
+  // Download the publication's cover art to an SD temp for the details page.
+  void loadDetailCover(const std::string& docUrl, const std::string& coverHref);
+  // Label for the details-page acquire button: Buy for a purchase, Place Hold
+  // for a borrowable title with no copies available, otherwise Borrow (library
+  // loan) or Download (direct file).
+  const char* acquireLabel(const OpdsAvailability& av) const;
+  const char* browserTitle() const;
+  bool ensureSearchTemplate();
+  // Client status hook: reflect the login phase in the status line.
+  static void onClientStatus(void* ctx, freeink::opds::ClientPhase phase);
+  // Persist the client's current token state (or clear it) for this server.
+  // Returns false (and logs) if the SD write failed, so callers can detect it.
+  bool persistTokens();
+  // Token-store key: URL plus username, so two accounts on the same server
+  // keep separate tokens. \x1f (unit separator) can't appear in either field.
+  std::string tokenKey() const { return server.url + '\x1f' + server.username; }
 };

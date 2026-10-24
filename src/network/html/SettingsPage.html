@@ -5,73 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title data-i18n="settings.docTitle">Settings - tenor/cross</title>
   <style>
-    :root {
-      --font-color: #333;
-      --bg: #f5f5f5;
-      --title-color: #2c3e50;
-      --card-bg: #FFF;
-      --label-color: #7f8c8d;
-      --border-color: #eee;
-      --accent-color: rgb(110, 154, 130);
-      --accent-hover-color: #5a8c73;
-      --toggle-bg: #ccc;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --font-color: #f5f5f5;
-        --bg: #333;
-        --title-color: #ecf0f1;
-        --card-bg: #444;
-        --label-color: #bdc3c7;
-        --border-color: #555;
-        --toggle-bg: #666;
-        color-scheme: dark;
-      }
-    }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-        Oxygen, Ubuntu, sans-serif;
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 20px;
-      background-color: var(--bg);
-      color: var(--font-color);
-    }
-    h1 {
-      color: var(--title-color);
-      border-bottom: 2px solid var(--accent-color);
-      padding-bottom: 10px;
-    }
-    h2 {
-      color: var(--title-color);
-      margin-top: 0;
-    }
-    .card {
-      background: var(--card-bg);
-      border-radius: 8px;
-      padding: 20px;
-      margin: 15px 0;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-    .nav-links {
-      margin: 20px 0;
-      display: flex;
-      gap: 10px;
-    }
-    .nav-links a {
-      padding: 10px 20px;
-      color: var(--font-color);
-      text-decoration: none;
-      border-radius: 4px;
-    }
-    .nav-links a.active {
-      background-color: var(--accent-color);
-      color: white;
-    }
-    .nav-links a:not(.active):hover {
-      background-color: var(--accent-hover-color);
-      color: white;
-    }
     .setting-row {
       display: flex;
       justify-content: space-between;
@@ -97,7 +30,7 @@
     .setting-control input[type="text"],
     .setting-control input[type="password"] {
       padding: 6px 10px;
-      border: 1px solid #ddd;
+      border: 1px solid var(--border-color);
       border-radius: 4px;
       font-size: 0.95em;
       background: var(--card-bg);
@@ -139,7 +72,7 @@
       width: 20px;
       left: 3px;
       bottom: 3px;
-      background-color: white;
+      background-color: var(--button-text);
       border-radius: 50%;
       transition: 0.3s;
     }
@@ -150,12 +83,11 @@
       transform: translateX(22px);
     }
     .save-container {
-      text-align: center;
       margin: 20px 0;
     }
     .save-btn {
-      background-color: #27ae60;
-      color: white;
+      background-color: var(--success-color);
+      color: var(--button-text);
       padding: 12px 40px;
       border: none;
       border-radius: 4px;
@@ -164,29 +96,13 @@
       font-weight: 600;
     }
     .save-btn:hover {
-      background-color: #219a52;
+      background-color: var(--accent-hover-color);
     }
     .save-btn:disabled {
-      background-color: #95a5a6;
+      background-color: var(--label-color);
       cursor: not-allowed;
     }
-    .message {
-      padding: 12px;
-      border-radius: 4px;
-      margin: 15px 0;
-      text-align: center;
-      display: none;
-    }
-    .message.success {
-      background-color: #d4edda;
-      color: #155724;
-      border: 1px solid #c3e6cb;
-    }
-    .message.error {
-      background-color: #f8d7da;
-      color: #721c24;
-      border: 1px solid #f5c6cb;
-    }
+
     .loader-container {
       display: flex;
       justify-content: center;
@@ -196,7 +112,7 @@
     .loader {
       width: 48px;
       height: 48px;
-      border: 5px solid #AAA;
+      border: 5px solid var(--border-color);
       border-bottom-color: transparent;
       border-radius: 50%;
       display: inline-block;
@@ -230,24 +146,24 @@
     }
     .btn-add {
       background-color: var(--accent-color);
-      color: white;
+      color: var(--button-text);
     }
     .btn-add:hover {
       background-color: var(--accent-hover-color);
     }
     .btn-delete {
-      background-color: #e74c3c;
-      color: white;
+      background-color: var(--danger-color);
+      color: var(--button-text);
     }
     .btn-delete:hover {
-      background-color: #c0392b;
+      background-color: var(--danger-hover);
     }
     .btn-save-server {
-      background-color: #27ae60;
-      color: white;
+      background-color: var(--success-color);
+      color: var(--button-text);
     }
     .btn-save-server:hover {
-      background-color: #219a52;
+      background-color: var(--accent-hover-color);
     }
     @media (max-width: 600px) {
       body {
@@ -277,20 +193,13 @@
       }
     }
   </style>
-<link rel="stylesheet" href="/theme.css" />
+  <link rel="stylesheet" href="/assets/web.css" />
+  <link rel="stylesheet" href="/theme.css" />
 </head>
-<body class="tenor-transfer">
-  <!--TENOR_BRAND-->
+<body class="web-ui tenor-transfer">
+  <!--#include file="shared/Header.html.inc" -->
+<main class="page-content">
 
-  <div class="nav-links">
-    <a href="/" data-i18n="nav.device">Thiết bị</a>
-    <a href="/files" data-i18n="nav.files">Tệp</a>
-    <a href="/settings" class="active" data-i18n="nav.settings">Cài đặt</a>
-    <a href="/fonts" data-i18n="nav.fonts">Font chữ</a>
-    <div class="tenor-lang-slot" data-tenor-lang-selector></div>
-  </div>
-
-  <div id="message" class="message"></div>
 
   <div id="settings-container">
     <div class="loader-container">
@@ -304,14 +213,12 @@
 
   <div id="wifi-container"></div>
   <div id="opds-container"></div>
+  <div id="plugin-container"></div>
 
-  <footer class="tenor-footer"><span data-i18n="home.footerLibrary">Thư viện trên thiết bị</span><a href="https://cross.tenor.vn" target="_blank" rel="noopener noreferrer">cross.tenor.vn ↗</a></footer>
+  </main>
+<!--#include file="shared/Footer.html.inc" -->
 
-<script src="/js/web-i18n.js"></script>
 <script>
-  // The shared masthead tagline lives in BrandHeader.inc; bind it here rather
-  // than editing the shared header.
-  TenorI18n.bind('.tenor-masthead .tenor-local', 'brand.localTagline');
   TenorI18n.init();
 
   let allSettings = [];
@@ -331,25 +238,6 @@
       .replaceAll("'", "&#039;");
   }
 
-  // The status line is kept as data plus a message thunk so a locale change
-  // re-renders what is on screen without repeating the action.
-  let messageState = null;
-  let messageTimer = null;
-
-  function showMessage(text, isError) {
-    messageState = { text: text, isError: isError };
-    renderMessage();
-  }
-
-  function renderMessage() {
-    const msg = document.getElementById('message');
-    if (!messageState) return;
-    msg.textContent = typeof messageState.text === 'function' ? messageState.text() : messageState.text;
-    msg.className = 'message ' + (messageState.isError ? 'error' : 'success');
-    msg.style.display = 'block';
-    if (messageTimer) clearTimeout(messageTimer);
-    messageTimer = setTimeout(function() { msg.style.display = 'none'; }, 4000);
-  }
 
   function renderControl(setting) {
     const id = 'setting-' + setting.key;
@@ -378,10 +266,13 @@
     }
 
     if (setting.type === 'string') {
-      const inputType = setting.name.toLowerCase().includes('password') ? 'password' : 'text';
+      const isPassword = 'hasPassword' in setting;
+      const inputType = isPassword ? 'password' : 'text';
       const val = setting.value || '';
       return '<input type="' + inputType + '" id="' + id + '" value="' + escapeHtml(val) + '"' +
-        ' oninput="handleSettingChanged(\'' + setting.key + '\')">';
+        ' placeholder="' + (setting.hasPassword ? TenorI18n.t('settings.unchanged') : '') + '"' +
+        ' oninput="this.dataset.changed=\'true\';handleSettingChanged(\'' + setting.key + '\')">' +
+        (setting.hasPassword ? ' <button class="btn-small btn-delete" type="button" onclick="clearPassword(\'' + setting.key + '\')">' + TenorI18n.t('settings.clear') + '</button>' : '');
     }
 
     return '';
@@ -401,6 +292,7 @@
       return parseInt(el.value, 10);
     }
     if (setting.type === 'string') {
+      if ('hasPassword' in setting && !el.dataset.changed) return undefined;
       return el.value;
     }
     return undefined;
@@ -408,6 +300,13 @@
 
   function markChanged() {
     document.getElementById('saveBtn').disabled = false;
+  }
+
+  function clearPassword(key) {
+    const el = getControl(key);
+    el.value = '';
+    el.dataset.changed = 'true';
+    handleSettingChanged(key);
   }
 
   function findSetting(key) {
@@ -543,7 +442,7 @@
         html += '<div class="card"><h2>' + escapeHtml(category) + '</h2>';
         groups[category].forEach(function(s) {
           html += '<div class="setting-row" id="row-setting-' + s.key + '">' +
-            '<span class="setting-name">' + escapeHtml(s.name) + '</span>' +
+            '<label class="setting-name" for="setting-' + s.key + '">' + escapeHtml(s.name) + '</label>' +
             '<span class="setting-control">' + renderControl(s) + '</span>' +
             '</div>';
         });
@@ -562,7 +461,7 @@
     } catch (e) {
       console.error(e);
       document.getElementById('settings-container').innerHTML =
-        '<div class="card"><p style="text-align:center;color:#e74c3c;" data-i18n="settings.loadFailed">' +
+        '<div class="card"><p style="text-align:center;color:var(--danger-color);" data-i18n="settings.loadFailed">' +
         TenorI18n.t('settings.loadFailed') + '</p></div>';
     }
   }
@@ -582,7 +481,7 @@
     });
 
     if (Object.keys(changes).length === 0) {
-      showMessage(function() { return TenorI18n.t('settings.noChanges'); }, false);
+      showWebToast(TenorI18n.t('settings.noChanges'), false);
       btn.textContent = TenorI18n.t('settings.save');
       return;
     }
@@ -604,10 +503,10 @@
         originalValues[key] = changes[key];
       }
 
-      showMessage(function() { return TenorI18n.t('settings.saved'); }, false);
+      showWebToast(TenorI18n.t('settings.saved'), false);
     } catch (e) {
       console.error(e);
-      showMessage(function() { return TenorI18n.t('settings.error', { message: e.message }); }, true);
+      showWebToast(TenorI18n.t('settings.error', { message: e.message }), true);
     }
 
     btn.textContent = TenorI18n.t('settings.save');
@@ -686,7 +585,7 @@
     const id = idx === -1 ? 'new' : idx;
     const ssid = document.getElementById('wifi-ssid-' + id).value.trim();
     if (!ssid) {
-      showMessage(function() { return TenorI18n.t('settings.ssidRequired'); }, true);
+      showWebToast(TenorI18n.t('settings.ssidRequired'), true);
       return;
     }
 
@@ -704,15 +603,15 @@
         body: JSON.stringify(data)
       });
       if (!resp.ok) throw new Error(await resp.text());
-      showMessage(function() { return TenorI18n.t('settings.wifiSaved'); }, false);
+      showWebToast(TenorI18n.t('settings.wifiSaved'), false);
       await loadWifiNetworks();
     } catch (e) {
-      showMessage(function() { return TenorI18n.t('settings.error', { message: e.message }); }, true);
+      showWebToast(TenorI18n.t('settings.error', { message: e.message }), true);
     }
   }
 
   async function deleteWifiNetwork(idx) {
-    if (!confirm(TenorI18n.t('settings.wifiDeleteConfirm'))) return;
+    if (!await showWebConfirm(TenorI18n.t('settings.wifiDeleteConfirm'))) return;
     try {
       const resp = await fetch(TenorI18n.apiUrl('/api/wifi/delete'), {
         method: 'POST',
@@ -720,10 +619,10 @@
         body: JSON.stringify({index: idx})
       });
       if (!resp.ok) throw new Error(await resp.text());
-      showMessage(function() { return TenorI18n.t('settings.wifiDeleted'); }, false);
+      showWebToast(TenorI18n.t('settings.wifiDeleted'), false);
       await loadWifiNetworks();
     } catch (e) {
-      showMessage(function() { return TenorI18n.t('settings.error', { message: e.message }); }, true);
+      showWebToast(TenorI18n.t('settings.error', { message: e.message }), true);
     }
   }
 
@@ -732,6 +631,26 @@
   // /api/opds REST endpoints. Password fields are never pre-filled for security;
   // the "(unchanged)" placeholder indicates an existing password is preserved on save.
   let opdsServers = [];
+
+  const OPDS_MAX_CUSTOM_HEADERS = 2;
+
+  function renderOpdsHeaderRows(srv, id) {
+    const headers = srv.headers || [];
+    let html = '';
+    for (let i = 0; i < OPDS_MAX_CUSTOM_HEADERS; i++) {
+      const header = headers[i] || {name: '', hasValue: false};
+      html +=
+        '<div class="setting-row">' +
+          '<span class="setting-name">' + TenorI18n.t('settings.opdsHeaderName', { index: i + 1 }) + '</span>' +
+          '<span class="setting-control"><input type="text" id="opds-header' + i + '-name-' + id + '" value="' + escapeHtml(header.name || '') + '"></span>' +
+        '</div>' +
+        '<div class="setting-row">' +
+          '<span class="setting-name">' + TenorI18n.t('settings.opdsHeaderValue', { index: i + 1 }) + '</span>' +
+          '<span class="setting-control"><input type="password" id="opds-header' + i + '-value-' + id + '" placeholder="' + (header.hasValue ? TenorI18n.t('settings.unchanged') : '') + '"></span>' +
+        '</div>';
+    }
+    return html;
+  }
 
   function renderOpdsServer(srv, idx) {
     const isNew = idx === -1;
@@ -753,6 +672,7 @@
         '<span class="setting-name" data-i18n="settings.password">Mật khẩu</span>' +
         '<span class="setting-control"><input type="password" id="opds-pass-' + id + '" placeholder="' + (srv.hasPassword ? TenorI18n.t('settings.unchanged') : '') + '"></span>' +
       '</div>' +
+      renderOpdsHeaderRows(srv, id) +
       '<div class="opds-actions">' +
         '<button class="btn-small btn-save-server" onclick="saveOpdsServer(' + idx + ')" data-i18n="settings.saveOne">Lưu</button>' +
         (isNew ? '' : '<button class="btn-small btn-delete" onclick="deleteOpdsServer(' + idx + ')" data-i18n="settings.remove">Xóa</button>') +
@@ -796,7 +716,7 @@
     const addBtn = card.querySelector('.btn-add').parentElement;
     // Prevent multiple unsaved new-server forms at once (idx -1 → id "new")
     if (document.getElementById('opds-new')) return;
-    addBtn.insertAdjacentHTML('beforebegin', renderOpdsServer({name:'',url:'',username:'',hasPassword:false}, -1));
+    addBtn.insertAdjacentHTML('beforebegin', renderOpdsServer({name:'',url:'',username:'',hasPassword:false,headers:[]}, -1));
   }
 
   async function saveOpdsServer(idx) {
@@ -810,6 +730,20 @@
     // omitting it tells the server to keep the existing password.
     const pass = document.getElementById('opds-pass-' + id).value;
     if (pass) data.password = pass;
+
+    // Same rule per header: omit "value" to keep that slot's existing value unchanged.
+    const headers = [];
+    for (let i = 0; i < OPDS_MAX_CUSTOM_HEADERS; i++) {
+      const name = document.getElementById('opds-header' + i + '-name-' + id).value.trim();
+      const value = document.getElementById('opds-header' + i + '-value-' + id).value;
+      const header = {name: name};
+      // Also send an explicit (empty) value when the name was cleared, so the
+      // server can tell "delete this header" apart from "leave value unchanged".
+      if (value || !name) header.value = value;
+      headers.push(header);
+    }
+    data.headers = headers;
+
     if (idx >= 0) data.index = idx;
 
     try {
@@ -819,15 +753,15 @@
         body: JSON.stringify(data)
       });
       if (!resp.ok) throw new Error(await resp.text());
-      showMessage(function() { return TenorI18n.t('settings.opdsSaved'); }, false);
+      showWebToast(TenorI18n.t('settings.opdsSaved'), false);
       await loadOpdsServers();
     } catch (e) {
-      showMessage(function() { return TenorI18n.t('settings.error', { message: e.message }); }, true);
+      showWebToast(TenorI18n.t('settings.error', { message: e.message }), true);
     }
   }
 
   async function deleteOpdsServer(idx) {
-    if (!confirm(TenorI18n.t('settings.opdsDeleteConfirm'))) return;
+    if (!await showWebConfirm(TenorI18n.t('settings.opdsDeleteConfirm'))) return;
     try {
       const resp = await fetch(TenorI18n.apiUrl('/api/opds/delete'), {
         method: 'POST',
@@ -835,32 +769,34 @@
         body: JSON.stringify({index: idx})
       });
       if (!resp.ok) throw new Error(await resp.text());
-      showMessage(function() { return TenorI18n.t('settings.opdsDeleted'); }, false);
+      showWebToast(TenorI18n.t('settings.opdsDeleted'), false);
       await loadOpdsServers();
     } catch (e) {
-      showMessage(function() { return TenorI18n.t('settings.error', { message: e.message }); }, true);
+      showWebToast(TenorI18n.t('settings.error', { message: e.message }), true);
     }
   }
 
-  // Sequential, not concurrent: the device's web server handles one client
-  // connection at a time, and three simultaneous fetches on page load can
-  // stall long enough inside a single response to trip the firmware watchdog.
+<!--#include file="shared/PluginHost.js.inc" -->
+
   // A locale change re-renders the page-owned text, the visible status line and
   // - only when nothing is pending - re-reads the device's own labels (setting
   // names, categories, option lists) in the newly selected locale. A user
   // mid-edit keeps the current list and their unsaved values.
   TenorI18n.onChange(function () {
-    renderMessage();
     const saveBtn = document.getElementById('saveBtn');
     if (allSettings.length > 0 && saveBtn && saveBtn.disabled) {
       loadSettings();
     }
   });
 
+  // Sequential, not concurrent: the device's web server handles one client
+  // connection at a time, and simultaneous fetches on page load can
+  // stall long enough inside a single response to trip the firmware watchdog.
   (async () => {
     await loadSettings();
     await loadWifiNetworks();
     await loadOpdsServers();
+    await loadPlugins('settings');
   })();
 </script>
 </body>

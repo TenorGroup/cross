@@ -9,6 +9,7 @@
 
 #include "EndOfBookOptions.h"
 #include "ReaderPace.h"
+#include "ReaderSession.h"
 #include "activities/Activity.h"
 
 // Page-turn and paint trace lines (RDR_TRACE, ERS_TRACE). Acceptance builds carry them,
@@ -18,6 +19,8 @@
 #endif
 
 class ReaderActivity : public Activity {
+  friend class ActivityManager;  // turns pages for a Bluetooth remote (ActivityManager::remoteTurn)
+
  protected:
   std::string bookPath;
   int pagesUntilFullRefresh = 0;
@@ -34,6 +37,7 @@ class ReaderActivity : public Activity {
 
   std::unique_ptr<EndOfBookOptions> endOfBookOptions;
   std::atomic<bool> endOfBookOptionsReady{false};
+  ReaderSession readerSession;
   // Set by the render task once a laid-out page (or the end-of-book screen) is on the panel;
   // commitOpen() remembers the book only then.
   std::atomic<bool> pageRendered{false};
@@ -54,9 +58,23 @@ class ReaderActivity : public Activity {
                           std::string bookPath, bool allowFastInitialRefresh);
 
   virtual bool loadBook() = 0;
+  // Called when loadBook() failed. Return true to keep the activity alive
+  // (e.g. showing a dialog); false finishes it (the default).
+  virtual bool handleLoadFailure() { return false; }
   virtual std::string getBookTitle() const = 0;
   virtual std::string getBookAuthor() const { return ""; }
   virtual std::string getBookThumbBmpPath() const { return ""; }
+  // Whole-book progress for the reader.exit plugin event, reusing the
+  // per-reader ScreenshotInfo implementations.
+  //
+  // Upstream added this helper in d3e55c53 with an earlier slice of this
+  // feature, then removed it in c1e1fec3 as dead code once no caller remained
+  // ("removes unnecessary wrapper structs"). It is reinstated here because this
+  // change reintroduces the callers: ReaderActivity.cpp uses it for the progress
+  // string and for the session's render-complete basis points, and
+  // EpubReaderActivity overrides getProgressBasisPoints() and falls back to it.
+  int getProgressPercent() const { return getScreenshotInfo().progressPercent; }
+  virtual int getProgressBasisPoints() const { return getProgressPercent() * 100; }
 
   virtual bool handleFormatInput() { return false; }
   // Lat trang THAT, moi dinh dang sach tu viet. KHONG goi thang ham nay; goi pageTurn()
@@ -115,6 +133,8 @@ class ReaderActivity : public Activity {
   // (+1 to, -1 nho), KEP o hai bien. Tra ve true neu co doi. Mac dinh (XTC, bitmap) khong doi gi,
   // nhung nhip giu van bi TIEU: 0 doi co, 0 lat trang du.
   virtual bool docCoChuMotNac(int /*huong*/) { return false; }
+  // A Bluetooth remote asks for the reader menu (true) or a new clipping (false).
+  virtual bool remoteShortcut(bool /*readerMenu*/) { return false; }
   virtual bool isAtEndOfBook() const = 0;
   virtual void onReturnFromEndOfBook() {}
 
@@ -129,10 +149,13 @@ class ReaderActivity : public Activity {
   void stayAfterDroppedExit();
   /** True while the end-of-book suggestion menu is on screen and owning input. */
   bool endOfBookMenuActive() const;
+  /** True while a toolbar, panel or menu over the page owns the device keys: a remote turn is refused. */
+  virtual bool inputOverPage() const { return endOfBookMenuActive(); }
   bool handleEndOfBookMenu(bool suppressConfirmRelease = false);
   bool handleEndOfBookPageTurn(bool prevTriggered, bool nextTriggered);
   void clearEndOfBookOptionsIfNeeded();
   void disableFastInitialRefresh();
+  void flushReaderSession();
 
  public:
   ~ReaderActivity() override = default;
@@ -174,6 +197,7 @@ class ReaderActivity : public Activity {
 
   void onEnter() override;
   void onExit() override;
+  void prepareForSleep() override;
   void onTick() override;
   void onPause() override;
   void onResume() override;
@@ -211,5 +235,6 @@ class ReaderActivity : public Activity {
   void render(RenderLock&& lock) override;
 
   bool isReaderActivity() const final { return !preview; }
+  bool acceptsRemoteInput() const final { return pageRendered.load(std::memory_order_acquire); }
   bool handleForcedRefresh() final;
 };

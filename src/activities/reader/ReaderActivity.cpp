@@ -6,9 +6,13 @@
 #include <HalStorage.h>
 #include <HeapMark.h>
 #include <I18n.h>
+#include <KOReaderDocumentId.h>
 #include <Memory.h>
+#include <TrustedTime.h>
 
 #include <algorithm>
+#include <cctype>
+#include <cstdio>
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
@@ -18,12 +22,12 @@
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "SettingsList.h"
-#include "TxtReaderActivity.h"
 #include "XtcReaderActivity.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/NgayGio.h"
+#include "util/PluginEvents.h"
 
 ReaderActivity::ReaderActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput,
                                std::string bookPath, const bool allowFastInitialRefresh)
@@ -44,8 +48,6 @@ std::unique_ptr<ReaderActivity> ReaderActivity::create(GfxRenderer& renderer, Ma
   std::unique_ptr<ReaderActivity> activity;
   if (FsHelpers::hasXtcExtension(path)) {
     activity = makeUniqueNoThrow<XtcReaderActivity>(renderer, mappedInput, std::move(path), allowFastInitialRefresh);
-  } else if (FsHelpers::hasTxtExtension(path) || FsHelpers::hasMarkdownExtension(path)) {
-    activity = makeUniqueNoThrow<TxtReaderActivity>(renderer, mappedInput, std::move(path), allowFastInitialRefresh);
   } else {
     activity = makeUniqueNoThrow<EpubReaderActivity>(renderer, mappedInput, std::move(path), allowFastInitialRefresh);
   }
@@ -101,7 +103,7 @@ void ReaderActivity::onEnter() {
 #endif
 
   if (!loadBook()) {
-    finish();
+    if (!handleLoadFailure()) finish();
     return;
   }
 #ifdef TENOR_TURN_TRACE
@@ -142,6 +144,8 @@ void ReaderActivity::commitOpen() {
   LOG_INF("READER", "OPEN_COMMIT ms=%lu", millis() - started);
 #endif
   HEAP_MARK("open_commit");
+  const pluginevents::Var openVars[] = {{"book", bookPath.c_str()}};
+  pluginevents::emit(pluginevents::Event::ReaderOpen, openVars, 1);
 }
 
 void ReaderActivity::onExit() {
@@ -182,6 +186,17 @@ void ReaderActivity::onExit() {
   }
 
   LOG_INF("MEM", "reader exit: free=%u max_block=%u", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+
+  // Flush BEFORE the ReaderExit event: the session's final progress must be
+  // durable before a subscriber can act on the exit notification.
+  flushReaderSession();
+
+  if (pluginevents::anySubscriber(pluginevents::Event::ReaderExit)) {
+    char percent[8];
+    snprintf(percent, sizeof(percent), "%d", getScreenshotInfo().progressPercent);
+    const pluginevents::Var vars[] = {{"book", bookPath.c_str()}, {"percent", percent}};
+    pluginevents::emit(pluginevents::Event::ReaderExit, vars, 2);
+  }
 
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   if (!preview) {
@@ -303,6 +318,39 @@ void ReaderActivity::onResume() {
   statsLastMs = statsDayPollMs = millis();
   statsDay = READING_STATS.currentDay();
   statsActive = false;
+}
+
+void ReaderActivity::prepareForSleep() { flushReaderSession(); }
+
+void ReaderActivity::flushReaderSession() {
+  if (preview || !readerSession.isEmitWorthy() || !pluginevents::anySubscriber(pluginevents::Event::ReaderSession)) {
+    readerSession.reset();
+    return;
+  }
+
+  const std::string document = KOReaderDocumentId::calculate(bookPath);
+  const bool validDocument =
+      document.size() == 32 && std::all_of(document.begin(), document.end(), [](const unsigned char c) {
+        return std::isdigit(c) || (c >= 'a' && c <= 'f');
+      });
+  if (validDocument) {
+    char startTime[24];
+    char endTime[24];
+    char duration[16];
+    char startProgress[8];
+    char endProgress[8];
+    snprintf(startTime, sizeof(startTime), "%lld", static_cast<long long>(readerSession.startTime()));
+    snprintf(endTime, sizeof(endTime), "%lld", static_cast<long long>(readerSession.endTime()));
+    snprintf(duration, sizeof(duration), "%lu", static_cast<unsigned long>(readerSession.durationSeconds()));
+    snprintf(startProgress, sizeof(startProgress), "%u", readerSession.startProgressBp());
+    snprintf(endProgress, sizeof(endProgress), "%u", readerSession.endProgressBp());
+    const pluginevents::Var vars[] = {{"book", bookPath.c_str()},       {"document", document.c_str()},
+                                      {"start_time", startTime},        {"end_time", endTime},
+                                      {"duration_seconds", duration},   {"start_progress_bp", startProgress},
+                                      {"end_progress_bp", endProgress}, {"progress_scale", "10000"}};
+    pluginevents::emit(pluginevents::Event::ReaderSession, vars, 8);
+  }
+  readerSession.reset();
 }
 
 bool ReaderActivity::handleBackNavigation() {
@@ -489,6 +537,7 @@ bool ReaderActivity::pageTurnLocked(const bool isForward) {
   logTurnTrace("APPLIED", appliedTurnTrace, "page");
 #endif
   ++trangDaLat;
+  readerSession.noteTurn(isForward, true);  // under the caller's RenderLock
   if (!preview) readingPace.turned(millis(), isForward, pacePosition());
   // A Failed link note has been read: the page this turn paints shows the title again.
   bleturner::acknowledgeLinkNote();
@@ -697,6 +746,7 @@ void ReaderActivity::render(RenderLock&&) {
 #endif
     onEndOfBookRendered();
     markPageRendered();
+    readerSession.onRenderComplete(millis(), trustedtime::trustedNow(), getProgressBasisPoints());
     return;
   }
 
@@ -705,6 +755,7 @@ void ReaderActivity::render(RenderLock&&) {
     readingPace.shown(millis(), pacePosition(), paceLayoutKey());
   else readingPace.suspend();
   pageReady.store(true, std::memory_order_release);
+  readerSession.onRenderComplete(millis(), trustedtime::trustedNow(), getProgressBasisPoints());
 }
 
 bool ReaderActivity::handleForcedRefresh() {

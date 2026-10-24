@@ -43,4 +43,7 @@ class SleepActivity final : public Activity {
   void renderQuoteSleepScreen() const;
 
   bool fromTimeout = false;
+  // Cover + Transparent: the cover under the overlay, and the same cover while its gray planes are redrawn.
+  mutable const Bitmap* overlayCover = nullptr;
+  mutable const Bitmap* overlayGrayCover = nullptr;
 };

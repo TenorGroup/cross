@@ -34,9 +34,10 @@ paths = ['src/SettingsList.h', 'src/MenuCustomization.h', 'src/MenuCustomization
          'src/activities/settings/SettingsActivity.h', 'src/activities/settings/SettingsActivity.cpp',
          'src/activities/settings/SettingsTabs.h', 'src/activities/settings/SettingsTabs.cpp',
          'src/activities/home/HomeRows.cpp', 'src/network/CrossPointWebServer.cpp', 'lib/I18n/I18nKeys.h',
-         'src/CrossPointSettings.cpp']
+         'src/CrossPointSettings.cpp', 'src/SettingsList.cpp']
 (out / 'source-manifest.json').write_text(json.dumps({x: hashlib.sha256((r/x).read_bytes()).hexdigest() for x in paths}, indent=2)+'\n')
 (out / 'SettingsList.h').write_text((r / paths[0]).read_text())
+(out / 'SettingsList.cpp').write_text((r / 'src/SettingsList.cpp').read_text())
 header = (r / paths[3]).read_text()
 source = (r / paths[4]).read_text()
 (out / 'activities/settings').mkdir(parents=True, exist_ok=True)
@@ -98,7 +99,8 @@ for profile in ['c3', 'pro', 'persistence']:
         cmd = [common[0], '-I'+str(here/'stubs'), *common[1:], '-DFREEINK_DEVICE_X3=1', str(here/'persistence.cpp')]
     else:
         cmd = common + defines + [str(here/'harness.cpp'), str(r/'src/ReaderFontSizes.cpp'),
-               str(r/'src/activities/settings/SettingsTabs.cpp'), str(i18n/'I18n.cpp'), str(i18n/'I18nStrings.cpp')]
+               str(r/'src/activities/settings/SettingsTabs.cpp'), str(out/'SettingsList.cpp'), str(i18n/'I18n.cpp'),
+               str(i18n/'I18nStrings.cpp')]
     cmd += ['-o', str(out/profile)]
     (out/(profile+'-command.json')).write_text(json.dumps(cmd, indent=2)+'\n')
     build = subprocess.run(cmd, capture_output=True, text=True)

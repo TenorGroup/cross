@@ -23,8 +23,6 @@ void ButtonNavigator::onNextPress(const Callback& callback) { onPress(getNextBut
 
 void ButtonNavigator::onPreviousPress(const Callback& callback) { onPress(getPreviousButtons(), callback); }
 
-void ButtonNavigator::onNextRelease(const Callback& callback) { onRelease(getNextButtons(), callback); }
-
 void ButtonNavigator::onPreviousRelease(const Callback& callback) { onRelease(getPreviousButtons(), callback); }
 
 void ButtonNavigator::onNextContinuous(const Callback& callback) { onContinuous(getNextButtons(), callback); }
@@ -56,6 +54,14 @@ void ButtonNavigator::onRelease(const Buttons& buttons, const Callback& callback
 }
 
 void ButtonNavigator::onContinuous(const Buttons& buttons, const Callback& callback) {
+  const bool wasPressedOrReleased =
+      std::any_of(buttons.begin(), buttons.end(), [](const MappedInputManager::Button button) {
+        return mappedInput != nullptr && (mappedInput->wasPressed(button) || mappedInput->wasReleased(button));
+      });
+  if (wasPressedOrReleased) {
+    lastContinuousNavTime = 0;
+    return;  // A press already stepped once; a release must never repeat.
+  }
   const bool isPressed = std::any_of(buttons.begin(), buttons.end(), [this](const MappedInputManager::Button button) {
     return mappedInput != nullptr && mappedInput->isPressed(button) && shouldNavigateContinuously();
   });

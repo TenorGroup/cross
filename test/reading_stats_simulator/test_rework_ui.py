@@ -248,12 +248,12 @@ class ReworkUiTest(unittest.TestCase):
         self.settings['longPressButtonBehavior'] = 3
         (self.store / 'settings.json').write_text(json.dumps(truoc_tenor(self.settings)))
         log = self.run_sim('1000:CONFIRM;4000:RIGHT:1500;8000:QUIT')
-        self.assertIn('Entering activity: TxtReader', log)
+        self.assertIn('Entering activity: EpubReader', log)
         # 1) Gia tri cu trong file bi ep ve OFF ngay khi nap (migration co chu y).
         self.assertEqual(self.saved()['longPressButtonBehavior'], 0, log)
         # 2) Giu nut khong doi co chu va khong lam mat trang dang doc.
         self.assertEqual(self.saved()['fontSize'], 14, log)
-        self.assertEqual(log.count('Exiting activity: TxtReader'), 0, log)
+        self.assertEqual(log.count('Exiting activity: EpubReader\n'), 0, log)
 
 
 if __name__ == '__main__':

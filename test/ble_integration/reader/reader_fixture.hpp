@@ -30,9 +30,10 @@ struct RenderLock { struct TryTake{}; static inline bool busy=false; bool owns=f
 };
 struct Activity {virtual ~Activity()=default;virtual bool isReaderActivity() const {return true;}};
 enum class HomeMenuItem{NONE,RECENT_CONTINUE};
+enum class RemoteButton{None,Next,Previous,Confirm,Back};
 struct ActivityManager {void goHome(HomeMenuItem){}enum class PendingAction{None,Push};PendingAction pendingAction=PendingAction::None;
  std::shared_ptr<Activity>currentActivity;uint32_t generation=1;
- bool sleepTransition=false;bool exclusive=false,preventSleep=false;bool requiresExclusiveStorageLoop()const{return exclusive;}bool preventAutoSleep()const{return preventSleep;}bool isSleepTransition()const{return sleepTransition;}bool isForegroundReaderReady()const;bool isForegroundHomePainted()const{return false;}bool foregroundReaderHoldsRadio()const{return false;}bool foregroundReaderCoversPage()const;bool radioReady=true;int radioReadyAsks=0;bool yieldForegroundReaderForRadio(){radioReadyAsks++;radioSteps.emplace_back("ready");return radioReady;}void goToReader(const std::string&){}bool pageTurn(bool);bool chapterSkip(bool);uint32_t activityGeneration()const{return generation;}
+ bool sleepTransition=false;bool exclusive=false,preventSleep=false;bool requiresExclusiveStorageLoop()const{return exclusive;}bool preventAutoSleep()const{return preventSleep;}bool isSleepTransition()const{return sleepTransition;}bool isForegroundReaderReady()const;bool isForegroundHomePainted()const{return false;}bool foregroundReaderHoldsRadio()const{return false;}bool foregroundReaderCoversPage()const;bool radioReady=true;int radioReadyAsks=0;bool yieldForegroundReaderForRadio(){radioReadyAsks++;radioSteps.emplace_back("ready");return radioReady;}void goToReader(const std::string&){}bool pageTurn(bool);bool chapterSkip(bool);bool remoteTurn(bool,bool){return false;}bool remoteClick(RemoteButton){return false;}uint32_t activityGeneration()const{return generation;}
  bool isForegroundReaderActivity()const{return pendingAction==PendingAction::None&&currentActivity&&currentActivity->isReaderActivity();}
 };
 ActivityManager activityManager;

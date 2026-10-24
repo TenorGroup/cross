@@ -96,6 +96,15 @@ void applyAuthHeaders(freeink::SecureHttpClient& http) {
   http.addHeader("Authorization", std::string("Basic ") + encoded.c_str());
 }
 
+// Caller-configured headers (e.g. a Cloudflare Access service token) applied
+// on top of the KOSync auth scheme, including on createUser() which has no
+// KOSync credentials yet.
+void applyCustomHeaders(freeink::SecureHttpClient& http) {
+  for (const auto& header : KOREADER_STORE.getCustomHeaders()) {
+    if (!header.name.empty()) http.addHeader(header.name, header.value);
+  }
+}
+
 // True when free heap is too low to risk a TLS handshake.
 bool insufficientHeap() {
   const auto heap = HalMemory::getDefaultHeap();
@@ -109,6 +118,36 @@ bool insufficientHeap() {
 }
 }  // namespace
 
+// The one way a KOSync request opens its connection (clipping sync uses it too, D9): the URL must parse, the
+// clock must be real before a certificate is judged, https is verified against the roots the URL's host gets in
+// network_trust, and plain http is taken as the user typed it.
+bool KOReaderSyncClient::openConnection(freeink::SecureHttpClient& http, const std::string& url) {
+  freeink::http_url::Parts parsed;
+  const bool urlOk = freeink::http_url::parse(url, parsed);
+#ifdef TENOR_PRESS_PROBE
+  restartlog::trace(restartlog::TraceStage::HttpUrl, urlOk ? 1 : 0, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
+  if (!urlOk) return false;
+  if (parsed.tls && time(nullptr) < 1735689600) {
+    const bool ntpOk = halClock.syncFromNTP();
+#ifdef TENOR_PRESS_PROBE
+    restartlog::trace(restartlog::TraceStage::HttpNtp, ntpOk ? 1 : 0, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
+    if (!ntpOk) return false;
+  } else {
+#ifdef TENOR_PRESS_PROBE
+    restartlog::trace(restartlog::TraceStage::HttpNtp, 2, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
+  }
+  http.setCACert(network_trust::forUrl(url));
+  const bool beginOk = http.begin(url);
+#ifdef TENOR_PRESS_PROBE
+  restartlog::trace(restartlog::TraceStage::HttpBegin, beginOk ? 1 : 0, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
+  if (!beginOk) LOG_ERR("KOSync", "Bad URL");
+  return beginOk;
+}
+
 KOReaderSyncClient::Error KOReaderSyncClient::authenticate() {
   lastHttpCode = 0;
   if (!KOREADER_STORE.hasCredentials()) {
@@ -121,14 +160,8 @@ KOReaderSyncClient::Error KOReaderSyncClient::authenticate() {
   if (insufficientHeap()) return LOW_MEMORY;
 
   freeink::SecureHttpClient http;
-  freeink::http_url::Parts parsed;
-  if (!freeink::http_url::parse(url, parsed)) return NETWORK_ERROR;
-  if (parsed.tls && time(nullptr) < 1735689600 && !halClock.syncFromNTP()) return NETWORK_ERROR;
-  http.setCACert(network_trust::forUrl(url));
-  if (!http.begin(url)) {
-    LOG_ERR("KOSync", "Bad URL");
-    return NETWORK_ERROR;
-  }
+  if (!openConnection(http, url)) return NETWORK_ERROR;
+  applyCustomHeaders(http);
   applyAuthHeaders(http);
   const int httpCode = http.GET();
   http.end();
@@ -163,14 +196,8 @@ KOReaderSyncClient::Error KOReaderSyncClient::createUser() {
   serializeJson(doc, body);
 
   freeink::SecureHttpClient http;
-  freeink::http_url::Parts parsed;
-  if (!freeink::http_url::parse(url, parsed)) return NETWORK_ERROR;
-  if (parsed.tls && time(nullptr) < 1735689600 && !halClock.syncFromNTP()) return NETWORK_ERROR;
-  http.setCACert(network_trust::forUrl(url));
-  if (!http.begin(url)) {
-    LOG_ERR("KOSync", "Bad URL");
-    return NETWORK_ERROR;
-  }
+  if (!openConnection(http, url)) return NETWORK_ERROR;
+  applyCustomHeaders(http);
   http.addHeader("Accept", "application/vnd.koreader.v1+json");
   http.addHeader("Content-Type", "application/json");
   const int httpCode = http.sendRequest("POST", body);
@@ -203,32 +230,8 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
   if (lowHeap) return LOW_MEMORY;
 
   freeink::SecureHttpClient http;
-  freeink::http_url::Parts parsed;
-  const bool urlOk = freeink::http_url::parse(url, parsed);
-#ifdef TENOR_PRESS_PROBE
-  restartlog::trace(restartlog::TraceStage::HttpUrl, urlOk ? 1 : 0, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-#endif
-  if (!urlOk) return NETWORK_ERROR;
-  if (parsed.tls && time(nullptr) < 1735689600) {
-    const bool ntpOk = halClock.syncFromNTP();
-#ifdef TENOR_PRESS_PROBE
-    restartlog::trace(restartlog::TraceStage::HttpNtp, ntpOk ? 1 : 0, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-#endif
-    if (!ntpOk) return NETWORK_ERROR;
-  } else {
-#ifdef TENOR_PRESS_PROBE
-    restartlog::trace(restartlog::TraceStage::HttpNtp, 2, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-#endif
-  }
-  http.setCACert(network_trust::forUrl(url));
-  const bool beginOk = http.begin(url);
-#ifdef TENOR_PRESS_PROBE
-  restartlog::trace(restartlog::TraceStage::HttpBegin, beginOk ? 1 : 0, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-#endif
-  if (!beginOk) {
-    LOG_ERR("KOSync", "Bad URL");
-    return NETWORK_ERROR;
-  }
+  if (!openConnection(http, url)) return NETWORK_ERROR;
+  applyCustomHeaders(http);
   applyAuthHeaders(http);
   if (requestTimeoutMs) http.setTimeout(requestTimeoutMs);
   ProgressBody deadlineBody;
@@ -325,7 +328,7 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
     outProgress.timestamp = doc["timestamp"].as<int64_t>();
 
     outProgress.position.reset();
-    if (KOREADER_STORE.usesCrossPointSyncServer()) {
+    if (KOREADER_STORE.supportsRichProgress()) {
       const JsonObjectConst pos = doc["position"].as<JsonObjectConst>();
       if (!pos.isNull()) {
         KOReaderRichPosition rich;
@@ -372,13 +375,32 @@ KOReaderSyncClient::Error KOReaderSyncClient::updateProgress(const KOReaderProgr
     meta["filename"] = progress.metadata->filename;
     meta["title"] = progress.metadata->title;
     meta["authors"] = progress.metadata->authors;
+    if (KOREADER_STORE.supportsExtendedMetadata()) {
+      if (!progress.metadata->isbn.empty()) meta["isbn"] = progress.metadata->isbn;
+      if (!progress.metadata->asin.empty()) meta["asin"] = progress.metadata->asin;
+      if (!progress.metadata->series.empty()) meta["series"] = progress.metadata->series;
+      if (progress.metadata->seriesIndex.has_value()) meta["series_index"] = *progress.metadata->seriesIndex;
+    }
+
+    JsonDocument extra;
+    if (!progress.metadata->extraJson.empty() &&
+        deserializeJson(extra, progress.metadata->extraJson) == DeserializationError::Ok) {
+      for (JsonPairConst kv : extra.as<JsonObjectConst>()) {
+        // Flat strings, numbers, and booleans keep their JSON type; null and
+        // nested values are skipped, and the reserved keys above always win.
+        const JsonVariantConst value = kv.value();
+        if (!(value.is<const char*>() || value.is<bool>() || value.is<long long>() || value.is<double>())) continue;
+        if (!meta[kv.key().c_str()].isNull()) continue;
+        meta[kv.key().c_str()] = value;
+      }
+    }
   }
   doc["progress"] = progress.progress;
   doc["percentage"] = progress.percentage;
   doc["device"] = DEVICE_NAME;
   doc["device_id"] = DEVICE_ID;
-  if (progress.position.has_value() && KOREADER_STORE.usesCrossPointSyncServer()) {
-    // CrossPoint-specific extension: do not send it to third-party KOSync servers.
+  if (progress.position.has_value() && KOREADER_STORE.supportsRichProgress()) {
+    // Enhanced position is opt-in by server type; strict KOSync never receives it.
     const auto& p = *progress.position;
     auto pos = doc["position"].to<JsonObject>();
     pos["pctQ"] = p.pctQ;
@@ -396,14 +418,8 @@ KOReaderSyncClient::Error KOReaderSyncClient::updateProgress(const KOReaderProgr
   LOG_DBG("KOSync", "Request body: %s", body.c_str());
 
   freeink::SecureHttpClient http;
-  freeink::http_url::Parts parsed;
-  if (!freeink::http_url::parse(url, parsed)) return NETWORK_ERROR;
-  if (parsed.tls && time(nullptr) < 1735689600 && !halClock.syncFromNTP()) return NETWORK_ERROR;
-  http.setCACert(network_trust::forUrl(url));
-  if (!http.begin(url)) {
-    LOG_ERR("KOSync", "Bad URL");
-    return NETWORK_ERROR;
-  }
+  if (!openConnection(http, url)) return NETWORK_ERROR;
+  applyCustomHeaders(http);
   applyAuthHeaders(http);
   http.addHeader("Content-Type", "application/json");
   if (requestTimeoutMs) http.setTimeout(requestTimeoutMs);

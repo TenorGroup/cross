@@ -138,7 +138,9 @@ void vlogPrintf(const char* level, const char* origin, const char* format, va_li
 #elif TENOR_COLD_LOG
   logSerial.print(buf);  // the tee keeps the copy, with or without a host on the port
 #else
-  // HWCDC queues the bytes and re-arms TX even while its low-clock connection flag is false.
+  // Write even when `logSerial` reports disconnected: after a brief SOF-watchdog flap
+  // (common at the 10 MHz low-power clock) HWCDC keeps `connected` false until its next
+  // TX interrupt. write() queues without blocking in that state and re-arms that interrupt.
   logSerial.print(buf);
 #endif
   addToLogRingBuffer(buf);

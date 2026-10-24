@@ -14,13 +14,17 @@
 #include "WebDavReplace.h"
 #include "util/BookCacheUtils.h"
 
+#include <algorithm>
 #include <ctime>
 #include <functional>
 #include <new>
 #include <string>
 #include <vector>
 
+#include "WifiPowerSaveGuard.h"
+
 #if defined(FREEINK_NET_WOLFSSL)
+#include <ResumableFetch.h>
 #include <SecureHttpClient.h>
 
 extern "C" void wolfSSL_Arduino_Serial_Print(const char* const msg) { LOG_DBG("WOLFSSL", "%s", msg); }
@@ -57,7 +61,7 @@ bool g_lastRedirected = false;
 struct Sink {
   std::function<bool(const uint8_t*, size_t)> write;  // returns false to abort the transfer
   HttpDownloader::ProgressCallback progress;
-  bool* cancelFlag = nullptr;
+  const bool* cancelFlag = nullptr;
   size_t total = 0;
   size_t downloaded = 0;
   unsigned long lastPumpMs = 0;
@@ -170,26 +174,6 @@ bool resolveRedirectUrl(const std::string& base, const std::string& location, st
              (queryStart == std::string::npos ? "" : target.substr(queryStart));
   return resolved.size() <= MAX_REDIRECT_URL;
 }
-
-// OtaUpdater.cpp already disables WiFi power-save for firmware downloads, but
-// OPDS feed/book fetches never did despite being able to run just as long for
-// a large category. Modem sleep periodically powers the radio down between
-// DTIM beacon intervals, which can drop or stall packets mid-transfer -- more
-// likely to be hit the longer a transfer takes, so small feeds mostly get
-// away with it while a large category consistently doesn't.
-struct WifiPowerSaveGuard {
-  bool changed = false;
-  WifiPowerSaveGuard() {
-    esp_err_t err = esp_wifi_set_ps(WIFI_PS_NONE);
-    changed = err == ESP_OK;
-    if (err != ESP_OK) LOG_ERR("HTTP", "Failed to disable WiFi power-save: %d", err);
-  }
-  ~WifiPowerSaveGuard() {
-    if (!changed) return;
-    esp_err_t err = esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
-    if (err != ESP_OK) LOG_ERR("HTTP", "Failed to restore WiFi power-save: %d", err);
-  }
-};
 
 #if defined(FREEINK_NET_WOLFSSL)
 HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std::string& username,
@@ -524,6 +508,114 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
 }
 }  // namespace
 
+namespace {
+// Upstream-form requests: the SDK's resumable GET, with the trust, clock and Wi-Fi rules of the pinned path
+// above. Credentials never leave the origin the request started at.
+constexpr size_t MAX_RESPONSE_BYTES = 4096;  // postForm: token replies are small JSON
+
+#if defined(FREEINK_NET_WOLFSSL)
+// A certificate is judged against the clock: sync it first when it is still at its cold-boot value.
+bool tlsClockReady(const std::string& url) {
+  freeink::http_url::Parts parsed;
+  if (!freeink::http_url::parse(url, parsed)) return false;
+  return !parsed.tls || time(nullptr) >= 1735689600 || halClock.syncFromNTP();
+}
+
+void configureClient(freeink::SecureHttpClient& http, const char* rootCA) {
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  http.setCACert(rootCA);
+  // setUserAgent replaces SecureHttpClient's built-in UA; addHeader would append a second User-Agent header, which
+  // strict servers reject (aiohttp answers 400 "Duplicate 'User-Agent' header found").
+  http.setUserAgent("CrossPoint-ESP32-" CROSSPOINT_VERSION);
+}
+#endif
+
+bool wifiUp() {
+#ifndef SIMULATOR
+  // Native simulator sockets use the host network independently of fake Wi-Fi.
+  // On the device, reject before NTP or TCP can enter an uninitialised driver.
+  if (WiFi.getMode() == WIFI_MODE_NULL || WiFi.status() != WL_CONNECTED) {
+    LOG_ERR("HTTP", "WiFi is not connected");
+    return false;
+  }
+#endif
+  return true;
+}
+
+// All plain GETs (pages, feeds, books) go through here. A body cut short resumes with a Range request; rewind
+// restarts the sink when the server ignores the Range. The legacy https->http step-down is refused, as before.
+HttpDownloader::DownloadError runGetResumable(const std::string& url, const std::string& username,
+                                              const std::string& password,
+                                              const std::vector<HttpDownloader::Header>& headers, Sink& sink,
+                                              const std::function<bool()>& rewind = nullptr,
+                                              const bool downgradeRedirectsToHttp = false) {
+  g_lastStatus = 0;
+  g_lastRedirected = false;
+  if (downgradeRedirectsToHttp) return HttpDownloader::HTTP_ERROR;
+  if (!wifiUp()) return HttpDownloader::HTTP_ERROR;
+#if defined(FREEINK_NET_WOLFSSL)
+  if (sink.poll()) return HttpDownloader::ABORTED;
+  if (!tlsClockReady(url)) return HttpDownloader::HTTP_ERROR;
+  WifiPowerSaveGuard psGuard;
+  freeink::FetchOptions options;
+  freeink::FetchSink fetchSink;
+  fetchSink.write = [&sink](const uint8_t* data, const size_t len) { return sink.write(data, len); };
+  fetchSink.rewind = rewind;
+  fetchSink.progress = [&sink](const size_t bytes, const size_t total) {
+    sink.downloaded = bytes;
+    sink.total = total;
+    sink.lastDataMs = millis();
+    sink.poll();  // pumps progress; the abort callback below stops the transfer on a cancel
+  };
+  bool answeredBySameOrigin = true;
+  const freeink::FetchResult result = freeink::fetchResumable(
+      url, options,
+      [&](freeink::SecureHttpClient& http, const bool sameOrigin) {
+        answeredBySameOrigin = sameOrigin;
+        // The starting host has its own entry in the trust table; another origin (a CDN a redirect led to) gets the
+        // full set, as any host without an entry does.
+        configureClient(http, sameOrigin ? network_trust::forUrl(url) : network_trust::roots);
+        // Credentials and caller headers stay with the starting origin; a redirect elsewhere (or to plain http)
+        // gets neither.
+        if (sameOrigin) {
+          if (!username.empty()) http.setBasicAuth(username, password);
+          for (const auto& h : headers) http.addHeader(h.first, h.second);
+        }
+        LOG_DBG("HTTP", "wolfSSL GET (heap %u, max block %u)", (unsigned)ESP.getFreeHeap(),
+                (unsigned)ESP.getMaxAllocHeap());
+      },
+      fetchSink, [&sink] { return sink.poll(); });
+  // FetchResult::status is -1 when no response arrived (bad URL, DNS, connect, TLS).
+  sink.status = result.status < 0 ? 0 : result.status;
+  sink.headers = result.status > 0;
+  sink.redirected = !answeredBySameOrigin;
+  g_lastStatus = sink.status;
+  g_lastRedirected = sink.redirected;
+  if (result.aborted || sink.poll(true)) return HttpDownloader::ABORTED;
+  if (result.stopped) return HttpDownloader::FILE_ERROR;
+  if (result.status == 401 || result.status == 403) {
+    LOG_ERR("HTTP", "wolfSSL request unauthorized: status %d", result.status);
+    return HttpDownloader::UNAUTHORIZED;
+  }
+  if (result.status < 200 || result.status >= 300) {
+    LOG_ERR("HTTP", "wolfSSL request failed: status %d", result.status);
+    return HttpDownloader::HTTP_ERROR;
+  }
+  if (!result.complete) {
+    LOG_ERR("HTTP", "wolfSSL incomplete: got %zu of %zu bytes", result.bytes, result.total);
+    return HttpDownloader::HTTP_ERROR;
+  }
+  return HttpDownloader::OK;
+#else
+  // esp_http_client carries no Range resume and no caller headers.
+  (void)headers;
+  (void)rewind;
+  return runGetSecure(url, username, password, sink);
+#endif
+}
+}  // namespace
+
+
 HttpDownloader::RangeSession::RangeSession() = default;
 HttpDownloader::RangeSession::~RangeSession() = default;
 bool HttpDownloader::RangeSession::hasTlsContext() const {
@@ -538,29 +630,18 @@ int HttpDownloader::lastStatus() { return g_lastStatus; }
 bool HttpDownloader::lastAnswerRedirected() { return g_lastRedirected; }
 
 bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent, const std::string& username,
-                              const std::string& password) {
-  LOG_DBG("HTTP", "Fetching");
-  Sink sink;
-  sink.write = [&outContent](const uint8_t* data, size_t len) { return outContent.write(data, len) == len; };
-  return runGetSecure(url, username, password, sink) == OK;
+                              const std::string& password, const std::vector<Header>& headers) {
+  return fetchUrl(
+      url, [&outContent](const uint8_t* data, size_t len) { return outContent.write(data, len) == len; }, username,
+      password, headers);
 }
 
-bool HttpDownloader::fetchUrl(const std::string& url, std::string& outContent, const std::string& username,
-                              const std::string& password) {
+bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData, const std::string& username,
+                              const std::string& password, const std::vector<Header>& headers) {
   LOG_DBG("HTTP", "Fetching");
-  outContent.clear();  // start clean; the sink appends, so don't carry prior content
   Sink sink;
-  sink.write = [&outContent](const uint8_t* data, size_t len) {
-    constexpr size_t MAX_BUFFERED_RESPONSE = 64 * 1024;
-    if (len > MAX_BUFFERED_RESPONSE - outContent.size()) return false;
-#ifndef SIMULATOR
-    if (len > outContent.capacity() - outContent.size() && ESP.getMaxAllocHeap() < 2 * (outContent.size() + len) + 8192)
-      return false;
-#endif
-    outContent.append(reinterpret_cast<const char*>(data), len);
-    return true;
-  };
-  return runGetSecure(url, username, password, sink) == OK;
+  sink.write = onData;
+  return runGetResumable(url, username, password, headers, sink) == OK;
 }
 
 bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData, const std::string& username,
@@ -628,9 +709,189 @@ bool HttpDownloader::fetchRange(const std::string& url, const size_t first, cons
   return ok;
 }
 
+#if defined(FREEINK_NET_WOLFSSL)
+bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData, const FetchOptions& options) {
+  // OPDS fetches need what fetchResumable withholds: the final HTTP status and a 401 body (auth documents are
+  // served as 401 bodies). Direct GET with a manual redirect loop; catalog feeds are small enough that Range resume
+  // isn't worth carrying here (books go through downloadToFile, which has it).
+  g_lastStatus = 0;
+  g_lastRedirected = false;
+  if (!wifiUp()) {
+    if (options.statusOut) *options.statusOut = 0;
+    return false;
+  }
+  WifiPowerSaveGuard psGuard;
+  std::string current = url;
+  const std::string startOrigin = freeink::fetchOrigin(url);
+  int status = 0;
+  bool sinkStopped = false;
+  for (int hop = 0; hop <= MAX_REDIRECTS; ++hop) {
+    if (!tlsClockReady(current)) {
+      status = 0;
+      break;
+    }
+    freeink::SecureHttpClient http;
+    if (!http.begin(current)) {
+      LOG_ERR("HTTP", "bad URL");
+      status = 0;
+      break;
+    }
+    configureClient(http, network_trust::forUrl(current));
+    // Credentials belong to the starting origin only: a redirect to another origin (a CDN) must not receive them.
+    if (freeink::fetchOrigin(current) == startOrigin) {
+      if (!options.bearer.empty()) {
+        http.addHeader("Authorization", "Bearer " + options.bearer);
+      } else if (!options.username.empty() && !options.password.empty()) {
+        http.setBasicAuth(options.username, options.password);
+      }
+      for (const auto& h : options.headers) http.addHeader(h.first, h.second);
+    }
+    if (!options.accept.empty()) http.addHeader("Accept", options.accept);
+    if (!options.acceptLanguage.empty()) http.addHeader("Accept-Language", options.acceptLanguage);
+
+    LOG_DBG("HTTP", "wolfSSL GET");
+    status = http.GET([&](const uint8_t* data, size_t len) {
+      const int st = http.getStatus();
+      const bool wanted = (st >= 200 && st < 300) || (options.captureErrorBody && st == 401);
+      if (!wanted) return true;  // redirect or error body: drain
+      if (!onData(data, len)) {
+        sinkStopped = true;
+        return false;
+      }
+      return true;
+    });
+    if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
+      const std::string location = http.getHeader("location");
+      std::string next;
+      // The same refusals as the pinned path: no step-down to http, no unresolvable target.
+      if (!resolveRedirectUrl(current, location, next) || !freeink::http_url::redirectAllowed(current, next)) break;
+      current = std::move(next);
+      continue;
+    }
+    break;
+  }
+  g_lastStatus = status > 0 ? status : 0;
+  g_lastRedirected = freeink::fetchOrigin(current) != startOrigin;
+  if (options.statusOut) *options.statusOut = g_lastStatus;
+  return status >= 200 && status < 300 && !sinkStopped;
+}
+
+bool HttpDownloader::postForm(const std::string& url, const std::string& formBody, std::string& outResponse,
+                              int* statusOut) {
+  outResponse.clear();
+  if (statusOut) *statusOut = 0;
+  if (!wifiUp() || !tlsClockReady(url)) return false;
+  WifiPowerSaveGuard psGuard;
+  freeink::SecureHttpClient http;
+  if (!http.begin(url)) {
+    LOG_ERR("HTTP", "bad URL");
+    return false;
+  }
+  configureClient(http, network_trust::forUrl(url));
+  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+  LOG_DBG("HTTP", "wolfSSL POST");
+  const int status = http.sendRequest("POST", reinterpret_cast<const uint8_t*>(formBody.data()), formBody.size(),
+                                      [&outResponse](const uint8_t* data, size_t len) {
+                                        const size_t room =
+                                            MAX_RESPONSE_BYTES - std::min(outResponse.size(), MAX_RESPONSE_BYTES);
+                                        outResponse.append(reinterpret_cast<const char*>(data), std::min(len, room));
+                                        return true;
+                                      });
+  if (statusOut) *statusOut = status > 0 ? status : 0;
+  return status >= 200 && status < 300;
+}
+
+HttpDownloader::DownloadError HttpDownloader::postToFile(const std::string& url, const std::string& body,
+                                                         const std::string& contentType, const std::string& destPath,
+                                                         ProgressCallback progress, const bool* cancelFlag) {
+  LOG_DBG("HTTP", "POST download");
+  if (!wifiUp() || !tlsClockReady(url)) return HTTP_ERROR;
+  WifiPowerSaveGuard psGuard;
+
+  const std::string partPath = destPath + ".part";
+  Storage.remove(partPath.c_str());
+  HalFile file;
+  if (!Storage.openFileForWrite("HTTP", partPath.c_str(), file)) {
+    LOG_ERR("HTTP", "Failed to open file for writing");
+    return FILE_ERROR;
+  }
+
+  freeink::SecureHttpClient http;
+  if (!http.begin(url)) {
+    LOG_ERR("HTTP", "bad URL");
+    file.close();
+    Storage.remove(partPath.c_str());
+    return HTTP_ERROR;
+  }
+  configureClient(http, network_trust::forUrl(url));
+  http.addHeader("Content-Type", contentType);
+
+  size_t downloaded = 0;
+  bool writeFailed = false;
+  const int status = http.sendRequest(
+      "POST", reinterpret_cast<const uint8_t*>(body.data()), body.size(),
+      [&](const uint8_t* data, size_t len) {
+        const int st = http.getStatus();
+        if (st < 200 || st >= 300) return true;  // drain the error body
+        if (file.write(data, len) != len) {
+          writeFailed = true;
+          return false;
+        }
+        downloaded += len;
+        if (progress && http.hasContentLength()) progress(downloaded, http.getContentLength());
+        return true;
+      },
+      [cancelFlag] { return cancelFlag && *cancelFlag; });
+  // Close before any remove() on the same path; DESTRUCTOR_CLOSES_FILE would otherwise close only after the remove.
+  if (file.isOpen()) file.close();
+
+  DownloadError result = OK;
+  if (http.aborted()) {
+    result = ABORTED;
+  } else if (writeFailed) {
+    result = FILE_ERROR;
+  } else if (status < 200 || status >= 300) {
+    LOG_ERR("HTTP", "POST failed: status %d", status);
+    result = HTTP_ERROR;
+  } else if (downloaded == 0) {
+    LOG_ERR("HTTP", "no data received");
+    result = HTTP_ERROR;
+  } else if (http.hasContentLength() && downloaded != http.getContentLength()) {
+    LOG_ERR("HTTP", "POST response incomplete: %zu of %zu bytes", downloaded, (size_t)http.getContentLength());
+    result = HTTP_ERROR;
+  }
+  if (result != OK) {
+    Storage.remove(partPath.c_str());
+    return result;
+  }
+  if (!Storage.replaceFile(partPath.c_str(), destPath.c_str())) {
+    LOG_ERR("HTTP", "Failed to move download into place");
+    Storage.remove(partPath.c_str());
+    return FILE_ERROR;
+  }
+  LOG_DBG("HTTP", "Downloaded %zu bytes", downloaded);
+  return OK;
+}
+#else
+bool HttpDownloader::fetchUrl(const std::string&, const DataCallback&, const FetchOptions& options) {
+  if (options.statusOut) *options.statusOut = 0;
+  return false;  // the host build has no secure client
+}
+bool HttpDownloader::postForm(const std::string&, const std::string&, std::string& outResponse, int* statusOut) {
+  outResponse.clear();
+  if (statusOut) *statusOut = 0;
+  return false;
+}
+HttpDownloader::DownloadError HttpDownloader::postToFile(const std::string&, const std::string&, const std::string&,
+                                                         const std::string&, ProgressCallback, const bool*) {
+  return HTTP_ERROR;
+}
+#endif
+
 HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& url, const std::string& destPath,
-                                                             ProgressCallback progress, bool* cancelFlag,
+                                                             ProgressCallback progress, const bool* cancelFlag,
                                                              const std::string& username, const std::string& password,
+                                                             const std::vector<Header>& headers,
                                                              bool downgradeRedirectsToHttp, bool (*validate)(const char*)) {
   LOG_DBG("HTTP", "Downloading file");
 
@@ -646,9 +907,15 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
   sink.progress = std::move(progress);
   sink.cancelFlag = cancelFlag;
   sink.write = [&file](const uint8_t* data, size_t len) { return file.write(data, len) == len; };
-  const DownloadError result = runGetSecure(url, username, password, sink, downgradeRedirectsToHttp);
+  // Reopening for write truncates: the server restarted the body from byte 0.
+  const auto rewind = [&file, &staging] {
+    file.close();
+    return Storage.openFileForWrite("HTTP", staging.c_str(), file);
+  };
+  const DownloadError result = runGetResumable(url, username, password, headers, sink, rewind, downgradeRedirectsToHttp);
   const bool synced = result == OK && file.sync();
-  const bool closed = file.close();
+  // A failed rewind leaves no open handle.
+  const bool closed = !file.isOpen() || file.close();
   if (result != OK || !synced || !closed || sink.downloaded == 0) {
     Storage.remove(staging.c_str());
     return result != OK ? result : (!synced || !closed ? FILE_ERROR : HTTP_ERROR);

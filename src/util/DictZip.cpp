@@ -188,6 +188,10 @@ bool parse(HalFile& file, Info* info, ExtractError* outError) {
       if (ESP.getMaxAllocHeap() < chunkTableBytes + CHUNK_TABLE_HEAP_HEADROOM_BYTES)
         return fail(ExtractError::LowMemory);
       info->chunkOffsets.reserve(static_cast<size_t>(chunkCount) + 1);
+      if (chunkTableBytes >= heapfloor::kBigBytes && !heapfloor::judge(chunkTableBytes, info->chunkOffsets.data(), "dict-chunks")) {
+        std::vector<uint32_t>().swap(info->chunkOffsets);
+        return fail(ExtractError::LowMemory);
+      }
       info->chunkOffsets.push_back(0);
       uint32_t cumulative = 0;
       for (uint16_t i = 0; i < chunkCount; i++) {

@@ -52,9 +52,11 @@ int main(int argc, char** argv) {
           using S = EpdFontFamily::Style;
           auto add = [&](std::vector<std::string> words, std::vector<int16_t> xs, std::vector<S> styles,
                          std::vector<std::string> ruby, int x, int y, int spacing = 0, int cap = 0) {
+            BlockStyle blockStyle{};
+            blockStyle.characterSpacing = static_cast<int8_t>(spacing);
             auto block = std::make_unique<TextBlock>(words, xs, styles, std::vector<uint8_t>{},
-                                                   std::vector<uint16_t>{}, BlockStyle{}, ruby);
-            block->setLetterSpacing(spacing); block->setDropCapHeight(cap);
+                                                   std::vector<uint16_t>{}, blockStyle, ruby);
+            block->setDropCapHeight(cap);
             lines.push_back(std::make_unique<PageLine>(std::move(block), x, y));
           };
           for (int i = 0; i < 6; ++i) {
@@ -68,7 +70,7 @@ int main(int argc, char** argv) {
               {"reading", "a long annotation", ""}, 79, boundary - 12);
           add({"a", "b", "c"}, {0, 24, 48}, {S::REGULAR, S::RUBY_CONTINUE, S::RUBY_CONTINUE},
               {"long group ruby", "", ""}, 159, boundary + 67);
-          add({"Initial", "end"}, {0, 94}, {static_cast<S>(S::DROP_CAP | S::ITALIC | S::UNDERLINE), S::REGULAR},
+          add({"Initial", "end"}, {0, 94}, {static_cast<S>(S::ITALIC | S::UNDERLINE), S::REGULAR},
               {"drop", ""}, 0, boundary + 159, 2, 58);
           add({"missing 😀"}, {0}, {S::REGULAR}, {}, 159, boundary + 38);
           add({"jiffy"}, {0}, {static_cast<S>(S::ITALIC | S::UNDERLINE)}, {}, 80, boundary - 1, -2);

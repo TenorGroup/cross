@@ -14,7 +14,6 @@
 #include <HalPowerManager.h>
 #include <Logging.h>
 #include <BlePageTurner.h>
-#include <Preferences.h>
 #include "../lib/BlePageTurner/src/RadioPort.h"
 #include "KOReaderPullResume.h"
 #include "platform/ColdLogProbe.h"
@@ -43,24 +42,32 @@ bool bleReleaseCaches() {
   return true;
 }
 
+// Page and chapter turns go through the book's own queue first (a turn made while a page paints waits
+// for it, ActivityManager::pageTurn); when no book takes it, a menu or overlay in front gets the remote's
+// button as a click (ActivityManager::remoteTurn, remoteClick).
 bool bleDeliver(const bleturner::Action a) {
   switch (a) {
     case bleturner::Action::NextPage:
-      return activityManager.pageTurn(true);
+      return activityManager.pageTurn(true) || activityManager.remoteTurn(true, false);
     case bleturner::Action::PrevPage:
-      return activityManager.pageTurn(false);
+      return activityManager.pageTurn(false) || activityManager.remoteTurn(false, false);
     case bleturner::Action::NextChapter:
-      return activityManager.chapterSkip(true);
+      return activityManager.chapterSkip(true) || activityManager.remoteTurn(true, true);
     case bleturner::Action::PrevChapter:
-      return activityManager.chapterSkip(false);
+      return activityManager.chapterSkip(false) || activityManager.remoteTurn(false, true);
+    case bleturner::Action::Confirm:
+      return activityManager.remoteClick(RemoteButton::Confirm);
+    case bleturner::Action::Back:
+      return activityManager.remoteClick(RemoteButton::Back);
     // Catalog actions: the remote asks for them like every other trigger does.
     case bleturner::Action::ReaderMenu:
     case bleturner::Action::SaveQuote:
       runShortcut(a);
       return true;
-    default:
+    case bleturner::Action::None:
       return false;
   }
+  return false;
 }
 
 bool bleYieldForRadio() { return activityManager.yieldForegroundReaderForRadio(); }
@@ -106,17 +113,6 @@ void beginPageTurner(GfxRenderer& renderer, bleturner::Config& config, void (*sh
   runShortcut = shortcut;
   restartBook = restartIntoBook;
   bleturner::begin(bleHost, config);
-  // The remotes the SDK saved (namespace "freeink-hid", key "n", at most 4), read only. The stack loads
-  // them only when it starts, and the book must know before that whether any remote can link.
-  uint8_t bonds = 0;
-  Preferences saved;
-  if (saved.begin("freeink-hid", true)) {
-    bonds = saved.getUChar("n", 0);
-    saved.end();
-  }
-  if (bonds > 4) bonds = 0;
-  LOG_INF("BLE", "Saved bonds=%u", static_cast<unsigned>(bonds));
-  bleturner::setSavedBonds(bonds);
 }
 
 bool preparePageTurnerAfterPull(const bool enabled, const bool usedNetwork, const bool succeeded) {

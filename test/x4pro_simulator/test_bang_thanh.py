@@ -14,7 +14,6 @@ EXEMPT = {
     'Boot': 'the logo at power on, no screen under it',
     'Sleep': 'the sleep screen, the device is off',
     'EpubReader': 'the reader page: the bar shows only with its menu (noteReaderFootBar)',
-    'TxtReader': 'a reader page, no bar (rule 4)',
     'XtcReader': 'a reader page, no bar (rule 4)',
     'FullScreenMessage': 'the SD card error at boot, a dead end with nothing to go back to',
     'TlsAudit': 'a diagnostic build only, the blank parent of Wi-Fi',

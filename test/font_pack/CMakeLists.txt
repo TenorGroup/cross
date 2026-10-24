@@ -11,16 +11,17 @@ find_package(OpenSSL REQUIRED)
 add_executable(FontPackInstallerTest FontPackInstallerTest.cpp
   ${REPO_ROOT}/src/FontPackInstaller.cpp
   ${REPO_ROOT}/src/FontInstaller.cpp
-  ${REPO_ROOT}/lib/JsonParser/StreamingJsonParser.cpp
+  ${REPO_ROOT}/freeink-sdk/libs/network/JsonSax/src/StreamingJsonParser.cpp
   ${REPO_ROOT}/test/font_installer/RegistryStubs.cpp
   ${REPO_ROOT}/test/font_installer/SettingsStubs.cpp)
 target_include_directories(FontPackInstallerTest BEFORE PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/stubs ${REPO_ROOT}/test/host_stubs
   ${REPO_ROOT}/test/font_installer/stubs)
 target_include_directories(FontPackInstallerTest PRIVATE
-  ${REPO_ROOT}/src ${REPO_ROOT}/lib/EpdFont ${REPO_ROOT}/lib/JsonParser ${REPO_ROOT}/lib/Memory
+  ${REPO_ROOT}/src ${REPO_ROOT}/lib/EpdFont ${REPO_ROOT}/lib/JsonParser ${REPO_ROOT}/freeink-sdk/libs/network/JsonSax/include ${REPO_ROOT}/lib/Memory
   ${REPO_ROOT}/lib/Serialization ${REPO_ROOT}/lib/Epub
   ${REPO_ROOT}/lib/BlePageTurner/include
+  ${REPO_ROOT}/freeink-sdk/libs/network/BleKeyboardHost/include
   ${REPO_ROOT}/freeink-sdk/libs/hardware/SDCardManager/include
   ${REPO_ROOT}/.pio/libdeps/gh_release/ArduinoJson/src)
 target_link_libraries(FontPackInstallerTest PRIVATE crosspoint_test_common GTest::gtest_main OpenSSL::Crypto)

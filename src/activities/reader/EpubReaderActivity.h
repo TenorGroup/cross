@@ -14,6 +14,7 @@
 #include "BookSearchMemory.h"
 #include "BookmarkEntry.h"
 #include "ChapterPosition.h"
+#include "ClipSelectionActivity.h"
 #include "EpubReaderMenuActivity.h"
 #include "JumpBarClock.h"
 #include "ProgressMapper.h"
@@ -134,6 +135,11 @@ class EpubReaderActivity final : public ReaderActivity {
   unsigned long indexingMessageTime = 0UL;
   bool waitsForIndex();
   unsigned long dictionaryMessageTime = 0UL;
+  bool showFontDamagedMessage = false;
+  unsigned long fontDamagedMessageTime = 0UL;
+  bool showClippingMessage = false;
+  StrId clippingMessage = StrId::STR_CLIPPING_SAVED;
+  unsigned long clippingMessageTime = 0UL;
   bool currentPageBookmarked = false;
   int idlePrewarmSpine = -1;
   int idlePrewarmPage = -1;
@@ -393,6 +399,7 @@ class EpubReaderActivity final : public ReaderActivity {
   void forgetPendingJump();
   void stayAfterStarvedJump();
   bool buildHeapPaused = false;
+  bool inputOverPage() const override { return overlay != Overlay::None || ReaderActivity::inputOverPage(); }
   static constexpr size_t RENDER_MIN_FREE_HEAP = 24 * 1024;
   static constexpr int BUILD_WINDOW_AHEAD = 5;
   // Quiet-pass look-ahead while the radio keeps the parser parked: not before the page
@@ -438,7 +445,12 @@ class EpubReaderActivity final : public ReaderActivity {
   bool nhayChuongMotBac(int huong, std::optional<int> logicalOrigin = std::nullopt, bool khoaDaGiu = false);
   bool saveProgress(int spineIndex, int currentPage, int pageCount);
   void jumpToPercent(int percent);
+  // A TXT or Markdown book that v1.0.76 read on its own cache opens at the same share of the book (D17).
+  bool resumeLegacyTxtPlace();
+  std::string legacyTxtCache;  // /.crosspoint/txt_<hash>, removed once a place of the EPUB cache is saved
   void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action, const MenuResult& menu);
+  // The TOC entry the page on screen belongs to (Section::getTocIndexForPage), -1 outside the table of contents.
+  int currentTocIndex() const;
   // Vo hieu section de dan lai trang voi chu moi, giu dung doan dang doc. GOI DUOI RenderLock.
   void danLaiTrang();
   // Text settings changed: the page on screen is laid out alone from the nearest resume point
@@ -518,6 +530,11 @@ class EpubReaderActivity final : public ReaderActivity {
   void jumpToSearchResult(int spine, uint32_t visibleOffset);
   BookSearchMemory bookSearch;
 #endif
+  void startClipSelection(int initialX = -1, int initialY = -1,
+                          ClipSelectionActivity::Mode mode = ClipSelectionActivity::Mode::Clip);
+  int clippingAtPoint(const Page& page, int x, int y) const;
+  void openClippings();
+  void applyProgressChange(const ProgressChangeResult& progress);
   bool launchKOReaderSync();
   unsigned long confirmLongPressThreshold() const;
   void toggleTiltFromReader();
@@ -535,6 +552,7 @@ class EpubReaderActivity final : public ReaderActivity {
 
   void renderContents(std::unique_ptr<Page> page, int orientedMarginTop, int orientedMarginRight,
                       int orientedMarginBottom, int orientedMarginLeft);
+  void drawClippingHighlights(const Page& page, int fontId, int orientedMarginTop, int orientedMarginLeft) const;
   void renderStatusBar() const;
   readerstatus::Pace::Position pacePosition() const override;
   uint32_t paceLayoutKey() const override;
@@ -553,12 +571,26 @@ class EpubReaderActivity final : public ReaderActivity {
   bool requestShortcut(ReaderShortcut shortcut) override;
   bool manualPageTurnReady() const override;
   bool pageAwaitsLayout() const override;
-  bool loadBook() override;
   bool handleTapTip();
   bool readingPageVisible() const override;
+
+  // Modal shown when a protected book refuses to open (loan expired /
+  // date unverified); OK exits, "Sync time" (when offered) verifies the
+  // clock over Wi-Fi and reopens the book.
+  OptionPopup loadFailurePopup;
+  // Protection error captured by loadBook() for handleLoadFailure(); the
+  // failed Epub itself does not outlive loadBook().
+  std::string loadProtectionError;
+
+  bool loadBook() override;
+  bool handleLoadFailure() override;
+  // Wi-Fi join + SNTP for a loan whose date could not be verified, then a
+  // clean re-open of the book.
+  void beginLoanTimeSync();
   std::string getBookTitle() const override { return epub ? epub->getTitle() : ""; }
   std::string getBookAuthor() const override { return epub ? epub->getAuthor() : ""; }
   std::string getBookThumbBmpPath() const override { return epub ? epub->getThumbBmpPath() : ""; }
+  int getProgressBasisPoints() const override;
   void renderBook() override;
   void onEndOfBookRendered() override;
 
@@ -571,10 +603,12 @@ class EpubReaderActivity final : public ReaderActivity {
   void onExit() override;
 
   void loop() override;
+  void render(RenderLock&& lock) override;
 
   bool latTrangThat(bool isForward) override;
   bool skipPages(int amount) override;
   bool nhayChuongThat(int huong) override;
+  bool remoteShortcut(bool readerMenu) override;
   bool isAtEndOfBook() const override;
   void onReturnFromEndOfBook() override;
 

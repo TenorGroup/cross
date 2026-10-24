@@ -41,15 +41,6 @@ bool readI2CReg16LE(uint8_t addr, uint8_t reg, uint16_t* outValue) {
   return true;
 }
 
-bool readBQ27220CurrentMA(int16_t* outCurrent) {
-  uint16_t raw = 0;
-  if (!readI2CReg16LE(I2C_ADDR_BQ27220, BQ27220_CUR_REG, &raw)) {
-    return false;
-  }
-  *outCurrent = static_cast<int16_t>(raw);
-  return true;
-}
-
 }  // namespace X3GPIO
 
 namespace {
@@ -350,6 +341,9 @@ void HalGPIO::update() {
 #ifdef TENOR_PRESS_PROBE
   reportPlannedPresses();
 #endif
+  const uint8_t pageButtons = inputMgr.capacitivePageButtonMask();
+  capacitivePagePressed = (pageButtons & ~previousCapacitivePageButtons) != 0;
+  previousCapacitivePageButtons = pageButtons;
   const bool connected = isUsbConnected();
   usbStateChanged = (connected != lastUsbConnected);
   lastUsbConnected = connected;
@@ -377,6 +371,10 @@ void HalGPIO::sampleButtonAdc(InputManager::ButtonAdcSample& first, InputManager
       if (first.raw <= 0) first.raw = 1;
     }
   }
+}
+
+void HalGPIO::prepareForDeepSleep() {
+  if (!inputMgr.prepareForDeepSleep()) LOG_ERR("GPIO", "Failed to put touch controller to sleep");
 }
 
 bool HalGPIO::isPressed(uint8_t buttonIndex) const {
@@ -441,6 +439,10 @@ bool HalGPIO::hasHomeKey() const { return BoardConfig::hasHomeKey(); }
 bool HalGPIO::wasHomeKeyPressed() const { return inputMgr.wasHomeKeyPressed(); }
 
 bool HalGPIO::wasHomeKeyTapped() const { return inputMgr.wasHomeKeyTapped(); }
+
+bool HalGPIO::hasToggleSwitch() const { return inputMgr.hasToggleSwitch(); }
+
+bool HalGPIO::isToggleSwitchOn() const { return inputMgr.isToggleSwitchOn(); }
 
 bool HalGPIO::wasHomeKeyLongPressed() const { return inputMgr.wasHomeKeyLongPressed(); }
 
@@ -583,6 +585,9 @@ bool HalGPIO::endPowerWakeHold(const bool waitFull) {
 }
 
 bool HalGPIO::isUsbConnected() const {
+  if (!deviceIsX3() && BoardConfig::ACTIVE.usbDetect >= 0) {
+    return digitalRead(BoardConfig::ACTIVE.usbDetect) == HIGH;
+  }
   if (deviceIsX3()) {
     // Other tasks (the render task drawing a charging bolt) get the loop's last answer:
     // the gauge is only safe to read from one task, see HalPowerManager.
@@ -591,29 +596,21 @@ bool HalGPIO::isUsbConnected() const {
     if (usbGaugeSampled && static_cast<uint32_t>(now - usbGaugeSampleMs) < 250) return usbGaugeConnected;
     usbGaugeSampleMs = now;
     usbGaugeSampled = true;
-    usbGaugeConnected = false;
-    // X3: infer USB/charging via BQ27220 Current() register (0x0C, signed mA).
-    // Positive current means charging.
-    for (uint8_t attempt = 0; attempt < 2; ++attempt) {
-      int16_t currentMa = 0;
-      if (X3GPIO::readBQ27220CurrentMA(&currentMa)) {
-        usbGaugeConnected = currentMa > 0;
-        return usbGaugeConnected;
-      }
-      delay(2);
-    }
-    return false;
   }
-  if (BoardConfig::ACTIVE.usbDetect >= 0) {
-    return digitalRead(BoardConfig::ACTIVE.usbDetect) == HIGH;
-  }
-  // No digital USB-detect line (e.g. Sticky, whose PWR_IN_VOLT is an analog
+  // X3 uses GPIO20 for I2C, not USB detection. Boards without a digital
+  // USB-detect line (e.g. Sticky, whose PWR_IN_VOLT is an analog
   // divider): infer external power from charging state instead. BatteryMonitor
   // picks the board's best source - charger IC status, gauge Current() sign, or
   // a /STAT pin - and reports false on boards with no battery telemetry at all.
-  // Caveat: charge termination at 100% reads as "not connected".
+  // A charger IC that reports its input rail (BQ25896, SGM41562, M5 PMIC)
+  // answers directly; otherwise infer from charging state, where charge
+  // termination at 100% reads as "not connected".
   static const BatteryMonitor battery;
-  return battery.isCharging();
+  bool known = false;
+  const bool present = battery.isExternalPowerPresent(&known);
+  const bool connected = known ? present : battery.isCharging();
+  if (deviceIsX3()) usbGaugeConnected = connected;
+  return connected;
 }
 
 bool HalGPIO::coldBootImpliesPowerButton() const {
@@ -625,7 +622,8 @@ bool HalGPIO::coldBootImpliesPowerButton() const {
   // post-flash boots as battery button boots, and STAT-only boards like the
   // EEGO A4 misread them the same way once the charger terminates at 100%
   // (STAT inactive reads as "no USB").
-  return isXteinkDevice() || BoardConfig::isPaperMono() || BoardConfig::isSticky();
+  // The Metalio sleeps powered off and only its button turns it back on.
+  return isXteinkDevice() || BoardConfig::isPaperMono() || BoardConfig::isSticky() || BoardConfig::isMetalioEInk4();
 }
 
 HalGPIO::WakeupReason HalGPIO::getWakeupReason() const {

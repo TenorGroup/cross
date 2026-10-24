@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstring>
 #include <functional>
 #include <string>
 #include <vector>
@@ -47,20 +48,19 @@ TEST(LinkNoteRuleTest, Table) {
   disabled.enabled = false;
   NoteInputs leaving = in(false);
   leaving.reading = false;
+  NoteInputs noRemote = in(true);
+  noRemote.hasBond = false;
+  NoteInputs noRemoteWaiting = in(false);
+  noRemoteWaiting.hasBond = false;
   NoteInputs idleEntry = in(true);
   idleEntry.idleStopped = true;
-  NoteInputs unpairedEntry = in(true);
-  unpairedEntry.hasBond = false;
-  NoteInputs unpaired = in(false);
-  unpaired.hasBond = false;
   const Row rows[] = {
       {"enter", LinkNote::None, in(true), LinkNote::Connecting},
       {"enter again after a failure", LinkNote::Failed, in(true), LinkNote::Connecting},
       {"enter with a remote still linked", LinkNote::None, in(true, true), LinkNote::None},
       {"enter with the radio off for idleness", LinkNote::None, idleEntry, LinkNote::None},
-      // Nothing paired: nothing can link, so the title stays.
-      {"enter with no remote paired", LinkNote::None, unpairedEntry, LinkNote::None},
-      {"connecting with no remote paired", LinkNote::Connecting, unpaired, LinkNote::Failed},
+      {"enter with no remote chosen", LinkNote::None, noRemote, LinkNote::None},
+      {"connect asked with no remote chosen", LinkNote::Connecting, noRemoteWaiting, LinkNote::Failed},
       {"waiting", LinkNote::Connecting, in(false), LinkNote::Connecting},
       {"link", LinkNote::Connecting, in(false, true), LinkNote::None},
       {"refused", LinkNote::Connecting, in(false, false, true), LinkNote::Failed},
@@ -88,6 +88,7 @@ class LinkNoteTest : public ::testing::Test {
   void SetUp() override {
     fake::reset();
     config.enabled = 1;
+    std::strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
     bleturner::begin(fake::hostFns(), config);
     radio().queueStarts = true;
   }
@@ -245,43 +246,30 @@ TEST_F(LinkNoteTest, Journeys) {
          t.pass(fake::reading());
        },
        LinkNote::None},
-      {"enter with no remote paired -> None",
+      {"enter with no remote chosen -> None",
        [](LinkNoteTest& t) {
-         radio().bonds.clear();
-         bleturner::setSavedBonds(0);
+         t.config.peerAddr[0] = '\0';
          t.pass(fake::reading());
          t.pass(fake::reading());
        },
        LinkNote::None},
-      {"connect asked with no remote paired -> Failed",
+      {"connect asked with no remote chosen -> Failed",
        [](LinkNoteTest& t) {
-         radio().bonds.clear();
-         bleturner::setSavedBonds(0);
+         t.config.peerAddr[0] = '\0';
          t.pass(fake::reading());
          bleturner::requestConnect();
          t.pass(fake::reading());
        },
        LinkNote::Failed},
-      {"connect asked with no remote paired, then a page turn -> None",
+      {"connect asked with no remote chosen, then a page turn -> None",
        [](LinkNoteTest& t) {
-         radio().bonds.clear();
-         bleturner::setSavedBonds(0);
+         t.config.peerAddr[0] = '\0';
          t.pass(fake::reading());
          bleturner::requestConnect();
          t.pass(fake::reading());
          bleturner::acknowledgeLinkNote();
        },
        LinkNote::None},
-      // Saved bonds are read at boot; a remote paired since then is in the stack's own list.
-      {"remote paired this boot, then the book -> Connecting",
-       [](LinkNoteTest& t) {
-         bleturner::setSavedBonds(0);
-         radio().bonds = {"7d:de:5c:bd:ae:ca"};
-         radio().running = true;
-         t.pass(home());
-         t.pass(fake::reading());
-       },
-       LinkNote::Connecting},
       {"new book entry after idle stop -> Connecting",
        [](LinkNoteTest& t) {
          ASSERT_TRUE(bleturner::detail::stopForIdle());
@@ -307,6 +295,7 @@ TEST(StartOrder, QuickRefusalInsideStartAsyncStillReportsFailedAndRetries) {
   fake::reset();
   bleturner::Config config;
   config.enabled = 1;
+  std::strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
   bleturner::begin(fake::hostFns(), config);
   fake::radio().queueStarts = false;
   fake::host().heap = {65535, 32768};  // HeapLow: refused before the stack

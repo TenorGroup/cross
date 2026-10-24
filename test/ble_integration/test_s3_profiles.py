@@ -56,9 +56,10 @@ class S3Profiles(unittest.TestCase):
                 for plain in (board, "x3-ble", "gh_release", board + "-gh_release"):
                     # Every release build carries German hyphenation (the X4 Pro again since v1.0.69).
                     self.assertNotIn("-DTENOR_HYPH_NO_DE", option("env:" + plain, "build_flags").split())
-                # The plain board env has no Bluetooth; the C3 Bluetooth envs include the header, which does
-                # nothing there because they have no PSRAM (test_psram_header).
-                self.assertNotIn("scripts/s3_nimble_psram.h", option("env:" + board, "build_flags").split())
+                # Bluetooth is in the base since CrossPoint 2.0.0, so the plain board env includes the header
+                # too; the C3 envs include it as well, where it does nothing because they have no PSRAM
+                # (test_psram_header).
+                self.assertIn("scripts/s3_nimble_psram.h", option("env:" + board, "build_flags").split())
                 for c3 in ("x3-ble", "gh_release", "gh_release_rc"):
                     c3_flags = option("env:" + c3, "build_flags").split()
                     self.assertIn("scripts/s3_nimble_psram.h", c3_flags)

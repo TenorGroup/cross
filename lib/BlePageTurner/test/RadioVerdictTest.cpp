@@ -39,6 +39,7 @@ TEST(RadioVerdictTest, Table) {
       {"idle: turned off", with(Phase::Idle, [](RadioInputs& i) { i.enabled = false; }), Why::Off},
       {"idle: card busy", with(Phase::Idle, [](RadioInputs& i) { i.storageBusy = true; }), Why::StorageBusy},
       {"idle: home", with(Phase::Idle, [](RadioInputs& i) { i.where = Where::Elsewhere; }), Why::NotReading},
+      {"idle: no remote chosen", with(Phase::Idle, [](RadioInputs& i) { i.hasBond = false; }), Why::NoBond},
       {"idle: page not painted", with(Phase::Idle, [](RadioInputs& i) { i.pageShown = false; }), Why::PageNotShown},
       {"idle: build holds it", with(Phase::Idle, [](RadioInputs& i) { i.heldForBuild = i.idleStopped = true; }),
        Why::BuildNeedsHeap},
@@ -126,31 +127,21 @@ TEST(RadioVerdictTest, Table) {
       {"running: heap never stops it", with(Phase::Running, [](RadioInputs& i) { i.heap = {0, 0}; }), Why::Ok},
       {"running: outside the book it stays", with(Phase::Running, [](RadioInputs& i) { i.where = Where::Elsewhere; }),
        Why::Ok},
-      {"running: idle just under the limit", with(Phase::Running, [](RadioInputs& i) { i.idleMs = 29999; }),
-       Why::Ok},
-      {"running: idle at the limit", with(Phase::Running, [](RadioInputs& i) { i.idleMs = 30000; }),
-       Why::IdleNoLink},
+      {"running: idle just under the limit", with(Phase::Running, [](RadioInputs& i) { i.idleMs = 29999; }), Why::Ok},
+      {"running: idle at the limit", with(Phase::Running, [](RadioInputs& i) { i.idleMs = 30000; }), Why::IdleNoLink},
       {"running: connection activity passes the idle limit",
-       with(Phase::Running, [](RadioInputs& i) {
-         i.connectionBusy = true;
-         i.idleMs = kIdleOffMs * 3;
-       }),
+       with(Phase::Running,
+            [](RadioInputs& i) {
+              i.connectionBusy = true;
+              i.idleMs = kIdleOffMs * 3;
+            }),
        Why::Ok},
       {"running: idle long past", with(Phase::Running, [](RadioInputs& i) { i.idleMs = kIdleOffMs * 3; }),
        Why::IdleNoLink},
-      // X3, 18/10/2026: BLE on and nothing paired, the radio held about 51 KB in every book visit for
-      // a remote that could never link; a radio the settings screen left up ran on into the book.
-      {"idle: no remote paired", with(Phase::Idle, [](RadioInputs& i) { i.hasBond = false; }), Why::NoBond},
-      {"idle: pairing screen with no remote paired",
-       with(Phase::Idle,
-            [](RadioInputs& i) {
-              i.where = Where::PairingScreen;
-              i.hasBond = false;
-            }),
-       Why::Ok},
-      {"running: no remote paired in the book", with(Phase::Running, [](RadioInputs& i) { i.hasBond = false; }),
+      // A radio the settings screen left up does not run on into the book with no remote chosen.
+      {"running: no remote chosen in the book", with(Phase::Running, [](RadioInputs& i) { i.hasBond = false; }),
        Why::NoBond},
-      {"running: no remote paired outside the book stays",
+      {"running: no remote chosen outside the book stays",
        with(Phase::Running,
             [](RadioInputs& i) {
               i.where = Where::Elsewhere;

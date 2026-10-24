@@ -18,7 +18,7 @@ enum class SettingType { TOGGLE, ENUM, ACTION, VALUE, STRING };
 
 // Danh sach dong hanh dong, va NHA cua tung dong, nam o SettingsTabs.h: do la du
 // lieu thuan nen bai kiem chay duoc tren may de ban (test/settings_tabs). Includes
-// upstream's ClockSettings (#3562), HomeButton (#3516) and About (#3563) alongside
+// upstream's ClockSettings (#3562), HomeButton (#3516), About (#3563) and Plugins alongside
 // Tenor's own DeviceName/FileTransfer/BrowseOPDS/BlePageTurner actions.
 using SettingAction = settingstabs::Action;
 
@@ -43,6 +43,8 @@ struct SettingInfo {
   bool obfuscated = false;               // Save/load via base64 obfuscation (passwords)
   bool inTextSettings = false;           // Surfaced in the Text Settings screen; hidden from the flat Reader list
 
+  bool webHidden = false;  // Persisted normally, but omitted from the generic Web Settings API
+
   // Direct char[] string fields (for settings stored in CrossPointSettings)
   size_t stringOffset = 0;
   size_t stringMaxLen = 0;
@@ -60,6 +62,11 @@ struct SettingInfo {
 
   SettingInfo& withTextSettings() {
     inTextSettings = true;
+    return *this;
+  }
+
+  SettingInfo& withWebHidden() {
+    webHidden = true;
     return *this;
   }
 
@@ -214,7 +221,14 @@ class SettingsActivity final : public UiTabListActivity {
   // strings (no vector growth).
   std::vector<std::string> rowValues_;
   std::vector<freeink::ui::ListItem> rowItems_;
+
+  void rebuildSettings();
   void rebuildRowItems();
+  void toggleSelectedSetting();
+  void openSleepTimeoutPicker();
+  void applyUiSettingChange(uint8_t CrossPointSettings::* valuePtr);
+  void syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged);
+  static std::string settingValueText(const SettingInfo& setting);
 
   static constexpr int categoryCount = settingstabs::TAB_COUNT;
 
@@ -228,9 +242,6 @@ class SettingsActivity final : public UiTabListActivity {
   }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
-  void onTabAction(int index) override;
-  void stepTab(int direction) override;
-  bool handleButtons() override;
   bool handleCustomInput() override;
   void pollTilt() override;
   bool allowsTiltTabNavigation() const override { return !optionPopup.isActive(); }

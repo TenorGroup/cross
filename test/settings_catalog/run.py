@@ -75,8 +75,8 @@ incs=list(dict.fromkeys(incs))
 # real board types, then remove both optional macros for this compile variant.
 legacy_header=out/'LegacyCapabilities.h'
 legacy_header.write_text('#include <BoardConfig.h>\n#undef FREEINK_CAP_FRONTLIGHT\n#undef FREEINK_CAP_WARMLIGHT\n')
-sources=[here/'SettingsRamProbe.cpp',here/'LinkStubs.cpp',out/'SettingsValueSlice.cpp',out/'HomeFavoritesSlice.cpp',repo/'src/MenuFavorites.cpp',repo/'src/CrossPointSettings.cpp',repo/'src/ReaderFontSizes.cpp',repo/'lib/I18n/I18n.cpp',repo/'lib/I18n/I18nStrings.cpp']
-manifest={'source_sha256':{str(p.relative_to(repo)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [repo/'src/SettingsList.h',repo/'src/MenuFavorites.cpp',repo/'src/CrossPointSettings.cpp',repo/'src/activities/settings/SettingsActivity.cpp',repo/'src/activities/home/HomeRows.cpp',repo/'src/activities/reader/EpubReaderActivity.cpp']}}
+sources=[here/'SettingsRamProbe.cpp',here/'LinkStubs.cpp',out/'SettingsValueSlice.cpp',out/'HomeFavoritesSlice.cpp',repo/'src/MenuFavorites.cpp',repo/'src/CrossPointSettings.cpp',repo/'src/SettingsList.cpp',repo/'src/ReaderFontSizes.cpp',repo/'lib/I18n/I18n.cpp',repo/'lib/I18n/I18nStrings.cpp']
+manifest={'source_sha256':{str(p.relative_to(repo)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [repo/'src/SettingsList.h',repo/'src/SettingsList.cpp',repo/'src/MenuFavorites.cpp',repo/'src/CrossPointSettings.cpp',repo/'src/activities/settings/SettingsActivity.cpp',repo/'src/activities/home/HomeRows.cpp',repo/'src/activities/reader/EpubReaderActivity.cpp']}}
 manifest['probe_sha256']=hashlib.sha256((here/'SettingsRamProbe.cpp').read_bytes()).hexdigest()
 manifest['excerpts_sha256']={'HomeRows_favorites':hashlib.sha256(home_block.encode()).hexdigest(),'settingValueText':hashlib.sha256(activity[start:end].encode()).hexdigest()}
 cm='cmake_minimum_required(VERSION 3.16)\nproject(settings_ram_regression CXX)\nset(CMAKE_CXX_STANDARD 20)\nenable_testing()\n'

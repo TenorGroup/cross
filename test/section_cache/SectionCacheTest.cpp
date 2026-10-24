@@ -17,6 +17,7 @@
 #include <new>
 #include <iostream>
 #include <chrono>
+#include <functional>
 #ifdef __APPLE__
 #include <malloc/malloc.h>
 #define usableSize malloc_size
@@ -129,8 +130,8 @@ bool serializedPageSignature(const Page& page, const std::filesystem::path& path
   return true;
 }
 std::optional<size_t> checkpointOffset(const std::string& raw) {
-  constexpr size_t pageCountOffset = 22;
-  constexpr size_t visibleLutOffset = 40;
+  constexpr size_t pageCountOffset = 23;
+  constexpr size_t visibleLutOffset = 41;
   if (raw.size() < visibleLutOffset + sizeof(uint32_t)) return std::nullopt;
   const uint64_t offset = static_cast<uint64_t>(pod<uint32_t>(raw, visibleLutOffset)) +
                           static_cast<uint64_t>(pod<uint16_t>(raw, pageCountOffset)) * sizeof(uint32_t) +
@@ -140,14 +141,14 @@ std::optional<size_t> checkpointOffset(const std::string& raw) {
 }
 struct LutColumn { size_t begin, end; const char* name; };
 std::optional<std::array<LutColumn, 4>> lutColumns(const std::string& raw) {
-  if (raw.size() < 44) return std::nullopt;
-  const size_t count = pod<uint16_t>(raw, 22);
-  const size_t pages = pod<uint32_t>(raw, 24);
-  const size_t anchors = pod<uint32_t>(raw, 28);
-  const size_t paragraphs = pod<uint32_t>(raw, 32);
-  const size_t items = pod<uint32_t>(raw, 36);
-  const size_t visible = pod<uint32_t>(raw, 40);
-  if (!count || pages < 44 || anchors != pages + 4 * count ||
+  if (raw.size() < 45) return std::nullopt;
+  const size_t count = pod<uint16_t>(raw, 23);
+  const size_t pages = pod<uint32_t>(raw, 25);
+  const size_t anchors = pod<uint32_t>(raw, 29);
+  const size_t paragraphs = pod<uint32_t>(raw, 33);
+  const size_t items = pod<uint32_t>(raw, 37);
+  const size_t visible = pod<uint32_t>(raw, 41);
+  if (!count || pages < 45 || anchors != pages + 4 * count ||
       paragraphs < anchors || paragraphs + 2 > raw.size() ||
       pod<uint16_t>(raw, paragraphs) != count ||
       items != paragraphs + 2 + 2 * count || visible != items + 2 * count ||
@@ -167,8 +168,8 @@ class SectionCacheTest : public ::testing::Test {
   uint16_t fullPages = 0;
   std::vector<uint32_t> pageOffsets;
   uint32_t lutOffset = 0;
-  static constexpr size_t pageCountOffset = 22;
-  static constexpr size_t pageLutHeaderOffset = 24;
+  static constexpr size_t pageCountOffset = 23;
+  static constexpr size_t pageLutHeaderOffset = 25;
   std::filesystem::path cache() const { return root / "sections/0.bin"; }
   void SetUp() override {
     storageFault::reset();
@@ -593,7 +594,7 @@ TEST_F(SectionCacheTest, PageIndexEntriesGoToTheirFileABlockAtATime) {
   for (const uint16_t page : {uint16_t(0), uint16_t(31), uint16_t(32), uint16_t(built - 1)}) {
     SCOPED_TRACE(page);
     ASSERT_NE(section.loadPage(page), nullptr);
-    EXPECT_EQ(section.getVisibleTextOffsetForPage(page), pod<uint32_t>(valid, pod<uint32_t>(valid, 40) + 4 * page));
+    EXPECT_EQ(section.getVisibleTextOffsetForPage(page), pod<uint32_t>(valid, pod<uint32_t>(valid, 41) + 4 * page));
   }
   while (section.isBuilding() && !section.isBuildComplete()) {
     ASSERT_TRUE(section.buildSomeMore(2));
@@ -635,7 +636,7 @@ TEST_F(SectionCacheTest, PartialSuspendBatchesSerializedLutColumnsAndResumes) {
   for (const uint16_t page : {uint16_t(0), uint16_t(64), uint16_t(129), uint16_t(fullPages - 1)}) {
     ASSERT_NE(resumed.loadPage(page), nullptr);
     EXPECT_EQ(resumed.getVisibleTextOffsetForPage(page),
-              pod<uint32_t>(valid, pod<uint32_t>(valid, 40) + 4 * page));
+              pod<uint32_t>(valid, pod<uint32_t>(valid, 41) + 4 * page));
   }
 }
 TEST_F(SectionCacheTest, LutBatchShortWritesAtObservedPositionsKeepPreviousCache) {
@@ -682,6 +683,78 @@ TEST_F(SectionCacheTest, RejectsFinalCacheFromHeapDependentCssResolver) {
   }
   Section reopened(epub, 0, renderer);
   EXPECT_FALSE(reopened.loadSectionFile(spec));
+}
+// #4040: the caller's yield test is asked after every parse step and ends the call early, even for a
+// build to completion (maxPages 0); the next call resumes where this one stopped.
+namespace {
+unsigned yieldCalls = 0;
+bool yieldAfterEveryStep() {
+  ++yieldCalls;
+  return true;
+}
+}  // namespace
+TEST_F(SectionCacheTest, YieldCallbackEndsATickAfterOneParseStepAndTheBuildResumes) {
+  std::filesystem::remove(cache());
+  Section section(epub, 0, renderer);
+  ASSERT_TRUE(section.startBuild(spec));
+  yieldCalls = 0;
+  ASSERT_TRUE(section.buildSomeMore(0, yieldAfterEveryStep));
+  EXPECT_EQ(yieldCalls, 1u);
+  EXPECT_TRUE(section.isBuilding());
+  EXPECT_FALSE(section.isBuildComplete());
+  ASSERT_TRUE(section.buildSomeMore(0));
+  EXPECT_TRUE(section.isBuildComplete());
+  EXPECT_EQ(section.pageCount, fullPages);
+}
+// Every field that moves a line break or a gap is part of the cache key.
+TEST_F(SectionCacheTest, SpacingAndDropCapFieldsAreInTheCacheKey) {
+  const std::vector<std::function<void(ReaderRenderSpec&)>> changes = {
+      [](ReaderRenderSpec& s) { s.extraParagraphSpacing = readerSpacing::WIDE; },
+      [](ReaderRenderSpec& s) { s.paragraphIndentSpaces = 6; },
+      [](ReaderRenderSpec& s) { s.characterSpacing = 1; },
+      [](ReaderRenderSpec& s) { s.wordSpacingPercent = 150; },
+      [](ReaderRenderSpec& s) { s.dropCapMode = readerSpacing::DROP_CAP_LARGE; },
+  };
+  for (size_t i = 0; i < changes.size(); ++i) {
+    writeCache(valid);
+    ReaderRenderSpec changed = spec;
+    changes[i](changed);
+    Section reopened(epub, 0, renderer);
+    EXPECT_FALSE(reopened.loadSectionFile(changed)) << i;
+  }
+  writeCache(valid);
+  Section same(epub, 0, renderer);
+  EXPECT_TRUE(same.loadSectionFile(spec));
+}
+// Both firmwares' last section versions are below the merged one, so their caches rebuild.
+TEST_F(SectionCacheTest, RejectsFinalCacheOfEarlierFirmwareVersions) {
+  ASSERT_EQ(SECTION_FILE_VERSION, 68);
+  for (const uint8_t version : {58, 67}) {
+    std::string legacy = valid;
+    legacy[0] = static_cast<char>(version);
+    writeCache(legacy);
+    Section reopened(epub, 0, renderer);
+    EXPECT_FALSE(reopened.loadSectionFile(spec)) << int(version);
+  }
+}
+TEST_F(SectionCacheTest, RejectsPartialCacheOfEarlierFirmwareVersions) {
+  {
+    Section partial(epub, 0, renderer);
+    ASSERT_TRUE(partial.startBuild(spec));
+    ASSERT_TRUE(partial.buildSomeMore(2));
+    ASSERT_TRUE(partial.isBuilding());
+    partial.suspendBuild();
+    ASSERT_TRUE(partial.isPartial());
+  }
+  const std::string current = bytes(cache());
+  ASSERT_EQ(static_cast<uint8_t>(current[0]), 0xFE - (68 - 28));
+  for (const uint8_t version : {58, 67}) {
+    std::string legacy = current;
+    legacy[0] = static_cast<char>(0xFE - (version - 28));
+    writeCache(legacy);
+    Section reopened(epub, 0, renderer);
+    EXPECT_FALSE(reopened.loadSectionFile(spec)) << int(version);
+  }
 }
 TEST_F(SectionCacheTest, RejectsPartialCacheFromHeapDependentCssResolver) {
   {
@@ -876,7 +949,7 @@ TEST_F(SectionCacheTest, FailedSwapKeepsPreviousCache) {
   retryAndCheckEveryWord();
 }
 TEST_F(SectionCacheTest, TruncatedHeadersAreRejectedBeforeAnyLargeAllocation) {
-  for (size_t length = 0; length < 44; ++length) {
+  for (size_t length = 0; length < 45; ++length) {
     std::ofstream out(cache(), std::ios::binary | std::ios::trunc);
     out.write(valid.data(), length); out.close();
     Section section(epub, 0, renderer);
@@ -1277,7 +1350,7 @@ TEST_F(SectionCacheTest, PartialWatermarkExtensionAvoidsReplayingTheColdPrefix) 
 TEST_F(SectionCacheTest, DenseCheckpointPrefixUsesBoundedCacheIoAndMatchesColdBytes) {
   const std::string cold = makeDenseColdCache();
   ASSERT_FALSE(cold.empty());
-  constexpr size_t headerBytes = 44;
+  constexpr size_t headerBytes = 45;
   for (const uint16_t target : {uint16_t(15), uint16_t(70), uint16_t(128)}) {
     SCOPED_TRACE(target);
     const std::string partial = makeDensePartial(target);
@@ -1330,21 +1403,21 @@ TEST_F(SectionCacheTest, HeapBufferAllocationFailureUsesCheckpointFallback) {
   const auto checkpoint = checkpointOffset(partial);
   ASSERT_TRUE(checkpoint.has_value());
   ASSERT_EQ(pod<uint32_t>(partial, *checkpoint), 0x43504b31u);
-  ASSERT_GE(pageLut - 44, 64u * 1024u);
+  ASSERT_GE(pageLut - 45, 64u * 1024u);
   Section resumed(epub, 0, renderer);
   ASSERT_TRUE(resumed.loadSectionFile(spec));
   allocationProbe::rejectSize = 4096;
   allocationProbe::rejectCall = 1;
   allocationProbe::matchingCalls = allocationProbe::rejected = 0;
   storageMetrics::begin();
-  storageMetrics::watchPrefix(cache().string(), 44, pageLut);
+  storageMetrics::watchPrefix(cache().string(), 45, pageLut);
   const bool started = resumed.startBuild(spec);
   storageMetrics::enabled = false;
   allocationProbe::rejectSize = 0;
   ASSERT_TRUE(started);
   EXPECT_EQ(allocationProbe::rejected, 1u);
-  EXPECT_EQ(storageMetrics::prefixReadBytes, pageLut - 44);
-  EXPECT_EQ(storageMetrics::prefixWriteBytes, pageLut - 44);
+  EXPECT_EQ(storageMetrics::prefixReadBytes, pageLut - 45);
+  EXPECT_EQ(storageMetrics::prefixWriteBytes, pageLut - 45);
   EXPECT_EQ(bytes(cache()), partial);
   ASSERT_TRUE(resumed.buildSomeMore(0));
   ASSERT_TRUE(resumed.isBuildComplete());
@@ -1356,7 +1429,7 @@ TEST_F(SectionCacheTest, PrefixShortReadsAndWritesPreservePartialUntilExactRebui
   ASSERT_FALSE(cold.empty());
   const std::string partial = makeDensePartial(128);
   ASSERT_FALSE(partial.empty());
-  constexpr size_t headerBytes = 44;
+  constexpr size_t headerBytes = 45;
   const size_t pageLut = pod<uint32_t>(partial, pageLutHeaderOffset);
   const auto checkpoint = checkpointOffset(partial);
   ASSERT_TRUE(checkpoint.has_value());
@@ -1920,7 +1993,7 @@ TEST_F(SectionCacheTest, ParserParkingKeepsBuildActiveAndPreservesExactOutputAcr
   EXPECT_EQ(section.findAnchor("chapter-end"), coldAnchors[2]);
 }
 
-TEST_F(SectionCacheTest, ParkedAnchorStorageSurvivesResumeAndSecondPark) {
+TEST_F(SectionCacheTest, ParkedAnchorsSurviveResumeAndSecondPark) {
   epub->contents = "<html><body><section id=\"chapter-start\">";
   for (unsigned index = 0; index < 220; ++index) {
     const std::string id = index == 110 ? " id=\"chapter-middle\"" :
@@ -1941,16 +2014,19 @@ TEST_F(SectionCacheTest, ParkedAnchorStorageSurvivesResumeAndSecondPark) {
     }
     ASSERT_TRUE(section.parkBuild());
     ASSERT_TRUE(section.isBuildParked());
-    const void* parkedData = section.parkedAnchorsDataForTest();
-    ASSERT_NE(parkedData, nullptr);
+    const size_t parked = section.parkedAnchorCountForTest();
+    ASSERT_GT(parked, 0u);
+    // The parked copy answers anchor lookups while the parser is away.
+    EXPECT_TRUE(section.findAnchor("chapter-start").has_value());
 
     ASSERT_TRUE(section.buildSomeMore(2));
     ASSERT_TRUE(section.isBuilding());
-    EXPECT_EQ(section.parkedAnchorsDataForTest(), parkedData);
+    EXPECT_TRUE(section.findAnchor("chapter-start").has_value());
 
     ASSERT_TRUE(section.parkBuild());
     ASSERT_TRUE(section.isBuildParked());
-    EXPECT_EQ(section.parkedAnchorsDataForTest(), parkedData);
+    EXPECT_GE(section.parkedAnchorCountForTest(), parked);
+    EXPECT_TRUE(section.findAnchor("chapter-start").has_value());
   }
 
   epub->tocCount = 220;
@@ -1972,17 +2048,16 @@ TEST_F(SectionCacheTest, ParkedAnchorStorageSurvivesResumeAndSecondPark) {
   }
   ASSERT_TRUE(largeSection.parkBuild());
   ASSERT_TRUE(largeSection.isBuildParked());
-  ASSERT_NE(largeSection.parkedAnchorsDataForTest(), nullptr);
-  ASSERT_GT(largeSection.parkedAnchorsCapacityForTest(), 4u);
+  ASSERT_GT(largeSection.parkedAnchorCountForTest(), 4u);
 
+  // Resumed, the parser owns the table and the parked copy is gone.
   ASSERT_TRUE(largeSection.buildSomeMore(2));
   ASSERT_TRUE(largeSection.isBuilding());
-  EXPECT_EQ(largeSection.parkedAnchorsCapacityForTest(), 0u);
-  EXPECT_EQ(largeSection.parkedAnchorsDataForTest(), nullptr);
+  EXPECT_EQ(largeSection.parkedAnchorCountForTest(), 0u);
 
   ASSERT_TRUE(largeSection.parkBuild());
   ASSERT_TRUE(largeSection.isBuildParked());
-  EXPECT_NE(largeSection.parkedAnchorsDataForTest(), nullptr);
+  EXPECT_GT(largeSection.parkedAnchorCountForTest(), 4u);
 }
 
 TEST_F(SectionCacheTest, ParkedBuildCloseReopensAsReadablePartialAndContinues) {

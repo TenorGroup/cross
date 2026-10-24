@@ -47,7 +47,7 @@ enum class StrId {
   STR_FONT,
   STR_SIZE,
   STR_LINE_SPACING,
-  STR_FOCUS_READING,
+  STR_DROP_CAP,
   STR_HYPHENATION,
   STR_FAVORITES_EMPTY,
   STR_READER_FAVORITES_EMPTY,
@@ -145,7 +145,7 @@ const char* tr(StrId id) {
     case StrId::STR_SIZE: return "Font size";
     case StrId::STR_LINE_SPACING: return "Line spacing";
     case StrId::STR_RETRY: return "Retry";
-    case StrId::STR_FOCUS_READING: return "Drop cap";
+    case StrId::STR_DROP_CAP: return "Drop cap";
     case StrId::STR_HYPHENATION: return "Hyphenation";
     case StrId::STR_FAVORITES_EMPTY: return "No favorites yet";
     case StrId::STR_READER_FAVORITES_EMPTY: return "Hold a text row to pin it";
@@ -299,7 +299,7 @@ inline const Descriptor descriptors[] = {
   {"text/fontFamily", StrId::STR_FONT, "text", 0, 0},
   {"text/fontSize", StrId::STR_SIZE, "text", 1, 0},
   {"text/lineSpacing", StrId::STR_LINE_SPACING, "text", 2, 0},
-  {"text/dropCapMode", StrId::STR_FOCUS_READING, "text", 3, 0},
+  {"text/dropCapMode", StrId::STR_DROP_CAP, "text", 3, 0},
   {"text/hyphenationEnabled", StrId::STR_HYPHENATION, "text", 3, 1},
   {"settings/clock", StrId::STR_FONT, "settings", 0, 0}
 };

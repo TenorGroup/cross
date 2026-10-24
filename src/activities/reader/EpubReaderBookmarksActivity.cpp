@@ -36,9 +36,7 @@ void EpubReaderBookmarksActivity::onEnter() {
     return;
   }
 
-  if (!BookmarkFile::load(epubPath, bookmarks)) {
-    bookmarks.shrink_to_fit();
-  }
+  BookmarkFile::load(epubPath, bookmarks);  // clears `bookmarks` first; a missing file leaves it empty
   LOG_DBG("EPB", "Loaded %d bookmarks for book: %s", static_cast<int>(bookmarks.size()), epubPath.c_str());
   rebuildBookmarkRowItems();
 }
@@ -224,6 +222,13 @@ void EpubReaderBookmarksActivity::showDeleteConfirmation() {
   requestUpdate();
 }
 
+#if FREEINK_CAP_TOUCH
+void EpubReaderBookmarksActivity::swipeDelete(const int index) {
+  nav.selected = index;
+  showDeleteConfirmation();
+}
+#endif
+
 void EpubReaderBookmarksActivity::deleteSelectedBookmark() {
   bookmarks.erase(bookmarks.begin() + nav.selected);
   // Deleting shifts every later bookmark's index, so the cached subtitles and
@@ -291,6 +296,9 @@ void EpubReaderBookmarksActivity::buildScreen(UiScreen& screen) {
   // Tap opens; long-press shows bookmark actions (physical buttons stay in loop()).
   props.inputMask = fui::InputTouch | fui::InputLongPress;
   syncListViewport(screen, props, /*hasSubtitle=*/true);
+#if FREEINK_CAP_TOUCH
+  configureSwipeDelete(screen, props);
+#endif
   screen.list(props);
 }
 

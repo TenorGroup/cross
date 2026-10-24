@@ -26,6 +26,7 @@ class TtfEpdFont;
 #include <vector>
 
 #include "Bitmap.h"
+#include "FontVariantProvider.h"
 
 namespace glyphBitmap {
 struct Frame;
@@ -123,6 +124,7 @@ class GfxRenderer {
   // appears at the same point size as the surrounding UI text. Populated by the
   // app-level SD font setup when an SD family is loaded. See resolveTextFontId().
   std::map<int, int> fallbackFontMap_;
+  FontVariantProvider fontVariantProvider_;
 
   // If `text` contains a CJK codepoint that `fontId` cannot render and `fontId`
   // has a registered fallback, returns the fallback id; otherwise returns
@@ -231,6 +233,17 @@ class GfxRenderer {
     return std::any_of(fallbackFontMap_.begin(), fallbackFontMap_.end(),
                        [fontId](const auto& entry) { return entry.second == fontId; });
   }
+
+  void setFontVariantProvider(const FontVariantProvider& provider) { fontVariantProvider_ = provider; }
+  int resolveFontVariant(const int fontId, const float scale) const {
+    return fontVariantProvider_.resolveFont(fontId, scale);
+  }
+  // True when fontId is registered, loading it through the variant provider if needed.
+  bool ensureFontLoaded(const int fontId) const {
+    if (fontMap.count(fontId) != 0) return true;
+    return fontVariantProvider_.load && fontVariantProvider_.load(fontVariantProvider_.ctx, fontId) &&
+           fontMap.count(fontId) != 0;
+  }
   // Ensure SD card font glyph data is loaded for the given text. Called from layout code
   // (which holds a const GfxRenderer&) before measuring word widths. Safe to call on non-SD fonts (no-op).
   // styleMask: bitmask of styles to prepare (bit 0=regular, 1=bold, 2=italic, 3=bold-italic).
@@ -239,7 +252,8 @@ class GfxRenderer {
   // consecutive NUL-terminated words (WordStore chunks), so a whole paragraph
   // is scanned without materializing per-word strings.
   void ensureSdCardFontReady(int fontId, const char* const* segments, const size_t* segmentLens, size_t segmentCount,
-                             bool includeSpace, bool includeHyphen, uint8_t styleMask = 0x0F) const;
+                             bool includeSpace, bool includeHyphen, uint8_t styleMask = 0x0F,
+                             bool includeSmallCaps = false) const;
 
   // Orientation control (affects logical width/height and coordinate transforms)
   void setOrientation(const Orientation o) { orientation = o; }
@@ -492,40 +506,25 @@ class GfxRenderer {
                         BidiUtils::BidiBaseDir baseDir = BidiUtils::BidiBaseDir::AUTO) const;
   void drawText(int fontId, int x, int y, const char* text, bool black = true,
                 EpdFontFamily::Style style = EpdFontFamily::REGULAR,
-                BidiUtils::BidiBaseDir baseDir = BidiUtils::BidiBaseDir::AUTO, int letterSpacing = 0,
-                uint8_t wordSpacing = 0) const;
-  /// Space advance in pixels. \p wordSpacing is a readerSpacing::Level (0 ==
-  /// DEFAULT == no adjustment) and adds readerSpacing::wordPixels() to U+0020
-  /// alone; the paragraph indent is N of these advances and scales with it.
-  int getSpaceWidth(int fontId, EpdFontFamily::Style style = EpdFontFamily::REGULAR,
-                    uint8_t wordSpacing = 0) const;
+                BidiUtils::BidiBaseDir baseDir = BidiUtils::BidiBaseDir::AUTO, int8_t tracking = 0) const;
+  // Draws one glyph at scale256/256 of its size with its baseline at baselineY (drop caps).
+  // Outlines are bilinearly resampled from the font bitmap, so no larger font is loaded.
+  // Returns the scaled advance in pixels.
+  int drawScaledCodepoint(int fontId, uint32_t cp, EpdFontFamily::Style style, int x, int baselineY,
+                          int scale256) const;
+  // Unscaled metrics for laying out drawScaledCodepoint: advance (12.4 fixed point) and top bearing.
+  bool getCodepointMetrics(int fontId, uint32_t cp, EpdFontFamily::Style style, int32_t& advanceFP, int& top) const;
+  int getSpaceWidth(int fontId, EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   /// Returns the total inter-word advance: fp4::toPixel(spaceAdvance + kern(leftCp,' ') + kern(' ',rightCp)).
   /// Using a single snap avoids the +/-1 px rounding error that arises when space advance and kern are
   /// snapped separately and then added as integers.
-  /// The same delta applies to the inter-word gap; \p wordSpacing is the same
-  /// readerSpacing::Level, so the line breaker, justification and the word
-  /// x-position builder all measure one gap.
-  int getSpaceAdvance(int fontId, uint32_t leftCp, uint32_t rightCp, EpdFontFamily::Style style,
-                      uint8_t wordSpacing = 0) const;
+  int getSpaceAdvance(int fontId, uint32_t leftCp, uint32_t rightCp, EpdFontFamily::Style style) const;
   /// Returns the kerning adjustment between two adjacent codepoints, plus \p tracking pixels
   /// unless either side is a space (or there is no left codepoint).
   int getKerning(int fontId, uint32_t leftCp, uint32_t rightCp, EpdFontFamily::Style style, int8_t tracking = 0) const;
-  /// Whole-string advance. \p wordSpacing applies the U+0020 delta to every
-  /// space in \p text (TXT layout measures and draws whole lines).
-  int getTextAdvanceX(int fontId, const char* text, EpdFontFamily::Style style, int letterSpacing = 0,
-                      uint8_t wordSpacing = 0) const;
-  /// The same advance for a given bidi base direction; Rendered mode skips the SD advance-table
-  /// fast path so kerning and ligatures count, as drawText draws them. \p tracking is the
-  /// letterSpacing above.
-  int getTextAdvanceX(int fontId, const char* text, EpdFontFamily::Style style, int8_t tracking,
-                      BidiUtils::BidiBaseDir baseDir, TextMeasureMode mode = TextMeasureMode::Layout) const;
-
- private:
-  // Both getTextAdvanceX spellings measure here, so they can never disagree.
-  int textAdvanceX(int fontId, const char* text, EpdFontFamily::Style style, int letterSpacing, uint8_t wordSpacing,
-                   BidiUtils::BidiBaseDir baseDir, TextMeasureMode mode) const;
-
- public:
+  int getTextAdvanceX(int fontId, const char* text, EpdFontFamily::Style style, int8_t tracking = 0,
+                      BidiUtils::BidiBaseDir baseDir = BidiUtils::BidiBaseDir::AUTO,
+                      TextMeasureMode mode = TextMeasureMode::Layout) const;
   int getDropCapAdvance(int fontId, const char* text, EpdFontFamily::Style style, int height,
                         int letterSpacing = 0) const;
   int getDropCapWordWidth(int fontId, const char* text, EpdFontFamily::Style style, int height,
@@ -615,6 +614,8 @@ class GfxRenderer {
   void releaseFrameBufferForBuild();
   bool restoreFrameBufferAfterBuild();
   bool hasFrameBuffer() const { return frameBuffer != nullptr; }
+  // Bumped by every loan. A loan returns the buffer white, so a caller that ran code which may lend
+  // (e.g. a background chapter-build step) compares this to know the page it drew is gone.
   uint32_t frameBufferLoanCount() const { return frameBufferLoans; }
 
   // RAII form of the loan above, for blocking build regions with early-return

@@ -10,6 +10,7 @@
 #include <HalPowerManager.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <TrustedTime.h>
 #include <WiFi.h>
 #include <esp_mac.h>
 
@@ -32,6 +33,7 @@
 #include "fontIds.h"
 #include "network/TimezoneLookup.h"
 #include "util/Timezones.h"
+#include "util/PluginEvents.h"
 
 namespace fui = freeink::ui;
 
@@ -747,9 +749,12 @@ void WifiSelectionActivity::checkConnectionStatus() {
     // Settings > System > Clock > Sync clock now. A persisted sync flag cannot
     // prove that this boot has valid system time, though - boards without an
     // RTC must sync again after a cold boot.
-    if (syncClockOnConnect && (!SETTINGS.clockHasBeenSynced || !halClock.hasValidTime())) {
+    // A clock that is only the floor restored at boot may lag real time by the whole time the device sat off.
+    if (syncClockOnConnect &&
+        (!SETTINGS.clockHasBeenSynced || !halClock.hasValidTime() || trustedtime::clockNeedsSync())) {
       LOG_INF("WIFI", "NTP begin");
       if (halClock.syncFromNTP()) {
+        trustedtime::noteNetworkSync();
         SETTINGS.clockHasBeenSynced = 1;
         SETTINGS.saveToFile();
       }
@@ -770,6 +775,8 @@ void WifiSelectionActivity::checkConnectionStatus() {
     }
 
     if (!syncClockOnConnect) LOG_INF("WIFI", "Local connection: keeping saved clock and timezone");
+    // Every station join lets the loan-clock floor catch up with the clock (HalClock above is the only SNTP owner).
+    trustedtime::note();
     LOG_INF("WIFI", "Connection services done");
     // Save this as the last connected network - SD card operations need lock as
     // we use SPI for both
@@ -777,6 +784,11 @@ void WifiSelectionActivity::checkConnectionStatus() {
       RenderLock lock(*this);
       WIFI_STORE.setLastConnectedSsid(selectedSSID);
     }
+
+    // Every station join is a window where plugin senders are deliverable, so
+    // drain the plugin outboxes here (web server up and sleep entry are the
+    // other such moments). Cheap no-op when nothing is queued.
+    pluginevents::drain(&renderer);
 
     // If we entered a new password, ask if user wants to save it
     // Otherwise, immediately complete so parent can start web server
@@ -1166,7 +1178,10 @@ void WifiSelectionActivity::render(RenderLock&&) {
   // so 32 truncated it. See ClockSyncActivity for the same class of bug.
   char countStr[64];
   snprintf(countStr, sizeof(countStr), tr(STR_NETWORKS_FOUND), realNetworkCount);
-  GUI.drawHeader(renderer, Rect{screen.x, screen.y + metrics.topPadding, screen.width, metrics.headerHeight},
+  // drawHeader self-insets by the board's viewable margins, so it takes the
+  // full-width rect at metrics.topPadding that every other caller uses; the
+  // safe-area `screen` would inset it twice.
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight},
                  tr(STR_WIFI_NETWORKS), countStr);
   if (tenorchrome::roundFrames()) {
     // A touch screen keeps only the status strip at the top: the MAC address is the first line of the content.

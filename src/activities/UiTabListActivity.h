@@ -116,7 +116,8 @@ class UiTabListActivity : public UiListActivity {
   int favoriteSelectedRow() override { return tenorchrome::kTouchShell && !touchRowMovesRing() ? touchedRow : ringPos() - 1; }
   // ACTION_ROW lands as ring = row + 1, then activateIndex(row).
   void onRowAction(const freeink::ui::ActionEvent& event) override;
-  // Release walks the row ring; continuous hold steps the tab. Both queue an
+  // Release walks the row ring (not the press of #3754: these buttons also carry the tab hold, the Favorites
+  // reorder and the boundary jump, which a press cannot tell from their start); continuous hold steps the tab. Both queue an
   // intent, so a press is never lost while the panel draws.
   void navigateButtons() override;
   // Ring walk for the StepNext/StepPrev intents (1..count, wrapping).

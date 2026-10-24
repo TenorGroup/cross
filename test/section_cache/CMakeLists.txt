@@ -39,6 +39,7 @@ target_include_directories(SectionCacheTest PRIVATE
   ${SECTION_SOURCE_ROOT}/lib/Epub/Epub
   ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/parsers
   ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/css
+  ${SECTION_SOURCE_ROOT}/lib/AsciiText
   ${SECTION_SOURCE_ROOT}/lib/EpdFont
   ${SECTION_SOURCE_ROOT}/lib/Utf8
   ${SECTION_SOURCE_ROOT}/lib/Memory

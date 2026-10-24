@@ -13,6 +13,7 @@ struct ThemeMetrics {
 class UITheme {
  public:
   static UITheme& getInstance() { static UITheme instance; return instance; }
+  static Rect getContentArea(const GfxRenderer& renderer) { return {0, 0, renderer.getScreenWidth(), renderer.getScreenHeight()}; }
   const ThemeMetrics& getMetrics() const {
     static ThemeMetrics metrics;
     metrics = ThemeMetrics{};

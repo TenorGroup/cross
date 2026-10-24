@@ -32,6 +32,7 @@
 #include <string>
 #include <vector>
 
+#include "QuickAction.h"
 #include "SettingsList.h"
 #include "activities/reader/ReaderMenuLayout.h"
 
@@ -689,6 +690,192 @@ int runGlobalStatusBarMatrix() {
 // v1.0.69 (CrossPoint #4022): Noto Serif left the firmware. The stored number keeps its old meaning on read
 // (0 serif, 1 sans, 2 OpenDyslexic) and every save writes 1 with fontFamilyVersion; the built-in serif becomes
 // the card's NotoSerif by name, a saved card font wins, and tenor/ugly keeps a Noto Sans picked before.
+// v1.1.0: a real v1.0.76 settings.json (fixtures/settings-v1.0.76.json, written by the v1.0.76
+// toJson with every row moved off its default) loads on the merged code and every stored value
+// keeps its MEANING, not just its number. The saved numbers of the three enums CrossPoint 2.0.0 also
+// grew (sleep screen, short power button, hold-Select function) are the v1.0.76 ones below; the
+// 2.0.0 values come after them.
+const SettingInfo* catalogRow(const char* key) {
+  for (const auto& info : getBaseSettingsList())
+    if (info.key && std::strcmp(info.key, key) == 0) return &info;
+  return nullptr;
+}
+
+bool loadValue(const JsonDocument& base, const char* key, const int value) {
+  JsonDocument doc = base;
+  doc[key] = value;
+  settings_test_io::setNextRead(doc);
+  return SETTINGS.loadFromFile();
+}
+
+int runV1076Meaning() {
+  bool ok = true;
+  const JsonDocument before = readFixture("settings-v1.0.76.json");
+
+  // 1. Every key the v1.0.76 file carries comes back with the same value.
+  settings_test_io::setNextRead(before);
+  ok = expect(SETTINGS.loadFromFile(), "the v1.0.76 file loads") && ok;
+  const JsonDocument after = saved();
+  auto preserved = HOST_BOARD_HIDDEN;
+  ok = roundTripsExcept(before, after, preserved, "v1.0.76") && ok;
+  // CrossPoint 2.0.0 keys the v1.0.76 file never had: written, at their defaults.
+  ok = expect(after["pluginsEnabled"] == 0 && after["pluginHubPromptHidden"] == 0, "plugin switches default off") && ok;
+  ok = expect(after["focusReadingEnabled"].isNull() && after["paragraphIndentSpaces"].isNull() &&
+                  after["characterSpacing"].isNull(),
+              "no CrossPoint 2.0.0 spacing key is written") && ok;
+
+  // 2. Sleep screen: the tenor numbers keep their screens; the 2.0.0 overlay screen follows them.
+  struct Wire {
+    int number;
+    StrId label;
+  };
+  static const Wire sleepWire[] = {
+      {0, StrId::STR_DARK},       {1, StrId::STR_LIGHT},     {2, StrId::STR_CUSTOM},
+      {3, StrId::STR_COVER},      {4, StrId::STR_COVER_CUSTOM}, {5, StrId::STR_NONE_OPT},
+      {6, StrId::STR_QUICK_RESUME}, {7, StrId::STR_TRANSPARENT}, {8, StrId::STR_SLEEP_TENOR},
+      {9, StrId::STR_SLEEP_STATS}, {10, StrId::STR_SLEEP_QUOTE}, {11, StrId::STR_SLEEP_UGLY}};
+  ok = expect(CrossPointSettings::TENOR == 8 && CrossPointSettings::STATS == 9 && CrossPointSettings::QUOTE == 10 &&
+                  CrossPointSettings::UGLY == 11,
+              "tenor sleep screens keep numbers 8..11") && ok;
+  ok = expect(CrossPointSettings::COVER_TRANSPARENT == 12 &&
+                  CrossPointSettings::SLEEP_SCREEN_MODE_COUNT == 13,
+              "the 2.0.0 cover + transparent screen is 12") && ok;
+  const SettingInfo* sleepRow = catalogRow("sleepScreen");
+  ok = expect(sleepRow != nullptr, "sleepScreen row") && ok;
+  if (sleepRow) {
+    for (const auto& w : sleepWire) {
+      ok = expect(loadValue(before, "sleepScreen", w.number) && SETTINGS.sleepScreen == w.number &&
+                      sleepRow->enumLabels()[SETTINGS.sleepScreen] == w.label,
+                  "a v1.0.76 sleep screen number keeps its screen") && ok;
+      ok = expect(saved()["sleepScreen"] == w.number, "and is saved under the same number") && ok;
+    }
+    ok = expect(sleepRow->enumLabels()[CrossPointSettings::COVER_TRANSPARENT] == StrId::STR_COVER_TRANSPARENT,
+                "number 12 is cover + transparent") && ok;
+  }
+
+  // 3. Short power button.
+  static const Wire powerWire[] = {
+      {0, StrId::STR_IGNORE},      {1, StrId::STR_SLEEP},       {2, StrId::STR_PAGE_TURN},
+      {3, StrId::STR_FORCE_REFRESH}, {4, StrId::STR_FOOTNOTES}, {5, StrId::STR_SELECT},
+      {6, StrId::STR_SHAKE_BACK},  {7, StrId::STR_READER_MENU}, {8, StrId::STR_QUOTES_SAVE_ACTION}};
+  ok = expect(CrossPointSettings::BACK == 6 && CrossPointSettings::READER_MENU == 7 &&
+                  CrossPointSettings::SAVE_QUOTE == 8,
+              "tenor power actions keep numbers 6..8") && ok;
+  ok = expect(CrossPointSettings::CREATE_CLIPPING == 9 && CrossPointSettings::PWR_BOOKMARK == 10 &&
+                  CrossPointSettings::PWR_SYNC == 11 && CrossPointSettings::PWR_READER_MENU == 12,
+              "the 2.0.0 power actions follow them") && ok;
+  for (const auto& w : powerWire) {
+    ok = expect(loadValue(before, "shortPwrBtn", w.number) && SETTINGS.shortPwrBtn == w.number &&
+                    quickaction::CHOICES[SETTINGS.shortPwrBtn].label == w.label,
+                "a v1.0.76 power action number keeps its action") && ok;
+    ok = expect(saved()["shortPwrBtn"] == w.number, "and is saved under the same number") && ok;
+  }
+  // A 2.0.0 action is a real choice too, and an unknown number falls back to the default.
+  ok = expect(loadValue(before, "shortPwrBtn", CrossPointSettings::CREATE_CLIPPING) &&
+                  SETTINGS.shortPwrBtn == CrossPointSettings::CREATE_CLIPPING,
+              "a 2.0.0 power action loads") && ok;
+  // An unknown number keeps what the struct held before the load (a boot holds the constructor value).
+  ok = expect(loadValue(before, "shortPwrBtn", 77) && SETTINGS.shortPwrBtn == CrossPointSettings::CREATE_CLIPPING,
+              "an unknown power action does not load") && ok;
+
+  // 4. Hold-Select function: the row maps list place to number, so check the label at the place the row shows.
+  static const Wire holdWire[] = {
+      {0, StrId::STR_KOSYNC},        {1, StrId::STR_DISABLED},     {2, StrId::STR_BOOKMARK_OPTION},
+      {3, StrId::STR_DICTIONARY},    {4, StrId::STR_READER_MENU},  {5, StrId::STR_FILE_TRANSFER},
+      {6, StrId::STR_TILT_PAGE_TURN}, {7, StrId::STR_QUOTES_SAVE_ACTION}, {8, StrId::STR_BLE_CONNECT_REMOTE}};
+  ok = expect(CrossPointSettings::LP_MENU_FILE_TRANSFER == 5 && CrossPointSettings::LP_MENU_TILT_PAGE_TURN == 6 &&
+                  CrossPointSettings::LP_MENU_SAVE_QUOTE == 7 && CrossPointSettings::LP_MENU_CONNECT_REMOTE == 8 &&
+                  CrossPointSettings::LP_MENU_CREATE_CLIPPING == 9 && CrossPointSettings::LP_MENU_FOOTNOTES == 10,
+              "hold-Select numbers: tenor 5..8, then the 2.0.0 ones") && ok;
+  for (const auto& w : holdWire) {
+#if !FREEINK_CAP_BLE_HID_HOST
+    if (w.number == CrossPointSettings::LP_MENU_CONNECT_REMOTE) continue;  // not offered without the radio
+#endif
+    const SettingInfo* hold = catalogRow("longPressMenuFunction");
+    ok = expect(hold != nullptr && loadValue(before, "longPressMenuFunction", w.number) &&
+                    SETTINGS.longPressMenuFunction == w.number,
+                "a v1.0.76 hold-Select number loads") && ok;
+    const SettingInfo built = buildLongPressMenuSetting(true);
+    ok = expect(built.valueGetter && built.enumLabels()[built.valueGetter()] == w.label,
+                "and the row shows the function it had") && ok;
+    ok = expect(saved()["longPressMenuFunction"] == w.number, "and saves under the same number") && ok;
+  }
+  {
+    // Without an IMU the tilt toggle is not offered and the functions after it keep their numbers.
+    const SettingInfo noTilt = buildLongPressMenuSetting(false);
+    SETTINGS.longPressMenuFunction = CrossPointSettings::LP_MENU_FOOTNOTES;
+    ok = expect(noTilt.enumLabels()[noTilt.valueGetter()] == StrId::STR_FOOTNOTES, "no IMU: footnotes still shows as footnotes") && ok;
+    noTilt.valueSetter(noTilt.valueGetter());
+    ok = expect(SETTINGS.longPressMenuFunction == CrossPointSettings::LP_MENU_FOOTNOTES, "and writes its own number back") && ok;
+    SETTINGS.longPressMenuFunction = CrossPointSettings::LP_MENU_SAVE_QUOTE;
+    ok = expect(noTilt.enumLabels()[noTilt.valueGetter()] == StrId::STR_QUOTES_SAVE_ACTION, "no IMU: save quotation keeps its label") && ok;
+  }
+
+  // 5. Spacing (D21): the stored levels still mean the pixel distances v1.0.76 drew.
+  for (uint8_t level = 0; level < readerSpacing::LEVEL_COUNT; ++level) {
+    const auto p = CrossPointSettings::textSpacingParamsFor(level, level, 2, level);
+    ok = expect(p.characterSpacing == readerSpacing::letterPixels(level), "letter level to pixels") && ok;
+    ok = expect(p.wordSpacingPercent * 10 == readerSpacing::wordPermille(level), "word level to percent") && ok;
+    ok = expect(p.extraParagraphSpacing == level, "paragraph gap level passes through") && ok;
+    // The upstream scale truncates: (advance * percent) / 100 - advance is what wordPixels returns.
+    for (int space = 1; space <= 40; ++space) {
+      const int scaled = (space * p.wordSpacingPercent) / 100;
+      ok = expect(scaled - space == readerSpacing::wordPixels(level, space), "word spacing pixels at every space width") && ok;
+    }
+  }
+  for (uint8_t level = 0; level < 3; ++level) {
+    ok = expect(CrossPointSettings::textSpacingParamsFor(0, 0, level, 0).paragraphIndentSpaces ==
+                    readerSpacing::indentSpaces(level),
+                "paragraph indent level to spaces (0, 3, 6)") && ok;
+  }
+  // readerRenderSpec fills the engine's fields from those levels, never the raw ordinals.
+  {
+    settings_test_io::setNextRead(before);
+    SETTINGS.loadFromFile();
+    const auto spec = SETTINGS.readerRenderSpec(480, 800);
+    const auto want = SETTINGS.textSpacingParams();
+    ok = expect(spec.characterSpacing == want.characterSpacing && spec.wordSpacingPercent == want.wordSpacingPercent &&
+                    spec.paragraphIndentSpaces == want.paragraphIndentSpaces &&
+                    spec.extraParagraphSpacing == want.extraParagraphSpacing,
+                "readerRenderSpec carries the converted spacing") && ok;
+    ok = expect(!spec.focusReadingEnabled && spec.dropCapMode == SETTINGS.dropCapMode, "no focus reading; the drop cap mode is kept") && ok;
+    // And the values come from the file's own levels, worked out here from the v1.0.76 functions.
+    ok = expect(spec.wordSpacingPercent == readerSpacing::wordPermille(before["wordSpacing"].as<int>()) / 10 &&
+                    spec.characterSpacing == readerSpacing::letterPixels(before["letterSpacing"].as<int>()) &&
+                    spec.paragraphIndentSpaces == readerSpacing::indentSpaces(before["paragraphIndent"].as<int>()) &&
+                    spec.extraParagraphSpacing == before["extraParagraphSpacing"].as<int>(),
+                "the spec spacing is the v1.0.76 spacing of the stored levels") && ok;
+  }
+
+  // 6. The old drop cap boolean still folds into the three-value mode, as in v1.0.76.
+  {
+    JsonDocument doc = before;
+    doc.remove("dropCapMode");
+    doc["focusReadingEnabled"] = 1;
+    settings_test_io::setNextRead(doc);
+    ok = expect(SETTINGS.loadFromFile() && SETTINGS.dropCapMode == readerSpacing::DROP_CAP_LARGE, "focusReadingEnabled 1 reads as Large drop cap") && ok;
+    doc["focusReadingEnabled"] = 0;
+    settings_test_io::setNextRead(doc);
+    ok = expect(SETTINGS.loadFromFile() && SETTINGS.dropCapMode == readerSpacing::DROP_CAP_OFF, "focusReadingEnabled 0 reads as no drop cap") && ok;
+    ok = expect(saved()["focusReadingEnabled"].isNull() && !saved()["dropCapMode"].isNull(), "and is saved as dropCapMode only") && ok;
+  }
+
+  // 7. Plugins: a file from before the plugin switch stays off on a card with no plugin and is resaved once.
+  {
+    JsonDocument doc = before;
+    doc.remove("pluginsEnabled");
+    settings_test_io::setNextRead(doc);
+    settings_test_io::writes = 0;
+    ok = expect(SETTINGS.loadFromFile() && SETTINGS.pluginsEnabled == 0, "plugins stay off for a file without the key") && ok;
+    doc["pluginsEnabled"] = 1;
+    settings_test_io::setNextRead(doc);
+    ok = expect(SETTINGS.loadFromFile() && SETTINGS.pluginsEnabled == 1, "a stored plugin switch is kept") && ok;
+  }
+
+  std::printf("settings_upgrade=v1076-meaning:%s\n", ok ? "GREEN" : "RED");
+  return ok ? 0 : 1;
+}
+
 int runNotoSerifCard() {
   // What reaches the card: the saved document as text, read back (saved() points into SETTINGS).
   const auto written = [] {
@@ -806,5 +993,6 @@ int main(int argc, char** argv) {
   if (mode == "button-hints") return runButtonHints();
   if (mode == "global-status-matrix") return runGlobalStatusBarMatrix();
   if (mode == "noto-serif-card") return runNotoSerifCard();
+  if (mode == "v1076-meaning") return runV1076Meaning();
   return 2;
 }

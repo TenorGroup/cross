@@ -20,6 +20,8 @@ class ConfirmationActivity : public Activity {
   // Input data
   std::string heading;
   std::string body;
+  std::string cancelLabel;
+  std::string confirmLabel;
 
   ConfirmationContent content;
   ConfirmationLayout layout{};
@@ -36,6 +38,9 @@ class ConfirmationActivity : public Activity {
  public:
   ConfirmationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& heading,
                        const std::string& body, ConfirmationContent content = {});
+  // Plain two-answer form (the upstream callers): custom labels for Cancel and Confirm, empty keeps the default.
+  ConfirmationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& heading,
+                       const std::string& body, const std::string& cancelLabel, const std::string& confirmLabel = {});
 
   void onEnter() override;
   void loop() override;

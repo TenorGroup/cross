@@ -44,6 +44,7 @@ class CalibreConnectActivity final : public Activity {
 
   void onWifiSelectionComplete(bool connected);
   void startWebServer();
+  // Upstream dropped this as dead code; the tenor exit path (calibre_power::stopBeforeFinish) still calls it.
   void stopWebServer();
 
  public:

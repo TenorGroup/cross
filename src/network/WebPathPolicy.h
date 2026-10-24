@@ -15,9 +15,13 @@ constexpr bool equalsFolded(std::string_view a, std::string_view b) {
 
 // Apply to the decoded path before normalisation or any C-string conversion.
 // FAT aliases and trailing dots/spaces must not bypass protected ancestors.
+// Dot-named items are ordinary data (they can be listed and deleted from the file manager, #4031), except the
+// root /.crosspoint tree: it holds every credential store (wifi, opds, opds tokens, koreader, webdav, lcp), not
+// only the three files upstream's ProtectedPaths.h names.
 constexpr bool allowed(std::string_view path) {
   if (path.empty()) return false;
   size_t start = 0;
+  bool firstPart = true;
   for (size_t i = 0; i <= path.size(); ++i) {
     if (i < path.size() && path[i] != '/') {
       const auto c = static_cast<unsigned char>(path[i]);
@@ -38,10 +42,13 @@ constexpr bool allowed(std::string_view path) {
     if (shortAlias || (part.size() >= 7 && (equalsFolded(part.substr(part.size() - 7), ".davtmp") ||
                                             equalsFolded(part.substr(part.size() - 7), ".davbak"))))
       return false;
-    if (!part.empty() && (part.front() == '.' || part.back() == '.' || part.back() == ' ' ||
-                          equalsFolded(part, "XTCache") || equalsFolded(part, "System Volume Information"))) {
+    // "." and ".." end in a dot, so the trailing-dot test below also refuses them.
+    if (!part.empty() && (part.back() == '.' || part.back() == ' ' || equalsFolded(part, "XTCache") ||
+                          equalsFolded(part, "System Volume Information") ||
+                          (firstPart && equalsFolded(part, ".crosspoint")))) {
       return false;
     }
+    if (!part.empty()) firstPart = false;
     start = i + 1;
   }
   return true;

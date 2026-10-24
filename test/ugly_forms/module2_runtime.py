@@ -14,7 +14,7 @@ def extract(s,sig):
  return s[start:i]
 def strip_includes(s):return re.sub(r'^#include[^\n]*\n','',s,flags=re.M)
 files=['src/activities/settings/'+n for n in ['TextSettingsActivity.cpp','TextSettingsActivity.h','StatusBarSettingsActivity.cpp','StatusBarSettingsActivity.h','SettingsActivity.h','SettingsActivity.cpp']]
-files+=['src/SettingsList.h','src/CrossPointSettings.h','src/CrossPointSettings.cpp','src/ReaderFontChon.cpp','src/ReaderFontChon.h','src/ReaderFontSizes.cpp','src/ReaderFontSizes.h','src/ReaderInkWeight.h','lib/Epub/Epub/ReaderSpacing.h','src/MenuFavorites.cpp','src/MenuFavorites.h','src/shells/ugly/UglyQuestionSheet.cpp','src/shells/ugly/UglyQuestionSheet.h','src/shells/ugly/UglySheets.h','src/shells/ugly/UglyInk.h','src/shells/ugly/UglyInk.cpp']
+files+=['src/SettingsList.h','src/SettingsList.cpp','src/CrossPointSettings.h','src/CrossPointSettings.cpp','src/ReaderFontChon.cpp','src/ReaderFontChon.h','src/ReaderFontSizes.cpp','src/ReaderFontSizes.h','src/ReaderInkWeight.h','lib/Epub/Epub/ReaderSpacing.h','src/MenuFavorites.cpp','src/MenuFavorites.h','src/shells/ugly/UglyQuestionSheet.cpp','src/shells/ugly/UglyQuestionSheet.h','src/shells/ugly/UglySheets.h','src/shells/ugly/UglyInk.h','src/shells/ugly/UglyInk.cpp']
 files+=['lib/I18n/'+n for n in ['I18n.h','I18nKeys.h','I18n.cpp','I18nStrings.h','I18nStrings.cpp']]
 snapshot=a.output/'snapshot'
 for f in files:
@@ -36,8 +36,8 @@ info='enum class SettingType { TOGGLE, ENUM, ACTION, VALUE, STRING };\nenum clas
 text=read('src/activities/settings/TextSettingsActivity.cpp');status=read('src/activities/settings/StatusBarSettingsActivity.cpp')
 constants=text[text.index('constexpr StrId TAB_NAME_IDS'):text.index('}  // namespace')]
 # Full production catalog statements for the 14 adapter rows, without unrelated settings.
-ids=['FONT_FAMILY','FONT_SIZE','LINE_SPACING','LETTER_SPACING','WORD_SPACING','EXTRA_SPACING','PARA_ALIGNMENT','SCREEN_MARGIN','PARAGRAPH_INDENT','FOCUS_READING','HYPHENATION','EMBEDDED_STYLE','TEXT_AA','READER_INK_WEIGHT']
-list_source=read('src/SettingsList.h');statements=re.findall(r'v\.push_back\([\s\S]*?;',list_source)
+ids=['FONT_FAMILY','FONT_SIZE','LINE_SPACING','LETTER_SPACING','WORD_SPACING','EXTRA_SPACING','PARA_ALIGNMENT','SCREEN_MARGIN','PARAGRAPH_INDENT','DROP_CAP','HYPHENATION','EMBEDDED_STYLE','TEXT_AA','READER_INK_WEIGHT']
+list_source=read('src/SettingsList.h')+read('src/SettingsList.cpp');statements=re.findall(r'(?:v\.push_back|emit)\([\s\S]*?;',list_source)
 catalog=[next(s for s in statements if re.search(r'SettingInfo::\w+\(\s*StrId::STR_'+i+r'\b',s)) for i in ids]
 (a.output/'Catalog.inc').write_text('const std::vector<SettingInfo>& getBaseSettingsList(){static const auto rows=[](){std::vector<SettingInfo> v;\n'+'\n'.join(catalog)+'\nreturn v;}();return rows;}\n')
 # Headers retain actual fields/declarations; access and virtual markers are test-only.

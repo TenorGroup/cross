@@ -4,6 +4,7 @@
 #include <string>
 
 #include "activities/UiListActivity.h"
+#include "components/OptionPopup.h"
 
 /**
  * Submenu for KOReader Sync settings.
@@ -14,16 +15,37 @@ class KOReaderSettingsActivity final : public UiListActivity {
   tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Network; }
   explicit KOReaderSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
-  static constexpr int MENU_ITEMS = 9;
+  // Upstream's twelve rows plus automatic sync.
+  static constexpr int MENU_ITEMS = 13;
+
+  // Row order.
+  static constexpr int ROW_USERNAME = 0;
+  static constexpr int ROW_PASSWORD = 1;
+  static constexpr int ROW_SERVER_URL = 2;
+  static constexpr int ROW_SERVER_TYPE = 3;
+  static constexpr int ROW_CUSTOM_HEADER_1 = 4;
+  static constexpr int ROW_CUSTOM_HEADER_2 = 5;
+  static constexpr int ROW_MATCH_METHOD = 6;
+  static constexpr int ROW_SEND_METADATA = 7;
+  static constexpr int ROW_SYNC_BEHAVIOR = 8;
+  static constexpr int ROW_AUTO_SYNC = 9;
+  static constexpr int ROW_SYNC_CLIPPINGS = 10;
+  static constexpr int ROW_SIGN_UP = 11;
+  static constexpr int ROW_AUTHENTICATE = 12;
 
  private:
   bool supportsFavorites() const override { return true; }
   std::string favoriteKey(int row) const override;
   int listCount() const override;
-  // Rows 4 (send metadata) and 6 (automatic sync) are plain On/Off switches.
-  int settingsChoiceCount(int row) const override { return row >= 3 && row <= 6 ? 2 : 0; }
+  // Server type is a three-way popup; matching and sync behavior are two-way popups; send metadata,
+  // automatic sync and sync clippings are plain On/Off switches.
+  int settingsChoiceCount(int row) const override {
+    if (row == ROW_SERVER_TYPE) return 3;
+    return row >= ROW_MATCH_METHOD && row <= ROW_SYNC_CLIPPINGS ? 2 : 0;
+  }
   SettingsChoiceStyle rowChoiceStyle(int row) const override {
-    return settingsChoiceStyle(settingsChoiceCount(row), tenorchrome::kTouchShell, row == 4 || row == 6);
+    return settingsChoiceStyle(settingsChoiceCount(row), tenorchrome::kTouchShell,
+                               row == ROW_SEND_METADATA || row == ROW_AUTO_SYNC || row == ROW_SYNC_CLIPPINGS);
   }
   OptionPopup optionPopup_;
   OptionPopup* tiltPopup() override { return &optionPopup_; }

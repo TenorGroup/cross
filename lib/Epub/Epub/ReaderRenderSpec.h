@@ -7,7 +7,8 @@
 
 // Keep the reader return-position key and section-cache format on the same
 // version. A cache format change must invalidate saved page labels too.
-inline constexpr uint8_t SECTION_FILE_VERSION = 58;
+// This is the only definition: Section.cpp uses it and does not declare its own.
+inline constexpr uint8_t SECTION_FILE_VERSION = 68;
 
 // The resolved text-rendering configuration a reader hands to the layout
 // engine. Section-cache validation keys on every field: a section file built
@@ -21,13 +22,18 @@ inline constexpr uint8_t SECTION_FILE_VERSION = 58;
 struct ReaderRenderSpec {
   int fontId = 0;
   float lineCompression = 1.0f;
+  // The spacing fields keep the CrossPoint names and units; CrossPointSettings::readerRenderSpec()
+  // is the one place that turns the stored five-step levels into them.
+  // extraParagraphSpacing is a readerSpacing::Level, not a flag: the gap after a
+  // paragraph is readerSpacing::paragraphGap(level, lineHeight), and level 0 still
+  // leaves the legacy gap.
   uint8_t extraParagraphSpacing = 0;
-  uint8_t paragraphIndent = 0;
-  int8_t letterSpacing = 0;
-  // readerSpacing::Level on the U+0020 advance. Not resolved to pixels here,
-  // unlike letterSpacing: the delta depends on the font's own space advance, so
-  // the renderer resolves it per style at the point of use.
-  uint8_t wordSpacing = 0;
+  // Spaces in the first-line indent: readerSpacing::indentSpaces(level).
+  uint8_t paragraphIndentSpaces = 2;
+  // Signed pixels added to every cursor advance: readerSpacing::letterPixels(level).
+  int8_t characterSpacing = 0;
+  // Percent of the U+0020 advance: readerSpacing::wordPermille(level) / 10.
+  uint8_t wordSpacingPercent = 100;
   uint8_t paragraphAlignment = 0;
   uint8_t layoutKeyPadding = 0;
   uint16_t viewportWidth = 0;
@@ -39,6 +45,9 @@ struct ReaderRenderSpec {
   // readerSpacing::dropCapHeight(mode, lineHeight) so the reader and the
   // settings preview can never disagree.
   uint8_t dropCapMode = readerSpacing::DROP_CAP_DEFAULT;
+  // Always false here: Focus Reading is not offered. The field stays because the
+  // CrossPoint layout code reads it.
+  bool focusReadingEnabled = false;
 };
 
 static_assert(std::is_standard_layout_v<ReaderRenderSpec>, "ReaderRenderSpec must stay standard layout");
@@ -48,3 +57,30 @@ static_assert(offsetof(ReaderRenderSpec, lineCompression) == 4, "ReaderRenderSpe
 static_assert(offsetof(ReaderRenderSpec, viewportWidth) == 14, "ReaderRenderSpec width offset changed");
 static_assert(offsetof(ReaderRenderSpec, viewportHeight) == 16, "ReaderRenderSpec height offset changed");
 static_assert(offsetof(ReaderRenderSpec, dropCapMode) == 21, "ReaderRenderSpec drop cap offset changed");
+static_assert(offsetof(ReaderRenderSpec, focusReadingEnabled) == 22, "ReaderRenderSpec focus offset changed");
+
+// Stable signature for clipping anchors. Page-local word ordinals are valid
+// only for the exact layout that produced them.
+inline uint32_t readerRenderSpecSignature(const ReaderRenderSpec& spec) {
+  uint32_t signature = 2166136261U;
+  const auto mix = [&signature](const uint32_t value) {
+    signature ^= value;
+    signature *= 16777619U;
+  };
+  mix(static_cast<uint32_t>(spec.fontId));
+  mix(static_cast<uint32_t>(spec.lineCompression * 1000.0f));
+  mix(spec.extraParagraphSpacing);
+  mix(spec.paragraphIndentSpaces);
+  mix(static_cast<uint8_t>(spec.characterSpacing));
+  mix(spec.wordSpacingPercent);
+  mix(spec.paragraphAlignment);
+  mix(spec.viewportWidth);
+  mix(spec.viewportHeight);
+  mix(spec.hyphenationEnabled);
+  mix(spec.embeddedStyle);
+  mix(spec.imageRendering);
+  mix(spec.layoutKeyPadding);
+  mix(spec.dropCapMode);
+  mix(spec.focusReadingEnabled);
+  return signature == 0 ? 1 : signature;
+}

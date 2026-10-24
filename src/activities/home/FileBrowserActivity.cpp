@@ -386,6 +386,13 @@ void FileBrowserActivity::onRowLongPress(const int index) {
   }
 }
 
+#if FREEINK_CAP_TOUCH
+void FileBrowserActivity::swipeDelete(const int index) {
+  nav.selected = index;
+  deleteSelected();
+}
+#endif
+
 void FileBrowserActivity::activateSelected() {
   // A touch activation can carry a row index captured before a delete/reload
   // shrank the list; the next render re-registers the rows.
@@ -535,8 +542,7 @@ bool FileBrowserActivity::handleCustomInput() {
   if (mode == Mode::Books && mappedInput.wasLongPressed(MappedInputManager::Button::PageForward, 400)) {
     if (nav.selected >= kSearchRows && nav.selected < listCount() && entryForVisibleRow(nav.selected).back() != '/') {
       const auto path = fullPathForVisibleRow(nav.selected);
-      if (FsHelpers::hasEpubExtension(path) || FsHelpers::hasTxtExtension(path) ||
-          FsHelpers::hasMarkdownExtension(path) || FsHelpers::hasXtcExtension(path))
+      if (FsHelpers::hasReflowableBookExtension(path) || FsHelpers::hasXtcExtension(path))
         startActivityForResult(ReaderActivity::create(renderer, mappedInput, path, false, true), nullptr);
     }
     return true;
@@ -815,6 +821,9 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
       screen.centeredText(tr(STR_NO_FILES_FOUND), screen.theme().bodyText);
     return;
   }
+#if FREEINK_CAP_TOUCH
+  if (mode == Mode::Books) configureSwipeDelete(screen, props);
+#endif
   screen.list(props);
 }
 

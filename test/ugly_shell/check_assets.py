@@ -114,11 +114,14 @@ for path in list((repo / 'src').rglob('*.cpp')) + list((repo / 'src').rglob('*.h
     if str(rel).startswith('src/shells/ugly/') or str(rel).startswith('lib/I18n/'):
         continue
     text = path.read_text(errors='ignore')
+    if str(rel) == 'src/SettingsList.cpp':
+        continue  # checked with its header below: the rows live here, the filters there
     if str(rel) == 'src/SettingsList.h':
+        text += (repo / 'src/SettingsList.cpp').read_text(errors='ignore')
         allowed = {'STR_UGLY_START_BOOK', 'STR_UGLY_START_DIARY',
                    'STR_UGLY_START_RECENT', 'STR_UGLY_START_DESK', 'STR_UGLY_ROOT_SCREEN'}
         check(set(re.findall(r'\bSTR_UGLY_\w+', text)) == allowed,
-              'SettingsList.h may only name the shell-filtered start-screen strings')
+              'SettingsList.h and .cpp may only name the shell-filtered start-screen strings')
         check(re.search(r'!ugly\s*&&\s*setting.valuePtr == &CrossPointSettings::uglyRootScreen', text) is not None,
               'the cross shell must hide the ugly Root row (the On wake row is one row for both shells)')
         check('settingHiddenOnThisBoard(setting) || settingHiddenInShell(setting)' in text and

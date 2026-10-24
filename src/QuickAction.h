@@ -14,7 +14,18 @@
 namespace quickaction {
 
 enum class Trigger : uint8_t { PowerRelease, Shake, FaceDown, FaceUp, DoubleTap, Remote, EdgeTap, ScreenTap };
-enum class Outcome : uint8_t { None, Refresh, Sleep, PageForward, Back, Confirm, ReaderMenu, SaveQuote, SideForward };
+enum class Outcome : uint8_t {
+  None,
+  Refresh,
+  Sleep,
+  PageForward,
+  Back,
+  Confirm,
+  ReaderMenu,
+  SaveQuote,
+  SideForward,
+  Clip
+};
 
 struct Choice {
   uint8_t action;  // A SHORT_PWRBTN value
@@ -33,6 +44,10 @@ inline constexpr Choice CHOICES[] = {
     {CrossPointSettings::BACK, StrId::STR_SHAKE_BACK},
     {CrossPointSettings::READER_MENU, StrId::STR_READER_MENU},
     {CrossPointSettings::SAVE_QUOTE, StrId::STR_QUOTES_SAVE_ACTION},
+    {CrossPointSettings::CREATE_CLIPPING, StrId::STR_SAVE_CLIPPING},
+    {CrossPointSettings::PWR_BOOKMARK, StrId::STR_BOOKMARK_OPTION},
+    {CrossPointSettings::PWR_SYNC, StrId::STR_KOSYNC},
+    {CrossPointSettings::PWR_READER_MENU, StrId::STR_READER_MENU},
 };
 constexpr bool choicesInValueOrder() {
   for (uint8_t i = 0; i < std::size(CHOICES); ++i) {
@@ -71,7 +86,11 @@ inline uint8_t shakeAsPowerAction(const uint8_t shakeAction) {
 // `action` is a SHORT_PWRBTN value. The motion gestures (shake, face down, face up,
 // double tap) and a remote button run every action themselves. A page turn, the reader
 // menu and save quotation mean something only in a book, so elsewhere they do nothing;
-// in a book the reader runs the last two through its own branches. Back and Select are pressed like the real keys, and each
+// in a book the reader runs the last two through its own branches. The CrossPoint 2.0.0 actions: the power button's
+// own release is read where it was already read (Create clipping by the reader, like Footnotes; Bookmark,
+// Sync and the Reader menu of a touch board without a home key by MappedInputManager, as a Home-key action), so
+// the button resolves to nothing for them here and only a gesture or a remote runs Create clipping and the Reader
+// menu. Bookmark and Sync have no gesture form. Back and Select are pressed like the real keys, and each
 // screen takes or ignores them as it does those. For the button, Sleep fires on the
 // press itself (getPowerButtonDuration), Page Turn and Footnotes are read by the
 // reader, and on touch boards the input map makes the release Select itself.
@@ -98,6 +117,10 @@ inline Outcome resolve(const uint8_t action, const Trigger trigger, const bool f
       return foregroundReader ? Outcome::ReaderMenu : Outcome::None;
     case CrossPointSettings::SAVE_QUOTE:
       return foregroundReader ? Outcome::SaveQuote : Outcome::None;
+    case CrossPointSettings::CREATE_CLIPPING:
+      return gesture && foregroundReader ? Outcome::Clip : Outcome::None;
+    case CrossPointSettings::PWR_READER_MENU:
+      return gesture && foregroundReader ? Outcome::ReaderMenu : Outcome::None;
     default:
       return Outcome::None;
   }

@@ -70,11 +70,12 @@ void relayout(PreviewLayout& layout, const GfxRenderer& renderer, int fontId, in
   style.alignment = toCssAlign(SETTINGS.paragraphAlignment);
   style.textAlignDefined = true;  // honor the user's choice; RTL auto-detected from text
 
-  const int letterSpacing = readerSpacing::letterPixels(SETTINGS.letterSpacing);
-  const uint8_t wordSpacing = SETTINGS.wordSpacing;
+  // The one conversion from the stored levels to the engine's units, shared with the reader.
+  const auto spacing = SETTINGS.textSpacingParams();
 
-  const int dropCapHeight = readerSpacing::dropCapHeight(
-      SETTINGS.dropCapMode, renderer.getLineHeight(fontId, SETTINGS.getReaderLineCompression()));
+  const int dropCapHeight = ParsedText::dropCapHeightFor(
+      ParsedText::DropCapSource::ChapterInitial, SETTINGS.dropCapMode,
+      renderer.getLineHeight(fontId, SETTINGS.getReaderLineCompression()));
 
   const std::vector<std::string> tokens = sampleTokens(I18N.get(StrId::STR_FONT_PREVIEW_TEXT));
   if (tokens.empty()) return;
@@ -83,8 +84,7 @@ void relayout(PreviewLayout& layout, const GfxRenderer& renderer, int fontId, in
   // paragraph spacing and first-line indentation, including when a cap is enabled.
   // The reader engine owns every line break; the pane retains only its visible lines.
   for (int paragraph = 0; paragraph < 2; paragraph++) {
-    ParsedText parsed(SETTINGS.extraParagraphSpacing != 0, SETTINGS.hyphenationEnabled != 0, false, style,
-                      SETTINGS.paragraphIndent, letterSpacing, wordSpacing);
+    ParsedText parsed(SETTINGS.hyphenationEnabled != 0, false, style, spacing.paragraphIndentSpaces);
     parsed.setLineCompression(SETTINGS.getReaderLineCompression());
     if (paragraph == 0 && dropCapHeight > 0) parsed.enableDropCap(dropCapHeight);
     // Repeat short localized samples so the first paragraph can fill two lines.
@@ -98,7 +98,8 @@ void relayout(PreviewLayout& layout, const GfxRenderer& renderer, int fontId, in
         renderer, fontId, static_cast<uint16_t>(textWidth),
         [&layout, before, lineLimit](std::unique_ptr<TextBlock> line, uint32_t) {
           if (layout.lines.size() - before < lineLimit) layout.lines.push_back(std::move(line));
-        });
+        },
+        true, spacing.characterSpacing, spacing.wordSpacingPercent);
     if (paragraph == 0) layout.firstParagraphLines = layout.lines.size() - before;
   }
 }

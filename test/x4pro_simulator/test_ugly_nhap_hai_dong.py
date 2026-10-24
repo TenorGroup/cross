@@ -20,7 +20,7 @@ GAP = 'TAP:240,160'                    # between the second line and the first r
 
 
 def opened(log):
-    return 'TxtReader' in entered(log)
+    return 'EpubReader' in entered(log)
 
 
 def main():

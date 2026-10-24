@@ -94,7 +94,7 @@ bool wasDrawn(const std::string& text) {
 }  // namespace hosttest
 
 void GfxRenderer::drawText(int, const int x, const int y, const char* text, bool, EpdFontFamily::Style,
-                           BidiUtils::BidiBaseDir, int, uint8_t) const {
+                           BidiUtils::BidiBaseDir, int8_t) const {
   if (text != nullptr) {
     hosttest::drawn().push_back({text, x, y, false});
   }
@@ -111,7 +111,8 @@ int GfxRenderer::getTextWidth(int, const char* text, EpdFontFamily::Style, BidiU
   return text ? static_cast<int>(strlen(text)) * 8 : 0;
 }
 int GfxRenderer::getLineHeight(int) const { return 20; }
-int GfxRenderer::getTextAdvanceX(int font, const char* text, EpdFontFamily::Style style, int, uint8_t) const {
+int GfxRenderer::getTextAdvanceX(int font, const char* text, EpdFontFamily::Style style, int8_t,
+                                 BidiUtils::BidiBaseDir, TextMeasureMode) const {
   return getTextWidth(font, text, style);
 }
 int GfxRenderer::getTextInkTop(int, const char*, EpdFontFamily::Style) const { return 0; }
@@ -205,6 +206,10 @@ GfxRenderer fakeRenderer(fakeDisplay);
 HalGPIO fakeGpio;
 MappedInputManager fakeInput(fakeGpio, fakeRenderer);
 
+// The constructor and destructor live in ActivityManager.cpp, which this test does not build.
+ActivityManager::ActivityManager(GfxRenderer& renderer, MappedInputManager& mappedInput)
+    : renderer(renderer), mappedInput(mappedInput) {}
+ActivityManager::~ActivityManager() {}
 ActivityManager activityManager(fakeRenderer, fakeInput);
 HalFrontlight HalFrontlight::instance;
 UITheme UITheme::instance;

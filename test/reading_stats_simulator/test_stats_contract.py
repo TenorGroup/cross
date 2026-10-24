@@ -228,7 +228,7 @@ class StatsContractTest(unittest.TestCase):
         anh = kb.anh("khong-du-lieu")
         # Sau khi doc mot cuon: file moi sinh ra va chi co dung ngay hom nay.
         log = kb.chay("1000:CONFIRM;2500:RIGHT;3200:RIGHT;4400:BACK;6200:QUIT")
-        self.assertIn("Entering activity: TxtReader", log)
+        self.assertIn("Entering activity: EpubReader", log)
         du_lieu = kb.doc()
         self.assertEqual([dong[0] for dong in du_lieu.get("ngay", [])], [ma_ngay_dia_phuong(kb.bien_co)])
         DO_DUOC["khong_du_lieu"] = {"file_ton_tai": False, "man_cao": anh.height,

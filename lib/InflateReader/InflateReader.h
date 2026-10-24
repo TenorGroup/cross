@@ -83,7 +83,7 @@ class InflateReader {
   void setReadCallback(int (*cb)(uzlib_uncomp*));
 
   // Consume the 2-byte zlib header (CMF + FLG) from the input stream.
-  // Call this once before the first read() when input is zlib-wrapped (e.g. PNG IDAT).
+  // Call this once before the first read() when input is zlib-wrapped (the X4 Pro brand image).
   void skipZlibHeader();
 
   // Decompress exactly len bytes into dest.

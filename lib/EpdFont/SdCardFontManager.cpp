@@ -42,8 +42,12 @@ uint8_t SdCardFontManager::selectWeight(const uint8_t availableMask, const uint8
 }
 
 int SdCardFontManager::loadFile(const SdCardFontFamilyInfo& family, const SdCardFontFileInfo& file,
-                                GfxRenderer& renderer, uint8_t weight) {
+                                GfxRenderer& renderer, const uint8_t weight, const int fontIdOverride) {
   const std::string path = family.filePath(file, weight);
+  if (path.empty()) {
+    LOG_ERR("SDMGR", "No font path in family %s", family.name.c_str());
+    return 0;
+  }
   const char* familyName = family.name.c_str();
   auto* font = new (std::nothrow) SdCardFont();
   if (!font) {
@@ -58,7 +62,8 @@ int SdCardFontManager::loadFile(const SdCardFontFamilyInfo& family, const SdCard
     return 0;
   }
 
-  int fontId = computeFontId(font->contentHash(), familyName, file.pointSize, weight);
+  int fontId = fontIdOverride != 0 ? fontIdOverride
+                                   : computeFontId(font->contentHash(), familyName, file.pointSize, weight);
   // Guard against collision with built-in font IDs (astronomically unlikely
   // with FNV-1a hashes, but provides a safety net)
   if (renderer.getFontMap().count(fontId) != 0) {
@@ -145,18 +150,40 @@ bool SdCardFontManager::loadBuiltinFamily(const SdCardFontFamilyInfo& family, Gf
   return true;
 }
 
-int SdCardFontManager::loadFamilyExtraSize(const SdCardFontFamilyInfo& family, GfxRenderer& renderer,
-                                           uint8_t pointSize) {
+int SdCardFontManager::loadFamilyExtraSize(const SdCardFontFamilyInfo& family, GfxRenderer& renderer, uint8_t pointSize,
+                                           const int fontId) {
   const SdCardFontFileInfo* file = family.findFile(pointSize);
   if (!file) return 0;  // family has no .cpfont at this exact size
 
-  // Reuse an already-loaded font of the same size (e.g. when a reader size
-  // happens to match a UI size) instead of double-loading the file.
+  // Reuse an already-loaded base-weight font of the same size (e.g. when a reader size
+  // happens to match a UI size) instead of double-loading the file. UI text never takes
+  // the reader's ink weight.
   for (const auto& lf : loaded_) {
     if (lf.size == pointSize && lf.weight == 0) return lf.fontId;
   }
 
-  return loadFile(family, *file, renderer);
+  return loadFile(family, *file, renderer, 0, fontId);
+}
+
+bool SdCardFontManager::loadFamilyVariant(const SdCardFontFamilyInfo& family, GfxRenderer& renderer,
+                                          const uint8_t pointSize, const int fontId) {
+  const SdCardFontFileInfo* file = family.findFile(pointSize);
+  if (!file) return false;
+  // A sized variant of the reader font keeps the reader's ink weight when the pack ships that size at it.
+  if (loadedWeight_ != 0 && family.hasWeight(*file, loadedWeight_)) {
+    return loadFile(family, *file, renderer, loadedWeight_, fontId) != 0;
+  }
+  return loadFile(family, *file, renderer, 0, fontId) != 0;
+}
+
+void SdCardFontManager::unloadFont(GfxRenderer& renderer, const int fontId) {
+  for (auto it = loaded_.begin(); it != loaded_.end(); ++it) {
+    if (it->fontId != fontId) continue;
+    renderer.removeFont(fontId);
+    delete it->font;
+    loaded_.erase(it);
+    return;
+  }
 }
 
 void SdCardFontManager::unloadExtraSizes(GfxRenderer& renderer) {
@@ -207,7 +234,11 @@ void SdCardFontManager::unloadAll(GfxRenderer& renderer) {
   readerReleased_ = false;
 }
 
-int SdCardFontManager::getFontId(const std::string& familyName) const {
-  if (readerReleased_ || familyName != loadedFamilyName_ || loaded_.empty()) return 0;
-  return loaded_.front().fontId;
+int SdCardFontManager::getFontId(const std::string& familyName, const uint8_t pointSize) const {
+  if (familyName != loadedFamilyName_ || loaded_.empty()) return 0;
+  if (pointSize == 0) return readerReleased_ ? 0 : loaded_.front().fontId;
+  for (const auto& lf : loaded_) {
+    if (lf.size == pointSize) return lf.fontId;
+  }
+  return 0;
 }

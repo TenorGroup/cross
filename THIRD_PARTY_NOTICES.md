@@ -29,6 +29,7 @@ The dependency list below describes v1.0.55. Match notices to the firmware relea
 | v1.0.54 | wolfSSL 5.9.2 | GNU GPL version 3 | GPL version 3 or any later version, or a separate commercial licence |
 | v1.0.55 | wolfSSL 5.9.2 | GNU GPL version 3 | GPL version 3 or any later version, or a separate commercial licence |
 | v1.0.9 | wolfSSL 5.9.2 | GNU GPL version 3 | GPL version 3 or any later version, or a separate commercial licence |
+| v1.1.0 | wolfSSL 5.9.2 | GNU GPL version 3 | GPL version 3 or any later version, or a separate commercial licence |
 
 For v1.0.1, see the [licence archive supplied with that release](https://github.com/TenorGroup/cross-releases/releases/download/v1.0.1/tenor-cross-v1.0.1-licenses.zip). For v1.0.2 and v1.0.3, see [COPYING](third_party/wolfssl/COPYING), [LICENSING](third_party/wolfssl/LICENSING) and [source provenance](third_party/wolfssl/PROVENANCE.md). The historical GPL v2 COPYING is retained at `licenses/historical/v1.0.1/Arduino-wolfSSL/COPYING` for its original dependency version. The current PlatformIO dependency is also named `Arduino-wolfSSL`; its 5.9.2 COPYING and LICENSING are retained verbatim in both `third_party/wolfssl/` and `licenses/dependencies/Arduino-wolfSSL/`.
 
@@ -41,6 +42,7 @@ For v1.0.1, see the [licence archive supplied with that release](https://github.
 - ArduinoJson and QRCode: MIT, retained in `licenses/dependencies/`.
 - SdFat: retained upstream notice in `licenses/dependencies/SdFat/`.
 - JPEGDEC and PNGdec: Apache License 2.0, retained in `licenses/dependencies/`.
+- v1.1.0 adds AnimatedGIF (BitBank Software, Apache License 2.0), pinned in `platformio.ini` and patched by `scripts/patch_animatedgif.py`; its licence is retained in `licenses/dependencies/AnimatedGIF/`. It also builds the CrossPoint 2.0.0 content-protection and catalog libraries of the FreeInk SDK, which use the bundled wolfSSL above.
 - WebSockets: retain its LGPL licence and libb64 notices in `licenses/dependencies/WebSockets/`.
 - FreeType 2.13.2: dual-licensed; the FreeType Project Licence is included with its required attribution. Portions of this software are copyright the FreeType Project (www.freetype.org). All rights reserved.
 - FreeInkBook's embedded expat, miniz, pngle and hyphenation patterns retain their notices in the SDK tree.

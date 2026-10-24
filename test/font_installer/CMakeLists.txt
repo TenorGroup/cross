@@ -48,6 +48,7 @@ target_include_directories(FontInstallerTest PRIVATE
   ${REPO_ROOT}/lib/Serialization
   ${REPO_ROOT}/lib/Epub
   ${REPO_ROOT}/lib/BlePageTurner/include
+  ${REPO_ROOT}/freeink-sdk/libs/network/BleKeyboardHost/include
 )
 
 target_link_libraries(FontInstallerTest PRIVATE

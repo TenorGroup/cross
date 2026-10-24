@@ -9,6 +9,7 @@
 #include <cctype>
 #include <string_view>
 
+#include "HapticFeedback.h"
 #include "MappedInputManager.h"
 #include "ReaderTapZones.h"
 #include "TextGrayPolicy.h"

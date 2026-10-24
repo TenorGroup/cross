@@ -49,7 +49,7 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   std::string x3NavigationLabel() const override { return I18N.get(StrId::STR_KOREADER_SYNC); }
   explicit KOReaderSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& epubPath,
                                 CrossPointPosition localPosition, SavedProgressPosition localKoPos,
-                                std::string localChapterName);
+                                std::string localChapterName, const bool pluginEventsOnly = false);
 
   void onEnter() override;
   void onExit() override;
@@ -111,6 +111,10 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   bool runtimeStarted = false;
   uint32_t idleSince = 0;
   bool idleTimerStarted = false;
+
+  // Reuses the KOReader WiFi connect/drain/return flow without a server: flush
+  // plugged-outbox events instead of syncing progress.
+  bool pluginEventsOnly = false;
 
   void onWifiSelectionComplete(bool success);
   void performSync();

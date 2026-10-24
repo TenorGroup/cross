@@ -22,7 +22,7 @@ end = source.index('}  // namespace', start) + len('}  // namespace')
 if a.extract_only:
     raise SystemExit(0)
 cmd = ['clang++', '-std=c++20', '-DSIMULATOR', '-Wno-character-conversion',
-       '-I'+str(repo/'test/secure_http/stubs'), '-I'+str(repo/'freeink-sdk/libs/network/SecureNet/include'),
+       '-I'+str(repo/'test/http_downloader/stubs'), '-I'+str(repo/'test/secure_http/stubs'), '-I'+str(repo/'freeink-sdk/libs/network/SecureNet/include'),
        '-I'+str(a.gtest/'include'), '-I'+str(a.output), str(repo/'test/http_downloader/transport_fixture.cpp'),
        str(a.gtest_libs/'libgtest.a'), str(a.gtest_libs/'libgtest_main.a'), '-o', str(a.output/'transport-test')]
 if not a.fallback:

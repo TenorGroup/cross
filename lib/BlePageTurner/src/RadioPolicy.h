@@ -81,7 +81,7 @@ struct RadioInputs {
   uint32_t idleMs;    // since a remote was last connected (or the radio came up)
   Heap heap;
   bool connectionBusy = false;
-  bool hasBond = false;  // a remote has been paired: without one the book and Home never start it
+  bool hasBond = false;  // a remote has been chosen (Config::peerAddr): a book or Home starts the radio only for one
 };
 
 // The ONE answer to "may the radio be on now". Everything that starts, keeps or stops the
@@ -101,7 +101,6 @@ constexpr Why radioVerdict(const RadioInputs& in, const Profile& profile = activ
         return in.idleStopped ? Why::IdleNoLink : Why::Ok;
       }
       if (in.where != Where::Reader) return Why::NotReading;
-      // Nothing paired, nothing to link: the stack's ~51 KB stay with the book.
       if (!in.hasBond) return Why::NoBond;
       if (!in.pageShown) return Why::PageNotShown;
       // A radio stopped for a starved build waits for the page, not for a key: restarting it
@@ -133,7 +132,7 @@ constexpr Why radioVerdict(const RadioInputs& in, const Profile& profile = activ
     case Phase::Running:
       if (!in.enabled) return Why::Off;
       if (in.storageBusy) return Why::StorageBusy;
-      // A radio the settings screen left up does not run on into the book with nothing paired.
+      // A radio the settings screen left up does not run on into the book with no remote chosen.
       if (in.where == Where::Reader && !in.hasBond) return Why::NoBond;
       // A linked remote is never idle: it sits quiet between two presses for a long time.
       if (!in.linked && !in.connectionBusy && in.idleMs >= kIdleOffMs) return Why::IdleNoLink;
@@ -155,7 +154,7 @@ struct NoteInputs {
   bool refused;        // this visit's radio start was refused (heap rules, rollback)
   uint32_t runningMs;  // how long the radio has been up without a break in this visit
   bool acknowledged;   // a page turn was applied
-  bool hasBond;        // a remote has been paired: without one nothing can link
+  bool hasBond;        // a remote has been chosen
 };
 
 // The ONE answer to "what does the status bar say about the remote now".
@@ -163,7 +162,6 @@ constexpr LinkNote nextLinkNote(const LinkNote note, const NoteInputs& in) {
   if (!in.enabled || !in.reading) return LinkNote::None;
   // Every visit starts over. A remote still linked has nothing to wait for, and a radio off for
   // idleness does not try until a key of the device wakes it.
-  // With no remote paired nothing can link.
   if (in.entered) return in.linked || in.idleStopped || !in.hasBond ? LinkNote::None : LinkNote::Connecting;
   switch (note) {
     case LinkNote::Connecting:

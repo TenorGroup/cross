@@ -47,6 +47,9 @@ class CrossPointWebServerActivity final : public Activity {
 #ifdef TENOR_UI_ACCEPTANCE
   bool autoJoinForTest = false;
 #endif
+  // Set when re-entered after the heap-defrag reboot: skip mode selection, go
+  // straight to Join Network, and don't reboot again.
+  bool startInJoinNetwork = false;
 
   // Web server - owned by this activity
   std::unique_ptr<CrossPointWebServer> webServer;
@@ -86,10 +89,12 @@ class CrossPointWebServerActivity final : public Activity {
   void requestAutoJoinForTest() { autoJoinForTest = true; }
 #endif
   explicit CrossPointWebServerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                       std::string returnBook = {}, const bool openFontStore = false)
+                                       std::string returnBook = {}, const bool openFontStore = false,
+                                       const bool startInJoinNetwork = false)
       : Activity("CrossPointWebServer", renderer, mappedInput),
         returnBook(std::move(returnBook)),
-        openFontStore(openFontStore) {}
+        openFontStore(openFontStore),
+        startInJoinNetwork(startInJoinNetwork) {}
   void onEnter() override;
   void onExit() override;
   void loop() override;

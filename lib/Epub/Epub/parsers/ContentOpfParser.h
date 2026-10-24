@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <deque>
+#include <optional>
 #include <vector>
 
 #include "Epub.h"
@@ -19,6 +20,8 @@ class ContentOpfParser final : public Print {
     IN_BOOK_TITLE,
     IN_BOOK_AUTHOR,
     IN_BOOK_LANGUAGE,
+    IN_BOOK_IDENTIFIER,
+    IN_META_TEXT,
     IN_MANIFEST,
     IN_SPINE,
     IN_GUIDE,
@@ -49,6 +52,22 @@ class ContentOpfParser final : public Print {
   bool metadataSpacePending = false;
   bool authorSeparatorPending = false;
 
+  std::string identifierText;
+  std::string identifierScheme;
+  std::string metaText;
+  std::string metaProperty;
+  std::string metaRefines;
+  std::string metaId;
+  struct CollectionMetadata {
+    std::string id;
+    std::string title;
+    std::optional<float> index;
+    bool isSeries = false;
+  };
+  std::vector<CollectionMetadata> collectionCandidates;
+  std::string calibreSeries;
+  std::optional<float> calibreSeriesIndex;
+
   // Index for fast idref→href lookup (binary search over .items.bin). Eight
   // bytes per manifest item: a hash hit is confirmed against the id stored in
   // .items.bin, so no length field is needed to separate collisions.
@@ -77,6 +96,10 @@ class ContentOpfParser final : public Print {
   std::string title;
   std::string author;
   std::string language;
+  std::string isbn;
+  std::string asin;
+  std::string series;
+  std::optional<float> seriesIndex;
   std::string tocNcxPath;
   std::string tocNavPath;  // EPUB 3 nav document path
   std::string coverItemHref;

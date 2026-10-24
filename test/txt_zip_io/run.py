@@ -58,39 +58,18 @@ def main():
     root = args.source.resolve()
     here = Path(__file__).resolve().parent
     args.output.mkdir(parents=True, exist_ok=True)
-    source_paths = ["lib/Txt/Txt.cpp", "lib/ZipFile/ZipFile.cpp",
-                    "src/activities/reader/TxtReaderActivity.cpp",
-                    "src/activities/reader/TxtReaderActivity.h", "lib/Serialization/Serialization.h"]
+    source_paths = ["lib/Txt/Txt.cpp", "lib/ZipFile/ZipFile.cpp", "lib/Serialization/Serialization.h"]
     sources = {name: (root / name).read_text() for name in source_paths}
-    reader = sources[source_paths[2]]
-    names = ["initializeReader", "buildPageIndex", "loadPageAtOffset", "loadPageIndexCache", "savePageIndexCache"]
-    for optional in ("reservePageOffsets", "addPageOffset", "clearPageOffsets", "pageIndexCachePath",
-                     "loadPageIndexCacheFile"):
-        if f"TxtReaderActivity::{optional}(" in reader:
-            names.append(optional)
-    bodies = [method(reader, "TxtReaderActivity::" + name) for name in names]
-    header = sources[source_paths[3]]
-    fields = header[header.index("{", header.index("class TxtReaderActivity")) + 1:header.index("  void renderPage")]
-    declarations = [body[:body.index("{")].strip().replace("TxtReaderActivity::", "") + ";" for body in bodies]
-    declarations = [d.replace("std::vector<uint16_t>* lineY,", "std::vector<uint16_t>* lineY = nullptr,")
-                    .replace("std::vector<uint16_t>* lineIndent)", "std::vector<uint16_t>* lineIndent = nullptr)")
-                    for d in declarations]
     generated = '#include "Harness.h"\n#include "Serialization.h"\n#include "Memory.h"\n#include "HeapFloor.h"\n#include "RecoverableFile.h"\n'
-    constants = reader[reader.index("namespace {"):reader.index("}  // namespace")]
-    generated += constants + "}\n"
-    generated += "class TxtReaderActivity { public:\n" + fields + "\n" + "\n".join(declarations)
-    generated += "\nbool preview = false; int progressLoads = 0; void loadProgress() { ++progressLoads; }\n"
-    generated += "void readingMargins(int& a,int& b,int& c,int& d) { a=b=c=d=0; }\n};\n"
     generated += method(sources[source_paths[0]], "Txt::readContent") + "\n"
     generated += method(sources[source_paths[1]], "ZipFile::readFileToStream") + "\n"
-    generated += "\n".join(bodies)
     generated += '\n#include "Cases.cpp"\n'
     cpp = args.output / "production-slices.cpp"
     cpp.write_text(args.replay.read_text() if args.replay else generated)
     (args.output / "provenance.json").write_text(json.dumps({
         "source": str(root),
         "replay": str(args.replay) if args.replay else None,
-        "methods": ["Txt::readContent", "ZipFile::readFileToStream"] + ["TxtReaderActivity::" + n for n in names],
+        "methods": ["Txt::readContent", "ZipFile::readFileToStream"],
         "sha256": {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in source_paths},
     }, indent=2) + "\n")
     executable = args.output / "txt-zip-io"

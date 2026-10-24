@@ -58,6 +58,7 @@
 #include "components/UIThemeTokens.h"
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
+#include "util/PluginEvents.h"
 
 namespace fui = freeink::ui;
 
@@ -74,6 +75,11 @@ namespace {
 std::string wakeKey(const SettingInfo& s) {
   if (s.key) return s.key;
   return s.action == SettingAction::None ? std::string() : "action/" + std::to_string(static_cast<int>(s.action));
+}
+
+// The Picco's stock layout has one app slot (partitions_picco.csv), so it can update itself by neither route.
+bool actionOnThisBoard(const SettingAction action) {
+  return !(BoardConfig::isPicco() && (action == SettingAction::CheckForUpdates || action == SettingAction::SdFirmwareUpdate));
 }
 }  // namespace
 
@@ -154,6 +160,7 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
       {StrId::STR_DEVICE_NAME, SettingAction::DeviceName},
       {StrId::STR_WIFI_NETWORKS, SettingAction::Network},
       {StrId::STR_BLE_PAGE_TURNER, SettingAction::BlePageTurner},
+      {StrId::STR_PLUGINS, SettingAction::Plugins},
       {StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync},
       {StrId::STR_OPDS_SERVERS, SettingAction::OPDSBrowser},
       {StrId::STR_OPDS_BROWSER, SettingAction::BrowseOPDS},
@@ -180,7 +187,7 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
     ++rowCounts[static_cast<int>(settingstabs::Tab::SCREEN)];
   }
   for (const auto& row : DONG_HANH_DONG)
-    if (!infoupdate::holds(row.viec)) ++rowCounts[static_cast<int>(settingstabs::nhaCua(row.viec))];
+    if (actionOnThisBoard(row.viec) && !infoupdate::holds(row.viec)) ++rowCounts[static_cast<int>(settingstabs::nhaCua(row.viec))];
   if (!BoardConfig::hasTouch()) ++rowCounts[static_cast<int>(settingstabs::Tab::CONTROLS)];
   if (keyboard_layouts::COUNT > 1) ++rowCounts[static_cast<int>(settingstabs::Tab::KEYBOARD)];
   if (BoardConfig::hasHomeKey()) ++rowCounts[static_cast<int>(settingstabs::Tab::CONTROLS)];
@@ -220,7 +227,7 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
                             SettingInfo::Action(StrId::STR_REMAP_FRONT_BUTTONS, SettingAction::RemapFrontButtons));
   }
   for (const auto& dong : DONG_HANH_DONG) {
-    if (infoupdate::holds(dong.viec)) continue;  // X4 Pro: on the About & updates screen
+    if (!actionOnThisBoard(dong.viec) || infoupdate::holds(dong.viec)) continue;  // X4 Pro: on the About & updates screen
     if (!want(settingstabs::nhaCua(dong.viec))) continue;
     danhSachCuaThe(settingstabs::nhaCua(dong.viec)).push_back(SettingInfo::Action(dong.nhan, dong.viec));
   }
@@ -912,6 +919,21 @@ void SettingsActivity::toggleCurrentSetting() {
                                  rebuildSettingsLists();
                                });
         break;
+      case SettingAction::Plugins: {
+        static constexpr StrId OPTIONS[] = {StrId::STR_ENABLED, StrId::STR_DISABLED, StrId::STR_CANCEL};
+        optionPopup.show(StrId::STR_PLUGINS, OPTIONS, 3, SETTINGS.pluginsEnabled ? 0 : 1, [this](const int idx) {
+          if (idx == 2) return;
+          SETTINGS.pluginsEnabled = idx == 0 ? 1 : 0;
+          // Turning plugins on brings back a dismissed Plugin Hub install row.
+          if (SETTINGS.pluginsEnabled) SETTINGS.pluginHubPromptHidden = 0;
+          saveSettings();
+          // Applies to event delivery now, not after a reboot.
+          pluginevents::refreshSubscriptions();
+          rebuildSettingsLists();
+        });
+        requestUpdate();
+        return;
+      }
       case SettingAction::KeyboardLayouts:
         if (auto activity = makeUniqueNoThrow<KeyboardLayoutsActivity>(renderer, mappedInput)) {
           startActivityForResult(std::move(activity), nullptr);
@@ -1024,6 +1046,7 @@ std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
   if (setting.action == SettingAction::Language && tenorchrome::kTouchShell)
     return I18N.getLanguageName(I18N.getLanguage());
   if (setting.action == SettingAction::HomeButton) return tr(STR_CONFIGURE);
+  if (setting.action == SettingAction::Plugins) return SETTINGS.pluginsEnabled ? tr(STR_ENABLED) : tr(STR_DISABLED);
   if (setting.type == SettingType::TOGGLE && setting.valuePtr != nullptr) {
     if (setting.valuePtr == &CrossPointSettings::keyboardAxisSwapped) {
       return SETTINGS.keyboardAxisSwapped ? tr(STR_KEYBOARD_MOVE_VERTICAL) : tr(STR_KEYBOARD_MOVE_HORIZONTAL);

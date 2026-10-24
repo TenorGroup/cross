@@ -1,6 +1,5 @@
 #include "Fakes.h"
 
-#include <algorithm>
 #include <cstdio>
 #include <stdexcept>
 
@@ -57,8 +56,6 @@ void reset(const bool keepMemo) {
   if (keepMemo) theRadio.memo = memo;
   theHost = HostState{};
   bleturner::detail::resetForTests();
-  // The host reads the saved bonds at boot: the fake radio's.
-  bleturner::setSavedBonds(static_cast<uint8_t>(theRadio.bonds.size()));
 }
 
 bleturner::Scene reading(const uint32_t visit) {
@@ -140,14 +137,10 @@ void scan(const uint32_t durationMs) {
 }
 bool connect(const char* addr) {
   theRadio.connects.emplace_back(addr);
-  return true;
+  return theRadio.connectResult;
 }
 void disconnect() { theRadio.connected = false; }
-void forget(const char* addr) {
-  theRadio.forgotten.emplace_back(addr);
-  // The SDK drops the bond from its list whether or not the radio runs.
-  theRadio.bonds.erase(std::remove(theRadio.bonds.begin(), theRadio.bonds.end(), addr), theRadio.bonds.end());
-}
+void forget(const char* addr) { theRadio.forgotten.emplace_back(addr); }
 bool takeConnectFailure(char*, size_t) { return false; }
 uint8_t bondCount() { return static_cast<uint8_t>(theRadio.bonds.size()); }
 Peer bond(const uint8_t index) { return {theRadio.bonds[index].c_str(), ""}; }

@@ -75,6 +75,8 @@ fui::ActionEvent UiAppHost::routeApp(const fui::InputSnapshot& snap) {
   if (event) {
     lastTapRect = app.publishedRect(event.action, event.value);
     lastTapScreen = activityManager.activityGeneration();
+    // Releases activate controls; held/pressed frames only highlight or drag.
+    if (snap.touchReleased || snap.swipeLeft || snap.swipeRight) haptic_feedback::touchAction(event.longPress);
   }
   return event;
 }

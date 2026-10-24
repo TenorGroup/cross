@@ -7,6 +7,10 @@
 
 using namespace i18n_strings;
 
+namespace {
+constexpr uint16_t ENGLISH_FALLBACK = 0xFFFF;  // same value as scripts/gen_i18n.py
+}  // namespace
+
 I18n& I18n::getInstance() {
   static I18n instance;
   return instance;
@@ -23,9 +27,11 @@ const char* I18n::get(StrId id, Language language) const {
   // Use generated helper function - no hardcoded switch needed!
   const LangStrings lang = getLanguageStrings(language);
 
-  // If bit 15 of the offset is set, apply the offset to the English lookup table
+  // A string a language leaves identical to English holds ENGLISH_FALLBACK (scripts/gen_i18n.py writes it);
+  // it is read from the English blob through the English table. Any other value is an offset into the
+  // language's own blob.
   const uint16_t off = lang.offsets[index];
-  if (off & 0x8000) return STRINGS_EN_DATA + (off & 0x7FFF);
+  if (off == ENGLISH_FALLBACK) return STRINGS_EN_DATA + OFFSETS_EN[index];
   return lang.data + off;
 }
 

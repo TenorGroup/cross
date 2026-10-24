@@ -65,9 +65,9 @@ class ReadingStatsSimulatorTest(unittest.TestCase):
         log = run.stdout + run.stderr
         self.assertEqual(run.returncode, 0, log)
         self.assertIn("Entering activity: FileBrowser\n", log)
-        self.assertIn("Entering activity: TxtReader\n", log)
-        self.assertIn("Exiting activity: TxtReader\n", log)
-        self.assertNotIn("Entering activity: TxtReaderMenu\n", log)
+        self.assertIn("Entering activity: EpubReader\n", log)
+        self.assertIn("Exiting activity: EpubReader\n", log)
+        self.assertNotIn("Entering activity: EpubReaderMenu\n", log)
         path = self.store / "reading-stats.json"
         return json.loads(path.read_text()) if path.exists() else {}
 

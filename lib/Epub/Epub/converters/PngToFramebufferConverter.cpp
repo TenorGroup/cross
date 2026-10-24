@@ -544,7 +544,7 @@ bool PngToFramebufferConverter::decodeToFramebuffer(const std::string& imagePath
   // the caller requests preservation; opaque pixels simply store alpha 255.
   const bool retainAlpha = config.preserveAlpha;
   const size_t lineBufferBytes = grayBufSize * (retainAlpha ? 2u : 1u);
-  auto lineBuffers = makeUniqueNoThrow<uint8_t[]>(lineBufferBytes);
+  auto lineBuffers = heapfloor::array<uint8_t[]>(lineBufferBytes, "png-lines");
   if (!lineBuffers) {
     LOG_ERR("PNG", "Failed to allocate PNG line buffers (%u bytes)", static_cast<unsigned>(lineBufferBytes));
     return false;
@@ -559,7 +559,7 @@ bool PngToFramebufferConverter::decodeToFramebuffer(const std::string& imagePath
   if (!retainAlpha && ctx.dstWidth <= ctx.visibleWidth && ctx.dstHeight <= ctx.visibleHeight &&
       (ctx.dstWidth < ctx.visibleWidth || ctx.dstHeight < ctx.visibleHeight) &&
       ctx.visibleWidth < 16 * ctx.dstWidth && ctx.visibleHeight < 16 * ctx.dstHeight) {
-    areaSums.reset(new (std::nothrow) uint32_t[ctx.dstWidth + (ctx.dstWidth + 3) / 4]());
+    areaSums = heapfloor::array<uint32_t[]>(ctx.dstWidth + (ctx.dstWidth + 3) / 4, "png-area");
     ctx.areaSums = areaSums.get();
     ctx.areaGrays = areaSums ? reinterpret_cast<uint8_t*>(areaSums.get() + ctx.dstWidth) : nullptr;
     ctx.areaStepX = static_cast<uint32_t>((static_cast<uint64_t>(ctx.visibleWidth) << 16) / ctx.dstWidth);

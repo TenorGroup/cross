@@ -28,7 +28,10 @@ struct Epub {
   bool load(bool, bool) { return true; }
   template<class... T> void generateThumbBmps(T...) { ++decodes; fileWritten = nextWrite; fullSpeed &= powerLocks > 0; }
 };
-struct FsHelpers { static bool hasEpubExtension(const std::string&) { return true; } };
+struct FsHelpers {
+  static bool hasEpubExtension(const std::string&) { return true; }
+  static bool hasReflowableBookExtension(const std::string&) { return true; }
+};
 struct { void drawPopup(int, int) { ++popups; } } GUI;
 constexpr int STR_LOADING_POPUP = 0;
 int tr(int v) { return v; }

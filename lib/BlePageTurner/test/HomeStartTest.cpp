@@ -53,13 +53,11 @@ TEST_F(HomeStartTest, StartsAfterTheFirstFrameAndOncePerVisit) {
   EXPECT_EQ(radio().creates, 1u);
 }
 
-TEST_F(HomeStartTest, NeedsTheRemoteOnAndPaired) {
-  radio().bonds.clear();
-  bleturner::setSavedBonds(0);
+TEST_F(HomeStartTest, NeedsTheRemoteOnAndChosen) {
+  config.peerAddr[0] = '\0';
   pass(home());
   EXPECT_EQ(radio().creates, 0u);
-  radio().bonds = {"7d:de:5c:bd:ae:ca"};
-  bleturner::setSavedBonds(1);
+  std::strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
   config.enabled = 0;
   pass(home(2));
   EXPECT_EQ(radio().creates, 0u);
@@ -109,6 +107,25 @@ TEST_F(HomeStartTest, PressesMadeAtHomeAreDroppedNotCarriedIntoTheBook) {
   EXPECT_TRUE(radio().raw.empty());
   EXPECT_TRUE(radio().keys.empty());
   EXPECT_TRUE(host().delivered.empty());
+}
+
+TEST_F(HomeStartTest, PressQueuedBetweenHomeAndReaderCannotTurnTheBook) {
+  pass(home());
+  radio().connected = true;
+  radio().name = "Generic Remote";
+  ASSERT_TRUE(bleturner::beforeScreenChange(0, true));
+  bleturner::port::KeyPress key;
+  key.keycode = bleturner::kUsageRight;
+  key.pressed = true;
+  radio().keys.push_back(key);
+  pass(fake::reading(2));
+  EXPECT_TRUE(radio().keys.empty());
+  EXPECT_TRUE(host().delivered.empty());
+
+  radio().keys.push_back(key);
+  pass(fake::reading(2));
+  ASSERT_EQ(host().delivered.size(), 1u);
+  EXPECT_EQ(host().delivered.front(), bleturner::Action::NextPage);
 }
 
 // The radio that comes up at Home is there for the remote too: without the reconnect armed and polled it

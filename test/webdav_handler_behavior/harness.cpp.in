@@ -181,7 +181,10 @@ struct CrossPointWebServer {
   WebServer* server;
   UploadSocket uploadSocket;
   std::function<bool()> uploadCancel;
-  struct { std::array<uint8_t,4096> buffer; } upload;
+  struct UploadState {
+    static constexpr size_t UPLOAD_BUFFER_SIZE = 4096;
+  };
+  struct { std::unique_ptr<uint8_t[]> buffer = std::make_unique<uint8_t[]>(4096); } upload;
   void noteUploadSocket() { uploadSocket.note(7); }
   void noteTransferActivity(size_t) {}
   bool uploadCancelled();
@@ -213,6 +216,19 @@ struct WebDAVHandler {
   String getDestinationPath(WebServer& s) const { return s.dst; }
   bool getOverwrite(WebServer& s) const { return s.overwrite; }
   bool isProtectedPath(const String&) const { return false; }
+};
+
+// The clippings that follow a book: a move to a free name goes through here, which renames the book itself last.
+std::vector<std::string> clippingsDeleted;
+struct ClippingStore {
+  static bool moveBook(const std::string& from, const std::string& to) {
+    Storage.operations.push_back("clippings-move:" + from + ":" + to);
+    return Storage.rename(from.c_str(), to.c_str());
+  }
+  static bool deleteForFilePath(const std::string& path, const std::string&) {
+    clippingsDeleted.push_back(path);
+    return true;
+  }
 };
 
 std::map<std::string, std::string> cache;
@@ -285,6 +301,35 @@ void upload(WebDAVHandler& h, WebServer& s) {
   h.handlePut(s);
 }
 int main() {
+  {
+    // The clippings of a book go with it (v1.1.0: ClippingStore keeps them beside the book).
+    begin("DELETE removes the book's clippings");
+    Storage.files["/c.epub"] = {"book bytes"};
+    clippingsDeleted.clear();
+    WebDAVHandler h;
+    WebServer s{"/c.epub", ""};
+    h.handleDelete(s);
+    expect(s.code == 204 && clippingsDeleted == std::vector<std::string>{"/c.epub"}, "clippings deleted with the book");
+
+    begin("MOVE to a free name moves the clippings with the book");
+    Storage.files["/m1.epub"] = {"book bytes"};
+    WebServer m{"/m1.epub", "/m2.epub"};
+    h.handleMove(m);
+    expect(m.code == 201 && Storage.files.count("/m2.epub") && !Storage.files.count("/m1.epub"), "book moved");
+    expect(std::count(Storage.operations.begin(), Storage.operations.end(), "clippings-move:/m1.epub:/m2.epub") == 1,
+           "ClippingStore moved the book");
+
+    begin("MOVE over an existing book keeps the atomic replace and drops the replaced book's clippings");
+    clippingsDeleted.clear();
+    Storage.files["/m1.epub"] = {"new"};
+    Storage.files["/m2.epub"] = {"old"};
+    WebServer o{"/m1.epub", "/m2.epub"};
+    h.handleMove(o);
+    expect(o.code == 204 && Storage.files.at("/m2.epub").data == "new", "destination replaced");
+    expect(std::count(Storage.operations.begin(), Storage.operations.end(), "clippings-move:/m1.epub:/m2.epub") == 0,
+           "a replace does not go through ClippingStore::moveBook");
+    expect(clippingsDeleted == std::vector<std::string>{"/m2.epub"}, "replaced book's clippings removed");
+  }
   for (const char* ext : {".epub", ".txt", ".xtc"}) {
     const std::string path = std::string("/delete") + ext;
     begin("DELETE success " + path);

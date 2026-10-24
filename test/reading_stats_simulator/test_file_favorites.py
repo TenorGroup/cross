@@ -52,7 +52,7 @@ def reader(swap):
  a=Image.open(t.o/(name+'-reading.png'));b=Image.open(t.o/(name+'-home.png'))
  for box in [(0,760,92,792),(435,760,528,792)]:
   assert ImageChops.difference(a.crop(box),b.crop(box)).getbbox() is None,(name,box)
- assert 'Entering activity: TxtReader' in (t.o/(name+'.log')).read_text()
+ assert 'Entering activity: EpubReader' in (t.o/(name+'.log')).read_text()
 
 def missing():
  name='missing';sd=t.o/('sd-'+name);sd.mkdir();k=record(sd,'/gone.epub')

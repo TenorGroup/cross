@@ -24,7 +24,10 @@ struct Epub {
  std::string getCachePath() { return "/cache"; }
  bool readCoverDimensions(const std::string&, ImageDimensions& d) { ++probes; d={600,900}; return true; }
 };
-struct FsHelpers { static bool hasEpubExtension(const std::string&) { return true; } };
+struct FsHelpers {
+  static bool hasEpubExtension(const std::string&) { return true; }
+  static bool hasReflowableBookExtension(const std::string&) { return true; }
+};
 struct HalFile { void close() {} };
 struct { bool openFileForRead(const char*, const std::string&, HalFile&) { return thumbExists; } } Storage;
 struct UITheme { static std::string getCoverThumbPath(const std::string&, int) { return ""; } };

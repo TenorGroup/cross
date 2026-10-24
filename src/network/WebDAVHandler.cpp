@@ -5,6 +5,7 @@
 #include <Logging.h>
 #include <Memory.h>
 
+#include "ClippingStore.h"
 #include "WebDavReplace.h"
 #include "WebPathPolicy.h"
 #include "util/BookCacheUtils.h"
@@ -515,6 +516,12 @@ void WebDAVHandler::handleDelete(WebServer& s) {
       s.send(500, "text/plain", "Deletion committed but cache cleanup failed");
       return;
     }
+    // The book's saved clippings go with it, as removeBookFile() does for the other delete paths.
+    if (!ClippingStore::deleteForFilePath(path.c_str(), "epub")) {
+      LOG_ERR("DAV", "DELETE %s committed but clippings cleanup failed", path.c_str());
+      s.send(500, "text/plain", "Deletion committed but clippings cleanup failed");
+      return;
+    }
     s.send(204);
   }
 }
@@ -620,11 +627,19 @@ void WebDAVHandler::handleMove(WebServer& s) {
     return;
   }
 
+  // A replace stays the atomic one of v1.0.76 (backup, rename, recover); a move to a free name goes through
+  // ClippingStore so the book's clippings follow it.
   bool backupCleanupPending = false;
-  bool success = webdav::replaceFile(Storage, srcPath.c_str(), dstPath.c_str(), &backupCleanupPending);
+  bool success = dstExists ? webdav::replaceFile(Storage, srcPath.c_str(), dstPath.c_str(), &backupCleanupPending)
+                           : ClippingStore::moveBook(srcPath.c_str(), dstPath.c_str());
   if (backupCleanupPending) {
     LOG_ERR("DAV", "MOVE %s: backup %s.davbak retained after committed replacement", dstPath.c_str(),
             dstPath.c_str());
+  }
+  // The replaced book's clippings belong to the book that is gone. The moved book's own stay under its old
+  // name: ClippingStore has no call to move them onto an existing destination.
+  if (success && dstExists && !ClippingStore::deleteForFilePath(dstPath.c_str(), "epub")) {
+    LOG_ERR("DAV", "MOVE %s: replaced book's clippings were not removed", dstPath.c_str());
   }
 
   if (success) {
@@ -882,7 +897,20 @@ void WebDAVHandler::urlEncodePath(const String& path, String& out) const {
 }
 
 bool WebDAVHandler::isProtectedPath(const String& path) const {
-  return !web_path::allowed(std::string_view(path.c_str(), path.length()));
+  const std::string_view view(path.c_str(), path.length());
+  // web_path lets the file manager reach dot-named items (#4031). WebDAV keeps them out of reach as in v1.0.76:
+  // clients such as Finder write .DS_Store and ._ files that would otherwise litter the card.
+  for (size_t start = 0; start < view.size();) {
+    if (view[start] == '/') {
+      ++start;
+    } else {
+      if (view[start] == '.') return true;
+      const size_t slash = view.find('/', start);
+      if (slash == std::string_view::npos) break;
+      start = slash + 1;
+    }
+  }
+  return !web_path::allowed(view);
 }
 
 int WebDAVHandler::getDepth(WebServer& s) const {

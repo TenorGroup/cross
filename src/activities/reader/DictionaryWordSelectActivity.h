@@ -16,14 +16,19 @@
 // in reading order, Up/Down jump rows, Confirm looks the word up and opens
 // DictionaryDefinitionActivity, Back returns to the reader. On touch devices a
 // touch-down moves the highlight and a tap on a word looks it up directly.
+// With `lookupText` set (words already chosen on a ClipSelectionActivity) it skips the
+// selection and runs the lookup for that text, showing the status popups (Looking up,
+// Indexing, Not found, Error).
 class DictionaryWordSelectActivity final : public Activity {
  public:
   explicit DictionaryWordSelectActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                        std::unique_ptr<Page> page, int marginLeft, int marginTop)
+                                        std::unique_ptr<Page> page, int marginLeft, int marginTop,
+                                        std::string lookupText = {})
       : Activity("DictionaryWordSelect", renderer, mappedInput),
         page(std::move(page)),
         marginLeft(marginLeft),
-        marginTop(marginTop) {}
+        marginTop(marginTop),
+        lookupText(std::move(lookupText)) {}
 
   void selectQuotation(QuoteRecord context) {
     quoteMode = true;
@@ -90,6 +95,9 @@ class DictionaryWordSelectActivity final : public Activity {
   uint16_t rowCount = 0;
   wordselect::Repeat horizontalRepeat;
 
+  std::string lookupText;
+  bool lookupPending = false;
+  bool lookupOnly = false;  // set in onEnter() when lookupText was given: the controller path, no selection
   Dictionary dict;
   bool dictOpenAttempted = false;
   bool dictOpenOk = false;

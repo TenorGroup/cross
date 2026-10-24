@@ -12,6 +12,7 @@ foreach(backend IN ITEMS Wolf Fallback)
   add_executable(${target} transport_fixture.cpp ${transport_include})
   target_include_directories(${target} BEFORE PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/stubs
     ${REPO_ROOT}/test/secure_http/stubs
     ${REPO_ROOT}/freeink-sdk/libs/network/SecureNet/include)
   target_compile_definitions(${target} PRIVATE SIMULATOR)

@@ -1,8 +1,8 @@
 # tenor/cross
 
-tenor/cross is e-reader firmware for the Xteink X3 and X4. It is a fork of [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader) by Dave Allie and contributors, and it runs on the [FreeInk SDK](https://github.com/Free-Ink/freeink-sdk). The CrossPoint history is kept in this repository, so every upstream commit keeps its original author.
+tenor/cross is e-reader firmware for the Xteink X3, X4, X4 Classic and X4 Pro. It is a fork of [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader) by Dave Allie and contributors, and it runs on the [FreeInk SDK](https://github.com/Free-Ink/freeink-sdk). The CrossPoint history is kept in this repository, so every upstream commit keeps its original author.
 
-The latest release is v1.0.55. The X4 Pro has firmware from v1.0.53.
+The v1.1.0 line is built on CrossPoint 2.0.0, with the tenor/cross additions below carried on top of it. Releases are listed on the [Releases](https://github.com/TenorGroup/cross-releases/releases) page.
 
 ## What it adds to CrossPoint
 
@@ -95,7 +95,7 @@ tenor/cross exists because of the work of others.
 
 - [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader) by Dave Allie and contributors, MIT. This repository branches from CrossPoint commit `c33a8b0e` (13 September 2026), and the full CrossPoint history up to that commit is kept here with its original authors. Most of the reader (EPUB, TXT and XTC reading, KOReader sync, Calibre wireless, tilt page turning, the web file manager) is CrossPoint's.
 - [FreeInk SDK](https://github.com/Free-Ink/freeink-sdk), MIT, included as the `freeink-sdk` submodule. The tenor/cross SDK branch starts from FreeInk commit `fde240f` and keeps FreeInk's history. The SDK NOTICE keeps the Open X4 E-Paper Contributors attribution.
-- Upstream fixes taken into tenor/cross after the branch point are cherry-picked with their original author. So far: "clear ligature views when releasing SD font caches" by Sung-jin Brian Hong (CrossPoint #3581).
+- Up to v1.0.76, upstream fixes taken after the branch point were cherry-picked with their original author (the first: "clear ligature views when releasing SD font caches" by Sung-jin Brian Hong, CrossPoint #3581). From v1.1.0 the base is CrossPoint 2.0.0 itself, merged with its history, so its authors keep their commits.
 
 ### Fonts
 

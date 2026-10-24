@@ -16,6 +16,11 @@
 #include <SdCardFontRegistry.h>
 
 #include "components/UITheme.h"
+#include "util/PluginLocations.h"
+
+// The settings rows live in SettingsList.cpp since v1.1.0. Every suite that links CrossPointSettings.cpp
+// links this file as well, so the rows come in with it and no suite needs its own source line.
+#include "../../src/SettingsList.cpp"
 
 namespace settings_test_io {
 JsonDocument nextRead;
@@ -46,6 +51,11 @@ void KOReaderCredentialStore::setServerUrl(const std::string&) {}
 void KOReaderCredentialStore::setMatchMethod(DocumentMatchMethod) {}
 void KOReaderCredentialStore::setSendMetadata(bool) {}
 void KOReaderCredentialStore::setSyncBehavior(KOReaderSyncBehavior) {}
+void KOReaderCredentialStore::setServerType(KOReaderServerType) {}
+void KOReaderCredentialStore::setCustomHeader(size_t, const std::string&, const std::string&) {}
+
+// Settings migration asks whether a plugin is already on the card; a host test card has none.
+bool PluginLocations::anyPluginInstalledOnDisk() { return false; }
 void KOReaderCredentialStore::toJson(JsonDocument&) const {}
 
 bool PersistableStoreBase::writeDocToFile(const char*, const JsonDocument& doc) {

@@ -283,7 +283,7 @@ class UiSizesV108Test(unittest.TestCase):
             t.time += 2300
             t.shot("reader").key("BACK")
             restart, log = self.run_sim(sd, output, f"restart-{tier}", t)
-            self.assertIn("Entering activity: TxtReader", log)
+            self.assertIn("Entering activity: EpubReader", log)
             self.assertIsNone(ImageChops.difference(images["home-after"].crop((0, 0, 528, 700)),
                                                     restart["home"].crop((0, 0, 528, 700))).getbbox())
             body = restart["reader"].crop((0, 0, 528, 650))

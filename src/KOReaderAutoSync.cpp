@@ -322,6 +322,12 @@ bool waitConnected(const uint32_t until) {
 // until the deadline. A remembered channel and access point (WifiHint) go first; after one failed fast
 // attempt, the next round scans directly. false when none connects in time.
 bool joinSavedNetwork(const uint32_t deadline) {
+  // The radio may already be up from the plugin events at sleep entry (D12): one join serves both.
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFi.setSleep(false);
+    LOG_INF("KAS", "join reused");
+    return true;
+  }
   const uint32_t began = millis();
   std::vector<WifiCredential> order;
   const std::string last = WIFI_STORE.getLastConnectedSsid();
@@ -611,6 +617,12 @@ void pushBeforeSleep(GfxRenderer& renderer) {
   if (marksChanged && marksReadable && !saveMarks(marks)) LOG_ERR("KAS", "Could not write %s", MARK_FILE);
   LOG_INF("KAS", "sleep push done total=%lu ms left=%u", static_cast<unsigned long>(millis() - started),
           static_cast<unsigned>(list.size()));
+}
+
+bool pushIsOwed() {
+  if (gate() != Eligibility::Ready) return false;
+  SyncDebtList list;
+  return loadDebts(list) && !list.empty();
 }
 
 uint32_t sleepStamp() {

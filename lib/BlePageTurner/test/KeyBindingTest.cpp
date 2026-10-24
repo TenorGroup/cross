@@ -17,6 +17,8 @@ TEST(BleActionNumbersTest, ActionValuesNeverChange) {
   EXPECT_EQ(static_cast<int>(Action::PrevChapter), 4);
   EXPECT_EQ(static_cast<int>(Action::ReaderMenu), 5);
   EXPECT_EQ(static_cast<int>(Action::SaveQuote), 6);
+  EXPECT_EQ(static_cast<int>(Action::Confirm), 7);
+  EXPECT_EQ(static_cast<int>(Action::Back), 8);
   EXPECT_EQ(makeBinding(0x030102, false, Action::NextChapter), 0x30030102u);
   EXPECT_EQ(makeBinding(0x030008, true, Action::PrevChapter), 0x41030008u);
 }
@@ -54,20 +56,21 @@ TEST(BleBindingTableTest, FullTableRefusesAndGarbageIsNotValid) {
 
   EXPECT_TRUE(valid(makeBinding(0x030102, true, Action::PrevChapter)));
   EXPECT_FALSE(valid(makeBinding(0x030102, false, Action::None)));
-  EXPECT_FALSE(valid(0x70030102u)) << "action out of range";
+  EXPECT_FALSE(valid(0x90030102u)) << "action out of range";
   EXPECT_FALSE(valid(0x18030102u)) << "unknown bit";
   EXPECT_FALSE(valid(makeBinding(0x030100, false, Action::NextPage))) << "a zero value is a release, not a button";
 }
 
-TEST(BleBindingTableTest, KeypageTurnsBothWaysOutOfTheBox) {
-  // "BOOX Keypage" as logged on the X3: the upper button notifies "02 00 00", the lower
-  // "01 00 00", both on report 3.
-  const RemoteTable* t = tableFor(nullptr, 0, "AA:BB:CC:DD:EE:FF", "BOOX Keypage");
-  ASSERT_TRUE(routes(t));
-  EXPECT_EQ(lookup(*t, 0x030002, false), Action::NextPage);
-  EXPECT_EQ(lookup(*t, 0x030001, false), Action::PrevPage);
-  EXPECT_EQ(tableFor(nullptr, 0, "AA:BB:CC:DD:EE:FF", "Free3-R"), &kThreeButtonDefault);
-  EXPECT_EQ(tableFor(nullptr, 0, "AA:BB:CC:DD:EE:FF", "Other"), nullptr);
+TEST(BleBindingTableTest, AddressCopyIsBoundedAndTerminated) {
+  for (const char* address : {"01", "01:02:03:04:05:06", "01:02:03:04:05:06extra"}) {
+    RemoteTable tables[kMaxRemotes]{};
+    uint8_t count = 0;
+    const auto* table = editableTable(tables, count, address, "Remote");
+    ASSERT_NE(table, nullptr);
+    EXPECT_EQ(table->addr[sizeof(table->addr) - 1], '\0');
+    EXPECT_STREQ(table->addr, strlen(address) < sizeof(table->addr) ? address : "01:02:03:04:05:06");
+    EXPECT_EQ(count, 1);
+  }
 }
 
 TEST(BleBindingTableTest, KeypageTakesBothCodeSetsOutOfTheBox) {
@@ -84,7 +87,7 @@ TEST(BleBindingTableTest, KeypageTakesBothCodeSetsOutOfTheBox) {
 
   // A table the user bound by hand wins over the default, whatever the remote sends.
   RemoteTable saved[1] = {};
-  strncpy(saved[0].addr, "AA:BB:CC:DD:EE:FF", sizeof saved[0].addr - 1);
+  snprintf(saved[0].addr, sizeof saved[0].addr, "%s", "AA:BB:CC:DD:EE:FF");
   saved[0].count = 2;
   saved[0].bindings[0] = makeBinding(0x030002, false, Action::NextPage);
   saved[0].bindings[1] = makeBinding(0x030001, false, Action::PrevPage);
@@ -104,9 +107,35 @@ TEST(BleBindingTableTest, KeypageTakesBothCodeSetsOutOfTheBox) {
   EXPECT_EQ(lookup(*edit, 0x030008, false), Action::PrevPage);
 
   // The other built-in default and unknown remotes are untouched.
-  EXPECT_EQ(kThreeButtonDefault.count, 2);
-  EXPECT_EQ(lookup(kThreeButtonDefault, 0x030004, false), Action::None);
+  const auto* free3 = defaultTableFor("Free3-R");
+  ASSERT_NE(free3, nullptr);
+  EXPECT_EQ(free3->count, 2);
+  EXPECT_EQ(lookup(*free3, 0x030004, false), Action::None);
   EXPECT_EQ(tableFor(nullptr, 0, "AA:BB:CC:DD:EE:FF", "Other"), nullptr);
+}
+
+TEST(BleBindingTableTest, MappingOneActionPreservesOtherButtonsAndRemotes) {
+  RemoteTable tables[kMaxRemotes]{};
+  uint8_t count = 0;
+  auto* first = editableTable(tables, count, "01:02:03:04:05:06", "Free3");
+  ASSERT_NE(first, nullptr);
+  ASSERT_TRUE(learn(*first, Action::NextPage, 0x030001, false));
+  ASSERT_TRUE(learn(*first, Action::PrevPage, 0x030002, false));
+  auto* second = editableTable(tables, count, "11:12:13:14:15:16", "Remote");
+  ASSERT_NE(second, nullptr);
+  ASSERT_TRUE(learn(*second, Action::NextPage, 0x030001, false));
+
+  ASSERT_TRUE(learn(*first, Action::NextChapter, 0x030004, false));
+  EXPECT_EQ(lookup(*first, 0x030001, false), Action::NextPage);
+  EXPECT_EQ(lookup(*first, 0x030002, false), Action::PrevPage);
+  EXPECT_EQ(lookup(*first, 0x030004, false), Action::NextChapter);
+  EXPECT_EQ(lookup(*first, 0x000008, false), Action::PrevChapter);
+
+  ASSERT_TRUE(learn(*first, Action::PrevChapter, 0x030001, false));
+  EXPECT_EQ(lookup(*first, 0x030001, false), Action::PrevChapter);
+  Binding binding;
+  EXPECT_FALSE(find(*first, Action::NextPage, binding));
+  EXPECT_EQ(lookup(*second, 0x030001, false), Action::NextPage);
 }
 
 TEST(BlePageActionTest, DefaultKeysTurnUntilADirectionIsLearned) {

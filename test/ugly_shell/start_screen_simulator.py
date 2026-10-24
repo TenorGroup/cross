@@ -15,7 +15,7 @@ os.environ["UGLY_SHOTS"] = str(args.output)
 ugly_common.ARTIFACTS = str(args.output)
 
 cases = [
-    ("book", 1, 0, "/b0.txt", True, None, "TxtReader", None),
+    ("book", 1, 0, "/b0.txt", True, None, "EpubReader", None),
     ("diary", 1, 1, "/b0.txt", True, None, "UglyDiary", None),
     ("recent", 1, 2, "/b0.txt", True, None, "UglyNotebook", 0),
     ("desk", 1, 3, "/b0.txt", True, None, "UglyDesk", None),
@@ -28,11 +28,11 @@ cases = [
     ("invalid-default", 1, 255, "/b0.txt", True, None, "UglyDiary", None),
 ]
 cases = [(*case, False) for case in cases] + [
-    ("book-wake", 1, 0, "/b0.txt", True, None, "TxtReader", None, True),
+    ("book-wake", 1, 0, "/b0.txt", True, None, "EpubReader", None, True),
     ("diary-wake", 1, 1, "/b0.txt", True, None, "UglyDiary", None, True),
     ("recent-wake", 1, 2, "/b0.txt", True, None, "UglyNotebook", 0, True),
     ("desk-wake", 1, 3, "/b0.txt", True, None, "UglyDesk", None, True),
-    ("cross-wake", 0, 0, "/b0.txt", True, None, "TxtReader", None, True),
+    ("cross-wake", 0, 0, "/b0.txt", True, None, "EpubReader", None, True),
 ]
 results = []
 for name, shell, choice, book, exists, panic, expected, page, wake in cases:

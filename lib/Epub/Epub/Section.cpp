@@ -3,20 +3,21 @@
 #include "BuildStageProbe.h"
 
 #include <Arduino.h>
+#include <BufferedFile.h>
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HalMemory.h>
 #include <HeapFloor.h>
 #include <HalStorage.h>
-
-#include <algorithm>
-#include <array>
 #include <Logging.h>
 #include <Memory.h>
 #include <RecoverableFile.h>
 #include <Serialization.h>
 
 #include <algorithm>
+#include <array>
+#include <deque>
+#include <functional>
 
 #include "Epub/css/CssParser.h"
 #include "Page.h"
@@ -60,6 +61,12 @@ namespace {
 // v43: Paragraph base direction excludes direction changes from inline elements.
 // v44: Persist internal-link rectangles with each page for touch navigation.
 // v45: Internal EPUB links preserve CSS superscript/subscript positioning.
+// Two version histories meet here. The numbers below up to v58 are this firmware's own; the second
+// list is CrossPoint's, which used the same numbers for different changes. The current version is
+// SECTION_FILE_VERSION in ReaderRenderSpec.h, the only definition: it is above both, so a cache
+// written by either firmware is rebuilt.
+//
+// This firmware:
 // v46: Independent first-line indentation mode in the render-spec cache key.
 // v51: The drop cap boolean became a three-value mode whose size differs, so a
 // v50 header would be read as a different setting; those caches are discarded.
@@ -71,6 +78,33 @@ namespace {
 //      line end) and justification no longer stretches between syllables.
 // v56: Preserve paragraph continuity and top spacing across soft flushes.
 // v58: Words split after a hyphen or dash run between letters ("foo—bar" -> "foo—" + "bar").
+//
+// CrossPoint:
+// v46: Ordered lists number their items, list-style-type: none suppresses markers,
+//      and <ul>/<ol> containers contribute their own margins/padding to child insets.
+// v47: Word and character spacing in the header (cache validation); cached BlockStyle stores only character spacing.
+// v48: Hangul words wrap at spaces; with hyphenation on they may also split at a line end.
+//      Justification no longer stretches between syllables.
+// v49 was used by pre-release builds with a different header layout.
+// v50: Paragraph indentation width in the header for cache validation.
+// v51: Preserve paragraph continuity and top spacing across soft flushes.
+// v52: Missing full-block and black-square symbols now have visible widths.
+// v53: Persist per-word source ranges alongside the redaction layout changes.
+// v54: Source ranges retain codepoints absorbed by NFC composition.
+// v55: Persist the first logical word of each paragraph for clipping separators.
+// v56: Rendering layout (fonts per word, drop caps, border boxes).
+// v57: Includes explicit hyphen/dash line breaks and invalidates both v56 layouts.
+// v58: Rebuild sections for corrected rendering layout and footnote placement.
+// v59: Preserve stored CSS styles during low-heap layout.
+// v60: Text running into a block or heading start stays in its own paragraph.
+// Earlier GIF/table development builds also used versions 60 through 62.
+// v63: Rebuild for corrected paragraph boundaries and supported static GIF images.
+// v64: Explicit font inheritance preserves parent emphasis and changes text layout.
+// v65: Count literal spaces after hyphens and ellipses when justifying text.
+// v66: Omit carried no-break spaces at the start of wrapped lines.
+// v67: Count only stretchable literal spaces after visual text reordering.
+// v68: Merged build. The header carries the render spec of both histories (paragraph indent spaces,
+//      character spacing, word spacing percent, drop cap mode, focus reading).
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects
@@ -88,15 +122,16 @@ constexpr uint8_t SECTION_FILE_INCOMPLETE_VERSION = 0;
 // only fails (noisily, via the block-decode error path) when a page is loaded.
 // Derived so the pairing can't be forgotten: 0xFE for v28, 0xFD for v29, ...
 constexpr uint8_t SECTION_FILE_PARTIAL_VERSION = 0xFE - (SECTION_FILE_VERSION - 28);
-constexpr uint32_t HEADER_SIZE =
-    sizeof(int8_t) + sizeof(uint8_t) + sizeof(uint8_t) + sizeof(int) + sizeof(float) + sizeof(bool) + sizeof(uint8_t) +
-    sizeof(uint8_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(bool) + sizeof(bool) +
-    sizeof(uint8_t) + sizeof(bool) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) +
-    sizeof(uint32_t);
+// version, font, line compression, extra paragraph spacing, indent spaces, character spacing, word
+// spacing percent, alignment, viewport width and height, hyphenation, embedded style, image
+// rendering, drop cap mode, focus reading, page count, then the five LUT offsets.
+constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) + sizeof(uint8_t) + sizeof(uint8_t) +
+                                 sizeof(int8_t) + sizeof(uint8_t) + sizeof(uint8_t) + sizeof(uint16_t) +
+                                 sizeof(uint16_t) + sizeof(bool) + sizeof(bool) + sizeof(uint8_t) + sizeof(uint8_t) +
+                                 sizeof(bool) + sizeof(uint16_t) + 5 * sizeof(uint32_t);
 // startBuild() keeps the SD font caches at or above this heap (see there).
 constexpr size_t BUILD_START_KEEP_FONT_CACHE_FREE = 64 * 1024;
 constexpr size_t BUILD_START_KEEP_FONT_CACHE_LARGEST = 32 * 1024;
-constexpr size_t PARKED_ANCHOR_RESERVE = 4;
 constexpr size_t DD_MAX_PREFIXES = 8;
 
 bool ddPrefixHeapAvailable(const size_t bytes, [[maybe_unused]] const char* stage) {
@@ -106,21 +141,6 @@ bool ddPrefixHeapAvailable(const size_t bytes, [[maybe_unused]] const char* stag
           static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
 #endif
   return false;
-}
-
-using ParkedAnchor = std::pair<std::string, uint16_t>;
-
-void transferParkedAnchors(std::vector<ParkedAnchor>& parked, std::vector<ParkedAnchor>&& anchors) {
-  if (parked.capacity() < anchors.size()) {
-    parked = std::move(anchors);
-    return;
-  }
-  parked.clear();
-  for (auto& anchor : anchors) parked.emplace_back(std::move(anchor));
-}
-
-void releaseParkedAnchorStorage(std::vector<ParkedAnchor>& anchors) {
-  std::vector<ParkedAnchor>().swap(anchors);
 }
 }  // namespace
 
@@ -161,13 +181,13 @@ bool Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
     return false;
   }
   static_assert(HEADER_SIZE == sizeof(SECTION_FILE_VERSION) + sizeof(spec.fontId) + sizeof(spec.lineCompression) +
-                                   sizeof(spec.extraParagraphSpacing) + sizeof(spec.paragraphIndent) +
-                                   sizeof(spec.letterSpacing) + sizeof(spec.wordSpacing) +
-                                   sizeof(spec.paragraphAlignment) +
-                                   sizeof(spec.viewportWidth) + sizeof(spec.viewportHeight) + sizeof(pageCount) +
-                                   sizeof(spec.hyphenationEnabled) + sizeof(spec.embeddedStyle) +
-                                   sizeof(spec.imageRendering) + sizeof(spec.dropCapMode) + sizeof(uint32_t) +
-                                   sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t),
+                                   sizeof(spec.extraParagraphSpacing) + sizeof(spec.paragraphIndentSpaces) +
+                                   sizeof(spec.characterSpacing) + sizeof(spec.wordSpacingPercent) +
+                                   sizeof(spec.paragraphAlignment) + sizeof(spec.viewportWidth) +
+                                   sizeof(spec.viewportHeight) + sizeof(spec.hyphenationEnabled) +
+                                   sizeof(spec.embeddedStyle) + sizeof(spec.imageRendering) +
+                                   sizeof(spec.dropCapMode) + sizeof(spec.focusReadingEnabled) + sizeof(pageCount) +
+                                   5 * sizeof(uint32_t),
                 "Header size mismatch");
   // Written as the incomplete sentinel; finalizeBuild() patches it to
   // SECTION_FILE_VERSION as the last step, committing the file.
@@ -175,9 +195,9 @@ bool Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
   if (!serialization::writePod(file, spec.fontId)) return false;
   if (!serialization::writePod(file, spec.lineCompression)) return false;
   if (!serialization::writePod(file, spec.extraParagraphSpacing)) return false;
-  if (!serialization::writePod(file, spec.paragraphIndent)) return false;
-  if (!serialization::writePod(file, spec.letterSpacing)) return false;
-  if (!serialization::writePod(file, spec.wordSpacing)) return false;
+  if (!serialization::writePod(file, spec.paragraphIndentSpaces)) return false;
+  if (!serialization::writePod(file, spec.characterSpacing)) return false;
+  if (!serialization::writePod(file, spec.wordSpacingPercent)) return false;
   if (!serialization::writePod(file, spec.paragraphAlignment)) return false;
   if (!serialization::writePod(file, spec.viewportWidth)) return false;
   if (!serialization::writePod(file, spec.viewportHeight)) return false;
@@ -185,6 +205,7 @@ bool Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
   if (!serialization::writePod(file, spec.embeddedStyle)) return false;
   if (!serialization::writePod(file, spec.imageRendering)) return false;
   if (!serialization::writePod(file, spec.dropCapMode)) return false;
+  if (!serialization::writePod(file, spec.focusReadingEnabled)) return false;
   if (!serialization::writePod(file, pageCount)) return false;  // Placeholder for page count (will be initially 0, patched later)
   if (!serialization::writePod(file, static_cast<uint32_t>(0))) return false;  // Placeholder for LUT offset (patched later)
   if (!serialization::writePod(file, static_cast<uint32_t>(0))) return false;  // Placeholder for anchor map offset (patched later)
@@ -228,20 +249,21 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
     uint16_t fileViewportWidth, fileViewportHeight;
     float fileLineCompression;
     uint8_t fileExtraParagraphSpacing;
-    uint8_t fileParagraphIndent;
-    int8_t fileLetterSpacing;
-    uint8_t fileWordSpacing;
+    uint8_t fileParagraphIndentSpaces;
+    int8_t fileCharacterSpacing;
+    uint8_t fileWordSpacingPercent;
     uint8_t fileParagraphAlignment;
     bool fileHyphenationEnabled;
     bool fileEmbeddedStyle;
     uint8_t fileImageRendering;
     uint8_t fileDropCapMode;
+    bool fileFocusReadingEnabled;
     if (!reader.pod(fileFontId)) return invalid();
     if (!reader.pod(fileLineCompression)) return invalid();
     if (!reader.pod(fileExtraParagraphSpacing)) return invalid();
-    if (!reader.pod(fileParagraphIndent)) return invalid();
-    if (!reader.pod(fileLetterSpacing)) return invalid();
-    if (!reader.pod(fileWordSpacing)) return invalid();
+    if (!reader.pod(fileParagraphIndentSpaces)) return invalid();
+    if (!reader.pod(fileCharacterSpacing)) return invalid();
+    if (!reader.pod(fileWordSpacingPercent)) return invalid();
     if (!reader.pod(fileParagraphAlignment)) return invalid();
     if (!reader.pod(fileViewportWidth)) return invalid();
     if (!reader.pod(fileViewportHeight)) return invalid();
@@ -249,11 +271,12 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
     if (!reader.pod(fileEmbeddedStyle)) return invalid();
     if (!reader.pod(fileImageRendering)) return invalid();
     if (!reader.pod(fileDropCapMode)) return invalid();
+    if (!reader.pod(fileFocusReadingEnabled)) return invalid();
 
     if (spec.fontId != fileFontId || spec.lineCompression != fileLineCompression ||
-        spec.extraParagraphSpacing != fileExtraParagraphSpacing || spec.paragraphIndent != fileParagraphIndent ||
-        spec.letterSpacing != fileLetterSpacing || spec.wordSpacing != fileWordSpacing ||
-        spec.paragraphAlignment != fileParagraphAlignment ||
+        spec.extraParagraphSpacing != fileExtraParagraphSpacing ||
+        spec.paragraphIndentSpaces != fileParagraphIndentSpaces || spec.characterSpacing != fileCharacterSpacing ||
+        spec.wordSpacingPercent != fileWordSpacingPercent || spec.paragraphAlignment != fileParagraphAlignment ||
         spec.viewportWidth != fileViewportWidth || spec.viewportHeight != fileViewportHeight ||
         spec.hyphenationEnabled != fileHyphenationEnabled || spec.embeddedStyle != fileEmbeddedStyle ||
         spec.imageRendering != fileImageRendering || spec.dropCapMode != fileDropCapMode) {
@@ -439,7 +462,8 @@ std::unique_ptr<ChapterHtmlSlimParser> Section::makeBuildParser(BuildContext* ct
 #endif
   auto parser = makeUniqueNoThrow<ChapterHtmlSlimParser>(
       epub, ctxPtr->parsePath, renderer, spec.fontId, spec.lineCompression, spec.extraParagraphSpacing,
-      spec.paragraphAlignment, spec.viewportWidth, spec.viewportHeight, spec.hyphenationEnabled, spec.dropCapMode,
+      spec.paragraphAlignment, spec.viewportWidth, spec.viewportHeight, spec.hyphenationEnabled,
+      spec.focusReadingEnabled, spec.dropCapMode,
       [this, ctxPtr](std::unique_ptr<Page> page, const uint16_t paragraphIndex, const uint16_t listItemIndex,
                      const uint32_t visibleTextOffset) {
         if (ctxPtr->failed) return;
@@ -479,7 +503,11 @@ std::unique_ptr<ChapterHtmlSlimParser> Section::makeBuildParser(BuildContext* ct
         if (ctxPtr->ddOn) ddRecord(*ctxPtr);
       },
       spec.embeddedStyle, ctxPtr->contentBase, ctxPtr->imageBasePath, spec.imageRendering, ctxPtr->tocAnchors, popupFn,
-      ctxPtr->cssParser, spec.paragraphIndent, spec.letterSpacing, spec.wordSpacing);
+      ctxPtr->cssParser);
+  if (parser) {
+    parser->setTextSpacing(spec.characterSpacing, spec.wordSpacingPercent);
+    parser->setParagraphIndentSpaces(spec.paragraphIndentSpaces);
+  }
   if (parser && ctxPtr->ddOn) {
     parser->resumePointFn = [this, ctxPtr](const ChapterHtmlSlimParser::ResumePoint& point, const std::string& prefix,
                                      const uint16_t prologBytes) {
@@ -802,13 +830,6 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
     if (!reusedHtml) Storage.remove(tmpHtmlPath.c_str());
     return false;
   }
-  ctx->parkedAnchors.reserve(PARKED_ANCHOR_RESERVE);
-#ifdef TENOR_PRESS_PROBE
-  LOG_INF("SCT", "PARKED_ANCHORS reserve data=%08x bytes=%u capacity=%u",
-          static_cast<unsigned>(reinterpret_cast<uintptr_t>(ctx->parkedAnchors.data())),
-          static_cast<unsigned>(ctx->parkedAnchors.capacity() * sizeof(ctx->parkedAnchors[0])),
-          static_cast<unsigned>(ctx->parkedAnchors.capacity()));
-#endif
   if (!Storage.openFileForWrite("SCT", lutTmpPath(), ctx->lut)) {
     file.close();
     Storage.remove(binTmpPath().c_str());
@@ -1055,13 +1076,7 @@ bool Section::parkAtLastCheckpoint() {
   auto anchors = build.parser->takeAnchors();
   if (anchors.size() < build.checkpointAnchors) return false;
   anchors.resize(build.checkpointAnchors);
-  transferParkedAnchors(build.parkedAnchors, std::move(anchors));
-#ifdef TENOR_PRESS_PROBE
-  LOG_INF("SCT", "PARKED_ANCHORS parked data=%08x bytes=%u size=%u capacity=%u",
-          static_cast<unsigned>(reinterpret_cast<uintptr_t>(build.parkedAnchors.data())),
-          static_cast<unsigned>(build.parkedAnchors.capacity() * sizeof(build.parkedAnchors[0])),
-          static_cast<unsigned>(build.parkedAnchors.size()), static_cast<unsigned>(build.parkedAnchors.capacity()));
-#endif
+  build.parkedAnchors = std::move(anchors);
   build.bytesConsumed = build.checkpointBytes;
   build.parser.reset();
   if (build.cssParser) build.cssParser->clear();
@@ -1104,13 +1119,7 @@ bool Section::parkBuild() {
   }
   build_->bytesConsumed = build_->parser->parseBytesConsumed();
   auto anchors = build_->parser->takeAnchors();
-  transferParkedAnchors(build_->parkedAnchors, std::move(anchors));
-#ifdef TENOR_PRESS_PROBE
-  LOG_INF("SCT", "PARKED_ANCHORS parked data=%08x bytes=%u size=%u capacity=%u",
-          static_cast<unsigned>(reinterpret_cast<uintptr_t>(build_->parkedAnchors.data())),
-          static_cast<unsigned>(build_->parkedAnchors.capacity() * sizeof(build_->parkedAnchors[0])),
-          static_cast<unsigned>(build_->parkedAnchors.size()), static_cast<unsigned>(build_->parkedAnchors.capacity()));
-#endif
+  build_->parkedAnchors = std::move(anchors);
   build_->checkpointOnDisk = true;
   build_->checkpointInPartialAt = 0;
   build_->checkpointPages = builtPageCount_;
@@ -1141,13 +1150,9 @@ bool Section::resumeParkedBuild() {
     checkpoint.close();
     return false;
   }
-  // The checkpoint restores anchors too. Clear the parked elements before allocating
-  // the parser, while keeping the reserved storage for the next park cycle.
-  // Large parked tables release their buffer so the parser owns one copy.
-  build_->parkedAnchors.clear();
-  if (build_->parkedAnchors.capacity() > PARKED_ANCHOR_RESERVE) {
-    releaseParkedAnchorStorage(build_->parkedAnchors);
-  }
+  // The checkpoint restores anchors too: drop the parked copy before the parser takes its own, so
+  // the table is held once.
+  std::deque<std::pair<std::string, uint16_t>>().swap(build_->parkedAnchors);
   bool restored = loadBuildCss(build_.get());
   if (restored) {
     build_->parser = makeBuildParser(build_.get(), build_->spec);
@@ -1173,16 +1178,10 @@ bool Section::resumeParkedBuild() {
 }
 
 #ifdef TENOR_SECTION_HOST_TEST
-const void* Section::parkedAnchorsDataForTest() const {
-  return build_ ? static_cast<const void*>(build_->parkedAnchors.data()) : nullptr;
-}
-
-size_t Section::parkedAnchorsCapacityForTest() const {
-  return build_ ? build_->parkedAnchors.capacity() : 0;
-}
+size_t Section::parkedAnchorCountForTest() const { return build_ ? build_->parkedAnchors.size() : 0; }
 #endif
 
-bool Section::buildSomeMore(const int maxPages) {
+bool Section::buildSomeMore(const int maxPages, bool (*yieldNow)()) {
   BUILD_PROBE_SCOPE(Tick);
   buildStarved_ = false;
   if (!build_ || !resumeParkedBuild()) {
@@ -1211,7 +1210,7 @@ bool Section::buildSomeMore(const int maxPages) {
 #endif
   unsigned steps = 0;
   for (;;) {
-    if (!stepHeapAvailable() || build_->parser->tocAnchorsNeedHeap()) {
+    if (!stepHeapAvailable()) {
       LOG_ERR("SCT", "Build starved of heap free=%u largest=%u; parking after %u pages",
               static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
               static_cast<unsigned>(builtPageCount_));
@@ -1243,9 +1242,11 @@ bool Section::buildSomeMore(const int maxPages) {
 #endif
       return finalizeBuild();
     }
-    // ParseStatus::More: yield once we've laid out the requested number of pages.
-    if (maxPages > 0 && ((builtPageCount_ - startCount) >= maxPages || ++steps >= 4 ||
-                         millis() - tickStart >= 20)) {
+    // ParseStatus::More: yield once we've laid out the requested number of pages (or the tick's step and
+    // time budget is spent), or as soon as the caller has something more urgent to do.
+    if ((maxPages > 0 && ((builtPageCount_ - startCount) >= maxPages || ++steps >= 4 ||
+                          millis() - tickStart >= 20)) ||
+        (yieldNow && yieldNow())) {
       build_->bytesConsumed = build_->parser->parseBytesConsumed();
 #ifdef TENOR_UI_ACCEPTANCE
       LOG_DBG("SCT", "EPUB_TICK yield max=%d built=%u delta=%u bytes=%u/%u steps=%u ms=%u last_visible=%u free=%u largest=%u",
@@ -1424,6 +1425,79 @@ bool Section::coversVisibleTextOffset(const uint32_t offset) const {
   if (pageCount < 2) return false;
   const auto lastStart = getVisibleTextOffsetForPage(pageCount - 1);
   return lastStart.has_value() && offset < *lastStart;
+}
+
+int Section::getTocIndexForPage(const int page) const {
+  int selected = epub->getTocIndexForSpineIndex(spineIndex);
+  int latestPage = -1;
+  struct TocAnchor {
+    size_t hash;
+    int index;
+  };
+  // Bound scratch space to 512 bytes on C3; anchor text stays in the existing caches.
+  constexpr size_t BATCH_SIZE = 64;
+  auto targets = makeUniqueNoThrow<TocAnchor[]>(BATCH_SIZE);
+  if (!targets) {
+    LOG_ERR("SCT", "OOM: TOC anchor lookup");
+    return selected;
+  }
+  HalFile anchorFile;
+  uint16_t anchorCount = 0;
+  std::optional<serialization::BufferedFileReader> anchorReader;
+  uint32_t anchorStart = 0;
+  if (openAnchorMap(anchorFile, anchorCount)) {
+    anchorStart = anchorFile.position();
+    // Reuse one 1 KB buffer across batches and interleaved TOC metadata reads.
+    anchorReader.emplace(anchorFile, 1024);
+  }
+  std::string cachedAnchor;
+  size_t count = 0;
+  const auto considerAnchor = [&](const std::string& anchor, const uint16_t anchorPage, const bool fromDisk) {
+    const size_t hash = std::hash<std::string>{}(anchor);
+    for (size_t i = 0; i < count; ++i) {
+      if (targets[i].hash != hash || epub->getTocItem(targets[i].index).anchor != anchor) continue;
+      const int resolvedPage = fromDisk ? findAnchorDuringBuild(anchor).value_or(anchorPage) : anchorPage;
+      if (resolvedPage <= page &&
+          (resolvedPage > latestPage || (resolvedPage == latestPage && targets[i].index > selected))) {
+        selected = targets[i].index;
+        latestPage = resolvedPage;
+      }
+    }
+  };
+  const auto resolveBatch = [&]() {
+    if (build_) {
+      // The parser's list, or the copy a park left behind.
+      const auto& built = build_->parser ? build_->parser->getAnchors() : build_->parkedAnchors;
+      for (const auto& [anchor, anchorPage] : built) {
+        considerAnchor(anchor, anchorPage, false);
+      }
+    }
+    if (anchorReader && anchorReader->seek(anchorStart)) {
+      for (uint16_t i = 0; i < anchorCount; ++i) {
+        uint16_t anchorPage;
+        serialization::readString(*anchorReader, cachedAnchor);
+        serialization::readPod(*anchorReader, anchorPage);
+        considerAnchor(cachedAnchor, anchorPage, true);
+      }
+    }
+    count = 0;
+  };
+  const int first = std::max(0, selected);
+  for (int i = first; i < epub->getTocItemsCount(); ++i) {
+    const auto item = epub->getTocItem(i);
+    if (item.spineIndex != spineIndex) continue;
+    if (item.anchor.empty()) {
+      if (page >= 0 && latestPage <= 0) {
+        selected = i;
+        latestPage = 0;
+      }
+    } else {
+      targets[count++] = {std::hash<std::string>{}(item.anchor), i};
+      if (count == BATCH_SIZE) resolveBatch();
+    }
+  }
+  if (count > 0) resolveBatch();
+  return selected;
 }
 
 uint16_t Section::estimatedTotalPages() const {
@@ -1836,23 +1910,28 @@ std::optional<uint16_t> Section::getCachedPageCount() const {
   return count;
 }
 
-std::optional<uint16_t> Section::getPageForAnchor(const std::string& anchor) const {
-  HalFile f;
+bool Section::openAnchorMap(HalFile& f, uint16_t& count) const {
   if (!Storage.openFileForRead("SCT", filePath, f)) {
-    return std::nullopt;
+    return false;
   }
 
   const uint32_t fileSize = f.size();
-  if (!f.seek(HEADER_SIZE - sizeof(uint32_t) * 4)) return std::nullopt;
+  if (!f.seek(HEADER_SIZE - sizeof(uint32_t) * 4)) return false;
   uint32_t anchorMapOffset;
-  if (!serialization::readPod(f, anchorMapOffset)) return std::nullopt;
+  if (!serialization::readPod(f, anchorMapOffset)) return false;
   if (anchorMapOffset == 0 || anchorMapOffset >= fileSize) {
-    return std::nullopt;
+    return false;
   }
 
-  if (!f.seek(anchorMapOffset)) return std::nullopt;
+  if (!f.seek(anchorMapOffset)) return false;
+  if (!serialization::readPod(f, count)) return false;
+  return true;
+}
+
+std::optional<uint16_t> Section::getPageForAnchor(const std::string& anchor) const {
+  HalFile f;
   uint16_t count;
-  if (!serialization::readPod(f, count)) return std::nullopt;
+  if (!openAnchorMap(f, count)) return std::nullopt;
   for (uint16_t i = 0; i < count; i++) {
     std::string key;
     uint16_t page;

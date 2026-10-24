@@ -54,7 +54,7 @@ constexpr Descriptor ITEMS[] = {
     {"text/paragraphAlignment", StrId::STR_PARA_ALIGNMENT, "text", 2, 4},
     {"text/screenMargin", StrId::STR_SCREEN_MARGIN, "text", 2, 5},
     {"text/paragraphIndent", StrId::STR_PARAGRAPH_INDENT, "text", 2, 6},
-    {"text/dropCapMode", StrId::STR_FOCUS_READING, "text", 3, 0},
+    {"text/dropCapMode", StrId::STR_DROP_CAP, "text", 3, 0},
     {"text/hyphenationEnabled", StrId::STR_HYPHENATION, "text", 3, 1},
     {"text/embeddedStyle", StrId::STR_EMBEDDED_STYLE, "text", 3, 2},
     {"text/textAntiAliasing", StrId::STR_TEXT_AA, "text", 3, 3},

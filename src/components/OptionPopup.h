@@ -72,6 +72,19 @@ class OptionPopup {
     headLaid = false;
   }
 
+  // Message dialog: a wrapped body under the (optional) title, like the
+  // Wi-Fi forget-network prompt. Pass an empty title for a message-only look.
+  void showMessage(const char* titleStr, const char* messageStr, const char* const* options, int optionCount,
+                   int currentIndex, std::function<void(int)> onSelect) {
+    // The touch dialog has no body slot: its subject line under the caption carries the message.
+    if (tenorchrome::kTouchShell) {
+      show(titleStr, messageStr, options, optionCount, currentIndex, std::move(onSelect));
+      return;
+    }
+    show(titleStr, options, optionCount, currentIndex, std::move(onSelect));
+    message = messageStr ? messageStr : "";
+  }
+
   void show(StrId titleId, const std::vector<std::string>& options, int currentIndex,
             std::function<void(int)> onSelect) {
     title = I18N.get(titleId);
@@ -175,6 +188,7 @@ class OptionPopup {
           selectedIndex = event.value;
           active = false;
           if (onSelectCallback) onSelectCallback(selectedIndex);
+          haptic_feedback::touchAction();
           requestUpdate();
           return true;
         }
@@ -191,6 +205,7 @@ class OptionPopup {
           // Tap released outside the dialog: dismiss without firing. Swipe-end
           // releases arrive with -1,-1 coords and fall through (no dismiss).
           active = false;
+          haptic_feedback::touchAction();
           requestUpdate();
           return true;
         }
@@ -210,20 +225,32 @@ class OptionPopup {
       return true;
     }
 
-    if (input.wasPressed(MappedInputManager::Button::NavPrevious)) {
+    return handleButtons(input.wasPressed(MappedInputManager::Button::NavPrevious),
+                         input.wasPressed(MappedInputManager::Button::NavNext),
+                         input.wasReleased(MappedInputManager::Button::Confirm),
+                         input.wasReleased(MappedInputManager::Button::Back), requestUpdate);
+  }
+
+  bool handleButtons(const bool previous, const bool next, const bool confirm, const bool back,
+                     const std::function<void()>& requestUpdate) {
+    if (!active) return false;
+    // Every option stays selectable, not only the first MAX_OPTIONS (longer lists page, see render).
+    const int count = static_cast<int>(ownedStrings.size());
+    if (count == 0) { active = false; return true; }
+    if (previous) {
       selectedIndex = (selectedIndex - 1 + count) % count;
       requestUpdate();
       return true;
-    } else if (input.wasPressed(MappedInputManager::Button::NavNext)) {
+    } else if (next) {
       selectedIndex = (selectedIndex + 1) % count;
       requestUpdate();
       return true;
-    } else if (input.wasReleased(MappedInputManager::Button::Confirm)) {
+    } else if (confirm) {
       active = false;
       if (onSelectCallback) onSelectCallback(selectedIndex);
       requestUpdate();
       return true;
-    } else if (input.wasReleased(MappedInputManager::Button::Back)) {
+    } else if (back) {
       active = false;
       requestUpdate();
       return true;
@@ -285,8 +312,14 @@ class OptionPopup {
     }
 
     fui::OptionDialogProps props;
-    props.title = title.c_str();
+    props.title = title.empty() ? nullptr : title.c_str();
     props.headline = headline.empty() ? nullptr : headline.c_str();
+    if (!message.empty()) {
+      props.message = message.c_str();
+      props.messageText.font = fui::GfxRendererTarget::FONT_BODY;
+      props.messageText.align = fui::TextAlign::Center;
+      props.messageText.maxLines = 6;
+    }
     props.options = options;
     props.optionCount = count;
     props.verticalOptions = true;
@@ -765,6 +798,7 @@ class OptionPopup {
     hasAnchor = anchor.height > 0;
     scrollTop = -1;
     onSelectCallback = std::move(onSelect);
+    message.clear();
     uiReady = false;
     active = true;
     anchored = false;
@@ -813,6 +847,7 @@ class OptionPopup {
   mutable int boldLines = 0;
   std::string title;
   std::string headline;
+  std::string message;
   std::vector<std::string> ownedStrings;
   int selectedIndex = 0;
   std::function<void(int)> onSelectCallback;

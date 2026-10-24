@@ -17,6 +17,7 @@
 #include <esp_heap_caps.h>
 #endif
 
+#include "Activity.h"
 #include "CrossPointSettings.h"
 #include "BlePageTurnerHost.h"
 #include "KOReaderAutoSync.h"
@@ -24,6 +25,7 @@
 #include "shells/ugly/UglyIconInk.h"
 #include "shells/ugly/UglyMarkSeed.h"
 #include "CrossPointState.h"
+#include "HapticFeedback.h"
 #include "OpdsServerStore.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
@@ -38,7 +40,9 @@
 #include "shells/Shell.h"
 #include "network/CrossPointWebServerActivity.h"
 #include "network/UsbDriveActivity.h"
+#include "plugins/PluginCatalogActivity.h"
 #include "reader/ReaderActivity.h"
+#include "reader/RemoteTurnGate.h"
 #include "settings/OpdsServerListActivity.h"
 #include "settings/SettingsActivity.h"
 #include "util/BmpViewerActivity.h"
@@ -281,6 +285,14 @@ void ActivityManager::goZoneRoot() {
   popActivity();
 }
 
+ActivityManager::ActivityManager(GfxRenderer& renderer, MappedInputManager& mappedInput)
+    : renderer(renderer), mappedInput(mappedInput), renderingMutex(xSemaphoreCreateMutex()) {
+  assert(renderingMutex != nullptr && "Failed to create rendering mutex");
+  stackActivities.reserve(10);
+}
+
+ActivityManager::~ActivityManager() { assert(false); /* should never be called */ }
+
 void ActivityManager::begin() {
   if (tenorchrome::kTouchShell) {
     GfxRenderer::preDisplayHook = &drawFootBar;
@@ -338,6 +350,7 @@ void ActivityManager::renderTaskLoop() {
       // Night mode is a global output polarity applied to every activity.
       // The sleep screen forces normal polarity itself (SleepActivity).
       display.setInverted(SETTINGS.screenInverted != 0);
+      const uint32_t renderingVisit = screenVisit;
       auto& scrollbar = PageScrollbar::instance();
       scrollbar.activate(currentActivity.get());
       if (shell::isUgly()) {
@@ -354,6 +367,7 @@ void ActivityManager::renderTaskLoop() {
         scrollbar.endPaint();
       }
       frameAfterDeferredWrite.store(true, std::memory_order_release);
+      paintedVisit.store(renderingVisit, std::memory_order_release);
       frameDrawnGeneration.store(activityGeneration_, std::memory_order_release);
       frameDrawn.store(true, std::memory_order_release);
     }
@@ -485,6 +499,7 @@ void ActivityManager::loop() {
     // Both ways in are touch gestures, so a build without a touch board leaves the panel out.
     if (BoardConfig::hasTouch() && currentActivity->name != "FrontlightPanel" &&
         (statusBarTap || mappedInput.wasLightPanelGesture())) {
+      haptic_feedback::touchAction();
       openTopMenu();
       return;
     }
@@ -496,17 +511,23 @@ void ActivityManager::loop() {
   }
 
   while (pendingAction != PendingAction::None) {
-    // Release the radio before the next activity allocates its fonts, cover or
+    // Release the radio (a sleep keeps it to its own teardown) before the next activity allocates its fonts, cover or
     // inflate buffers. Teardown can span loop iterations and must run outside
     // RenderLock so the worker and renderer can finish without deadlocking.
 #ifdef TENOR_PRESS_PROBE
     static uint32_t radioWaitFrom = 0;
     if (!radioWaitFrom) radioWaitFrom = millis() | 1;
-    if (!bleturner::beforeScreenChange(0, pendingActivity && pendingActivity->isReaderActivity())) return;
+    if (pendingAction != PendingAction::ReplaceForSleep &&
+        !bleturner::beforeScreenChange(0, pendingActivity && pendingActivity->isReaderActivity())) {
+      return;
+    }
     LOG_INF("ACT", "Transition radio=%lu ms", static_cast<unsigned long>(millis() - radioWaitFrom));
     radioWaitFrom = 0;
 #else
-    if (!bleturner::beforeScreenChange(0, pendingActivity && pendingActivity->isReaderActivity())) return;
+    if (pendingAction != PendingAction::ReplaceForSleep &&
+        !bleturner::beforeScreenChange(0, pendingActivity && pendingActivity->isReaderActivity())) {
+      return;
+    }
 #endif
     ++activityGeneration_;
 
@@ -520,6 +541,7 @@ void ActivityManager::loop() {
         continue;
       }
 
+      ++screenVisit;
       ActivityResult pendingResult = std::move(currentActivity->result);
 
       // Destroy the current activity
@@ -587,7 +609,7 @@ void ActivityManager::loop() {
       // Current activity has requested a new activity to be launched
       RenderLock lock;
 
-      if (pendingAction == PendingAction::Replace) {
+      if (pendingAction == PendingAction::Replace || pendingAction == PendingAction::ReplaceForSleep) {
         homeAfterInput = false;
         homeAfterInputTarget = HomeMenuItem::NONE;
         // Destroy the current activity
@@ -611,6 +633,7 @@ void ActivityManager::loop() {
         HeaderBackTapTarget::strip = false;
         LOG_DBG("ACT", "Pushed to activity stack, new size = %zu", stackActivities.size());
       }
+      ++screenVisit;
       pendingAction = PendingAction::None;
       currentActivity = std::move(pendingActivity);
 
@@ -792,6 +815,13 @@ void ActivityManager::goToFileTransfer(const bool openFontStore, std::string ret
   replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput, std::move(book), openFontStore));
 }
 
+void ActivityManager::goToJoinNetwork() {
+  // Post heap-defrag reboot: enter the web-server activity straight in Join
+  // Network mode (skips mode selection, does not reboot again).
+  replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput, std::string{}, false,
+                                                                  /*startInJoinNetwork=*/true));
+}
+
 void ActivityManager::goToUsbDrive() {
 #if FREEINK_CAP_USB_MSC
   auto activity = makeUniqueNoThrow<UsbDriveActivity>(renderer, mappedInput);
@@ -809,6 +839,11 @@ void ActivityManager::goToSettings(const int theBanDau, std::string startKey) {
   replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInput, theBanDau, false, std::move(startKey)));
 }
 
+void ActivityManager::goToSettings(const SettingsSection openSection) {
+  // Upstream's group id: the tab that holds the same rows.
+  goToSettings(settingsTabForSection(openSection));
+}
+
 void ActivityManager::goToFileBrowser(std::string path) {
   replaceActivity(std::make_unique<FileBrowserActivity>(renderer, mappedInput, std::move(path)));
 }
@@ -823,13 +858,17 @@ void ActivityManager::goToBrowser() {
   }
 }
 
+void ActivityManager::goToPlugins(bool showOpds) {
+  replaceActivity(std::make_unique<PluginCatalogActivity>(renderer, mappedInput, showOpds, /*rootMode=*/true));
+}
+
 void ActivityManager::goToReader(std::string path, const bool allowFastInitialRefresh) {
   if (path.empty()) {
     goToFileBrowser("/");
     return;
   }
 
-  if (FsHelpers::hasBmpExtension(path) || FsHelpers::hasPngExtension(path)) {
+  if (FsHelpers::hasImageExtension(path)) {
     auto activity = makeUniqueNoThrow<BmpViewerActivity>(renderer, mappedInput, std::move(path));
     if (!activity) {
       LOG_ERR("ACT", "OOM: bitmap viewer activity");
@@ -867,6 +906,7 @@ bool ActivityManager::goToSleep(bool fromTimeout) {
     LOG_INF("SLP", "Timing notice-and-lock=%lu ms", static_cast<unsigned long>(millis() - started));
   }
   replaceActivity(std::make_unique<SleepActivity>(renderer, mappedInput, fromTimeout));
+  if (pendingAction == PendingAction::Replace) pendingAction = PendingAction::ReplaceForSleep;
   // The radio starter/connection worker may need several polls before it gives
   // up ownership. Only onEnter of SleepActivity completes the retained image.
   while (pendingAction != PendingAction::None) {
@@ -971,11 +1011,11 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefr
     const auto& activityName = currentActivity->name;
     if (activityName == "FileBrowser") {
       initialMenuItem = HomeMenuItem::FILE_BROWSER;
-    } else if (activityName == "OpdsBookBrowser") {
+    } else if (activityName == "OpdsBookBrowser" || activityName == "PluginCatalog") {
       initialMenuItem = HomeMenuItem::OPDS_BROWSER;
     } else if (activityName == "CrossPointWebServer") {
       initialMenuItem = HomeMenuItem::FILE_TRANSFER;
-    } else if (activityName == "Settings") {
+    } else if (activityName == "Settings" || activityName == "SettingsList") {
       initialMenuItem = HomeMenuItem::SETTINGS_MENU;
     }
   }
@@ -1082,6 +1122,49 @@ bool ActivityManager::readerShortcut(const ReaderShortcut shortcut) {
   return static_cast<ReaderActivity*>(currentActivity.get())->requestShortcut(shortcut);
 }
 
+bool ActivityManager::isForegroundReader() const {
+  return pendingAction == PendingAction::None && currentActivity && currentActivity->isReaderActivity();
+}
+
+bool ActivityManager::isRemoteReaderContext() const {
+  return pendingAction == PendingAction::None && currentActivity && currentActivity->acceptsRemoteInput();
+}
+
+bool ActivityManager::remoteClick(const RemoteButton button) {
+  if (!isRemoteReaderContext() || RenderLock::peek() || requestedUpdate.load()) return false;
+  return mappedInput.injectRemoteClick(button);
+}
+
+bool ActivityManager::isForegroundHomeShown() const {
+  return pendingAction == PendingAction::None && currentActivity && currentActivity->name == "Home" &&
+         paintedVisit.load(std::memory_order_acquire) == screenVisit;
+}
+
+bool ActivityManager::remoteShortcut(const bool readerMenu) {
+  if (!isForegroundReader()) return false;
+  auto* reader = static_cast<ReaderActivity*>(currentActivity.get());
+  if (!remoteTurnAccepted(reader->pageRendered.load(std::memory_order_acquire), RenderLock::peek(),
+                          reader->inputOverPage())) {
+    return false;
+  }
+  return reader->remoteShortcut(readerMenu);
+}
+
+bool ActivityManager::remoteTurn(const bool forward, const bool chapter) {
+  if (!isRemoteReaderContext() || mappedInput.hasRemoteClick()) return false;
+  auto* reader = isForegroundReader() ? static_cast<ReaderActivity*>(currentActivity.get()) : nullptr;
+  if (!reader || reader->inputOverPage()) {
+    return !chapter && remoteClick(forward ? RemoteButton::Next : RemoteButton::Previous);
+  }
+  if (!remoteTurnAccepted(reader->pageRendered.load(std::memory_order_acquire), RenderLock::peek(),
+                          reader->inputOverPage())) {
+    return false;
+  }
+  const bool turned = chapter ? reader->skipPages(forward ? 1 : -1) : reader->pageTurn(forward);
+  if (turned) requestUpdate();
+  return turned;
+}
+
 bool ActivityManager::handleForcedRefresh() { return currentActivity && currentActivity->handleForcedRefresh(); }
 
 bool ActivityManager::skipLoopDelay() const { return currentActivity && currentActivity->skipLoopDelay(); }
@@ -1091,6 +1174,12 @@ ScreenshotInfo ActivityManager::getScreenshotInfo() const {
     return currentActivity->getScreenshotInfo();
   }
   return {};
+}
+
+void ActivityManager::prepareForSleep() {
+  RenderLock lock;
+  for (const auto& activity : stackActivities) activity->prepareForSleep();
+  if (currentActivity) currentActivity->prepareForSleep();
 }
 
 void ActivityManager::requestUpdate(bool immediate) {

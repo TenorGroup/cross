@@ -56,7 +56,7 @@ class HomeCardAfterReading(unittest.TestCase):
     def test_back_opens_first_book(self):
         # Card two is shown; Back on Home opens the first book; a long Back comes home.
         log, first = run('back', '1000:RIGHT;2000:BACK;5000:BACK:1400;8500:QUIT')
-        assert log.count('Entering activity: TxtReader') == 1, log[-3000:]
+        assert log.count('Entering activity: EpubReader\n') == 1, log[-3000:]
         assert first == '/dau.txt', first
         row = last_home_row(log)
         assert row == 1, f'Home came back on card {row}, the book just read is card 1'

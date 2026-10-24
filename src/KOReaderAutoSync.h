@@ -26,6 +26,9 @@ void flushNote();
 // Deep sleep, after the sleep screen and the retained frame are done and before the panel and the
 // card power down: pushes the books owed to the server, within kosyncauto::ROUND_BUDGET_MS.
 void pushBeforeSleep(GfxRenderer& renderer);
+// True when the sleep push has books to send under the gate as it stands now. The sleep path asks it before it
+// takes the radio down after the plugin events (D12): one join then serves both, and pushBeforeSleep() reuses it.
+bool pushIsOwed();
 
 // The switch was turned off: what was owed is forgotten, in memory and on the card, so turning it on again
 // later pushes nothing from before.

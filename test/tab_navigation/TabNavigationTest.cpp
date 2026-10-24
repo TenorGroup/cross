@@ -840,7 +840,7 @@ TEST(MenuFavoritesCompatibility, LegacyTextPinFindsCurrentRouteAndLabel) {
   EXPECT_STREQ(route->key, "text/dropCapMode");
   EXPECT_EQ(route->tab, 3);
   EXPECT_EQ(route->row, 0);
-  EXPECT_EQ(menufavorites::label("text/focusReadingEnabled", {}), StrId::STR_FOCUS_READING);
+  EXPECT_EQ(menufavorites::label("text/focusReadingEnabled", {}), StrId::STR_DROP_CAP);
 }
 
 TEST(MenuFavoritesCompatibility, LegacyStatusPinsShowCurrentLabels) {

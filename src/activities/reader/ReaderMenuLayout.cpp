@@ -10,7 +10,7 @@ void separateTextTab(std::vector<Item>& items) {
 }
 
 void buildItems(std::vector<Item>& items, const bool hasFootnotes, const bool hasBookmarks, const bool hasFrontlight,
-                const bool hasTilt) {
+                const bool hasTilt, const bool hasClippings) {
   items.clear();
   items.reserve(ACTION_COUNT);
 
@@ -42,6 +42,8 @@ void buildItems(std::vector<Item>& items, const bool hasFootnotes, const bool ha
   // Right under Save quotation: the quotes of this book are where a saved one is read again,
   // trimmed or reselected on its page.
   items.push_back({Action::QUOTES_OF_BOOK, StrId::STR_QUOTES_OF_BOOK, Tab::TOOLS});
+  // The upstream clippings (D7) beside the quotes: select text and keep it. The rows above keep their places.
+  items.push_back({Action::SAVE_CLIPPING, StrId::STR_SAVE_CLIPPING, Tab::TOOLS});
   items.push_back({Action::SCREENSHOT, StrId::STR_SCREENSHOT_BUTTON, Tab::TOOLS});
   items.push_back({Action::DISPLAY_QR, StrId::STR_DISPLAY_QR, Tab::TOOLS});
   items.push_back({Action::DELETE_CACHE, StrId::STR_DELETE_CACHE, Tab::TOOLS});
@@ -54,11 +56,15 @@ void buildItems(std::vector<Item>& items, const bool hasFootnotes, const bool ha
   if (hasTilt) {
     items.push_back({Action::TILT_PAGE_TURN, StrId::STR_TILT_PAGE_TURN, Tab::TOOLS});
   }
+  // The clippings of the upstream reader (D7): the list of a book that has some is conditional, so it closes the tab.
+  if (hasClippings) {
+    items.push_back({Action::VIEW_CLIPPINGS, StrId::STR_VIEW_CLIPPINGS, Tab::TOOLS});
+  }
 }
 
 void buildMoreItems(std::vector<Item>& items, const bool hasFootnotes, const bool hasBookmarks,
-                    const bool hasFrontlight, const bool hasSearch, const bool hasTilt) {
-  buildItems(items, hasFootnotes, hasBookmarks, hasFrontlight, hasTilt);
+                    const bool hasFrontlight, const bool hasSearch, const bool hasTilt, const bool hasClippings) {
+  buildItems(items, hasFootnotes, hasBookmarks, hasFrontlight, hasTilt, hasClippings);
   items.erase(std::remove_if(items.begin(), items.end(),
                              [](const auto& item) {
                                return item.action == Action::SELECT_CHAPTER || item.action == Action::TEXT_SETTINGS;
@@ -69,8 +75,9 @@ void buildMoreItems(std::vector<Item>& items, const bool hasFootnotes, const boo
                                      Action::DICTIONARY,    Action::ROTATE_SCREEN,  Action::AUTO_PAGE_TURN,
                                      Action::GO_TO_PERCENT, Action::SCREENSHOT,     Action::DISPLAY_QR,
                                      Action::GO_HOME,       Action::SYNC,           Action::DELETE_CACHE,
-                                     Action::SAVE_QUOTE,    Action::QUOTES_OF_BOOK, Action::BLUETOOTH,
-                                     Action::FILE_TRANSFER, Action::TILT_PAGE_TURN};
+                                     Action::SAVE_QUOTE,    Action::QUOTES_OF_BOOK, Action::SAVE_CLIPPING,
+                                     Action::BLUETOOTH,     Action::FILE_TRANSFER,  Action::TILT_PAGE_TURN,
+                                     Action::VIEW_CLIPPINGS};
   std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) {
     return std::find(std::begin(order), std::end(order), a.action) <
            std::find(std::begin(order), std::end(order), b.action);

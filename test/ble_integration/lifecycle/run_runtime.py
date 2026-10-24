@@ -78,6 +78,7 @@ def main():
         "-DCROSSPOINT_BLE_HID_HOST=1", "-I" + str(output),
         "-I" + str(HERE / "stubs"), "-I" + str(source / "src"),
         "-I" + str(module / "include"), "-I" + str(module / "src"),
+        "-I" + str(source / "freeink-sdk/libs/network/BleKeyboardHost/include"),
         str(HERE / "runtime_test.cpp"),
         str(module / "src/Runtime.cpp"), str(module / "src/SdkRadio.cpp"), "-o", str(binary),
     ]

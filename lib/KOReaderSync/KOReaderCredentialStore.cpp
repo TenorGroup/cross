@@ -11,12 +11,22 @@ namespace {
 constexpr char DEFAULT_SERVER_URL[] = "https://kosync.tenor.vn";
 constexpr char CROSSPOINT_SERVER_URL[] = "https://sync.crosspointreader.com";
 
+// Protocol profile of a server URL, as a table (D4). Both built-in servers take the optional rich position
+// (kosync.tenor.vn did so in v1.0.76, so it must stay CROSSPOINT or its requests would change); any other
+// URL is strict KOSync, as in both v1.0.76 and upstream.
+KOReaderServerType serverTypeForUrl(const std::string& baseUrl) {
+  return baseUrl == DEFAULT_SERVER_URL || baseUrl == CROSSPOINT_SERVER_URL ? KOReaderServerType::CROSSPOINT
+                                                                           : KOReaderServerType::KOSYNC;
+}
+
 // Default before config version 2. Configs saved without a version stamp and an
 // empty serverUrl were implicitly syncing here - they get pinned on upgrade.
 constexpr char LEGACY_DEFAULT_SERVER_URL[] = "https://sync.koreader.rocks:443";
 
 // Bumped when a change to defaults would alter behavior for existing configs.
-constexpr uint8_t CONFIG_VERSION = 3;
+// v3 meant two things: v1.0.76 added autoSync, upstream added serverType/headers/syncClippings. v4 is both:
+// a v3 file is told apart by whether it carries serverType.
+constexpr uint8_t CONFIG_VERSION = 4;
 }  // namespace
 
 void KOReaderCredentialStore::toJson(JsonDocument& doc) const {
@@ -24,10 +34,18 @@ void KOReaderCredentialStore::toJson(JsonDocument& doc) const {
   doc["username"] = getUsername();
   doc["password_obf"] = obfuscation::obfuscateToBase64(getPassword());
   doc["serverUrl"] = getServerUrl();
+  doc["serverType"] = static_cast<uint8_t>(getServerType());
   doc["matchMethod"] = static_cast<uint8_t>(getMatchMethod());
   doc["sendMetadata"] = getSendMetadata();
+  doc["syncClippings"] = getSyncClippings();
   doc["syncBehavior"] = static_cast<uint8_t>(getSyncBehavior());
   doc["autoSync"] = getAutoSync();
+  JsonArray headers = doc["headers"].to<JsonArray>();
+  for (const auto& header : customHeaders) {
+    JsonObject headerObj = headers.add<JsonObject>();
+    headerObj["name"] = header.name;
+    headerObj["value_obf"] = obfuscation::obfuscateToBase64(header.value);
+  }
 }
 
 bool KOReaderCredentialStore::fromJson(JsonVariantConst doc) {
@@ -44,13 +62,31 @@ bool KOReaderCredentialStore::fromJson(JsonVariantConst doc) {
   // against the old default - pin that URL so the upgrade doesn't switch servers
   // out from under the user. Fresh setups get the new default.
   const uint8_t cfgVersion = doc["cfgVersion"] | (uint8_t)1;
-  if (cfgVersion < CONFIG_VERSION) {
-    if (cfgVersion < 2 && getServerUrl().empty() && hasCredentials()) {
+  if (cfgVersion < 2) {
+    if (getServerUrl().empty() && hasCredentials()) {
       LOG_DBG("KRS", "Pre-v2 config used the old default server; pinning %s", LEGACY_DEFAULT_SERVER_URL);
       setServerUrl(LEGACY_DEFAULT_SERVER_URL);
     }
-    needsResave = true;  // stamp cfgVersion so this migration runs once
+    needsResave = true;
   }
+
+  // The protocol profile is explicit from v3 on. A file without serverType (every v1.0.76 file, any older one)
+  // gets it from the URL table, which reproduces what v1.0.76 sent; a stored one is kept.
+  const JsonVariantConst serverTypeValue = doc["serverType"];
+  if (serverTypeValue.isNull()) {
+    setServerType(serverTypeForUrl(getBaseUrl()));
+    needsResave = true;
+  } else {
+    const uint8_t type = serverTypeValue.as<uint8_t>();
+    if (type <= static_cast<uint8_t>(KOReaderServerType::OTHER)) {
+      setServerType(static_cast<KOReaderServerType>(type));
+    } else {
+      LOG_DBG("KRS", "Invalid serverType %u in JSON, resetting to KOSYNC", type);
+      setServerType(KOReaderServerType::KOSYNC);
+      needsResave = true;
+    }
+  }
+  if (cfgVersion < CONFIG_VERSION) needsResave = true;  // stamp v4 so this runs once
 
   uint8_t method = doc["matchMethod"] | (uint8_t)0;
   if (method <= static_cast<uint8_t>(DocumentMatchMethod::BINARY)) {
@@ -61,6 +97,15 @@ bool KOReaderCredentialStore::fromJson(JsonVariantConst doc) {
   }
   setSendMetadata(doc["sendMetadata"] | false);
   setAutoSync(doc["autoSync"] | false);
+  setSyncClippings(doc["syncClippings"] | false);
+
+  size_t headerIndex = 0;
+  for (JsonObjectConst headerObj : doc["headers"].as<JsonArrayConst>()) {
+    if (headerIndex >= MAX_CUSTOM_HEADERS) break;
+    customHeaders[headerIndex].name = headerObj["name"] | "";
+    customHeaders[headerIndex].value = obfuscation::deobfuscateFromBase64(headerObj["value_obf"] | "");
+    headerIndex++;
+  }
 
   const JsonVariantConst behaviorValue = doc["syncBehavior"];
   const bool missingBehavior = behaviorValue.isNull();
@@ -113,6 +158,9 @@ void KOReaderCredentialStore::clearCredentials() {
 
 void KOReaderCredentialStore::setServerUrl(const std::string& url) {
   serverUrl = url;
+  // A new URL gets the profile v1.0.76 would have used for it (its rich position went only to the two built-in
+  // servers); setServerType after this, or the Server Type row, still overrides it.
+  serverType = serverTypeForUrl(getBaseUrl());
   LOG_DBG("KRS", "Set server URL: %s", url.empty() ? "(default)" : url.c_str());
 }
 
@@ -135,10 +183,12 @@ std::string KOReaderCredentialStore::getBaseUrl() const {
   return url;
 }
 
-bool KOReaderCredentialStore::usesCrossPointSyncServer() const {
-  const auto url = getBaseUrl();
-  // Both servers implement the same optional rich-position protocol.
-  return url == DEFAULT_SERVER_URL || url == CROSSPOINT_SERVER_URL;
+void KOReaderCredentialStore::setServerType(KOReaderServerType type) {
+  if (static_cast<uint8_t>(type) > static_cast<uint8_t>(KOReaderServerType::OTHER)) {
+    type = KOReaderServerType::KOSYNC;
+  }
+  serverType = type;
+  LOG_DBG("KRS", "Set server type: %u", static_cast<unsigned>(type));
 }
 
 void KOReaderCredentialStore::setMatchMethod(DocumentMatchMethod method) {
@@ -157,4 +207,11 @@ void KOReaderCredentialStore::setSyncBehavior(KOReaderSyncBehavior behavior) {
   }
   syncBehavior = behavior;
   LOG_DBG("KRS", "Set sync behavior: %s", behavior == KOReaderSyncBehavior::SMART ? "Smart" : "Ask");
+}
+
+void KOReaderCredentialStore::setCustomHeader(size_t index, const std::string& name, const std::string& value) {
+  if (index >= MAX_CUSTOM_HEADERS) return;
+  customHeaders[index].name = name;
+  customHeaders[index].value = value;
+  LOG_DBG("KRS", "Set custom header %zu: %s", index, name.empty() ? "(cleared)" : name.c_str());
 }

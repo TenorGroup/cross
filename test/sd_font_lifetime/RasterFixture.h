@@ -46,14 +46,15 @@ void drawCorpus(GfxRenderer& renderer, int y) {
                 {EpdFontFamily::REGULAR, EpdFontFamily::ITALIC, EpdFontFamily::BOLD, EpdFontFamily::SUB},
                 {}, {}, BlockStyle{}, {"a", "reading", "", "last"});
   one.render(renderer, 42, 35, y);
+  BlockStyle spaced{};
+  spaced.characterSpacing = 2;
   TextBlock group({"ấ", "ễ", "ệ", "tail"}, {0, 55, 120, 185},
     {static_cast<Style>(EpdFontFamily::UNDERLINE | EpdFontFamily::ITALIC),
      static_cast<Style>(EpdFontFamily::RUBY_CONTINUE | EpdFontFamily::UNDERLINE),
      static_cast<Style>(EpdFontFamily::RUBY_CONTINUE | EpdFontFamily::STRIKETHROUGH), EpdFontFamily::SUP},
-    {}, {}, BlockStyle{}, {"a long annotation", "", "", "sup"});
-  group.setLetterSpacing(2);
+    {}, {}, spaced, {"a long annotation", "", "", "sup"});
   group.render(renderer, 42, 30, y + 35);
-  TextBlock cap({"Initial", "end"}, {0, 180}, {static_cast<Style>(EpdFontFamily::ITALIC | EpdFontFamily::DROP_CAP), EpdFontFamily::REGULAR},
+  TextBlock cap({"Initial", "end"}, {0, 180}, {EpdFontFamily::ITALIC, EpdFontFamily::REGULAR},
                 {}, {}, BlockStyle{}, {"drop", ""});
   cap.setDropCapHeight(38);
   cap.render(renderer, 42, 25, y + 80);

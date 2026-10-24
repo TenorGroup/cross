@@ -37,6 +37,8 @@ Tab nhaCua(const Action action) {
       return Tab::CONTROLS;
     // Thiet bi: thu thuoc ve chinh cai may nay, dat mot lan roi hau nhu khong dong lai.
     case Action::BlePageTurner:
+    // Plugins (SD card extensions) sit with the other connection rows: Wi-Fi and Bluetooth.
+    case Action::Plugins:
       return Tab::DEVICE;
     case Action::DeviceName:
     case Action::Network:

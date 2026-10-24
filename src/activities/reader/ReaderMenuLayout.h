@@ -37,12 +37,14 @@ enum class Action {
   QUOTES_OF_BOOK,  // mo man Trich dan cua dung cuon dang doc
   FILE_TRANSFER,   // leaves the book for the file transfer screen
   TILT_PAGE_TURN,  // toggles tilt page turn in place; boards with an IMU only
-  BOOK_SEARCH      // opens the search of the book's text; the X4 Pro's More panel only
+  BOOK_SEARCH,     // opens the search of the book's text; the X4 Pro's More panel only
+  SAVE_CLIPPING,   // selects text and keeps it as a clipping (ClipSelectionActivity), next to the quotes
+  VIEW_CLIPPINGS   // the clippings of this book; listed only when the book has some
 };
 
 // So lenh dang co. Dung de loc mot o rac doc len tu settings.json: mot so vuot tam nghia
 // la ban ghi cu tro toi mot lenh khong con ton tai.
-inline constexpr int ACTION_COUNT = static_cast<int>(Action::BOOK_SEARCH) + 1;
+inline constexpr int ACTION_COUNT = static_cast<int>(Action::VIEW_CLIPPINGS) + 1;
 
 enum class Tab : uint8_t { FAVORITES, POSITION, READING, TOOLS, TEXT };
 
@@ -76,12 +78,13 @@ struct Item {
 // Muc co dieu kien (chu thich, dau trang, den nen) xep CUOI tab cua no, de cac
 // muc luon hien giu nguyen so thu tu du cuon sach nay co va cuon kia khong.
 void buildItems(std::vector<Item>& items, bool hasFootnotes, bool hasBookmarks, bool hasFrontlight,
-                bool hasTilt = false);
+                bool hasTilt = false, bool hasClippings = false);
 
 // Toolbar More keeps its original order independently of the tab layout. A board that can search the book's text
-// (hasSearch) gets that row on top; one with a tilt sensor (hasTilt) the tilt page turn switch.
+// (hasSearch) gets that row on top; one with a tilt sensor (hasTilt) the tilt page turn switch. A book with clippings
+// (hasClippings) lists View clippings; Save clipping is always there.
 void buildMoreItems(std::vector<Item>& items, bool hasFootnotes, bool hasBookmarks, bool hasFrontlight,
-                    bool hasSearch = false, bool hasTilt = false);
+                    bool hasSearch = false, bool hasTilt = false, bool hasClippings = false);
 void separateTextTab(std::vector<Item>& items);
 
 // "Chapter: 3/12 pages  |  Book: 25%": where the reader stands, over the bar of the list menu, the chapter list and the

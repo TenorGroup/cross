@@ -1,27 +1,34 @@
 #pragma once
+
+#include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <map>
 #include <string>
+
+// Inflated sizes of the archive's entries, by path. The batch lookups find nothing, so every size
+// is looked up by path.
+inline std::map<std::string, uint32_t> zipEntrySizes;
+
 class ZipFile {
  public:
   struct SizeTarget {
     uint64_t hash;
-    uint16_t len, index;
+    uint16_t len;
+    uint16_t index;
   };
+
+  static uint64_t fnvHash64(const char*, size_t) { return 0; }
   explicit ZipFile(const std::string&) {}
   bool open() { return true; }
-  void close() {}
-  static uint64_t fnvHash64(const char*, size_t) { return 0; }
-  int fillUncompressedSizes(SizeTarget*, size_t count, uint32_t* sizes) {
-    for (size_t i = 0; i < count; ++i) sizes[i] = 100;
-    return count;
-  }
-  int fillUncompressedSizes(const std::deque<SizeTarget>&, std::deque<uint32_t>& sizes) {
-    for (auto& size : sizes) size = 100;
-    return sizes.size();
-  }
-  bool getInflatedFileSize(const char*, size_t* size) {
-    *size = 100;
+  bool close() { return true; }
+  int fillUncompressedSizes(std::deque<SizeTarget>&, std::deque<uint32_t>&) { return 0; }
+  int fillUncompressedSizes(SizeTarget*, size_t, uint32_t*) { return 0; }
+
+  bool getInflatedFileSize(const char* path, size_t* size) const {
+    const auto it = zipEntrySizes.find(path);
+    if (it == zipEntrySizes.end()) return false;
+    *size = it->second;
     return true;
   }
 };

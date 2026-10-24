@@ -19,6 +19,9 @@
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 #include "components/icons/tenorRowMarks.h"
+#if FREEINK_CAP_TOUCH
+#include "components/UiAppHelpers.h"
+#endif
 #include "fontIds.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglyChrome.h"
@@ -77,6 +80,10 @@ void UiListActivity::onEnter() {
   resetUi();
   app.on(ACTION_ROW, &UiListActivity::rowActionTrampoline, this);
   app.on(ACTION_FILE_SEARCH, &UiListActivity::fileSearchTrampoline, this);
+#if FREEINK_CAP_TOUCH
+  revealedIndex.store(-1);
+  app.on(ACTION_SWIPE_DELETE, &UiListActivity::swipeDeleteTrampoline, this);
+#endif
   app.setScreen(&UiListActivity::screenTrampoline, this);
   requestUpdate();
 }
@@ -97,6 +104,13 @@ void UiListActivity::rowActionTrampoline(const fui::ActionEvent& event, void* us
   if (event.value < 0 || event.value >= self->listCount()) return;
   // Touch: no gray flash on the row that was tapped or held.
   if (tenorchrome::kTouchShell) self->app.clearTapFlash();
+#if FREEINK_CAP_TOUCH
+  if (self->revealedIndex.load() >= 0) {
+    self->closeSwipeDelete();
+    self->app.clearTapFlash();
+    return;
+  }
+#endif
   self->onRowAction(event);
 }
 
@@ -112,6 +126,83 @@ void UiListActivity::onRowLongPress(const int index) {
   const StrId label = rowIsPinned(index) ? StrId::STR_UNPIN_FAVORITE : StrId::STR_PIN_FAVORITE;
   showRowMenu(&label, 1, [this, index](int) { queuePinToggle(index); }, ACTION_ROW, index);
 }
+
+
+#if FREEINK_CAP_TOUCH
+void UiListActivity::swipeDeleteTrampoline(const fui::ActionEvent& event, void* user) {
+  auto* self = static_cast<UiListActivity*>(user);
+  if (event.value != self->revealedIndex.load() || !self->canSwipeDelete(event.value)) return;
+  self->closeSwipeDelete();
+  self->app.clearTapFlash();
+  self->swipeDelete(event.value);
+}
+
+void UiListActivity::closeSwipeDelete() {
+  if (revealedIndex.exchange(-1) >= 0) requestUpdate();
+}
+
+void UiListActivity::configureSwipeDelete(UiScreen& screen, fui::ListProps& props) {
+  const int row = revealedIndex.load();
+  if (row < 0 || row >= listCount() || !canSwipeDelete(row)) return;
+  swipeReveal.index = static_cast<int16_t>(row);
+  swipeReveal.action = ACTION_SWIPE_DELETE;
+  swipeReveal.icon = fui::bitmapFromIcon(icon_trash_2_24);
+  swipeReveal.width = static_cast<int16_t>(screen.theme().rowHeight + screen.theme().spaceSm * 2);
+  props.reveal = &swipeReveal;
+}
+
+bool UiListActivity::handleSwipeDeleteInput() {
+  if (!mappedInput.hasTouch()) return false;
+  const int openRow = revealedIndex.load();
+  if (openRow >= 0) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
+        mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+      closeSwipeDelete();
+      return true;
+    }
+    int x = 0;
+    int y = 0;
+    if (mappedInput.wasScreenTapped(x, y)) {
+      fui::Interaction hit;
+      bool onDelete;
+      {
+        RenderLock lock(*this);
+        onDelete = routingReady() && app.hitPublished(x, y, ACTION_SWIPE_DELETE, hit) && hit.value == openRow;
+        if (!onDelete && routingReady())
+          app.route(fui::InputSnapshot{.touchReleased = true, .touchX = -1, .touchY = -1});
+      }
+      if (!onDelete) {
+        closeSwipeDelete();
+        return true;
+      }
+    }
+  }
+
+  int x = 0;
+  int y = 0;
+  const auto swipe = mappedInput.wasSwipe(&x, &y);
+  if (swipe == MappedInputManager::SwipeDir::Right && openRow >= 0) {
+    UiAppHost::routeTouch(mappedInput, wantsTouchLongPress);
+    closeSwipeDelete();
+    return true;
+  }
+  if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
+    closeSwipeDelete();
+    return false;
+  }
+  if (swipe != MappedInputManager::SwipeDir::Left) return false;
+
+  fui::Interaction hit;
+  {
+    RenderLock lock(*this);
+    if (!routingReady() || !app.hitPublished(x, y, ACTION_ROW, hit) || !canSwipeDelete(hit.value)) return false;
+  }
+  UiAppHost::routeTouch(mappedInput, wantsTouchLongPress);
+  revealedIndex.store(hit.value);
+  requestUpdate();
+  return true;
+}
+#endif
 
 void UiListActivity::onRowAction(const fui::ActionEvent& event) {
   activeNav().selected = event.value;
@@ -478,6 +569,9 @@ void UiListActivity::loopInput() {
   }
   if (rowMenu.handleInput(mappedInput, [this] { requestUpdate(); })) return;
   if (handleCustomInput()) return;
+#if FREEINK_CAP_TOUCH
+  if (handleSwipeDeleteInput()) return;
+#endif
   const int favoriteRow = favoriteSelectedRow();
   const bool buttonHeld = supportsFavorites() && !favoriteKey(favoriteRow).empty() &&
                           mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, 700);
@@ -555,6 +649,14 @@ void UiListActivity::moveToVisibleBoundary(const bool last, const bool ring) {
   queueNavIntent(last ? NavIntent::BoundaryLast : NavIntent::BoundaryFirst);
 }
 
+void UiListActivity::moveSelectionTo(const int index) {
+#if FREEINK_CAP_TOUCH
+  closeSwipeDelete();
+#endif
+  activeNav().requestSelection(index);
+  requestUpdate();
+}
+
 void UiListActivity::navigateButtons() {
   using Button = MappedInputManager::Button;
   constexpr unsigned long HOLD_MS = 700;
@@ -568,9 +670,11 @@ void UiListActivity::navigateButtons() {
     moveToVisibleBoundary(true);
     return;
   }
-  if (mappedInput.wasReleased(Button::Right)) {
+  // Rows step on the press (#3754), as upstream. The edge pair keeps the release: it pages the list, switches
+  // the settings sibling and carries the tab hold, which a press cannot tell from a hold that has begun.
+  if (mappedInput.wasPressed(Button::Right)) {
     queueNavIntent(NavIntent::StepNext);
-  } else if (mappedInput.wasReleased(Button::Left)) {
+  } else if (mappedInput.wasPressed(Button::Left)) {
     queueNavIntent(NavIntent::StepPrev);
   } else if (mappedInput.wasReleased(Button::Down)) {
     if (!activityManager.switchSettingsSibling(1)) moveListPage(1);

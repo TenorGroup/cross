@@ -26,6 +26,11 @@ void silentRestartForCard();
 // The update boot (network/UpdateBoot.h): the confirmed install when dryRunsLeft is 0, else the
 // probe's next dry run. Callers: the update screen after the user chose Update, and CMD:OTA_DRYRUN.
 void silentRestartToOta(uint8_t dryRunsLeft = 0, uint8_t dryRunsTotal = 0);
+// Reboot into the File Transfer > Join Network flow on a pristine heap, so the
+// WiFi + TLS working set has the contiguous RAM it needs on tight boards. A
+// no-op on touch boards (a soft reset would cycle their externally-powered
+// rails); the caller then proceeds without a reboot.
+void silentRestartToJoinNetwork();
 
 // Reboots immediately after an activity releases exclusive raw storage. The
 // RTC target ensures setup() lands on Home instead of resuming a reader.

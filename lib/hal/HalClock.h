@@ -14,8 +14,13 @@ class HalClock {
   // so zones with DST are correct year-round.
 
  public:
-  // Call after BoardConfig has selected the active device.
-  void begin();
+  // Call after BoardConfig has selected the active device. seedSystemClock false only finds the RTC: the
+  // caller then hands rtcEpoch() to trustedtime::adopt(), which refuses a reading the persisted floor
+  // calls faulty (an RTC a year ahead) instead of setting the system clock from it blindly.
+  void begin(bool seedSystemClock = true);
+
+  // The RTC's UTC time as epoch seconds; false when there is no RTC or it holds no supported calendar date.
+  bool rtcEpoch(int64_t& epoch) const;
 
   // True if an RTC is present on this device
   bool isAvailable() const { return _available; }

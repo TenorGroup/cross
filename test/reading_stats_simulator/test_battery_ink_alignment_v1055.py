@@ -71,7 +71,7 @@ def capture(program, folder, board, screen, charging, hidden, large):
     log = result.stdout + result.stderr
     (folder / "simulator.log").write_text(log)
     assert result.returncode == 0, log[-3000:]
-    activity = "EpubReader" if screen == "reader-menu" else "TxtReader" if reading else "Home"
+    activity = "EpubReader" if screen == "reader-menu" else "EpubReader" if reading else "Home"
     assert f"Entering activity: {activity}" in log, log[-3000:]
     if screen == "folder":
         assert "Entering activity: FileBrowser" in log, log[-3000:]

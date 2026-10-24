@@ -2,12 +2,25 @@
 
 #include <InflateReader.h>
 
+#include <cstdint>
+
 #include "EpdFontData.h"
+
+#if __has_include(<sdkconfig.h>)
+#include <sdkconfig.h>
+#endif
 
 class FontDecompressor {
  public:
   static constexpr uint16_t MAX_PAGE_GLYPHS = 512;
-  static constexpr uint8_t MAX_PAGE_SLOTS = 4;  // One per font style (R/B/I/BI)
+#if defined(CONFIG_IDF_TARGET_ESP32C3) && CONFIG_IDF_TARGET_ESP32C3
+  // One per body style (R/B/I/BI). A fifth font/style pair is not prewarmed and decodes through the hot group:
+  // slower, still correct. The extra slots upstream added for heading sizes hold decoded glyphs on a heap the
+  // X3 and X4C do not have to spare (floor 10240 B); raise this only with a heap measurement on the X3.
+  static constexpr uint8_t MAX_PAGE_SLOTS = 4;
+#else
+  static constexpr uint8_t MAX_PAGE_SLOTS = 8;  // One per font/style pair: body R/B/I/BI plus heading sizes
+#endif
 
   FontDecompressor() = default;
   ~FontDecompressor();
@@ -48,7 +61,7 @@ class FontDecompressor {
   InflateReader inflateReader;
 
   // Page buffer slots: each style gets its own flat glyph buffer with sorted lookup.
-  // Up to MAX_PAGE_SLOTS (4) styles can be prewarmed simultaneously.
+  // Up to MAX_PAGE_SLOTS font/style pairs can be prewarmed simultaneously.
   struct PageGlyphEntry {
     uint32_t glyphIndex;
     uint32_t bufferOffset;

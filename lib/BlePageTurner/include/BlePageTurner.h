@@ -93,6 +93,7 @@ enum class Why : uint8_t {
   Ok,
   Off,             // the user turned the page turner off
   NotReading,      // no book in front
+  NoBond,          // no remote chosen: nothing the radio could link to
   PageNotShown,    // the book has not painted its page yet
   Indexing,        // the book still builds its index and needs the heap
   BuildNeedsHeap,  // a starved chapter build stopped the radio until its page is shown
@@ -100,7 +101,6 @@ enum class Why : uint8_t {
   IdleNoLink,      // nothing connected for kIdleOffMs
   HeapLow,         // not enough heap for the stack
   HeapInPieces,    // enough in total, but no block the stack can take
-  NoBond,          // the book is in front and no remote was ever paired
 };
 
 // Module -> host. Every pointer is required except heapMap.
@@ -147,10 +147,6 @@ struct Scene {
 };
 
 void begin(const Host& host, Config& config);
-// The remotes paired on this device, as the host read them from storage at boot: the stack loads its own
-// list only when it starts. Once it has started, its list counts instead. With none, the book never starts
-// the radio and stops one left up; until this is called, a bond is assumed. Main loop.
-void setSavedBonds(uint8_t count);
 void requestConnect();
 // Returns true when a remote press acted this pass (the host counts it as user activity).
 bool tick(const Scene& scene);
@@ -160,8 +156,8 @@ bool tick(const Scene& scene);
 // it, so the book finds the stack already in and the heap Home had.
 bool beforeScreenChange(uint32_t endTimeoutMs = 0, bool nextIsReader = false);
 // Stops the radio now, waiting up to timeoutMs: a start in flight is cancelled or let finish, then
-// the stack stops. False: it did not stop in time. Main loop. The reader calls it before a sheet
-// covers the page, and reports the book as Elsewhere while the sheet is up.
+// the stack stops. False: it did not stop in time. Main loop. A host that covers the page with a
+// sheet calls it first, and reports the book as Elsewhere while the sheet is up.
 bool stopNow(uint32_t timeoutMs);
 // Stops the radio before sleep, waiting up to timeoutMs. False: it did not stop in time.
 bool beforeSleep(uint32_t timeoutMs);
@@ -195,8 +191,8 @@ Status status();
 // Why the radio may not be on at the last tick (Ok: it may), from radioVerdict.
 Why why();
 
-// What the book's status bar says about the remote in place of its title. With a remote paired,
-// Connecting from the moment a book is entered until a remote links; Failed when the radio was refused for this
+// What the book's status bar says about the remote in place of its title. Connecting from the
+// moment a book is entered until a remote links; Failed when the radio was refused for this
 // visit or ran kLinkNoteFailMs without a link, until the next page turn; None otherwise.
 // nextLinkNote (RadioPolicy.h) decides; tick() and acknowledgeLinkNote() apply it.
 enum class LinkNote : uint8_t { None, Connecting, Failed, Connected, LowMemory };

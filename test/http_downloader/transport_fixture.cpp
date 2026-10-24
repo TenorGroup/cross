@@ -4,14 +4,11 @@
 #include <memory>
 
 using String = std::string;
-#define LOG_DBG(...)
-#define LOG_ERR(...)
+#include <Logging.h>
 #define CROSSPOINT_VERSION "test"
 struct TestClock { bool syncFromNTP() { return true; } } halClock;
 namespace network_trust { const char* forUrl(const std::string&) { return "fixture"; } }
-using esp_err_t = int;
-constexpr int ESP_OK = 0, WIFI_PS_NONE = 0, WIFI_PS_MIN_MODEM = 1;
-int esp_wifi_set_ps(int) { return ESP_OK; }
+#include "../../src/network/WifiPowerSaveGuard.h"
 struct HttpDownloader {
   static constexpr uint32_t PINNED_CA_TIMEOUT_MS = 10000;
   using ProgressCallback = std::function<void(size_t, size_t)>;

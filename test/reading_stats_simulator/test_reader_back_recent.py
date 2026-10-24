@@ -17,9 +17,9 @@ def check(mode):
   path='/target.txt';h=14695981039346656037
   for b in path.encode():h=((h^b)*1099511628211)&((1<<64)-1)
   key=f'bookid/{h:016x}';d=store/'favorite-files';d.mkdir(exist_ok=True);(d/(key[7:]+'.txt')).write_text(path);pins=[key]
-  prefix='1000:DOWN;1600:DOWN;2300:CONFIRM;';reader='TxtReader'
+  prefix='1000:DOWN;1600:DOWN;2300:CONFIRM;';reader='EpubReader'
  else:
-  prefix='1000:RIGHT;1800:CONFIRM;';reader='TxtReader'
+  prefix='1000:RIGHT;1800:CONFIRM;';reader='EpubReader'
  script=prefix+'6000:BACK;7600:CONFIRM;10200:BACK;12000:QUIT'
  t.run(mode,script,[(7100,'recent'),(9400,'reopened'),(11400,'final')],t.state(pins),{'backShortToFileBrowser':int(mode!='recent')})
  log=(t.o/(mode+'.log')).read_text()

@@ -4,11 +4,11 @@ This guide helps you build and run CrossPoint locally.
 
 ## Prerequisites
 
-- PlatformIO Core (`pio`) or VS Code + PlatformIO IDE
+- [pioarduino Core](https://github.com/pioarduino/platformio-core) (`pio`) or VS Code + [pioarduino IDE](https://github.com/pioarduino/pioarduino-vscode-ide), using the pinned core below
 - Python 3.8+
 - `clang-format` 21+ in your `PATH` or the selected Xcode toolchain
 - USB-C cable
-- Xteink X4 device for hardware testing
+- A device matching the build profile for hardware testing
 
 If `./bin/clang-format-fix` fails with either of these errors, install clang-format 21:
 
@@ -62,9 +62,50 @@ chmod +x .githooks/pre-commit
 
 ## Build
 
+With an existing compilation setup, run the selected profile directly:
+
 ```sh
-pio run
+pio run -e default
 ```
+
+`pio run` also selects the C3 X3/X4 profile. Select an existing board environment
+in `platformio.ini` for other devices; see [device profiles](./touch-and-ui.md#building-and-testing-on-other-devices).
+Keep the installed tools, packages, and build caches. The setup commands below
+apply only to a new environment or an identified missing or incompatible
+dependency; they are not steps to repeat before each build.
+
+## First-time toolchain setup
+
+Use pioarduino Core 6.1.19 (the release below), together with the platform pinned in
+`platformio.ini`. On Linux or macOS, install the core in the ignored local
+virtual environment:
+
+```sh
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade 'https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip'
+pio --version
+```
+
+On Windows, create the environment with `py -3.13 -m venv .venv` and activate
+`.venv/Scripts/activate` in Git Bash, or `.venv\Scripts\Activate.ps1` in PowerShell.
+Use this core in the IDE too; installing the IDE alone does not verify its core
+version. `requirements.txt` lists the Python dependencies of the helper scripts.
+
+Profiles with `custom_sdkconfig`, including `default` and `sticky`, build a
+nested core environment. Pin that core too before the first build:
+
+```sh
+python -m pip install uv
+pio pkg install -e default
+uv pip install --python ~/.platformio/penv/bin/python 'pioarduino==6.1.19'
+```
+
+Replace `default` with the selected profile. The nested Python path above uses
+the default Linux/macOS PlatformIO directory; on Windows use
+`~/.platformio/penv/Scripts/python.exe`, or the configured core directory.
+Keep both core pins aligned when updating the toolchain. After setup,
+use the [normal build command](#build).
 
 ## Flash
 
@@ -82,6 +123,9 @@ pio run
 
 The formatter defaults to checking. Use `./bin/clang-format-fix --fix -g` to apply
 formatting to changed files, then review the diff.
+
+Development builds apply the Git version only to sources that use
+`CROSSPOINT_VERSION`, so a branch/SHA change does not invalidate unrelated objects.
 
 ## What to read next
 

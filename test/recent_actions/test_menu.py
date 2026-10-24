@@ -55,6 +55,7 @@ cpp = r'''
 #include "components/TouchScroll.h"
 namespace fui=freeink::ui;
 constexpr int UI_12_FONT_ID=1;
+namespace haptic_feedback { inline void touchAction(bool=false){} }
 enum class Color {White};
 struct EpdFontFamily {enum Style {BOLD,REGULAR};};
 const unsigned char tickBits[] = {''' + tick_bytes + r'''};
@@ -124,7 +125,7 @@ struct Popup {
  static int rowsInFrame(int h,int head,int row,int count){return optionPopupFrameRows(h,head,row,count);}
  static void uglyPaper(const GfxRenderer&,fui::Rect){}
  static void uglyText(const GfxRenderer&,fui::Rect,const char*){}
-''' + (method(popup, '  static void drawAction(') if '  static void drawAction(' in popup else '') + '\n' + method(popup, '  static void drawChoice(') + '\n' + 'template<typename Frame>\n' + method(popup, '  void renderAnchored(') + '\n' + method(popup, '  bool handleInput(') + r'''
+''' + (method(popup, '  static void drawAction(') if '  static void drawAction(' in popup else '') + '\n' + method(popup, '  static void drawChoice(') + '\n' + 'template<typename Frame>\n' + method(popup, '  void renderAnchored(') + '\n' + method(popup, '  bool handleInput(') + '\n' + method(popup, '  bool handleButtons(') + r'''
  void paint(GfxRenderer&r,Target&t,fui::DeviceContext&d){
    interactions.beginPublishCycle();fui::InputSnapshot input;
    fui::Frame<17> frame(t,d,input,interactions);renderAnchored(r,frame,d.screen());interactions.publish();

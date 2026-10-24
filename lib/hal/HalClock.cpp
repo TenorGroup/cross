@@ -24,11 +24,22 @@ bool validRtcDate(const Rtc::DateTime& dt) {
   const uint8_t limit = days[dt.month - 1] + (dt.month == 2 && dt.year % 4 == 0 ? 1 : 0);
   return dt.day >= 1 && dt.day <= limit;
 }
+
+// Days from 1970-01-01 to a civil date (proleptic Gregorian), so the epoch does not depend on the process TZ.
+int64_t daysFromCivil(int64_t y, const unsigned m, const unsigned d) {
+  y -= m <= 2;
+  const int64_t era = (y >= 0 ? y : y - 399) / 400;
+  const unsigned yoe = static_cast<unsigned>(y - era * 400);
+  const unsigned doy = (153 * (m > 2 ? m - 3 : m + 9) + 2) / 5 + d - 1;
+  const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  return era * 146097 + static_cast<int64_t>(doe) - 719468;
+}
 }  // namespace
 
-void HalClock::begin() {
+void HalClock::begin(const bool seedSystemClock) {
   _available = _sdkRtc.begin();
   LOG_INF("CLK", _available ? "SDK RTC found" : "RTC not found");
+  if (!seedSystemClock) return;
   // A retained platform clock can already be newer than a failed RTC write.
   if (hasValidTime()) return;
   Rtc::DateTime dt;
@@ -45,6 +56,13 @@ void HalClock::begin() {
     const struct timeval systemTime = {mktime(&utc), 0};
     settimeofday(&systemTime, nullptr);
   }
+}
+
+bool HalClock::rtcEpoch(int64_t& epoch) const {
+  Rtc::DateTime dt;
+  if (!_available || !_sdkRtc.now(dt) || !validRtcDate(dt)) return false;
+  epoch = daysFromCivil(dt.year, dt.month, dt.day) * 86400 + dt.hour * 3600 + dt.minute * 60 + dt.second;
+  return true;
 }
 
 bool HalClock::hasValidTime() const {

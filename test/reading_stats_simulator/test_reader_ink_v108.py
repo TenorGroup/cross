@@ -324,7 +324,7 @@ class ReaderInkV108Test(unittest.TestCase):
         for level in range(4):
             self.settings['readerInkWeight'] = level
             images, log = self.run_sim(f'txt-level{level}')
-            self.assertIn('Entering activity: TxtReader', log)
+            self.assertIn('Entering activity: EpubReader', log)
             self.assert_loaded(log, level)
             measured.append(dict(level=level, **self.assert_page(images['page'])))
         self.assertEqual(len({entry['body_sha256'] for entry in measured}), 4)

@@ -23,11 +23,11 @@ namespace fui = freeink::ui;
 EpubReaderChapterSelectionActivity::EpubReaderChapterSelectionActivity(GfxRenderer& renderer,
                                                                        MappedInputManager& mappedInput,
                                                                        const std::shared_ptr<Epub>& epub,
-                                                                       const int currentSpineIndex,
+                                                                       const int currentTocIndex,
                                                                        std::string info)
     : UiListActivity("EpubReaderChapterSelection", renderer, mappedInput),
       epub(epub),
-      currentSpineIndex(currentSpineIndex),
+      currentTocIndex(currentTocIndex),
       info(std::move(info)) {}
 
 void EpubReaderChapterSelectionActivity::onEnter() {
@@ -50,10 +50,8 @@ void EpubReaderChapterSelectionActivity::onEnter() {
   // Start with the current chapter at the top of the viewport; the first
   // screen build pulls the viewport to it (ListNav follow-on-build) and
   // materializes the row window there (refreshTocWindow in buildScreen).
-  const int tocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
   // A page outside the table of contents (a cover, front matter) starts at the top and marks no row.
-  nav.selected = tocIndex < 0 ? 0 : tocIndex;
-  currentTocIndex = tocIndex;
+  nav.selected = currentTocIndex < 0 ? 0 : currentTocIndex;
 }
 
 // Materialize the ListItem/label window starting at `start` (clamped). TOC

@@ -74,7 +74,18 @@ class HalPowerManager {
   // Should be called inside main loop() to respect active normal-speed locks
   // preserveClock keeps the C3 X4 supply latched for its RTC-domain system clock.
   // X3 and other boards retain their normal rail policy.
-  void startDeepSleep(HalGPIO& gpio, bool preserveClock = false) const;
+  // wakeOnHeldButton: arm the wake without waiting for the power button's
+  // release, so a press that is still down wakes the device straight back up
+  // through the normal power-button wake path.
+  void startDeepSleep(HalGPIO& gpio, bool preserveClock = false, bool wakeOnHeldButton = false) const;
+
+#if FREEINK_DEVICE_PICCO
+  // While USB powers the device, light-sleep instead of deep sleep (deep sleep
+  // cannot observe the charger), calling onStatus whenever the charging state
+  // or percentage changes. Returns true when the power button ended the hold,
+  // false when USB went away or was never present.
+  bool holdWhileUsbPowered(HalGPIO& gpio, void (*onStatus)(bool charging, uint16_t percent)) const;
+#endif
 
   // Get battery percentage (range 0-100). On a board with an I2C gauge only the loop
   // task reads the gauge; other tasks (the render task) get the loop's last reading.

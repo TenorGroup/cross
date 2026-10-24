@@ -19,6 +19,21 @@ ConfirmationActivity::ConfirmationActivity(GfxRenderer& renderer, MappedInputMan
                                            ConfirmationContent content)
     : Activity("Confirmation", renderer, mappedInput), heading(heading), body(body), content(std::move(content)) {}
 
+ConfirmationActivity::ConfirmationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                           const std::string& heading, const std::string& body,
+                                           const std::string& cancelLabel, const std::string& confirmLabel)
+    : ConfirmationActivity(renderer, mappedInput, heading, body, ConfirmationContent{}) {
+  this->cancelLabel = cancelLabel;
+  this->confirmLabel = confirmLabel;
+  // The two-answer form: the heading is the question, the body its message, one action to confirm.
+  const std::string& action = confirmLabel.empty() ? std::string(tr(STR_CONFIRM)) : confirmLabel;
+  content.question = heading;
+  content.message = body;
+  content.touchMessage = body.empty() ? heading : heading + " " + body;
+  content.shortAction = action;
+  content.longAction = action;
+}
+
 void ConfirmationActivity::onEnter() {
   Activity::onEnter();
   if (shell::isUgly()) ugly::ensureFonts(renderer);
@@ -114,7 +129,8 @@ void ConfirmationActivity::complete(bool cancelled) {
 void ConfirmationActivity::render(RenderLock&& lock) {
   if (shell::isUgly()) {
     // The question box of the shell: the heading asked in a large hand, the subject under it, No first in the circle.
-    const char* answers[2] = {I18N.get(StrId::STR_CONFIRM), I18N.get(StrId::STR_CANCEL)};
+    const char* answers[2] = {confirmLabel.empty() ? I18N.get(StrId::STR_CONFIRM) : confirmLabel.c_str(),
+                              cancelLabel.empty() ? I18N.get(StrId::STR_CANCEL) : cancelLabel.c_str()};
     ugly::askBox(renderer, mappedInput, heading.c_str(), body.c_str(), answers, uglyChoice, uglyAnswers, mark_.get(uglyChoice));
     renderer.displayBuffer(HalDisplay::RefreshMode::FAST_REFRESH);
 #ifdef UGLY_FRAME_LOG
@@ -147,7 +163,8 @@ void ConfirmationActivity::render(RenderLock&& lock) {
       const int iconTop = textTop + (ink[3] - ink[1] - 24) / 2;
       tenorchrome::drawDestructiveActionIcon(renderer, left, iconTop);
     }
-    centered(renderer, UI_12_FONT_ID, tr(STR_CANCEL), cancel, EpdFontFamily::BOLD);
+    centered(renderer, UI_12_FONT_ID, cancelLabel.empty() ? tr(STR_CANCEL) : cancelLabel.c_str(), cancel,
+             EpdFontFamily::BOLD);
   } else {
     int y = box.y + 20;
     for (const auto& line : questionLines) {
@@ -164,7 +181,7 @@ void ConfirmationActivity::render(RenderLock&& lock) {
     const int rowsTop = box.y + layout.messageHeight;
     tenorchrome::drawRowRule(renderer, rowsTop, box.x + 2, box.x + box.width - 2);
     tenorchrome::drawRowRule(renderer, rowsTop + 60, box.x + 2, box.x + box.width - 2);
-    const char* actionLabels[] = {content.shortAction.c_str(), tr(STR_CANCEL)};
+    const char* actionLabels[] = {content.shortAction.c_str(), cancelLabel.empty() ? tr(STR_CANCEL) : cancelLabel.c_str()};
     for (int i = 0; i < 2; ++i) {
       const int rowY = rowsTop + i * 60;
       if (selectedIndex == i) tenorchrome::drawPillRing(renderer, box.x + 12, rowY + 6, box.width - 24, 48, 3, false);

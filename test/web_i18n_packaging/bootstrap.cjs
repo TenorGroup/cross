@@ -9,7 +9,7 @@ function header(relative) {
  const body = text.match(/constexpr char \w+\[\] PROGMEM = \{([\s\S]*?)\};/)[1];
  return zlib.gunzipSync(Buffer.from([...body.matchAll(/0x([0-9a-f]{2})/g)].map(x=>parseInt(x[1],16))));
 }
-const assets = {'/theme.css':'src/network/html/ThemeCss.generated.h','/js/jszip.min.js':'src/network/html/js/jszip_minJs.generated.h','/js/web-i18n.js':'src/network/html/js/WebI18nJs.generated.h'};
+const assets = {'/assets/web.css':'src/network/html/assets/webCss.generated.h','/theme.css':'src/network/html/ThemeCss.generated.h','/js/jszip.min.js':'src/network/html/js/jszip_minJs.generated.h','/js/web-i18n.js':'src/network/html/js/WebI18nJs.generated.h'};
 const loaded = [];
 const resources={interceptors:[requestInterceptor(async request=>{
  const key=new URL(request.url).pathname;

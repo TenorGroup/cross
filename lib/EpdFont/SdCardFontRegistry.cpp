@@ -5,6 +5,7 @@
 #endif
 #include <HalStorage.h>
 #include <Logging.h>
+#include <Memory.h>
 #include <strings.h>  // strcasecmp
 
 #include <algorithm>
@@ -17,6 +18,9 @@ std::string SdCardFontFamilyInfo::dir() const {
 }
 
 std::string SdCardFontFamilyInfo::filePath(const SdCardFontFileInfo& file, const uint8_t weight) const {
+#if CROSSPOINT_VECTOR_FONTS
+  if (vector) return weight == 0 ? file.path : std::string();
+#endif
   if (weight > MAX_WEIGHT || file.stem >= stems.size()) return {};
   std::string path = dir();
   if (weight != 0) {
@@ -25,6 +29,23 @@ std::string SdCardFontFamilyInfo::filePath(const SdCardFontFileInfo& file, const
   }
   path += "/" + stems[file.stem] + "_" + std::to_string(file.pointSize) + ".cpfont";
   return path;
+}
+
+bool SdCardFontFamilyInfo::filePath(const SdCardFontFileInfo& file, char* out, const size_t outSize) const {
+  if (outSize == 0) return false;
+  out[0] = '\0';
+  int n;
+#if CROSSPOINT_VECTOR_FONTS
+  if (vector) {
+    n = snprintf(out, outSize, "%s", file.path.c_str());
+    return n > 0 && static_cast<size_t>(n) < outSize;
+  }
+#endif
+  if (file.stem >= stems.size()) return false;
+  n = snprintf(out, outSize, "%s/%s/%s_%u.cpfont",
+               hiddenRoot ? SdCardFontRegistry::FONTS_DIR_HIDDEN : SdCardFontRegistry::FONTS_DIR_VISIBLE, name.c_str(),
+               stems[file.stem].c_str(), static_cast<unsigned>(file.pointSize));
+  return n > 0 && static_cast<size_t>(n) < outSize;
 }
 
 uint8_t SdCardFontFamilyInfo::weights(const SdCardFontFileInfo& file) const {
@@ -89,6 +110,16 @@ std::vector<uint8_t> SdCardFontFamilyInfo::availableSizes() const {
   std::sort(sizes.begin(), sizes.end());
   return sizes;
 }
+
+namespace {
+// A file whose path would not fit a PATH_BUFFER_SIZE buffer can never be opened through
+// SdCardFontFamilyInfo::filePath(), so discovery drops it. `dirPath` is the family folder.
+bool pathFits(const char* dirPath, const char* fileName) {
+  char path[SdCardFontFamilyInfo::PATH_BUFFER_SIZE];
+  const int n = snprintf(path, sizeof(path), "%s/%s", dirPath, fileName);
+  return n > 0 && static_cast<size_t>(n) < sizeof(path);
+}
+}  // namespace
 
 // --- SdCardFontRegistry ---
 
@@ -203,7 +234,7 @@ void SdCardFontRegistry::refineVectorStyles(const char* dirPath, std::vector<SdC
   }
 
   // Nearest target weight within the upright/italic bucket; ties break to the
-  // lower weight, then the lexicographically smaller path — never enumeration
+  // lower weight, then the lexicographically smaller filename — never enumeration
   // order. `exclude` keeps bold from re-picking the regular file.
   const auto pick = [&](const bool italic, const int target, const Candidate* exclude) -> const Candidate* {
     const Candidate* best = nullptr;
@@ -216,7 +247,8 @@ void SdCardFontRegistry::refineVectorStyles(const char* dirPath, std::vector<SdC
       const int dc = std::abs(static_cast<int>(c.weight) - target);
       const int db = std::abs(static_cast<int>(best->weight) - target);
       if (dc < db || (dc == db && (c.weight < best->weight ||
-                                   (c.weight == best->weight && files[c.index].path < files[best->index].path)))) {
+                                   (c.weight == best->weight &&
+                                    files[c.index].path < files[best->index].path)))) {
         best = &c;
       }
     }
@@ -228,7 +260,7 @@ void SdCardFontRegistry::refineVectorStyles(const char* dirPath, std::vector<SdC
     // All faces italic: the italic nearest 400 anchors the family as regular
     // (TtfEpdFont needs a regular source; it derives the rest).
     regular = pick(true, 400, nullptr);
-    if (regular) LOG_DBG("SDREG", "No upright face in %s — promoting %s", dirPath, files[regular->index].path.c_str());
+    if (regular) LOG_DBG("SDREG", "No upright face in %s, promoting %s", dirPath, files[regular->index].path.c_str());
     if (!regular) return;  // no usable files at all
   }
   // Bold must be a genuinely heavier face than the regular pick; otherwise the
@@ -305,6 +337,10 @@ void SdCardFontRegistry::scanDirectory(const char* dirPath, SdCardFontFamilyInfo
         LOG_ERR("SDREG", "Duplicate font %s in %s - skipping", nameBuffer, dirPath);
         continue;
       }
+      if (!pathFits(dirPath, nameBuffer)) {
+        LOG_ERR("SDREG", "Path too long for %s in %s - skipping", nameBuffer, dirPath);
+        continue;
+      }
       uint8_t stemIndex = 0;
       while (stemIndex < family.stems.size() && family.stems[stemIndex] != stem) ++stemIndex;
       if (stemIndex == family.stems.size()) {
@@ -325,6 +361,10 @@ void SdCardFontRegistry::scanDirectory(const char* dirPath, SdCardFontFamilyInfo
       // Vector file in a family folder: seed the style role from the filename
       // (e.g. Merriweather/Merriweather-Italic.ttf -> italic); refineVectorStyles
       // upgrades it from the face's own metadata and dedups by role afterwards.
+      if (!pathFits(dirPath, nameBuffer)) {
+        LOG_ERR("SDREG", "Path too long for %s in %s - skipping", nameBuffer, dirPath);
+        continue;
+      }
       SdCardFontFileInfo info{};
       info.path = std::string(dirPath) + "/" + nameBuffer;
       info.pointSize = 0;  // size-free
@@ -414,8 +454,13 @@ void SdCardFontRegistry::scanRoot(const char* rootPath, std::vector<SdCardFontFa
 
       SdCardFontFamilyInfo family;
       family.name = famName;
+      family.hiddenRoot = strcmp(rootPath, FONTS_DIR_HIDDEN) == 0;
       family.vector = true;
-      SdCardFontFileInfo info;
+      if (!pathFits(rootPath, nameBuffer)) {
+        LOG_ERR("SDREG", "Path too long for %s in %s - skipping", nameBuffer, rootPath);
+        continue;
+      }
+      SdCardFontFileInfo info{};
       info.path = std::string(rootPath) + "/" + nameBuffer;
       info.pointSize = 0;  // size-free
       info.style = 0;
@@ -443,6 +488,7 @@ bool SdCardFontRegistry::discover() {
   if (static_cast<int>(families_.size()) > MAX_SD_FAMILIES) {
     families_.resize(MAX_SD_FAMILIES);
   }
+  shrinkToFit(families_);  // the list is read-only until the next scan
 
   LOG_DBG("SDREG", "Discovery complete: %d families", static_cast<int>(families_.size()));
   return !families_.empty();

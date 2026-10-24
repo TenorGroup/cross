@@ -67,6 +67,15 @@ def shipped_blocks():
     for script in sorted((html / 'js').glob('*.js')):
         if not script.name.endswith('.min.js'):
             yield script.name, script.read_text()
+    # Shared includes are inlined into every page before the build drops comment lines.
+    for shared in sorted((html / 'shared').glob('*')):
+        text = shared.read_text()
+        if shared.name.endswith('.js.inc'):
+            yield shared.name, text
+        else:
+            for m in re.finditer(r'<script\b([^>]*)>([\s\S]*?)</script>', text, re.I):
+                if not re.search(r'\bsrc\s*=', m.group(1)) and m.group(2).strip():
+                    yield shared.name, m.group(2)
 
 
 class StripTokens(unittest.TestCase):

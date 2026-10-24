@@ -141,6 +141,14 @@ int runQuickActions() {
         case CrossPointSettings::SAVE_QUOTE:
           if (screen.reader) shake = power = touchPower = Outcome::SaveQuote;
           break;
+        // CrossPoint 2.0.0: the power button's own release is read elsewhere (the reader, the input map), so only
+        // a gesture runs Create clipping and the Reader menu; Bookmark and Sync have no gesture form.
+        case CrossPointSettings::CREATE_CLIPPING:
+          if (screen.reader) shake = Outcome::Clip;
+          break;
+        case CrossPointSettings::PWR_READER_MENU:
+          if (screen.reader) shake = Outcome::ReaderMenu;
+          break;
         default:
           break;
       }
@@ -182,7 +190,8 @@ int runQuickActions() {
   ok = expect(power == std::vector<StrId>{StrId::STR_IGNORE, StrId::STR_SLEEP, StrId::STR_PAGE_TURN,
                                           StrId::STR_FORCE_REFRESH, StrId::STR_FOOTNOTES, StrId::STR_SELECT,
                                           StrId::STR_SHAKE_BACK, StrId::STR_READER_MENU,
-                                          StrId::STR_QUOTES_SAVE_ACTION},
+                                          StrId::STR_QUOTES_SAVE_ACTION, StrId::STR_SAVE_CLIPPING,
+                                          StrId::STR_BOOKMARK_OPTION, StrId::STR_KOSYNC, StrId::STR_READER_MENU},
               "the power button lists every action, old ones at their old places") &&
        ok;
   ok = expect(quickaction::shakeLabels() ==

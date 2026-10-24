@@ -20,6 +20,7 @@
 #include "SettingsList.h"
 #include "activities/reader/ReaderMenuLayout.h"
 #include "fontIds.h"
+#include "util/PluginLocations.h"
 
 namespace {
 
@@ -96,7 +97,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   // nguoi dung bat mot tuy chon hay xep lai mot dong ghim, va cu chep cu doi mot
   // khoi lien ~16 KB. Loc theo phan cung bang cung mot vi ngu ma getSettingsList
   // dung, nen nhung dong duoc ghi xuong khong doi.
-  forEachBaseSetting([&](const SettingInfo& info) {
+  auto visit = [&](const SettingInfo& info) {
     if (settingHiddenOnThisBoard(info)) return;
     if (!info.key) return;
     // Dynamic entries (KOReader etc.) are stored in their own files - skip.
@@ -114,7 +115,8 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
     } else {
       doc[info.key] = s.*(info.valuePtr);
     }
-  });
+  };
+  forEachBaseSetting(visit);
 
   // The file always carries the switches in effect, marked as this mode's, so the
   // next boot and the web page read what the reader draws.
@@ -206,7 +208,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   // nguoi dung bat mot tuy chon hay xep lai mot dong ghim, va cu chep cu doi mot
   // khoi lien ~16 KB. Loc theo phan cung bang cung mot vi ngu ma getSettingsList
   // dung, nen nhung dong duoc ghi xuong khong doi.
-  forEachBaseSetting([&](const SettingInfo& info) {
+  auto visit = [&](const SettingInfo& info) {
     if (settingHiddenOnThisBoard(info)) return;
     if (!info.key) return;
     // Dynamic entries (KOReader etc.) are stored in their own files - skip.
@@ -266,7 +268,8 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
       }
       s.*(info.valuePtr) = v;
     }
-  });
+  };
+  forEachBaseSetting(visit);
 
   const uint8_t storedUglyStart = doc["uglyStartScreen"].is<uint8_t>()
                                      ? doc["uglyStartScreen"].as<uint8_t>()
@@ -353,6 +356,14 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   // Retire the experimental hold-to-resize shortcut without delaying page turns.
   if ((doc["longPressButtonBehavior"] | uint8_t{OFF}) == FONT_SIZE_STEP) {
     longPressButtonBehavior = OFF;
+    needsResave = true;
+  }
+
+  // Plugin System did not exist in older settings files. Preserve the behavior
+  // of users who already have SD plugins installed, while keeping the new
+  // default disabled on clean installs.
+  if (doc["pluginsEnabled"].isNull()) {
+    pluginsEnabled = PluginLocations::anyPluginInstalledOnDisk() ? 1 : 0;
     needsResave = true;
   }
 
@@ -507,11 +518,16 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   }
   if (BoardConfig::hasHomeKey() && doc["homeButtonLongPressAction"].isNull() &&
       !doc["longPressMenuFunction"].isNull()) {
+    // The numbers 5..8 are the tenor functions, which have no home button action; only the clipping
+    // function CrossPoint 2.0.0 added carries over (its number follows the tenor ones).
     static constexpr HomeButtonAction LEGACY[] = {HomeButtonAction::Sync, HomeButtonAction::Ignore,
                                                   HomeButtonAction::Bookmark, HomeButtonAction::Dictionary,
                                                   HomeButtonAction::ReaderMenu};
     if (s.longPressMenuFunction < sizeof(LEGACY) / sizeof(LEGACY[0])) {
       s.homeButtonLongPressAction = static_cast<uint8_t>(LEGACY[s.longPressMenuFunction]);
+      needsResave = true;
+    } else if (s.longPressMenuFunction == LP_MENU_CREATE_CLIPPING) {
+      s.homeButtonLongPressAction = static_cast<uint8_t>(HomeButtonAction::CreateClipping);
       needsResave = true;
     }
   }
@@ -533,7 +549,6 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   if (storedFontFamily != STORED_NOTOSANS || fileBeforeSerifLeft) needsResave = true;
   // Dictionary folder name - uses dynamic getter/setter in SettingsList, load manually
   copyToField(dictionaryName, doc["dictionaryName"] | "", sizeof(dictionaryName));
-
   // Language -- stored as code string for stability across enum reorders.
   if (doc["language"].is<const char*>()) {
     language = static_cast<uint8_t>(I18n::languageFromCode(doc["language"].as<const char*>()));
@@ -732,15 +747,15 @@ ReaderRenderSpec CrossPointSettings::readerRenderSpec(const uint16_t viewportWid
   ReaderRenderSpec spec;
   spec.fontId = getReaderFontId();
   spec.lineCompression = getReaderLineCompression();
-  // Level-based spacing (see the field comments in CrossPointSettings.h): not
-  // upstream's percent-scale wordSpacing/characterSpacing, which would need a
-  // different "wordSpacing" JSON meaning. ReaderRenderSpec keeps these fields
-  // (extraParagraphSpacing as a level, letterSpacing in pixels, wordSpacing as
-  // a level) rather than upstream's wordSpacingPercent/characterSpacing.
-  spec.extraParagraphSpacing = extraParagraphSpacing;
-  spec.paragraphIndent = paragraphIndent;
-  spec.letterSpacing = readerSpacing::letterPixels(letterSpacing);
-  spec.wordSpacing = wordSpacing;
+  // Spacing in the units the layout engine takes (CrossPoint 2.0.0 names), worked out from the
+  // tenor levels by textSpacingParams(), the one place that does it. lineCompression above keeps
+  // the tenor line scale.
+  const TextSpacingParams spacing = textSpacingParams();
+  spec.characterSpacing = spacing.characterSpacing;
+  spec.wordSpacingPercent = spacing.wordSpacingPercent;
+  spec.paragraphIndentSpaces = spacing.paragraphIndentSpaces;
+  spec.extraParagraphSpacing = spacing.extraParagraphSpacing;
+  spec.focusReadingEnabled = false;  // CrossPoint's focus reading is not offered; the drop cap below is
   spec.paragraphAlignment = paragraphAlignment;
   spec.viewportWidth = viewportWidth;
   spec.viewportHeight = viewportHeight;

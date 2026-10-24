@@ -289,17 +289,20 @@ constexpr const char* FULL_BAR[] = {
 #endif
     "QuoteDetail", "QuoteTrim", "Quotes", "ReadingHabits", "ReadingHistory", "Settings",
     "SettingsChoices", "StatusBarSettings", "TimezonePicker", "WebDavPull", "WifiSelection",
-    "XtcReaderChapterSelection"};
+    "XtcReaderChapterSelection",
+    // CrossPoint 2.0.0 screens (D15): the plugin catalog and hub, a plugin's details, the clippings of a book, the
+    // Bluetooth page turner settings.
+    "BleSettings", "Details", "EpubReaderClippings", "PluginCatalog", "PluginHubInstall"};
 // "<" at the left, the screen's own content in the rest of the foot: the keyboard of an input screen,
 // the cards of a screen with cards (the reader menu: "<" goes back a level, from the top level it
 // closes the menu; the text settings), a screen laid over another one (a question, a slider,
 // a word picked on the page, the light panel, a picture), where "<" cancels, and a screen that must leave
 // through its own exit (a firmware update, the card lent to a computer): no zone icon to jump away by.
-constexpr const char* BACK_ONLY_BAR[] = {"KeyboardEntry", "EpubReaderMenu", "TxtReaderMenu", "TextSettings",
+constexpr const char* BACK_ONLY_BAR[] = {"KeyboardEntry", "EpubReaderMenu", "TextSettings",
                                          "BmpViewer", "ChapterNumberEntry", "Confirmation", "Crash",
                                          "DictionaryWordSelect", "EpubReaderPercentSelection", "FrontlightPanel",
                                          "OtaUpdate", "QuoteSelect", "SdFirmwareUpdate", "SleepTimeoutInterval",
-                                         "UglySwitch", "UsbDrive", "ListOrder"};
+                                         "UglySwitch", "UsbDrive", "ListOrder", "ClipSelection"};
 // Zone roots that draw their own cards at the foot.
 constexpr const char* TABS_BAR[] = {"Home"};
 

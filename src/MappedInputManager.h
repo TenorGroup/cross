@@ -3,6 +3,7 @@
 #include <HalGPIO.h>
 
 #include "util/HomeButtonInput.h"
+#include "util/RemoteButtonInput.h"
 
 #if FREEINK_DEVICE_X4PRO
 #include "../lib/hal/Scribble.h"
@@ -68,6 +69,8 @@ class MappedInputManager {
   // expires. The main loop supplies that one-frame event here.
   void setPowerConfirmClickFrame(const bool clicked) { powerConfirmClickFrame = clicked; }
 #endif
+  bool injectRemoteClick(RemoteButton button);
+  bool hasRemoteClick() const { return remoteInput.button != RemoteButton::None; }
   bool wasPressed(Button button) const;
   bool wasReleased(Button button) const;
   // One-shot threshold event while the button is down; consumes its release.
@@ -76,6 +79,8 @@ class MappedInputManager {
   bool isPressed(Button button) const;
   bool hasTouch() const;
   bool wasScreenTapped(int& x, int& y) const;
+  // Immediate press edge for drag handles, without the row-selection dwell.
+  bool wasScreenTouchPressed(int& x, int& y) const;
   bool wasScreenTouchDown(int& x, int& y) const;
   // One-shot long-press from the SDK touch classifier, fired WHILE the finger
   // is still down (stationary contact held past the SDK threshold). Consuming
@@ -90,7 +95,6 @@ class MappedInputManager {
   // (which wasScreenTapped never reports). InputSnapshot builders forward it
   // off-target so FreeInkUI routing clears its pressed-element state.
   bool wasScreenTouchReleased() const;
-  bool wasTapInRect(int x, int y, int width, int height) const;
 
   // Combined touch interaction for a band of equal rows with caller-supplied
   // geometry — the shared hit-test for lists the theme helpers above do not
@@ -104,7 +108,8 @@ class MappedInputManager {
   // Horizontal variant for side-by-side button pairs (confirmation prompts).
   RowTouch colTouch(int& col, int left, int colStep, int colCount, int yStart, int yEnd, int colWidth = 0) const;
 
-  SwipeDir wasSwipe() const;
+  // Optional out: where the swipe started (screen px, rendered orientation).
+  SwipeDir wasSwipe(int* startX = nullptr, int* startY = nullptr) const;
   // Consumed once on the input task; deltas follow the rendered orientation.
   bool popMultiTouchSwipe(uint8_t& contacts, int& dx, int& dy, unsigned long* durationMs = nullptr) const;
   // Live: the contacts down now and their centre in screen pixels (rendered orientation).
@@ -183,6 +188,7 @@ class MappedInputManager {
 #endif
   void rememberTouchHeldTime() const;
 
+  mutable RemoteButtonInput remoteInput;
   mutable HomeButtonInput homeButtonInput;
   mutable uint32_t touchContactGeneration_ = 0;
   mutable HomeButtonAction homeAction = HomeButtonAction::Ignore;

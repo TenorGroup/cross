@@ -11,7 +11,6 @@ args = parser.parse_args()
 args.out.mkdir(parents=True, exist_ok=True)
 reader = args.repo / 'src/activities/reader'
 epub = (reader / 'EpubReaderActivity.cpp').read_text()
-txt = (reader / 'TxtReaderActivity.cpp').read_text()
 utils = (reader / 'ReaderUtils.h').read_text()
 
 
@@ -59,9 +58,6 @@ TextGrayContext EpubReaderActivity::textGrayContext() const {
 gray_body = epub[epub.index('  const bool pageHasImages = page->hasImages();'):epub.index('  if (grayscaleCompleted) markClosedTextFrameUpLocked();')]
 helper = block(utils, 'inline void displayWithRefreshCycle(') + '\n' + block(utils, 'inline void displayBaseWithRefreshCycle(')
 helper += '\n' + block(utils, 'template <typename RenderFn')
-txt_body = block(txt, 'void TxtReaderActivity::renderPage(')
-txt_tail_start = '  const auto grayContext' if policy.exists() else '  if (SETTINGS.textAntiAliasing)'
-txt_tail = txt_body[txt_body.index(txt_tail_start):]
 
 harness = r'''
 #include <atomic>
@@ -190,18 +186,6 @@ GRAY_BODY
   }
 };
 CONTEXT_METHOD
-class TxtReaderActivity {
- public:
-  GfxRenderer renderer;
-  int pagesUntilFullRefresh = 5;
-  bool preview = false, covered = false;
-  std::atomic<bool> leaving{false};
-  std::atomic<int> pendingExternalTurn{0};
-  bool coversPage() const { return covered; }
-  void paint() {
-    auto renderLines = [&] { if (renderer.mode != GfxRenderer::BW) ++counts.text; };
-TXT_TAIL
-};
 void reset() {
   int failures = counts.failures; counts = {}; counts.failures = failures;
   ESP = {}; SETTINGS = {}; display = {}; gpio = {};
@@ -307,29 +291,17 @@ int main() {
     blocked.showBookmarkMessage = true; blocked.paint();
     check(counts.allocations == 0 && counts.snapshot == 0 && counts.gray == 0, "both plane paths block popup");
   }
-  for (int state = 0; state < 5; ++state) {
-    reset(); TxtReaderActivity text;
-    text.preview = state == 0; text.covered = state == 1;
-    text.leaving = state == 2; text.pendingExternalTurn = state == 3;
-    if (state == 4) ESP.free = 10239;
-    text.paint();
-    check(counts.gray == (state == 0 ? 1 : 0) && counts.snapshot == (state == 0 ? 1 : 0), "TXT caller policy and heap");
-  }
   reset(); EpubReaderActivity lateEpub; lateEpub.renderer.caps.stripUploads = false;
   uploadHook = [&] { lateEpub.pendingExternalTurn = 2; }; lateEpub.paint();
   check(counts.gray == 0 && !lateEpub.renderer.stored && lateEpub.pendingExternalTurn == 2,
         "EPUB input after MSB upload cancels waveform and restores BW");
-  reset(); TxtReaderActivity lateTxt;
-  uploadHook = [&] { lateTxt.pendingExternalTurn = 2; }; lateTxt.paint();
-  check(counts.gray == 0 && !lateTxt.renderer.stored && lateTxt.pendingExternalTurn == 2,
-        "TXT input after MSB upload cancels waveform and restores BW");
 DIRECT_HELPER_TEST
   std::cout << "checks=" << checks << " failures=" << counts.failures << '\n';
   return counts.failures ? 1 : 0;
 }
 '''
 for marker, value in [('POLICY_INCLUDE', policy_include), ('HELPERS', helper), ('GRAY_BODY', gray_body),
-                      ('CONTEXT_METHOD', context_method), ('TXT_TAIL', txt_tail)]:
+                      ('CONTEXT_METHOD', context_method)]:
     harness = harness.replace(marker, value)
 direct_helper_test = r'''
   reset(); GfxRenderer direct; TextGrayContext blockedContext;
@@ -339,7 +311,7 @@ direct_helper_test = r'''
   reset(); GfxRenderer late; TextGrayContext liveContext; liveContext.textAntiAliasing = true;
   ReaderUtils::renderAntiAliased(late, [&] { liveContext.pendingExternalTurn = true; }, [&] { return liveContext; });
   check(counts.snapshot == 1 && counts.gray == 0 && !late.stored && late.mode == GfxRenderer::BW,
-        "TXT mid-plane input restores BW without waveform");
+        "mid-plane input restores BW without waveform");
 ''' if policy.exists() else r'''
   reset(); GfxRenderer direct;
   ReaderUtils::renderAntiAliased(direct, [] {});

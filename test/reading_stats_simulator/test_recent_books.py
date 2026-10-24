@@ -78,7 +78,7 @@ class RecentBooksSimulatorTest(unittest.TestCase):
                 [str(PROGRAM)], cwd=REPO, env=env, capture_output=True, text=True, timeout=20
             )
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Entering activity: TxtReader", run.stdout + run.stderr)
+            self.assertIn("Entering activity: EpubReader", run.stdout + run.stderr)
             state = json.loads((store / "state.json").read_text())
             self.assertEqual(state["openEpubPath"], "/book6.txt")
 

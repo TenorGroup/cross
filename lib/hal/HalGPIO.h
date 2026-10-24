@@ -68,6 +68,8 @@ class HalGPIO {
   mutable bool usbGaugeConnected = false;
   mutable uint32_t usbGaugeSampleMs = 0;
   bool usbStateChanged = false;
+  uint8_t previousCapacitivePageButtons = 0;
+  bool capacitivePagePressed = false;
 
   // Button sampling off the main loop (ADC-ladder boards). A periodic timer runs
   // the SDK debounce every 10 ms, so a press is sampled even while the main loop
@@ -118,6 +120,8 @@ class HalGPIO {
   // Moves button sampling onto the timer. Call once the boot-time presses are
   // settled; later calls do nothing. A touch panel keeps being read in update().
   void startBackgroundSampling();
+  // Puts the touch controller to sleep before deep sleep (no-op without one).
+  void prepareForDeepSleep();
 
   // Button input methods
   void update();
@@ -142,11 +146,18 @@ class HalGPIO {
   // Capacitive Home key reported by the touch controller (X4 Pro). The tap
   // event fires on release and excludes a long hold.
   bool hasHomeKey() const;
+  // Two-position slide switch (Picco). Debounced position and its change edge.
+  bool hasToggleSwitch() const;
+  bool isToggleSwitchOn() const;
   bool wasHomeKeyPressed() const;
   bool wasHomeKeyTapped() const;
   bool wasHomeKeyLongPressed() const;
   bool wasTouchTap(float& nx, float& ny) const;
   bool wasTouchDown(float& nx, float& ny) const;
+  bool wasCapacitivePagePressed() const { return capacitivePagePressed; }
+  bool isCapacitivePagePressed(uint8_t buttonIndex) const {
+    return buttonIndex < 8 && (previousCapacitivePageButtons & (1u << buttonIndex)) != 0;
+  }
   // Raw release edge, reported even when the contact was not a tap (swipe end,
   // drag-off). Snapshot builders forward it so interaction routing can clear
   // pressed state.

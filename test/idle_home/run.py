@@ -54,7 +54,10 @@ struct HalPowerManager {
 bool renderBusy = false;
 struct RenderLock { struct TryTake {}; explicit RenderLock(TryTake) { ++tries; } bool acquired() const { return !renderBusy; } };
 #define LOG_INF(...) ((void)0)
-struct FsHelpers { static bool hasEpubExtension(const std::string& s) { return s.size() > 5 && s.ends_with(".epub"); } };
+struct FsHelpers {
+  static bool hasEpubExtension(const std::string& s) { return s.size() > 5 && s.ends_with(".epub"); }
+  static bool hasReflowableBookExtension(const std::string& s) { return hasEpubExtension(s); }
+};
 idlework::Budget idleBudget{};
 uint64_t idleClockUs() { return uint64_t(now) * 1000; }
 struct HomeRecentRect { int x = 0, y = 0, w = 0, h = 0; };

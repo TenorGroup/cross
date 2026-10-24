@@ -56,6 +56,7 @@ bool HalGPIO::wasHomeKeyLongPressed() const { return false; }
 bool HalGPIO::wasHomeKeyPressed() const { return false; }
 void HalGPIO::update() {}
 bool HalGPIO::wasTouchTap(float&, float&) const { return false; }
+bool HalGPIO::wasTouchDown(float&, float&) const { return false; }
 bool HalGPIO::wasTouchReleased() const { return false; }
 bool HalGPIO::wasTouchLongPress(float&, float&) const { return false; }
 bool HalGPIO::isTouchTapCandidate(float&, float&, unsigned long&) const { return false; }

@@ -2,23 +2,40 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
+
+namespace freeink {
+class SecureHttpClient;
+}
 
 /**
  * Optional document metadata sent alongside progress sync requests.
- * Mirrors the metadata object added in KOReader PR #15306.
- * The official sync server ignores this field; custom servers may use it.
+ * Mirrors the metadata object added in KOReader PR #15306 and adds bounded
+ * bibliographic fields for compatible custom servers.
  */
 struct KOReaderMetadata {
   std::string filename;  // e.g. "my_book.epub"
   std::string title;     // Document title from EPUB metadata
   std::string authors;   // Author(s) from EPUB metadata
+  // Raw JSON of the book's plugin sidecar ("<book>.meta.json"): e.g. a
+  // service book id a plugin recorded at download time, so a custom sync
+  // server can route progress to that service. Its flat fields are sent
+  // verbatim (JSON types kept) inside the metadata object; the firmware
+  // assigns no meaning to the keys.
+  std::string extraJson;
+  std::string isbn;    // ISBN from package metadata when available
+  std::string asin;    // Amazon ASIN from package metadata when available
+  std::string series;  // Series/collection title when available
+  std::optional<float> seriesIndex;
 };
 
 /**
  * Rich CrossPoint position sent alongside progress uploads. Maps 1:1 onto the
  * crosspoint-sync extended `position` object (see crosspoint-sync docs/API.md).
- * It is transmitted to kosync.tenor.vn or sync.crosspointreader.com. These fields remain
- * layout-dependent compatibility hints; the standard XPath is the content anchor.
+ * It is transmitted only when the selected server type supports rich progress.
+ * These fields remain layout-dependent compatibility hints; the standard XPath
+ * is the content anchor.
  */
 struct KOReaderRichPosition {
   uint32_t pctQ = 0;                       // Percentage quantized 0..1,000,000 (metadata/fallback)
@@ -40,7 +57,7 @@ struct KOReaderProgress {
   std::string deviceId;                          // Device ID
   int64_t timestamp;                             // Unix timestamp of last update
   std::optional<KOReaderMetadata> metadata;      // Optional document metadata
-  std::optional<KOReaderRichPosition> position;  // Optional rich position (crosspoint-sync servers only)
+  std::optional<KOReaderRichPosition> position;  // Optional rich position
 };
 
 /**
@@ -104,6 +121,13 @@ class KOReaderSyncClient {
    * Get human-readable error message.
    */
   static const char* errorString(Error error);
+
+  /**
+   * Open a connection to `url` the way every KOSync request does: the URL parses, the clock is real before a
+   * certificate is judged, https is verified against the roots network_trust gives the host, plain http is
+   * taken as typed. Clipping sync opens its connections through this too (D9). False on a bad URL or no clock.
+   */
+  static bool openConnection(freeink::SecureHttpClient& http, const std::string& url);
 
   /** HTTP status code from the last request (for diagnostics). */
   static int lastHttpCode;

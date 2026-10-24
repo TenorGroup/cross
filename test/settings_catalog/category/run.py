@@ -46,8 +46,9 @@ def method_slice(text, signature):
 include_paths = [
     'test/host_stubs', 'src', '.pio/libdeps/gh_release/ArduinoJson/src',
     'lib/Epub', 'lib/Logging', 'lib/EpdFont', 'lib/Serialization',
-    'lib/KOReaderSync', 'freeink-sdk/libs/hardware/BoardConfig/include', 'lib/BlePageTurner/include',
+    'lib/KOReaderSync', 'lib/HttpHeader', 'freeink-sdk/libs/hardware/BoardConfig/include', 'lib/BlePageTurner/include',
     'freeink-sdk/libs/ui/FreeInkUI/include',
+    'freeink-sdk/libs/network/BleKeyboardHost/include',
 ]
 includes = ['-I' + str(I18N), *['-I' + str(ROOT / path) for path in include_paths]]
 
@@ -99,6 +100,15 @@ for mode in modes:
                       for path, text in sources.items()}
     manifest[mode]['I18nKeys.h'] = hashlib.sha256((I18N / 'I18nKeys.h').read_bytes()).hexdigest()
     (output / 'SettingsList.h').write_text(sources[paths[0]])
+    # The rows live in SettingsList.cpp since v1.1.0; a baseline from before has no such file.
+    list_cpp = []
+    try:
+        (output / 'SettingsList.cpp').write_text(read('src/SettingsList.cpp'))
+        manifest[mode]['src/SettingsList.cpp'] = hashlib.sha256(
+            (output / 'SettingsList.cpp').read_bytes()).hexdigest()
+        list_cpp = [str(output / 'SettingsList.cpp')]
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
     header = sources[paths[1]]
     descriptor = header[header.index('enum class SettingType'):
                         header.index('class SettingsActivity final')]
@@ -146,6 +156,7 @@ for mode in modes:
                    '-DENABLE_ARDUINO_FEATURES=0', '-DCROSSPOINT_VERSION="category-test"',
                    *devices, '-I' + str(output), *includes, str(HERE / 'harness.cpp'),
                    str(ROOT / 'src/ReaderFontSizes.cpp'),
+                   *list_cpp,
                    str(ROOT / 'src/activities/settings/SettingsTabs.cpp'),
                    str(I18N / 'I18n.cpp'), str(I18N / 'I18nStrings.cpp'),
                    '-o', str(output / profile)]

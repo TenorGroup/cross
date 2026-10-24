@@ -8,19 +8,19 @@
 namespace bleturner {
 namespace {
 
-// Measured on the unit (probe log t2/do-may/261013b): Home before and after the stack came up.
+// Measured on an X4 Pro (13/10/2026): Home before and after the stack came up.
 constexpr Heap kHomeBefore{124752, 81908};
 constexpr Heap kHomeAfter{78244, 36852};
 // The same stack with its host in internal RAM left 31,732 largest: rolled back.
 constexpr Heap kInternalAfter{56604, 31732};
-// 13/10 11:38-12:10 (t2/do-may/261013d), the beta and the lite probe on v1.0.59-rc.1.
+// 13/10/2026 on an X4 Pro: a release build ("beta") and a probe build with small log buffers ("lite probe").
 constexpr Heap kBetaHome{135112, 90100};
 constexpr Heap kLiteHomeBefore{121216, 77812};
-constexpr Heap kLiteHomeAfter{74712, 32756};          // 12 B short of the old 32,768: rolled back
+constexpr Heap kLiteHomeAfter{74712, 32756};  // 12 B short of the old 32,768: rolled back
 constexpr Heap kLiteBookBefore{112588, 57332};
 constexpr Heap kLiteBookAfter{66288, 31732};
-constexpr Heap kPairingBefore{117360, 73716};         // Settings and the Bluetooth screen hold about 18 KB
-constexpr Heap kPairingAfter{70840, 31732};           // the beta rolled back here, "Chưa khởi động được Bluetooth"
+constexpr Heap kPairingBefore{117360, 73716};  // Settings and the Bluetooth screen hold about 18 KB
+constexpr Heap kPairingAfter{70840, 31732};    // the beta rolled back here: "Could not start Bluetooth"
 
 RadioInputs home(const Phase phase) {
   RadioInputs in{};
@@ -135,7 +135,7 @@ TEST(RadioVerdictS3Test, TheStackIsKeptOrRolledBackOnTheLargestBlockAfterIt) {
   EXPECT_EQ(radioVerdict(in, kS3Profile), Why::Ok) << "31,732 left is plenty for the S3 reader";
 }
 
-// The four situations measured on 13/10 (do-may/261013d) against the final numbers, and the pairing screen's
+// The four situations measured on 13/10/2026 against the final numbers, and the pairing screen's
 // start too: Idle/BeforeStart/JustStarted verdicts, nothing rolled back.
 TEST(RadioVerdictS3Test, TheFourMeasuredSituationsAndThePairingScreenAllPass) {
   struct Row {
@@ -165,7 +165,8 @@ TEST(RadioVerdictS3Test, TheFourMeasuredSituationsAndThePairingScreenAllPass) {
   // The pairing screen starts by the same rule as the book (free and largest for the stack), not by the Home
   // rule; its 73,716 would pass the Home largest (71,680) too.
   EXPECT_GE(kPairingBefore.largestBlock, kS3Profile.homeStartLargest);
-  EXPECT_GE(kPairingBefore.largestBlock, kS3Profile.minimumLargest + 45056u) << "the stack's cut still leaves the floor";
+  EXPECT_GE(kPairingBefore.largestBlock, kS3Profile.minimumLargest + 45056u)
+      << "the stack's cut still leaves the floor";
 }
 
 // The first pairing: the radio has to come up from the Bluetooth screen, which sits on Settings.

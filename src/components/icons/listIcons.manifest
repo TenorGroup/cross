@@ -3,7 +3,7 @@
 #     --manifest src/components/icons/listIcons.manifest \
 #     --svgdir <freeink-sdk>/libs/assets/Icons/lucide/icons \
 #     --sizes 24,32 --out src/components/icons/listIcons.h
-# then clang-format -i the output.
+# then run ./bin/clang-format-fix -g.
 #
 # The 32 px row icons (folder, file-text, image, book, file, wifi, library, radio-tower, bookmark) and the
 # 24 px download and upload are redrawn by scripts/icons and live in tenorRowIcons.h and
@@ -19,6 +19,7 @@ book = book
 file = file
 wifi = wifi
 library = library
+blocks = blocks
 radio-tower = radio-tower
 sun = sun
 moon = moon
@@ -26,5 +27,10 @@ upload = upload
 download = download
 bookmark = bookmark
 usb = usb
-blocks = blocks
 refresh-cw = refresh-cw
+checkbox-off = square
+settings = settings
+smartphone = smartphone
+book-open = book-open
+pointer = pointer
+trash-2 = trash-2

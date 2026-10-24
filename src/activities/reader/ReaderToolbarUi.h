@@ -82,6 +82,9 @@ class ReaderToolbarUi : public UiAppHost {
     std::function<readermenu::RowEnd(int)> rowEnd;
     // The state of a switch row.
     std::function<bool(int)> rowOn;
+    // A checkbox row of the shared list: the caller fills the list item.
+    void (*rowCheckbox)(void* ctx, int index, freeink::ui::ListItem& item) = nullptr;
+    void* rowCheckboxContext = nullptr;
     // Tile row: the tool in focus (toolbar) / the open panel (panel). 0..3, -1 none. On the X3 bar a tab's value
     // (readermenu::Tab), never its place on the bar: tabAt says which tab stands at each place.
     int activeTool = 0;

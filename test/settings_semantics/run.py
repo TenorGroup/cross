@@ -10,7 +10,7 @@ a = p.parse_args()
 root = Path(__file__).resolve().parents[2]
 a.output.mkdir(parents=True, exist_ok=True)
 header = (root / 'src/components/SettingsChoiceStyle.h').read_text()
-catalog = (root / 'src/SettingsList.h').read_text()
+catalog = (root / 'src/SettingsList.h').read_text() + '\n' + (root / 'src/SettingsList.cpp').read_text()
 rows = []
 for m in re.finditer(r'SettingInfo::(Toggle|Enum|StaticEnum|DynamicEnum)\(\s*StrId::(STR_\w+)', catalog):
     start = catalog.index('(', m.start())

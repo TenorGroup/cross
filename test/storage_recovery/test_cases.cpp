@@ -109,11 +109,11 @@ int main(){
  for(bool backupOnly:{false,true}){
   reset();Storage.files["book.epub"]="old-epub";if(backupOnly){Storage.files.erase("book.epub");Storage.files["book.epub.davbak"]="old-epub";}
   transferBody="zip-but-not-ocf";
-  result=HttpDownloader::downloadToFile("https://fixture/book","book.epub",nullptr,nullptr,"","",false,ocf);
+  result=HttpDownloader::downloadToFile("https://fixture/book","book.epub",nullptr,nullptr,"","",{},false,ocf);
   check(result==HttpDownloader::INVALID_EPUB&&Storage.files["book.epub"]=="old-epub"&&!Storage.files.count("book.epub.davtmp")&&invalidations==0,
         backupOnly?"caller check refuses before retiring a recovered backup":"caller check refuses before replacing the old book");
  }
- reset();transferBody="ocf-epub";result=HttpDownloader::downloadToFile("https://fixture/book","book.epub",nullptr,nullptr,"","",false,ocf);
+ reset();transferBody="ocf-epub";result=HttpDownloader::downloadToFile("https://fixture/book","book.epub",nullptr,nullptr,"","",{},false,ocf);
  check(result==HttpDownloader::OK&&Storage.files["book.epub"]=="ocf-epub","caller check passes the staged book through");
  printf("RESULT %d/%d passed\n",total-failed,total);return failed?1:0;
 }

@@ -16,8 +16,8 @@ class EpdFontFamily {
     STRIKETHROUGH = 8,   // drawn as a line through midline by TextBlock::render()
     SUP = 16,            // superscript: glyph scaled 50%, raised ~40% of ascender
     SUB = 32,            // subscript: glyph scaled 50%, lowered ~25% of ascender
-    DROP_CAP = 128,      // Enlarged initial on the first token of a chapter paragraph
     RUBY_CONTINUE = 64,  // Group ruby follower marker (used internally by Epub layout)
+    SMALL_CAPS = 128,    // lowercase letters drawn as uppercase glyphs at 3/4 scale
   };
   static constexpr uint8_t TEXT_DECORATION_MASK = static_cast<uint8_t>(UNDERLINE | STRIKETHROUGH);
 
@@ -32,6 +32,9 @@ class EpdFontFamily {
   static int textBoundsWidth(const TextBoundsState& state) { return EpdFont::textBoundsWidth(state); }
   const EpdFontData* getData(Style style = REGULAR) const;
   const EpdGlyph* getGlyph(uint32_t cp, Style style = REGULAR) const;
+  const EpdGlyph* getGlyphMetrics(uint32_t cp, EpdGlyph& solidFallback, Style style = REGULAR) const {
+    return getFont(style)->getGlyphMetrics(cp, solidFallback);
+  }
   /// Returns true if the resolved style's font can render `cp` directly
   /// (interval coverage only - see EpdFont::hasCodepoint).
   bool hasCodepoint(uint32_t cp, Style style = REGULAR) const;

@@ -128,7 +128,7 @@ for name in ['bleDeliver', 'bleYieldForRadio', 'bleFileTransfer']:
 glue += ('bleturner::Heap fixtureHeap(){return {100000,60000};}bool fixtureRelease(){return true;}void fixtureRestart(){}void fixtureHold(bool){}void fixtureLog(bool,const char*,va_list){}\n'
          'const bleturner::Host fixtureHost{fixtureHeap,fixtureRelease,bleDeliver,bleYieldForRadio,bleFileTransfer,fixtureRestart,fixtureHold,fixtureLog,nullptr};\n'
          'void resetModule(){freeink::ble::init=false;freeink::ble::startSuccess=true;freeink::ble::startQueued=false;freeink::ble::starts=0;bleturner::detail::resetForTests();'
-         'SETTINGS.ble=bleturner::Config{};SETTINGS.ble.enabled=1;SETTINGS.ble.nextKeyUsage=1;SETTINGS.ble.prevKeyUsage=2;bleturner::begin(fixtureHost,SETTINGS.ble);bleturner::setSavedBonds(1);}\n')
+         'SETTINGS.ble=bleturner::Config{};SETTINGS.ble.enabled=1;SETTINGS.ble.nextKeyUsage=1;SETTINGS.ble.prevKeyUsage=2;bleturner::begin(fixtureHost,SETTINGS.ble);std::strcpy(SETTINGS.ble.peerAddr,"11:22:33:44:55:66");}\n')
 mainfixture = P(__file__).with_name('main_fixture.hpp').read_text() + '\n' + glue
 pump = 'struct MainPump { unsigned long lastActivityTime=millis(),lastSleepResetTime=millis(); void pump(){\nfreeink::ble::runQueuedStart();\n' + tick + tilt_capture.group() + timers + '\nfreeink::ble::runQueuedStart();\n}};\n'
 source = prefix + '\n\n' + '\n\n'.join(functions) + '\n\n' + mainfixture + pump + suffix
@@ -136,7 +136,7 @@ source = prefix + '\n\n' + '\n\n'.join(functions) + '\n\n' + mainfixture + pump 
 files = ['src/activities/reader/ReaderPace.h', 'lib/BlePageTurner/src/Runtime.cpp', 'lib/BlePageTurner/include/BlePageTurner.h', 'src/BlePageTurnerHost.cpp', 'src/main.cpp', 'src/activities/reader/ReaderActivity.h', 'src/activities/reader/ReaderActivity.cpp', 'src/activities/reader/EpubReaderActivity.cpp', 'src/activities/reader/TxtReaderActivity.cpp', 'src/activities/reader/XtcReaderActivity.cpp', 'src/activities/ActivityManager.cpp']
 (out / 'source-hashes.json').write_text(json.dumps({p: hashlib.sha256((root / p).read_bytes()).hexdigest() for p in files}, indent=2) + '\n')
 module = root / 'lib/BlePageTurner'
-compile = subprocess.run([args.compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter', '-fsanitize=address,undefined', '-g', '-DBLETURNER_TESTING', '-I' + str(root / 'src'), '-I' + str(module / 'include'), '-I' + str(module / 'src'), str(out / 'reader_production.cpp'), str(module / 'src/Runtime.cpp'), '-o', str(out / 'reader_production')], capture_output=True, text=True)
+compile = subprocess.run([args.compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter', '-fsanitize=address,undefined', '-g', '-DBLETURNER_TESTING', '-I' + str(root / 'src'), '-I' + str(module / 'include'), '-I' + str(module / 'src'), '-I' + str(root / 'freeink-sdk/libs/network/BleKeyboardHost/include'), str(out / 'reader_production.cpp'), str(module / 'src/Runtime.cpp'), '-o', str(out / 'reader_production')], capture_output=True, text=True)
 (out / 'compile.log').write_text(compile.stdout + compile.stderr)
 if compile.returncode:
     print(compile.stderr)

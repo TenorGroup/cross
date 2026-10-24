@@ -37,8 +37,6 @@ ImageBlock::ThumbHook* ImageBlock::thumbHook = nullptr;
 
 void ImageBlock::setThumbHook(ThumbHook* hook) { thumbHook = hook; }
 
-bool ImageBlock::imageExists() const { return Storage.exists(imagePath.c_str()); }
-
 namespace {
 
 std::string getCachePath(const std::string& imagePath) {
@@ -216,10 +214,6 @@ bool renderFromCache(GfxRenderer& renderer, const std::string& cachePath, int x,
     LOG_ERR("IMG", "Invalid image cache: %s", cachePath.c_str());
     return false;
   }
-
-  // Use cached dimensions for rendering (they're the actual decoded size)
-  expectedWidth = cachedWidth;
-  expectedHeight = cachedHeight;
 
   LOG_DBG("IMG", "Loading from cache: %s (%dx%d)", cachePath.c_str(), cachedWidth, cachedHeight);
 

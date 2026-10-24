@@ -654,7 +654,10 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
   // the working set stays bounded at any chapter count. A book that fits one
   // chunk takes exactly the passes it always took: one TOC scan for the
   // spine->TOC mapping and one zip central-directory scan for the sizes.
-  const bool useBatchSizes = spines >= LARGE_SPINE_THRESHOLD;
+  // TXT and Markdown are converted to HTML on the fly and are one spine item of the file's own size;
+  // there is no archive to look sizes up in.
+  const bool isZip = !FsHelpers::hasTxtExtension(epubPath) && !FsHelpers::hasMarkdownExtension(epubPath);
+  const bool useBatchSizes = isZip && spines >= LARGE_SPINE_THRESHOLD;
   int chunk = spines;
   if (useBatchSizes) {
     const uint32_t freeHeap = ESP.getFreeHeap();
@@ -674,7 +677,13 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
     LOG_ERR("BMC", "Could not size spine items: chunk %d, heap %u", chunk, static_cast<unsigned>(ESP.getFreeHeap()));
     return giveUp();
   }
-  if (!zip.open()) return abandon();
+  size_t rawSize = 0;
+  if (isZip) {
+    if (!zip.open()) return abandon();
+  } else {
+    HalFile rawFile;
+    if (Storage.openFileForRead("BMC", epubPath, rawFile)) rawSize = rawFile.size();
+  }
   // NOTE: We intentionally skip calling loadAllFileStatSlims() here.
   // For large EPUBs (2000+ chapters), pre-loading all ZIP central directory entries
   // into memory causes OOM crashes on ESP32-C3's limited ~380KB RAM.
@@ -766,15 +775,17 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
       // Not a huge deal if we don't fine a TOC entry for the spine entry, this is expected behaviour for EPUBs
       // Logging here is for debugging
       if (spineEntry.tocIndex == -1) {
-        LOG_DBG("BMC", "Warning: Could not find TOC entry for spine item %d: %s, using title from last section",
-                first + i, spineEntry.href.c_str());
+        if (isZip) {
+          LOG_DBG("BMC", "Warning: Could not find TOC entry for spine item %d: %s, using title from last section",
+                  first + i, spineEntry.href.c_str());
+        }
         spineEntry.tocIndex = lastSpineTocIndex;
       }
       lastSpineTocIndex = spineEntry.tocIndex;
 
       // Small books look every item up directly; a batch miss falls back the same way.
-      size_t itemSize = spineSizes[i];
-      if (itemSize == 0) {
+      size_t itemSize = isZip ? spineSizes[i] : rawSize;
+      if (isZip && itemSize == 0) {
         const std::string path = FsHelpers::normalisePath(spineEntry.href);
         if (!zip.getInflatedFileSize(path.c_str(), &itemSize)) {
           LOG_ERR("BMC", "Warning: Could not get size for spine item: %s", path.c_str());
@@ -793,8 +804,7 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
     if (resumable && !checkpoint(first + count, cumSize, lastSpineTocIndex)) return abandon();
     HEAP_MARK("book_chunk_end");
   }
-  // Close opened zip file
-  zip.close();
+  if (isZip) zip.close();
 
 #ifdef TENOR_PRESS_PROBE
   const unsigned long tocCopyStarted = millis();
@@ -1504,7 +1514,9 @@ int BookMetadataCache::getSpineIndexForSize(const uint32_t size) const {
   const int first = stride * CUMULATIVE_STRIDE;
   const int count = std::min<int>(spineCount - first, CUMULATIVE_STRIDE);
   std::lock_guard<std::mutex> lock(sizeWindowLock);
-  if (windowFirst != first && !readSizeWindow(first)) return -1;
+  // One refill attempt; on failure every total in the window falls back below `size`, as the
+  // window's last item answers.
+  if (windowFirst != first && !readSizeWindow(first)) return first + count - 1;
   const auto* found = std::lower_bound(window, window + count, size);
   return found == window + count ? -1 : first + static_cast<int>(found - window);
 }

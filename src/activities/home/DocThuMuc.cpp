@@ -56,8 +56,8 @@ bool doc(const char* const duongDan, const bool hienFileAn, const Loc loc, char*
       }
       continue;
     }
-    if (FsHelpers::hasEpubExtension(ten) || FsHelpers::hasXtcExtension(ten) || FsHelpers::hasTxtExtension(ten) ||
-        FsHelpers::hasMarkdownExtension(ten) || FsHelpers::hasBmpExtension(ten) || FsHelpers::hasPngExtension(ten)) {
+    if (FsHelpers::hasReflowableBookExtension(ten) || FsHelpers::hasXtcExtension(ten) ||
+        FsHelpers::hasImageExtension(ten)) {
       if (!conCho()) break;
       if (keys)
         keys[ra.size()] = sortMode == filebrowser::SortMode::Modified ? muc.modificationTime() : muc.fileSize64();

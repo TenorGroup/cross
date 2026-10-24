@@ -8,8 +8,10 @@
 
 class EpubReaderChapterSelectionActivity final : public UiListActivity {
   std::shared_ptr<Epub> epub;
-  int currentSpineIndex = 0;
-  int currentTocIndex = -1;  // the chapter being read, marked at the end of its row
+  // The TOC entry being read, marked at the end of its row and where the list opens (a sub-chapter inside a spine
+  // file counts: Section::getTocIndexForPage). -1: a page outside the table of contents (a cover, front matter)
+  // marks no row and the list opens at the top.
+  int currentTocIndex = -1;
   std::string info;          // where the reader stands (page of the chapter, share of the book), over the X3 bar
 
   // Windowed row buffers: TOC entries are SD-backed (BookMetadataCache LUT
@@ -62,7 +64,7 @@ class EpubReaderChapterSelectionActivity final : public UiListActivity {
   tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Position; }
   std::string x3NavigationLabel() const override { return I18N.get(StrId::STR_SELECT_CHAPTER); }
   explicit EpubReaderChapterSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                              const std::shared_ptr<Epub>& epub, int currentSpineIndex,
+                                              const std::shared_ptr<Epub>& epub, int currentTocIndex,
                                               std::string info);
   void onEnter() override;
   void loop() override;

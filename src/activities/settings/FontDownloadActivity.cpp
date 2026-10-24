@@ -508,14 +508,19 @@ bool FontDownloadActivity::internString(const char* text, StrRef& outRef) {
 }
 
 bool FontDownloadActivity::fetchAndParseManifest() {
-  // Download manifest to a temp file on SD card to avoid holding both
-  // TLS buffers and the full JSON string in RAM simultaneously.
-  static constexpr const char* MANIFEST_TMP = "/fonts_manifest.tmp";
-
   if (auto* fcm = renderer.getFontCacheManager()) {
     RenderLock lock(*this);
     fcm->releaseSdFontCaches();
   }
+  // Drop the previous catalog before any TLS or JSON buffers exist, so its arena does not sit between them
+  // on the heap. The registry itself is not rescanned here: the installed flags come from the card
+  // (findFamilyRoot), and markRegistryDirty() below hands the rescan to the catalog's own reader.
+  clearManifest();
+
+  // Download manifest to a temp file on SD card to avoid holding both
+  // TLS buffers and the full JSON string in RAM simultaneously.
+  static constexpr const char* MANIFEST_TMP = "/fonts_manifest.tmp";
+
   if (ESP.getFreeHeap() < HttpDownloader::MIN_TLS_FREE_HEAP ||
       ESP.getMaxAllocHeap() < HttpDownloader::MIN_TLS_MAX_ALLOC) {
     LOG_ERR("FONT", "Low heap for manifest (%u free, %u max block)", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
@@ -608,7 +613,6 @@ bool FontDownloadActivity::fetchAndParseManifest() {
 
   baseUrl_ = manifestBaseUrl;
   downloadUrl_.reserve(baseUrl_.size() + 128);
-  clearManifest();
   sdFontSystem.markRegistryDirty();
 
   JsonArray groupsArr = doc["scriptGroups"].as<JsonArray>();
@@ -1735,10 +1739,7 @@ void FontDownloadActivity::rebuildFamilyRowItems() {
       if (family.hasUpdate) {
         item.value = tr(STR_UPDATE_AVAILABLE);
       } else if (family.installed) {
-        item.value = tr(STR_INSTALLED);
-        // Dimmed but still tappable (opens the delete prompt): visual-only
-        // disabled state, the row stays enabled for hit registration.
-        item.state = fui::StateDisabled;
+        item.value = tr(STR_INSTALLED);  // not dimmed: a disabled row loses the selection highlight (CrossPoint #4101)
       } else {
         item.toggle = true;
         item.check = true;  // pick several: a check box, not a switch
@@ -2064,7 +2065,6 @@ void FontDownloadActivity::render(RenderLock&&) {
   drawChrome();
 
   const auto lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
-  const auto contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const auto centerY = (pageHeight - lineHeight) / 2;
   const auto renderFontList = [&] {
     bool firstPass = true;

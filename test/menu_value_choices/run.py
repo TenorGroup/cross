@@ -12,7 +12,7 @@ a = p.parse_args()
 a.output.mkdir(parents=True, exist_ok=True)
 source = (a.repo / 'src/activities/settings/TextSettingsActivity.cpp').read_text()
 policy = (a.repo / 'src/activities/settings/SettingsTabs.cpp').read_text()
-catalog = (a.repo / 'src/SettingsList.h').read_text()
+catalog = (a.repo / 'src/SettingsList.h').read_text() + '\n' + (a.repo / 'src/SettingsList.cpp').read_text()
 settings = (a.repo / 'src/CrossPointSettings.h').read_text()
 row_counts = []
 row_toggles = []

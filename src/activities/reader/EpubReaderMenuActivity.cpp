@@ -1,5 +1,6 @@
 #include "EpubReaderMenuActivity.h"
 
+#include <BlePageTurner.h>
 #include <GfxRenderer.h>
 #include <HalFrontlight.h>
 #include <HalTiltSensor.h>
@@ -27,6 +28,7 @@
 #include "components/icons/tenorHomeTabIcons.h"
 #include "components/icons/tenorReaderTabIcons.h"
 #include "components/icons/X3ReaderTabIcons.h"
+#include "util/SlideSwitch.h"
 
 namespace fui = freeink::ui;
 
@@ -43,7 +45,8 @@ bool EpubReaderMenuActivity::skipsEmptyFavorites() const { return favorites.empt
 EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                const std::string& title, const int currentPage, const int totalPages,
                                                const int bookProgressPercent, const uint8_t currentOrientation,
-                                               const bool hasFootnotes, const bool hasBookmarks, const bool textOnly)
+                                               const bool hasFootnotes, const bool hasBookmarks, const bool hasClippings,
+                                               const bool textOnly)
     : UiTabListActivity("EpubReaderMenu", renderer, mappedInput),
       title(title),
       textOnly(textOnly),
@@ -51,7 +54,8 @@ EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInpu
       currentPage(currentPage),
       totalPages(totalPages),
       bookProgressPercent(bookProgressPercent) {
-  readermenu::buildItems(menuItems, hasFootnotes, hasBookmarks, Frontlight.present(), halTiltSensor.isAvailable());
+  readermenu::buildItems(menuItems, hasFootnotes, hasBookmarks, Frontlight.present() && !slideSwitchOwnsLight(),
+                         halTiltSensor.isAvailable(), hasClippings);
   if (tenorchrome::x3ScreenLayoutEnabled()) {
     readermenu::separateTextTab(menuItems);
   }

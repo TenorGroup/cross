@@ -4,13 +4,13 @@
 
 TEST(WebPath, AllowsBooksAndRoot) {
   for (const auto path : {"/", "/Books", "/Books/Book.epub", "/Books/volume..2.epub", "/Books/book~draft.epub",
-                          "/Đọc sách/Chương 1.txt"}) {
+                          "/Đọc sách/Chương 1.txt", "/Books/.hidden/book.epub", "/.hidden", "/Books/.DS_Store"}) {
     EXPECT_TRUE(web_path::allowed(path)) << path;
   }
 }
 
 TEST(WebPath, ProtectsEveryAncestor) {
-  for (const auto path : {"/.crosspoint/wifi.json", "/Books/.hidden/book.epub", "/XTCache/file", "/xtcache/file",
+  for (const auto path : {"/.crosspoint/wifi.json", "/.CrossPoint/opds_tokens.json", "//.crosspoint//webdav.json", "/XTCache/file", "/xtcache/file",
                           "/SYSTEM VOLUME INFORMATION/file", "/.crosspoint", "/Books/../.crosspoint/wifi.json"}) {
     EXPECT_FALSE(web_path::allowed(path)) << path;
   }

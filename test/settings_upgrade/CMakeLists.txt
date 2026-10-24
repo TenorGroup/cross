@@ -9,7 +9,7 @@ if(NOT DEFINED REPO_ROOT)
   get_filename_component(REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 endif()
 
-# Upgrade round trip: real settings.json files written by v1.0.18 and v1.0.19, plus an
+# Upgrade round trip: real settings.json files written by v1.0.18, v1.0.19 and v1.0.76, plus an
 # older pre-v1.0.18 file, loaded through the merged (CrossPoint 1.6.5) fromJson()/toJson().
 # Reuses the settings_catalog/LinkStubs.cpp in-memory file double, same as test/tenor_preset.
 add_executable(SettingsUpgradeTest
@@ -78,6 +78,8 @@ add_test(NAME SettingsUpgradeTips COMMAND SettingsUpgradeTest tips)
 add_test(NAME SettingsUpgradeButtonHints COMMAND SettingsUpgradeTest button-hints)
 add_test(NAME SettingsUpgradeGlobalStatusMatrix COMMAND SettingsUpgradeTest global-status-matrix)
 add_test(NAME SettingsUpgradeNotoSerifCard COMMAND SettingsUpgradeTest noto-serif-card)
+# v1.1.0: a real v1.0.76 file keeps the meaning of every stored value (sleep screen, power button, hold-Select, spacing).
+add_test(NAME SettingsUpgradeV1076Meaning COMMAND SettingsUpgradeTest v1076-meaning)
 
 get_target_property(home_sources SettingsUpgradeTest SOURCES)
 get_target_property(home_includes SettingsUpgradeTest INCLUDE_DIRECTORIES)

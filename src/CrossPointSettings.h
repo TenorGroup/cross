@@ -41,6 +41,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     QUOTE = 10,
     // The tenor/ugly doodle and a line of abuse (the default sleep screen of that shell).
     UGLY = 11,
+    // The cover with the transparent overlay. Added after the tenor numbers so a saved 8..11 keeps its meaning.
+    COVER_TRANSPARENT = 12,
     SLEEP_SCREEN_MODE_COUNT
   };
   enum SLEEP_SCREEN_COVER_MODE { FIT = 0, CROP = 1, SLEEP_SCREEN_COVER_MODE_COUNT };
@@ -175,8 +177,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     REFRESH_FREQUENCY_COUNT
   };
 
-  // Short power button press actions. PWR_CONFIRM is only offered on touch
-  // boards (see SettingsList.h).
+  // Short power button press actions, persisted by number: append only. quickaction::CHOICES
+  // (QuickAction.h) lists them in this order and is the one place that names them.
   enum SHORT_PWRBTN {
     IGNORE = 0,
     SLEEP = 1,
@@ -187,13 +189,18 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     BACK = 6,  // Stored by value: new actions go last (quickaction::CHOICES)
     READER_MENU = 7,
     SAVE_QUOTE = 8,
+    // CrossPoint 2.0.0 actions, numbered after the tenor ones so a saved 6..8 keeps its meaning.
+    CREATE_CLIPPING = 9,
+    PWR_BOOKMARK = 10,
+    PWR_SYNC = 11,
+    PWR_READER_MENU = 12,
     SHORT_PWRBTN_COUNT
   };
 
   // Long-press Confirm action while reading an EPUB. The setting cycles through these values.
   // Persisted in settings.json by number: a new function takes the next number after the last one and
   // is appended at the END of this enum, otherwise stored numbers shift and existing saves are silently
-  // misinterpreted. The row in SettingsList.h maps list position to number (buildLongPressMenuSetting).
+  // misinterpreted. The row in SettingsList.cpp maps list position to number (buildLongPressMenuSetting).
   enum LONG_PRESS_MENU_FUNCTION {
     LP_MENU_KOSYNC = 0,
     LP_MENU_DISABLED = 1,
@@ -207,6 +214,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     // every earlier save reads as before; the list shows it at position 6 on a board without an IMU.
     LP_MENU_SAVE_QUOTE = 7,
     LP_MENU_CONNECT_REMOTE = 8,
+    // CrossPoint 2.0.0 functions, numbered after the tenor ones so a saved 5..8 keeps its meaning.
+    LP_MENU_CREATE_CLIPPING = 9,
+    LP_MENU_FOOTNOTES = 10,
     LONG_PRESS_MENU_FUNCTION_COUNT
   };
 
@@ -237,6 +247,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   enum READER_MENU_STYLE { READER_MENU_LIST = 0, READER_MENU_TOOLBAR = 1, READER_MENU_STYLE_COUNT };
 
   enum TILT_PAGE_TURN { TILT_OFF = 0, TILT_NORMAL = 1, TILT_NVERTED = 2, TILT_PAGE_TURN_COUNT };
+  enum VIBRATION { VIBRATION_TOUCH = 0, VIBRATION_TOUCH_PAGE = 1, VIBRATION_OFF = 2 };
+  uint8_t vibration = VIBRATION_OFF;
+  enum HAPTIC_INTENSITY { HAPTIC_LOW = 0, HAPTIC_MEDIUM = 1, HAPTIC_HIGH = 2 };
+  uint8_t hapticIntensity = HAPTIC_HIGH;
 
   // How hard a wrist flick must be before it counts, per axis. Persisted by index.
   enum TILT_STRENGTH {
@@ -426,12 +440,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // turns it into the line factor, the letter delta and the paragraph gap.
   // toJson stamps textSpacingVersion 3; fromJson folds v1/v2 files into it.
   //
-  // Upstream's own word/character spacing redesign (percent-scale wordSpacing,
-  // separate characterSpacing 0..4 offset) is NOT taken here: it retypes the
-  // "wordSpacing" JSON key from a 5-level ordinal to a 50..200 percent, which
-  // would misread every existing save. Tenor's unified Level-based scheme
-  // covers the same UX (letterSpacing already is upstream's characterSpacing
-  // idea, just under Tenor's own key) so no capability is lost.
+  // CrossPoint 2.0.0 stores characterSpacing, a percent wordSpacing, paragraphIndentSpaces and
+  // focusReadingEnabled. None of them is kept as a setting here: "wordSpacing" would change meaning
+  // from a level to a percent and misread every saved file. The layout engine takes its upstream
+  // parameters from textSpacingParams(), the one place that turns these levels into them.
   uint8_t extraParagraphSpacing = readerSpacing::LEVEL_DEFAULT;
   uint8_t letterSpacing = readerSpacing::LEVEL_DEFAULT;
   // readerSpacing::Level applied to the U+0020 advance. Joined the group at
@@ -573,6 +585,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   bool fontFallbackNotice = false;
   // Dictionary folder name under /dictionaries (empty = no dictionary)
   char dictionaryName[32] = "";
+  // Master switch for all SD-card plugin discovery/execution. New installs keep
+  // this disabled; settings migration enables it when pre-existing plugin files
+  // are found so a firmware update never silently disables an existing setup.
+  uint8_t pluginsEnabled = 0;
+  // User hid the Plugin Hub install row; cleared when plugins are turned back on.
+  uint8_t pluginHubPromptHidden = 0;
   // Show hidden files/directories (starting with '.') in the file browser (0 = hidden, 1 = show)
   uint8_t showHiddenFiles = 0;
   // Show the title and author read from inside each book rather than its
@@ -634,6 +652,14 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // The light's daily hours (util/FrontlightSchedule.h): a wake inside [from, until) lights it. Equal = no schedule.
   uint8_t frontlightFromHour = 0;
   uint8_t frontlightUntilHour = 0;
+  // What the slide switch controls (boards with one): frontlight on/off or
+  // night mode. The switch's position is applied at boot and on each change.
+  enum SLIDE_SWITCH_ACTION : uint8_t {
+    SLIDE_SWITCH_FRONTLIGHT = 0,
+    SLIDE_SWITCH_NIGHT_MODE = 1,
+    SLIDE_SWITCH_TOUCH_CONTROLS = 2,
+  };
+  uint8_t slideSwitchAction = SLIDE_SWITCH_FRONTLIGHT;
   // Language setting (Language enum index, default 0 = EN)
   uint8_t language = 0;
   // Keyboard layouts the user can reach, using keyboard_layouts::ALL table bits.
@@ -833,6 +859,27 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // passing it in keeps a spec from ever existing in a half-filled state.
   // Unlocked for the same reason as statusBarSpec(); see the note above.
   ReaderRenderSpec readerRenderSpec(uint16_t viewportWidth, uint16_t viewportHeight) const;
+
+  // The spacing inputs of the layout engine in the units CrossPoint 2.0.0 takes them, worked out
+  // from the stored tenor levels in this one place so a page lays out at the pixel distances
+  // v1.0.76 drew (the line factor stays in getReaderLineCompression). Callers that need them
+  // outside a ReaderRenderSpec (settings preview, dictionary pages, clip selection) read this and
+  // never the stored levels.
+  struct TextSpacingParams {
+    int8_t characterSpacing = 0;        // px added to every glyph advance: readerSpacing::letterPixels
+    uint8_t wordSpacingPercent = 100;   // percent of the U+0020 advance: readerSpacing::wordPermille / 10
+    uint8_t paragraphIndentSpaces = 3;  // first line indent in space widths: readerSpacing::indentSpaces
+    uint8_t extraParagraphSpacing = 0;  // readerSpacing::Level; the gap is readerSpacing::paragraphGap(level, lineHeight)
+  };
+  static constexpr TextSpacingParams textSpacingParamsFor(const uint8_t letterLevel, const uint8_t wordLevel,
+                                                          const uint8_t indentLevel, const uint8_t paragraphLevel) {
+    return {static_cast<int8_t>(readerSpacing::letterPixels(letterLevel)),
+            static_cast<uint8_t>(readerSpacing::wordPermille(wordLevel) / 10),
+            static_cast<uint8_t>(readerSpacing::indentSpaces(indentLevel)), readerSpacing::clampLevel(paragraphLevel)};
+  }
+  TextSpacingParams textSpacingParams() const {
+    return textSpacingParamsFor(letterSpacing, wordSpacing, paragraphIndent, extraParagraphSpacing);
+  }
 
   static const char* getFilePath() { return "/.crosspoint/settings.json"; }
   void toJson(JsonDocument& doc) const;

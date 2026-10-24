@@ -3,6 +3,10 @@
 
 #include <array>
 
+#include <BoardConfig.h>
+
+#include <atomic>
+
 #include "activities/Activity.h"
 #include "components/OptionPopup.h"
 #include "components/FileSearchReveal.h"
@@ -174,7 +178,8 @@ class UiListActivity : public Activity, protected UiAppHost {
   bool rowsHaveIcons = false;
   // Base-owned row action; subclass-registered actions start at ACTION_USER.
   static constexpr freeink::ui::ActionId ACTION_ROW = 1;
-  static constexpr freeink::ui::ActionId ACTION_USER = 2;
+  static constexpr freeink::ui::ActionId ACTION_SWIPE_DELETE = 2;
+  static constexpr freeink::ui::ActionId ACTION_USER = 3;
 
   UiListActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput,
                  bool wantsTouchLongPress = false);
@@ -194,6 +199,12 @@ class UiListActivity : public Activity, protected UiAppHost {
   // Default on the touch shell: a row that can be pinned offers Pin or Unpin in the row menu.
   virtual void onRowLongPress(int index);
   virtual unsigned long touchHoldMs() const { return 0; }
+#if FREEINK_CAP_TOUCH
+  virtual bool canSwipeDelete(int index) const { return false; }
+  virtual void swipeDelete(int index) {}
+  void configureSwipeDelete(UiScreen& screen, freeink::ui::ListProps& props);
+  void closeSwipeDelete();
+#endif
   // The selection/viewport state the loop, sync, and row dispatch operate on.
   // Default is the single `nav` member; UiTabListActivity redirects it to the
   // active tab's per-tab state.
@@ -202,8 +213,8 @@ class UiListActivity : public Activity, protected UiAppHost {
   // Bounds-checked ACTION_ROW dispatch. Default: selection follows the tapped
   // row, then long-press/activate. UiTabListActivity remaps row -> ring.
   virtual void onRowAction(const freeink::ui::ActionEvent& event);
-  // The button-navigation tail of loop(): front taps step one row, edge taps
-  // page the viewport, and holds select the first/last visible row. UiTabListActivity replaces it with the ring walk.
+  // The button-navigation tail of loop(): a front press steps one row, an edge press
+  // pages the viewport, and holds select the first/last visible row. UiTabListActivity replaces it with the ring walk.
   virtual void navigateButtons();
 
   // --- navigation intents ----------------------------------------------------
@@ -340,6 +351,8 @@ class UiListActivity : public Activity, protected UiAppHost {
   // chan rieng. Tuc loi tham my, khong phai doc ra ngoai bo nho.
   //
 
+  // Selection to `index` at once (the intent queue below is for the buttons); used by screens that jump to a row.
+  void moveSelectionTo(int index);
   // Queue a page move / a move to the first (last) visible row. The ring
   // variant (BoundaryFirstRing/BoundaryLastRing) addresses a row on the
   // 1..count ring tab screens use.
@@ -368,6 +381,12 @@ class UiListActivity : public Activity, protected UiAppHost {
   // Named apart from UiAppHost::routeTouch so the host overload stays visible
   // (not name-hidden) to subclasses with extra touch surfaces.
   bool routeListTouch();
+#if FREEINK_CAP_TOUCH
+  static void swipeDeleteTrampoline(const freeink::ui::ActionEvent& event, void* user);
+  bool handleSwipeDeleteInput();
+  std::atomic<int16_t> revealedIndex{-1};
+  freeink::ui::ListRevealAction swipeReveal{};
+#endif
 
   // Apply one queued intent. Caller holds the render lock; tab intents are
   // handled by applyPendingNav() itself.

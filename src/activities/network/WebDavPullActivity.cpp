@@ -418,7 +418,7 @@ webdav::QueueResult WebDavPullActivity::downloadEntry(const webdav::PropfindEntr
   };
   // The EPUB check runs on the staged copy: once committed, a failed re-read would delete the book.
   const auto transfer = HttpDownloader::downloadToFile(remoteUrl, std::string(destinationPath), progress, &cancelRequested,
-                                                        currentConfig.username, currentConfig.password, false,
+                                                        currentConfig.username, currentConfig.password, {}, false,
                                                         validDownloadedEpub);
   // CACHE_ERROR still committed the book; INVALID_EPUB arrived whole and was refused.
   const bool committed = transfer == HttpDownloader::OK || transfer == HttpDownloader::CACHE_ERROR;

@@ -47,8 +47,8 @@ int main(int argc, char** argv) {
   renderer.setFontCacheManager(&cache);
   bleRenderer = &renderer;
   config.enabled = 1;
+  std::snprintf(config.peerAddr, sizeof(config.peerAddr), "11:22:33:44:55:66");
   bleturner::begin(host, config);
-  bleturner::setSavedBonds(1);
   HalMemory::internalHeap = {100000, 249216, 100000, 65536};
   auto& host = freeink::BleKeyboardHost::getInstance();
   if (test == "queued_start_cancelled") {

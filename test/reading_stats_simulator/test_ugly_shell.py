@@ -218,7 +218,7 @@ class UglyShellTest(unittest.TestCase):
 
     def test_continue_reading_opens_the_book(self):
         log, _ = self.card().run('1000:CONFIRM;4000:QUIT')
-        self.assertIn('Entering activity: TxtReader', log)
+        self.assertIn('Entering activity: EpubReader', log)
 
     def test_back_from_a_book_lands_on_the_diary(self):
         log, _ = self.card().run('1000:CONFIRM;3000:BACK;5000:QUIT')

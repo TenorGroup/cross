@@ -1,0 +1,275 @@
+=== default server, metadata off
+got position=1
+GET https://kosync.tenor.vn/users/auth
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+POST https://kosync.tenor.vn/users/create
+  Accept: application/vnd.koreader.v1+json
+  Content-Type: application/json
+  body: {"username":"u","password":"md5(p)"}
+GET https://kosync.tenor.vn/syncs/progress/hash?position_kinds=locator,percentage
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+PUT https://kosync.tenor.vn/syncs/progress
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  Content-Type: application/json
+  body: {"document":"hash","metadata":{"filename":"book.epub","title":"Title","authors":"Author"},"progress":"/body/DocFragment[3]/body/p[2]/text().4","percentage":0.5,"device":"tenor/cross","device_id":"crosspoint-reader","position":{"pctQ":500000,"spine":2,"page":1,"pages":4,"xpath":"/body/DocFragment[3]/body/p[2]/text().4"}}
+=== default server, metadata on
+got position=1
+GET https://kosync.tenor.vn/users/auth
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+POST https://kosync.tenor.vn/users/create
+  Accept: application/vnd.koreader.v1+json
+  Content-Type: application/json
+  body: {"username":"u","password":"md5(p)"}
+GET https://kosync.tenor.vn/syncs/progress/hash?position_kinds=locator,percentage
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+PUT https://kosync.tenor.vn/syncs/progress
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  Content-Type: application/json
+  body: {"document":"hash","metadata":{"filename":"book.epub","title":"Title","authors":"Author"},"progress":"/body/DocFragment[3]/body/p[2]/text().4","percentage":0.5,"device":"tenor/cross","device_id":"crosspoint-reader","position":{"pctQ":500000,"spine":2,"page":1,"pages":4,"xpath":"/body/DocFragment[3]/body/p[2]/text().4"}}
+=== tenor server written out
+got position=1
+GET https://kosync.tenor.vn/users/auth
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+POST https://kosync.tenor.vn/users/create
+  Accept: application/vnd.koreader.v1+json
+  Content-Type: application/json
+  body: {"username":"u","password":"md5(p)"}
+GET https://kosync.tenor.vn/syncs/progress/hash?position_kinds=locator,percentage
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+PUT https://kosync.tenor.vn/syncs/progress
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  Content-Type: application/json
+  body: {"document":"hash","metadata":{"filename":"book.epub","title":"Title","authors":"Author"},"progress":"/body/DocFragment[3]/body/p[2]/text().4","percentage":0.5,"device":"tenor/cross","device_id":"crosspoint-reader","position":{"pctQ":500000,"spine":2,"page":1,"pages":4,"xpath":"/body/DocFragment[3]/body/p[2]/text().4"}}
+=== tenor server, trailing slash
+got position=1
+GET https://kosync.tenor.vn/users/auth
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+POST https://kosync.tenor.vn/users/create
+  Accept: application/vnd.koreader.v1+json
+  Content-Type: application/json
+  body: {"username":"u","password":"md5(p)"}
+GET https://kosync.tenor.vn/syncs/progress/hash?position_kinds=locator,percentage
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+PUT https://kosync.tenor.vn/syncs/progress
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  Content-Type: application/json
+  body: {"document":"hash","metadata":{"filename":"book.epub","title":"Title","authors":"Author"},"progress":"/body/DocFragment[3]/body/p[2]/text().4","percentage":0.5,"device":"tenor/cross","device_id":"crosspoint-reader","position":{"pctQ":500000,"spine":2,"page":1,"pages":4,"xpath":"/body/DocFragment[3]/body/p[2]/text().4"}}
+=== crosspoint server
+got position=1
+GET https://sync.crosspointreader.com/users/auth
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+POST https://sync.crosspointreader.com/users/create
+  Accept: application/vnd.koreader.v1+json
+  Content-Type: application/json
+  body: {"username":"u","password":"md5(p)"}
+GET https://sync.crosspointreader.com/syncs/progress/hash?position_kinds=locator,percentage
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+PUT https://sync.crosspointreader.com/syncs/progress
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  Content-Type: application/json
+  body: {"document":"hash","metadata":{"filename":"book.epub","title":"Title","authors":"Author"},"progress":"/body/DocFragment[3]/body/p[2]/text().4","percentage":0.5,"device":"tenor/cross","device_id":"crosspoint-reader","position":{"pctQ":500000,"spine":2,"page":1,"pages":4,"xpath":"/body/DocFragment[3]/body/p[2]/text().4"}}
+=== custom http server
+got position=0
+GET http://192.168.1.5:8080/users/auth
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+POST http://192.168.1.5:8080/users/create
+  Accept: application/vnd.koreader.v1+json
+  Content-Type: application/json
+  body: {"username":"u","password":"md5(p)"}
+GET http://192.168.1.5:8080/syncs/progress/hash?position_kinds=locator,percentage
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+PUT http://192.168.1.5:8080/syncs/progress
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  Content-Type: application/json
+  body: {"document":"hash","metadata":{"filename":"book.epub","title":"Title","authors":"Author"},"progress":"/body/DocFragment[3]/body/p[2]/text().4","percentage":0.5,"device":"tenor/cross","device_id":"crosspoint-reader"}
+=== custom https server
+got position=0
+GET https://sync.koreader.rocks:443/users/auth
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+POST https://sync.koreader.rocks:443/users/create
+  Accept: application/vnd.koreader.v1+json
+  Content-Type: application/json
+  body: {"username":"u","password":"md5(p)"}
+GET https://sync.koreader.rocks:443/syncs/progress/hash?position_kinds=locator,percentage
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+PUT https://sync.koreader.rocks:443/syncs/progress
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  Content-Type: application/json
+  body: {"document":"hash","metadata":{"filename":"book.epub","title":"Title","authors":"Author"},"progress":"/body/DocFragment[3]/body/p[2]/text().4","percentage":0.5,"device":"tenor/cross","device_id":"crosspoint-reader"}
+=== url without scheme
+got position=0
+GET http://kosync.tenor.vn/users/auth
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+POST http://kosync.tenor.vn/users/create
+  Accept: application/vnd.koreader.v1+json
+  Content-Type: application/json
+  body: {"username":"u","password":"md5(p)"}
+GET http://kosync.tenor.vn/syncs/progress/hash?position_kinds=locator,percentage
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+PUT http://kosync.tenor.vn/syncs/progress
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  Content-Type: application/json
+  body: {"document":"hash","metadata":{"filename":"book.epub","title":"Title","authors":"Author"},"progress":"/body/DocFragment[3]/body/p[2]/text().4","percentage":0.5,"device":"tenor/cross","device_id":"crosspoint-reader"}
+=== pre-v2 file
+got position=0
+GET https://sync.koreader.rocks:443/users/auth
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+POST https://sync.koreader.rocks:443/users/create
+  Accept: application/vnd.koreader.v1+json
+  Content-Type: application/json
+  body: {"username":"u","password":"md5(p)"}
+GET https://sync.koreader.rocks:443/syncs/progress/hash?position_kinds=locator,percentage
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+PUT https://sync.koreader.rocks:443/syncs/progress
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  Content-Type: application/json
+  body: {"document":"hash","metadata":{"filename":"book.epub","title":"Title","authors":"Author"},"progress":"/body/DocFragment[3]/body/p[2]/text().4","percentage":0.5,"device":"tenor/cross","device_id":"crosspoint-reader"}
+=== url typed: custom
+got position=0
+GET https://other.example/users/auth
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+POST https://other.example/users/create
+  Accept: application/vnd.koreader.v1+json
+  Content-Type: application/json
+  body: {"username":"u","password":"md5(p)"}
+GET https://other.example/syncs/progress/hash?position_kinds=locator,percentage
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+PUT https://other.example/syncs/progress
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  Content-Type: application/json
+  body: {"document":"hash","metadata":{"filename":"book.epub","title":"Title","authors":"Author"},"progress":"/body/DocFragment[3]/body/p[2]/text().4","percentage":0.5,"device":"tenor/cross","device_id":"crosspoint-reader"}
+=== url typed: back to tenor
+got position=1
+GET https://kosync.tenor.vn/users/auth
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+POST https://kosync.tenor.vn/users/create
+  Accept: application/vnd.koreader.v1+json
+  Content-Type: application/json
+  body: {"username":"u","password":"md5(p)"}
+GET https://kosync.tenor.vn/syncs/progress/hash?position_kinds=locator,percentage
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  body: 
+PUT https://kosync.tenor.vn/syncs/progress
+  Accept: application/vnd.koreader.v1+json
+  x-auth-user: u
+  x-auth-key: md5(p)
+  Authorization: Basic 
+  Content-Type: application/json
+  body: {"document":"hash","metadata":{"filename":"book.epub","title":"Title","authors":"Author"},"progress":"/body/DocFragment[3]/body/p[2]/text().4","percentage":0.5,"device":"tenor/cross","device_id":"crosspoint-reader","position":{"pctQ":500000,"spine":2,"page":1,"pages":4,"xpath":"/body/DocFragment[3]/body/p[2]/text().4"}}

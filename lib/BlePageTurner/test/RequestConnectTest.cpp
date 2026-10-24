@@ -128,4 +128,4 @@ TEST_F(RequestConnectTest, PostInitFragmentationNeverRestartsAfterManualRequest)
   EXPECT_FALSE(fake::radio().running);
   EXPECT_EQ(fake::host().restarts, 0u);
 }
-}
+}  // namespace

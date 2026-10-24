@@ -2,12 +2,14 @@
 
 #include <EpdFontFamily.h>
 
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "ReaderSpacing.h"
 #include "WordStore.h"
 #include "blocks/BlockStyle.h"
 #include "blocks/TextBlock.h"
@@ -46,11 +48,20 @@ class ParsedText {
   // Zero means plain text; non-zero indexes linkTargets. Kept at one byte per
   // token and discarded after layout, never added to the page-cache TextBlock.
   std::vector<uint8_t> wordLinkIds;
+  // Words sized by an inline font-size span: a slot per word into sizeSlotScales (absolute
+  // multiples of the reader's body size). Slot 0 follows the block's own size; the parser
+  // resolves each slot's font before layout.
+  std::vector<uint8_t> wordSizeSlots;
+  static constexpr uint8_t MAX_SIZE_SLOTS = TextBlock::MAX_WORD_FONTS + 1;
+  float sizeSlotScales[MAX_SIZE_SLOTS] = {1.0f};
+  int32_t sizeSlotFontIds[MAX_SIZE_SLOTS] = {};
+  uint8_t sizeSlotCount = 1;
+  int wordFontId(size_t wordIndex, int blockFontId) const;
   std::vector<std::string> linkTargets;
   // Zero-based visible Unicode-codepoint offsets in the spine body, stored as
   // uint16_t deltas from a shared base to keep this layout-only metadata small.
   // Pathological spans wider than uint16_t use sparse rebases; rendered
-  // TextBlocks do not carry any of this metadata.
+  // TextBlocks retain absolute ranges for portable clipping anchors.
   struct VisibleOffsetRebase {
     size_t wordIndex;
     uint32_t base;
@@ -58,14 +69,31 @@ class ParsedText {
   std::vector<uint16_t> wordVisibleOffsetDeltas;
   uint32_t visibleOffsetBase = 0;
   std::vector<VisibleOffsetRebase> visibleOffsetRebases;
+  // Sparse NFC source positions, in small nothrow chunks rather than a large contiguous array.
+  struct AbsorbedSourceChunk {
+    std::unique_ptr<AbsorbedSourceChunk> next;
+    uint32_t base = 0;
+    uint16_t deltas[64] = {};
+    uint8_t begin = 0;
+    uint8_t count = 0;
+    ~AbsorbedSourceChunk() {
+      while (next) {
+        auto retired = std::move(next);
+        next = std::move(retired->next);
+      }
+    }
+  };
+  std::unique_ptr<AbsorbedSourceChunk> absorbedSourceHead;
+  AbsorbedSourceChunk* absorbedSourceTail = nullptr;
+  mutable const AbsorbedSourceChunk* absorbedSourceCursor = nullptr;
+  mutable uint32_t absorbedSourceCursorStart = 0;
   std::deque<std::string> rubyTexts;
   size_t rubyTextBytes = 0;
   BlockStyle blockStyle;
-  bool extraParagraphSpacing;
-  int8_t letterSpacing = 0;
-  // readerSpacing::Level on the U+0020 advance; see readerSpacing::wordPixels.
-  uint8_t wordSpacing = 0;
-  uint8_t paragraphIndent;  // 0 = off, 1 = normal, 2 = wide
+  // Pixels are not stored here: the spacing arrives as characterSpacing (in blockStyle) and a
+  // percent of the space advance, both resolved once from the reader's levels.
+  uint8_t wordSpacingPercent = 100;
+  uint8_t paragraphIndentSpaces;
   bool hyphenationEnabled;
   bool focusReadingEnabled;
   uint16_t dropCapHeight = 0;
@@ -75,9 +103,17 @@ class ParsedText {
   bool dropCapPrepared = false;
   bool layoutFailed = false;
   int lineIndent(size_t line, const GfxRenderer& renderer, int fontId) const;
+  int spaceGap(int spaceAdvance) const;
+  // True while word 0 is the paragraph's large initial: set up, and no line of the block extracted yet.
+  bool capIsFirstWord() const { return dropCapInset != 0 && extractedLines == 0; }
   bool isNaturalAlign;
   bool hasRtlWord;
   bool droppedWords = false;  // the arena OOM was logged once
+  int linesAfterCurrent = -1;
+  bool firstLineConsumed = false;
+  // Separate from firstLineConsumed: a <br> line suppresses the indent but still starts a
+  // new clipping paragraph.
+  bool paragraphStartEmitted = false;
   std::vector<std::string> reorderedWordsScratch;
   std::vector<EpdFontFamily::Style> reorderedStylesScratch;
   std::vector<uint16_t> reorderedWidthsScratch;
@@ -90,6 +126,9 @@ class ParsedText {
   bool storeWord(std::string_view text, WordStore::StoredWord& out);
   uint32_t visibleOffsetBaseAt(size_t wordIndex) const;
   uint32_t visibleOffsetAt(size_t wordIndex) const;
+  uint32_t sourceOffsetAfter(uint32_t start, uint32_t renderedLength) const;
+  bool recordAbsorbedSourceOffset(uint32_t offset);
+  void retireAbsorbedSourceOffsets(uint32_t remainingStart);
   void pushVisibleOffset(uint32_t offset);
   void insertVisibleOffset(size_t wordIndex, uint32_t offset);
   void eraseVisibleOffsetPrefix(size_t count);
@@ -113,21 +152,25 @@ class ParsedText {
   std::vector<uint16_t> calculateWordWidths(const GfxRenderer& renderer, int fontId);
 
  public:
-  explicit ParsedText(const bool extraParagraphSpacing, const bool hyphenationEnabled = false,
-                      const bool focusReadingEnabled = false, const BlockStyle& blockStyle = BlockStyle(),
-                      const uint8_t paragraphIndent = 0, const int8_t letterSpacing = 0,
-                      const uint8_t wordSpacing = 0)
+  explicit ParsedText(const bool hyphenationEnabled = false, const bool focusReadingEnabled = false,
+                      const BlockStyle& blockStyle = BlockStyle(), const uint8_t paragraphIndentSpaces = 2)
       : blockStyle(blockStyle),
-        extraParagraphSpacing(extraParagraphSpacing),
-        letterSpacing(letterSpacing),
-        wordSpacing(wordSpacing),
-        paragraphIndent(paragraphIndent),
+        paragraphIndentSpaces(paragraphIndentSpaces),
         hyphenationEnabled(hyphenationEnabled),
         focusReadingEnabled(focusReadingEnabled),
         isNaturalAlign(false),
         hasRtlWord(false) {}
   ~ParsedText() = default;
 
+  // Which drop cap path a request takes. One answer for the parser: the reader's own raster
+  // initial for the first paragraph of a chapter (Default and Large modes), nothing for every
+  // other request. The CSS routes (::first-letter, a floated or oversized first span) never draw
+  // a drop cap, and Off draws none at all. Returns the height in pixels, 0 for no drop cap.
+  enum class DropCapSource : uint8_t { ChapterInitial, CssFirstLetter, CssSpan };
+  static int dropCapHeightFor(const DropCapSource source, const uint8_t mode, const int lineHeight) {
+    if (source != DropCapSource::ChapterInitial) return 0;
+    return readerSpacing::dropCapHeight(readerSpacing::clampDropCapMode(mode), lineHeight);
+  }
   void resetDropCap() {
     dropCapHeight = 0;
     dropCapInset = 0;
@@ -142,26 +185,49 @@ class ParsedText {
   // chua chu lon phai tinh theo buoc that do, khong phai buoc goc cua font.
   void setLineCompression(const float value) { lineCompression = value > 0.0f ? value : 1.0f; }
   bool wantsDropCap() const { return dropCapHeight != 0; }
+  // False when the block cannot take the word (maxWordCount reached, text arena out of memory);
+  // the caller fails the section build instead of caching a page with text missing.
   bool addWord(std::string word, EpdFontFamily::Style fontStyle, bool underline = false, bool attachToPrevious = false,
-               uint32_t visibleTextOffset = 0, uint8_t linkId = 0, size_t maxWordCount = SIZE_MAX);
+               uint32_t visibleTextOffset = 0, uint8_t linkId = 0, uint8_t sizeSlot = 0, bool noSpaceBefore = false,
+               size_t maxWordCount = SIZE_MAX);
   void failLayout() { layoutFailed = true; }
   uint8_t addLinkTarget(const char* href);
   bool linkTargetMatches(uint8_t linkId, const char* href) const;
   void setRubyForWordAt(size_t index, const std::string& ruby);
   void setRubyGroupAt(size_t startIndex, size_t count, const std::string& ruby);
+  // The word's renderer style: stored flags removed, small caps restored from its size slot.
   EpdFontFamily::Style getWordStyleAt(size_t index) const {
-    return index < wordStyles.size() ? wordStyles[index] : EpdFontFamily::REGULAR;
+    if (index >= wordStyles.size()) return EpdFontFamily::REGULAR;
+    const bool smallCaps = index < wordSizeSlots.size() && (wordSizeSlots[index] & TextBlock::SMALL_CAPS_SLOT_FLAG);
+    return static_cast<EpdFontFamily::Style>((wordStyles[index] & ~TextBlock::DISCRETIONARY_HYPHEN_FLAG) |
+                                             (smallCaps ? EpdFontFamily::SMALL_CAPS : 0));
   }
   std::string getRubyTextAt(size_t index) const { return index < rubyTexts.size() ? rubyTexts[index] : std::string(); }
   size_t getRubyTextBytes() const { return rubyTextBytes; }
   void ensureRubyCapacity();
+  void suppressFirstLineIndent() { firstLineConsumed = true; }
+  void resetFirstLineIndent() { firstLineConsumed = paragraphStartEmitted = false; }
   void setBlockStyle(const BlockStyle& blockStyle) { this->blockStyle = blockStyle; }
   BlockStyle& getBlockStyle() { return blockStyle; }
   size_t size() const { return words.size(); }
   // Lines this block already laid out; above 0 after a soft flush placed the start of the paragraph.
   size_t linesExtracted() const { return extractedLines; }
   bool isEmpty() const { return words.empty(); }
+  // True once any word was dropped because the text arena could not allocate.
+  // Callers must treat the block as incomplete and fail the section build.
+  bool hadDroppedWords() const { return droppedWords; }
+  // While a line is being handed to layoutAndExtractLines' callback: how many lines of the
+  // paragraph follow it, or -1 when the rest of the paragraph is not laid out yet.
+  int linesAfterCurrentLine() const { return linesAfterCurrent; }
+  // Slot for words at an absolute size; reuses a matching slot, or the nearest once all are taken.
+  uint8_t sizeSlotFor(float scale);
+  uint8_t sizeSlotsInUse() const { return sizeSlotCount; }
+  float sizeSlotScale(uint8_t slot) const { return sizeSlotScales[slot]; }
+  void setSizeSlotFontId(uint8_t slot, int32_t fontId) { sizeSlotFontIds[slot] = fontId; }
+  // False when the layout failed (failLayout, or an allocation that did not fit): the caller
+  // discards the block. A set stop flag also abandons extraction; the caller discards the block.
   bool layoutAndExtractLines(const GfxRenderer& renderer, int fontId, uint16_t viewportWidth,
                              const std::function<void(std::unique_ptr<TextBlock>, uint32_t)>& processLine,
-                             bool includeLastLine = true);
+                             bool includeLastLine = true, int8_t characterSpacing = 0, uint8_t wordSpacingPercent = 100,
+                             size_t maxLines = SIZE_MAX, const bool* stopRequested = nullptr);
 };

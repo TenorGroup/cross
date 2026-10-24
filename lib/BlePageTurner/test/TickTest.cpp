@@ -22,6 +22,7 @@ class TickTest : public ::testing::Test {
   void SetUp() override {
     fake::reset();
     config.enabled = 1;
+    std::strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
     bleturner::begin(fake::hostFns(), config);
     // Starts run on their own task: queued, run by the test after the pass that asked.
     radio().queueStarts = true;
@@ -69,16 +70,6 @@ TEST_F(TickTest, HomeNeverStartsTheRadioInTheX3Profile) {
   for (int i = 0; i < 3; ++i) pass(s);
   EXPECT_EQ(radio().creates, 0u);
   EXPECT_FALSE(bleturner::beforeScreenChange(0, /*nextIsReader=*/true) && radio().running);
-}
-
-// The count of saved remotes is refreshed from the stack only while it runs: forgetting the last one
-// with the radio stopped must still keep the next book from bringing the stack up for nothing.
-TEST_F(TickTest, ForgettingTheLastRemoteWhileStoppedKeepsTheBookFromStartingIt) {
-  const std::vector<std::string> saved = radio().bonds;
-  for (const std::string& addr : saved) bleturner::forget(addr.c_str());
-  ASSERT_FALSE(radio().running);
-  pass(fake::reading());
-  EXPECT_EQ(radio().creates, 0u);
 }
 
 TEST_F(TickTest, StartsOnceTheBookShowsItsPageAndOncePerVisit) {
@@ -183,6 +174,32 @@ TEST_F(TickTest, TurnedOffOrCardTakenStopsTheRadio) {
   config.enabled = 0;
   pass(fake::reading(2));
   EXPECT_FALSE(radio().running);
+}
+
+TEST_F(TickTest, ReaderToggleRestartsWithoutChangingDefaultMappings) {
+  config.enabled = 0;
+  Scene scene = fake::reading();
+  pass(scene);
+  EXPECT_FALSE(radio().running);
+
+  config.enabled = 1;
+  scene.pageShown = false;
+  pass(scene);
+  EXPECT_FALSE(radio().running);
+  scene.pageShown = true;
+  pass(scene);
+  ASSERT_TRUE(radio().running);
+
+  config.enabled = 0;
+  EXPECT_TRUE(bleturner::switchOff());
+  pass(scene);
+  EXPECT_FALSE(radio().running);
+  config.enabled = 1;
+  pass(scene);
+  EXPECT_TRUE(radio().running);
+  EXPECT_EQ(config.remoteCount, 0);
+  EXPECT_EQ(bleturner::pageActionFor(config, bleturner::kUsageRight, 0), Action::NextPage);
+  EXPECT_EQ(bleturner::pageActionFor(config, bleturner::kUsageLeft, 0), Action::PrevPage);
 }
 
 // Device (d2, 51033 ms): a page release restarted the radio a starved build had just stopped;
@@ -340,12 +357,12 @@ TEST_F(TickTest, BondedPriorityPolicyIsArmedOnceBeforeTheFirstPoll) {
   EXPECT_EQ(radio().armCalls, 2u) << "a new visit arms it again";
 }
 
-TEST_F(TickTest, FirstPolicyAndEmptyPriorityArePropagatedToRadio) {
+TEST_F(TickTest, FirstPolicyAndChosenRemoteArePropagatedToRadio) {
   config.pick = 1;
   running();
   pass(fake::reading());
   EXPECT_EQ(radio().armedPick, 1);
-  EXPECT_EQ(radio().armedAddr, "");
+  EXPECT_EQ(radio().armedAddr, "7d:de:5c:bd:ae:ca");
   EXPECT_EQ(radio().armCalls, 1u);
 }
 
@@ -406,6 +423,36 @@ TEST_F(TickTest, FailedPairingKeepsTheChosenRemote) {
   radio().keys = {{bleturner::kUsageRight, 0, true}};
   EXPECT_TRUE(pass(fake::reading()));
   EXPECT_EQ(host().delivered, (std::vector<Action>{Action::NextPage}));
+}
+
+TEST_F(TickTest, FailedConnectRequestDoesNotPromoteCandidate) {
+  strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  strcpy(config.peerName, "Free3-R");
+  radio().connecting = true;
+  radio().connectResult = false;
+  EXPECT_FALSE(bleturner::pair("11:22:33:44:55:66", "Remote B"));
+  EXPECT_EQ(radio().connects, (std::vector<std::string>{"11:22:33:44:55:66"}));
+  radio().connecting = false;
+  radio().connected = true;
+  radio().addr = "11:22:33:44:55:66";
+  radio().name = "Remote B";
+  EXPECT_FALSE(bleturner::service());
+  EXPECT_STREQ(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  EXPECT_STREQ(config.peerName, "Free3-R");
+}
+
+TEST_F(TickTest, FailedStartDoesNotPromoteCandidate) {
+  strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  strcpy(config.peerName, "Free3-R");
+  radio().beginResult = false;
+  EXPECT_FALSE(bleturner::pair("11:22:33:44:55:66", "Remote B"));
+  EXPECT_TRUE(radio().connects.empty());
+  radio().connected = true;
+  radio().addr = "11:22:33:44:55:66";
+  radio().name = "Remote B";
+  EXPECT_FALSE(bleturner::service());
+  EXPECT_STREQ(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  EXPECT_STREQ(config.peerName, "Free3-R");
 }
 
 TEST_F(TickTest, PairedRemoteBecomesTheChosenOneOnceItLinks) {
@@ -579,19 +626,17 @@ TEST_F(TickTest, HoldsHeapWhileTheRadioOwnsOrAsksForIt) {
   EXPECT_FALSE(bleturner::holdsHeap()) << "switched off in settings: the book stops deferring at once";
 }
 
-// X3, 18/10/2026: BLE on and nothing paired. The radio started in every book visit and held about
+// X3, 18/10/2026: BLE on and no remote chosen. The radio started in every book visit and held about
 // 51 KB for 30 s for a remote that could never link.
-TEST_F(TickTest, NoRemotePairedNeverStartsTheRadioInTheBook) {
-  radio().bonds.clear();
-  bleturner::setSavedBonds(0);
+TEST_F(TickTest, NoRemoteChosenNeverStartsTheRadioInTheBook) {
+  config.peerAddr[0] = '\0';
   for (int i = 0; i < 10; ++i) pass(fake::reading());
   EXPECT_EQ(radio().creates, 0u);
 }
 
-// The settings screen starts the radio and leaves it up; with nothing paired it stops in the book.
-TEST_F(TickTest, ARadioLeftUpWithNoRemotePairedStopsInTheBook) {
-  radio().bonds.clear();
-  bleturner::setSavedBonds(0);
+// The settings screen starts the radio and leaves it up; with no remote chosen it stops in the book.
+TEST_F(TickTest, ARadioLeftUpWithNoRemoteChosenStopsInTheBook) {
+  config.peerAddr[0] = '\0';
   radio().running = true;
   Scene settings{};
   settings.where = bleturner::Where::Elsewhere;
@@ -599,16 +644,6 @@ TEST_F(TickTest, ARadioLeftUpWithNoRemotePairedStopsInTheBook) {
   ASSERT_TRUE(radio().running) << "outside the book it stays";
   pass(fake::reading());
   EXPECT_FALSE(radio().running);
-}
-
-// A remote paired by an older version may have no chosen address: the saved bond alone starts the
-// radio, and the stack reconnects the first bonded remote.
-TEST_F(TickTest, ASavedBondWithoutAChosenAddressStartsTheRadio) {
-  radio().bonds = {"7d:de:5c:bd:ae:ca"};
-  bleturner::setSavedBonds(1);
-  ASSERT_EQ(config.peerAddr[0], '\0');
-  pass(fake::reading());
-  EXPECT_EQ(radio().creates, 1u);
 }
 
 }  // namespace

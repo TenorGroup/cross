@@ -46,7 +46,7 @@ constexpr StrId LAYOUT_ROW_NAME_IDS[] = {StrId::STR_LINE_SPACING,     StrId::STR
                                          StrId::STR_WORD_SPACING,     StrId::STR_EXTRA_SPACING,
                                          StrId::STR_PARA_ALIGNMENT,   StrId::STR_SCREEN_MARGIN,
                                          StrId::STR_PARAGRAPH_INDENT};
-constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_FOCUS_READING, StrId::STR_HYPHENATION, StrId::STR_EMBEDDED_STYLE,
+constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_DROP_CAP, StrId::STR_HYPHENATION, StrId::STR_EMBEDDED_STYLE,
                                         StrId::STR_TEXT_AA, StrId::STR_READER_INK_WEIGHT};
 
 // One label set for every spacing row: line, letter and paragraph spacing share
@@ -423,7 +423,7 @@ ugly::QuestionSheet::Row TextSettingsActivity::formRow(void* context, const int 
   } else {
     int value = setting->valuePtr ? SETTINGS.*setting->valuePtr : 0;
     if (setting->nameId == StrId::STR_READER_INK_WEIGHT) value = readerInk::clamp(value);
-    if (setting->nameId == StrId::STR_FOCUS_READING) value = readerSpacing::clampDropCapMode(value);
+    if (setting->nameId == StrId::STR_DROP_CAP) value = readerSpacing::clampDropCapMode(value);
     if (setting->type == SettingType::TOGGLE) {
       out.count = 2;
       out.selected = value != 0;

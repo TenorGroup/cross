@@ -51,7 +51,7 @@ class UglyTouchX4ProTest(unittest.TestCase):
 
     def test_read_on_and_the_home_key_lands_on_the_diary(self):
         log, _ = self.run_card(self.card(), '2000:TAP:120,450;4500:HOME;6500:QUIT')
-        self.assertEqual(entered(log), ['Boot', 'UglyDiary', 'TxtReader', 'UglyDiary'], log[-1500:])
+        self.assertEqual(entered(log), ['Boot', 'UglyDiary', 'EpubReader', 'UglyDiary'], log[-1500:])
 
     def test_desk_objects_and_one_tier_back_at_a_time(self):
         # the diary's "look at the whole desk" (its last line, under the title the diary has had since rc.2), the clock

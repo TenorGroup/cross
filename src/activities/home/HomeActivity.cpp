@@ -1883,7 +1883,7 @@ HomeActivity::CoverSize HomeActivity::cardCoverSize(const int index) {
     if (cardCoverSizes[index].width > 0) return cardCoverSizes[index];
   }
   ImageDimensions dims{};
-  if (FsHelpers::hasEpubExtension(book.path)) {
+  if (FsHelpers::hasReflowableBookExtension(book.path)) {
     Epub epub(book.path, "/.crosspoint");
     std::string href;
     if (coverref::load(epub.getCachePath(), href) && href.empty()) return {};
@@ -2537,7 +2537,7 @@ void HomeActivity::wantThumb(const int index) {
     queueTouchThumb(index, cardThumbWidth, cardThumbHeight);
     return;
   }
-  if (!FsHelpers::hasEpubExtension(recentBooks[index].path)) return;
+  if (!FsHelpers::hasReflowableBookExtension(recentBooks[index].path)) return;
   const uint32_t id = tenorchrome::kTouchShell
                           ? fnv(fnv(fnv(2166136261u, recentBooks[index].path), &cardThumbWidth, sizeof(cardThumbWidth)),
                                 &cardThumbHeight, sizeof(cardThumbHeight))
@@ -2755,7 +2755,7 @@ void HomeActivity::queueIdleCovers() {
     const auto& slot = inkSlots[i];
     if (slot.book < 0 || slot.book >= static_cast<int>(recentBooks.size())) continue;
     const auto& book = recentBooks[slot.book];
-    if (book.coverBmpPath.empty() || !FsHelpers::hasEpubExtension(book.path)) continue;
+    if (book.coverBmpPath.empty() || !FsHelpers::hasReflowableBookExtension(book.path)) continue;
     idlework::Job job;
     job.key = fnv(fnv(fnv(fnv(2166136261u, book.path), &slot.rect.w, sizeof(slot.rect.w)), &slot.rect.h,
                       sizeof(slot.rect.h)), &homeGraySelected, sizeof(homeGraySelected));
@@ -2879,7 +2879,7 @@ HomeRecentLayout HomeActivity::recentLayout() {
 }
 
 void HomeActivity::queueTouchThumb(const int index, const int width, const int height) {
-  if (!FsHelpers::hasEpubExtension(recentBooks[index].path)) return;
+  if (!FsHelpers::hasReflowableBookExtension(recentBooks[index].path)) return;
   const uint32_t id = fnv(fnv(fnv(fnv(2166136261u, recentBooks[index].path), &width, sizeof(width)),
                               &height, sizeof(height)), &homeGraySelected, sizeof(homeGraySelected));
   for (const auto tried : thumbTried) if (tried == id) return;
@@ -3058,7 +3058,7 @@ std::string HomeActivity::holderPath(const int width, const int height) const {
 // the plain frame, so the placeholder never comes up between 2 frames of a book that has a cover.
 bool HomeActivity::coverless(const int index) const {
   const auto& book = recentBooks[index];
-  if (book.coverBmpPath.empty() || !FsHelpers::hasEpubExtension(book.path)) return true;
+  if (book.coverBmpPath.empty() || !FsHelpers::hasReflowableBookExtension(book.path)) return true;
   std::string href;
   // An empty path in the reader's cover.ref is a book without a cover; no cover.ref, the book is asked.
   return coverref::load(book.coverBmpPath.substr(0, book.coverBmpPath.rfind('/')), href) &&

@@ -28,10 +28,11 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   explicit EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& title,
                                   const int currentPage, const int totalPages, const int bookProgressPercent,
                                   const uint8_t currentOrientation, const bool hasFootnotes, bool hasBookmarks,
-                                  bool textOnly = false);
+                                  bool hasClippings, bool textOnly = false);
 
   void render(RenderLock&&) override;
   bool handleHomeGesture() override;
+  bool acceptsRemoteInput() const override { return routingReady(); }
 
  private:
   // Row storage for the active tab. menuItems is at most MAX_MENU_ITEMS, so a

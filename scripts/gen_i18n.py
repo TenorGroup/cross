@@ -44,6 +44,10 @@ I18N_NAMESPACE_CLOSE = "}  // namespace i18n_strings"
 YAML_KEY_RE = re.compile(r'^([A-Za-z_]\w*)\s*:\s*"(.*)"$', flags=re.ASCII)
 CPP_IDENTIFIER_RE = re.compile(r"^[A-Za-z_]\w*$", flags=re.ASCII)
 STR_KEY_RE = re.compile(r"\bSTR_\w+\b", flags=re.ASCII)
+# Offset-table value meaning "this language has no string of its own, read English". Keep it equal to
+# ENGLISH_FALLBACK in lib/I18n/I18n.cpp. The last real offset a blob can hold is one below it.
+ENGLISH_FALLBACK = 0xFFFF
+MAX_BLOB_BYTES = ENGLISH_FALLBACK - 1
 
 
 # ---------------------------------------------------------------------------
@@ -675,7 +679,10 @@ def generate_strings_cpp(
 
     # Per-language flat string blobs and offset tables.
     # Non-English languages skip strings identical to English; their offset
-    # tables use bit 15 (0x8000) to flag "use English blob at offset & 0x7FFF".
+    # tables hold ENGLISH_FALLBACK (0xFFFF) for those and I18n::get reads the string
+    # through OFFSETS_EN. Every other value is a full 16-bit offset into the language's
+    # own blob, so a blob may reach 65,534 bytes (the 15-bit flag capped it at 32,767,
+    # which the Vietnamese strings outgrew in v1.1.0).
     lines.append(I18N_NAMESPACE_OPEN)
     lines.append("")
 
@@ -695,10 +702,10 @@ def generate_strings_cpp(
             for s in lang_strings:
                 offsets.append(current_offset)
                 current_offset += len(s.encode("utf-8")) + 1
-            if current_offset > 0x7FFF:
+            if current_offset > MAX_BLOB_BYTES:
                 raise ValueError(
                     f"Language {code}: blob size ({current_offset} bytes) exceeds "
-                    "15-bit offset limit (32767)"
+                    f"16-bit offset limit ({MAX_BLOB_BYTES})"
                 )
             en_offsets = list(offsets)
             blob_strings = lang_strings
@@ -708,15 +715,15 @@ def generate_strings_cpp(
             blob_strings = []
             for i, (s, en_s) in enumerate(zip(lang_strings, en_strings)):
                 if s == en_s:
-                    offsets.append(en_offsets[i] | 0x8000)
+                    offsets.append(ENGLISH_FALLBACK)
                 else:
                     offsets.append(current_offset)
                     current_offset += len(s.encode("utf-8")) + 1
                     blob_strings.append(s)
-            if current_offset > 0x7FFF:
+            if current_offset > MAX_BLOB_BYTES:
                 raise ValueError(
                     f"Language {code}: blob size ({current_offset} bytes) exceeds "
-                    "15-bit offset limit (32767)"
+                    f"16-bit offset limit ({MAX_BLOB_BYTES})"
                 )
 
         # Flat string data blob — all strings concatenated with \0 separators.

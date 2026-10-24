@@ -11,6 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_reader_menu_runtime_v1052 import function
 
 REPO = Path(__file__).resolve().parents[2]
+# The one definition of the section file version (D6): the harness reads it, it does not restate it.
+SECTION_VERSION = re.search(r'SECTION_FILE_VERSION = (\d+);', (REPO / 'lib/Epub/Epub/ReaderRenderSpec.h').read_text()).group(1)
 
 
 def run_case(body):
@@ -67,9 +69,9 @@ struct ReaderRenderSpec {
   int fontId = 0;
   float lineCompression = 1.0f;
   uint8_t extraParagraphSpacing = 0;
-  uint8_t paragraphIndent = 0;
-  int8_t letterSpacing = 0;
-  uint8_t wordSpacing = 0;
+  uint8_t paragraphIndentSpaces = 2;
+  int8_t characterSpacing = 0;
+  uint8_t wordSpacingPercent = 100;
   uint8_t paragraphAlignment = 0;
   uint8_t layoutKeyPadding = 0;
   uint16_t viewportWidth = 0;
@@ -78,8 +80,9 @@ struct ReaderRenderSpec {
   bool embeddedStyle = true;
   uint8_t imageRendering = 0;
   uint8_t dropCapMode = 1;
+  bool focusReadingEnabled = false;
 };
-constexpr uint8_t SECTION_FILE_VERSION = 56;
+constexpr uint8_t SECTION_FILE_VERSION = ''' + SECTION_VERSION + r''';
 ''' + layout_key + r'''
 ReaderRenderSpec readerRenderSpecFor(const uint8_t fontSize) {
   ReaderRenderSpec spec;

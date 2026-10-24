@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "ClippingStore.h"
 #include "CrossPointState.h"
 #include "RecentBooksStore.h"
 #include "activities/util/ConfirmationActivity.h"
@@ -26,12 +27,10 @@ constexpr size_t NAME_BUFFER_SIZE = 500;
 
 std::string getBookCachePath(const std::string& path) {
   const char* prefix = nullptr;
-  if (FsHelpers::hasEpubExtension(path)) {
+  if (FsHelpers::hasReflowableBookExtension(path)) {
     prefix = "epub_";
   } else if (FsHelpers::hasXtcExtension(path)) {
     prefix = "xtc_";
-  } else if (FsHelpers::hasTxtExtension(path) || FsHelpers::hasMarkdownExtension(path)) {
-    prefix = "txt_";
   } else {
     return "";
   }
@@ -74,9 +73,9 @@ std::string moveFile(const std::string& oldPath, const std::string& oldEntry, co
 
   const std::string oldCachePath = getBookCachePath(oldPath);
   const std::string newCachePath = getBookCachePath(newPath);
-  const bool isEpub = FsHelpers::hasEpubExtension(oldPath);
-  const std::string oldBookmarkPath = isEpub ? BookmarkUtil::getBookmarkPath(oldPath) : "";
-  const std::string newBookmarkPath = isEpub ? BookmarkUtil::getBookmarkPath(newPath) : "";
+  const bool hasBookmarks = FsHelpers::hasReflowableBookExtension(oldPath);
+  const std::string oldBookmarkPath = hasBookmarks ? BookmarkUtil::getBookmarkPath(oldPath) : "";
+  const std::string newBookmarkPath = hasBookmarks ? BookmarkUtil::getBookmarkPath(newPath) : "";
   bool cacheMoved = false;
   bool bookmarksMoved = false;
   if (!moveStatePath(oldCachePath, newCachePath, cacheMoved)) return {};
@@ -84,7 +83,7 @@ std::string moveFile(const std::string& oldPath, const std::string& oldEntry, co
     rollBackStatePath(oldCachePath, newCachePath, cacheMoved);
     return {};
   }
-  if (!Storage.rename(oldPath.c_str(), newPath.c_str())) {
+  if (!ClippingStore::moveBook(oldPath, newPath)) {
     LOG_ERR("FileBrowser", "Failed to rename file: %s -> %s", oldPath.c_str(), newPath.c_str());
     rollBackStatePath(oldBookmarkPath, newBookmarkPath, bookmarksMoved);
     rollBackStatePath(oldCachePath, newCachePath, cacheMoved);
@@ -117,8 +116,7 @@ bool remove(const std::string& fullPath) {
 
   if (!file.isDirectory()) {
     file.close();
-    clearBookCache(fullPath);
-    return Storage.remove(fullPath.c_str());
+    return removeBookFile(fullPath);
   }
   file.close();
 
@@ -176,8 +174,7 @@ bool remove(const std::string& fullPath) {
       if (isDir) {
         stack.push_back({std::move(entryPath), false});
       } else {
-        clearBookCache(entryPath);
-        if (!Storage.remove(entryPath.c_str())) {
+        if (!removeBookFile(entryPath)) {
           LOG_ERR("FileBrowser", "Failed to remove file: %s", entryPath.c_str());
           return false;
         }
@@ -194,7 +191,7 @@ void confirmDelete(Activity& host, GfxRenderer& renderer, MappedInputManager& in
   const size_t end = path.size() > 1 && path.back() == '/' ? path.size() - 1 : path.size();
   const std::string name = utf8ComposeNfc(path.substr(path.find_last_of('/', end - 1) + 1, end - path.find_last_of('/', end - 1) - 1));
   auto confirmation = makeUniqueNoThrow<ConfirmationActivity>(
-      renderer, input, tr(STR_DELETE) + std::string("? "), name,
+      renderer, input, tr(STR_DELETE_ITEM_CONFIRM), name,
       ConfirmationContent{tr(STR_ALERT_FILE_QUESTION), name + " " + tr(STR_ALERT_FILE_MESSAGE_SUFFIX),
                           tr(STR_ALERT_FILE_ACTION_SHORT), tr(STR_ALERT_FILE_ACTION_LONG), "", true});
   if (!confirmation) {

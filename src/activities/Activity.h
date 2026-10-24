@@ -38,6 +38,8 @@ class Activity {
   virtual ~Activity() = default;
   virtual void onEnter();
   virtual void onExit();
+  // Last chance to queue activity-owned state before sleep events are drained.
+  virtual void prepareForSleep() {}
   virtual void loop() {}
   virtual void onTick() {}
   virtual void onPause() {}
@@ -77,6 +79,7 @@ class Activity {
   virtual bool isReaderActivity() const { return false; }
   // True when this activity calls HalTiltSensor::update() from its own loop.
   virtual bool managesTiltSensor() const { return false; }
+  virtual bool acceptsRemoteInput() const { return false; }
   // Returns true when the activity schedules its own forced refresh.
   virtual bool handleForcedRefresh() { return false; }
   virtual bool isHomeActivity() const { return false; }

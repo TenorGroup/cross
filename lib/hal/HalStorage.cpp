@@ -1,8 +1,10 @@
 #include "HalStorage.h"
 
 #include <FS.h>  // need to be included before SdFat.h for compatibility with FS.h's File class
+#include <HeapFloor.h>
 #include <Logging.h>
 #include <SDCardManager.h>
+#include <esp_heap_caps.h>
 #if FREEINK_CAP_USB_MSC
 #include <UsbMassStorage.h>
 #endif
@@ -92,16 +94,12 @@ void HalStorage::prepareForDeepSleep() {
   SDCard.shutdown();
 }
 
-#if FREEINK_CAP_USB_MSC && !FREEINK_SD_SDMMC
-#error "USB Drive requires an SDMMC-backed storage profile"
-#endif
-
 bool HalStorage::beginUsbDrive() {
 #if FREEINK_CAP_USB_MSC
   StorageLock lock;
   auto* const blockDevice = SDCard.detachFilesystemForRawAccess();
   if (!blockDevice) {
-    LOG_ERR("USB", "USB Drive requires a mounted SDMMC filesystem");
+    LOG_ERR("USB", "USB Drive requires a mounted SD filesystem");
     return false;
   }
 
@@ -185,6 +183,28 @@ bool HalStorage::readFileToStream(const char* path, Print& out, size_t chunkSize
 
 size_t HalStorage::readFileToBuffer(const char* path, char* buffer, size_t bufferSize, size_t maxBytes) {
   HAL_STORAGE_WRAPPED_CALL(readFileToBuffer, path, buffer, bufferSize, maxBytes);
+}
+
+// Composed of already-locked HalStorage/HalFile operations; needs no
+// StorageLock of its own.
+bool HalStorage::readFileToString(const char* moduleName, const std::string& path, size_t cap, std::string& out) {
+  out.clear();
+  HalFile file;
+  if (!openFileForRead(moduleName, path, file)) return false;
+  if (file.isDirectory()) return false;
+  const size_t size = file.fileSize();
+  if (size == 0 || size > cap) return false;
+  // string growth is a bare allocation under -fno-exceptions; forecast it through the heap floor
+  // first so a large file on a fragmented heap fails soft instead of abort()ing or eating the floor.
+  if (size + 512 >= heapfloor::kBigBytes &&
+      !heapfloor::leaves(size + 512, size + 512, heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                         heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT))) {
+    heapfloor::refusals.fetch_add(1, std::memory_order_relaxed);
+    LOG_ERR(moduleName, "readFileToString under heap floor: %u bytes for %s", static_cast<unsigned>(size), path.c_str());
+    return false;
+  }
+  out.resize(size);
+  return file.read(out.data(), size) == static_cast<int>(size);
 }
 
 bool HalStorage::writeFile(const char* path, const String& content) {
@@ -302,6 +322,10 @@ bool HalStorage::exists(const char* path) { HAL_STORAGE_WRAPPED_CALL(exists, pat
 bool HalStorage::remove(const char* path) { HAL_STORAGE_WRAPPED_CALL(remove, path); }
 bool HalStorage::rename(const char* oldPath, const char* newPath) {
   HAL_STORAGE_WRAPPED_CALL(rename, oldPath, newPath);
+}
+
+bool HalStorage::replaceFile(const char* tmpPath, const char* path) {
+  HAL_STORAGE_WRAPPED_CALL(replaceFile, tmpPath, path);
 }
 
 namespace {
@@ -429,6 +453,7 @@ bool HalFile::seekSet(size_t offset) { HAL_FILE_WRAPPED_CALL(seekSet, offset); }
 #ifdef TENOR_UI_ACCEPTANCE
 #undef HAL_FILE_TRACED_SEEK
 #endif
+bool HalFile::truncate(const uint64_t length) { HAL_FILE_WRAPPED_CALL(truncate, length); }
 int HalFile::available() const { HAL_FILE_WRAPPED_CALL(available, ); }
 size_t HalFile::position() const { HAL_FILE_WRAPPED_CALL(position, ); }
 #ifdef TENOR_UI_ACCEPTANCE

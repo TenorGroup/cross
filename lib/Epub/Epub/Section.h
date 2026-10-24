@@ -1,4 +1,5 @@
 #pragma once
+#include <deque>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -52,10 +53,13 @@ class Section {
   void ddClose(BuildContext& ctx, bool keep, bool complete);
   // Held only while an incremental build is in progress (see startBuild). Carries the
   // live parser plus the strings it references (the parser stores them by reference)
-  // and the temporary on-disk page-offset table.
+  // and the temporary on-disk page-offset table. The table stays a file, not a std::deque of
+  // PageLutEntry: it is written a block at a time (lutPending), so a 5,000-page chapter holds no
+  // per-page RAM. The parser's anchor list and the parked copy of it are deques, which grow in small
+  // chunks (a vector doubling needs one large free block, and a failed allocation aborts).
   struct BuildContext {
     std::unique_ptr<ChapterHtmlSlimParser> parser;
-    std::vector<std::pair<std::string, uint16_t>> parkedAnchors;
+    std::deque<std::pair<std::string, uint16_t>> parkedAnchors;
     // Hashes of the spine's TOC anchors, read from the TOC once per build and shared with every
     // parser it resumes (see makeBuildParser).
     std::shared_ptr<const std::vector<uint32_t>> tocAnchors;
@@ -156,6 +160,7 @@ class Section {
   // Read a page already laid out by the in-progress build (page < build LUT size), from
   // the partially-written tmp .bin without disturbing the build's write cursor.
   std::unique_ptr<Page> loadPageDuringBuild(int page);
+  bool openAnchorMap(HalFile& anchorFile, uint16_t& count) const;
 
  public:
   uint16_t pageCount = 0;
@@ -184,15 +189,17 @@ class Section {
   bool startBuild(const ReaderRenderSpec& spec, const std::function<void()>& popupFn = nullptr);
   // Lay out up to maxPages more pages (maxPages <= 0 = build to completion). Returns
   // false on error (the build is abandoned). Sets isBuildComplete() when finished.
-  bool buildSomeMore(int maxPages);
+  // yieldNow, when given, is asked after every parse step (1 KB of HTML, whose callbacks may
+  // lay out and write several pages); true ends the call early so the caller can serve input.
+  // The next call resumes where this one left off.
+  bool buildSomeMore(int maxPages, bool (*yieldNow)() = nullptr);
   bool isBuilding() const { return static_cast<bool>(build_); }
   // Keep completed staging pages while releasing parser/CSS memory for rendering.
   // Failure leaves the parser resident so the caller can use suspendBuild().
   bool parkBuild();
   bool isBuildParked() const { return build_ && !build_->parser; }
 #ifdef TENOR_SECTION_HOST_TEST
-  const void* parkedAnchorsDataForTest() const;
-  size_t parkedAnchorsCapacityForTest() const;
+  size_t parkedAnchorCountForTest() const;
 #endif
   // True after buildSomeMore() returned false because the render heap fell below the
   // per-step floor. The build stays parked or resident instead of being abandoned, so
@@ -235,6 +242,8 @@ class Section {
   // Resolve an anchor from the in-progress build first, then the on-disk anchor map
   // (covers finalized sections and partials from a previous session).
   std::optional<uint16_t> findAnchor(const std::string& anchor) const;
+  // Select a TOC boundary without reopening the anchor map for every story.
+  int getTocIndexForPage(int page) const;
 
   // True if this spine's unzipped HTML is already cached, so a build won't pay the (multi-second on a
   // giant spine) zip inflation. Lets the reader skip the indexing popup on a fast reopen/rebuild.

@@ -17,6 +17,13 @@ bool writePod(HalFile& file, const T& value) {
   return file.write(reinterpret_cast<const uint8_t*>(&value), sizeof(T)) == sizeof(T);
 }
 
+// The try* functions below are the plain CrossPoint variants (ClippingStore reads through them):
+// no zeroing of the value, no bool check. Cache and settings readers use readPod/readString.
+template <typename T>
+bool tryWritePod(HalFile& file, const T& value) {
+  return file.write(reinterpret_cast<const uint8_t*>(&value), sizeof(T)) == sizeof(T);
+}
+
 template <typename T>
 bool readPod(std::istream& is, T& value) {
   value = {};
@@ -45,6 +52,11 @@ bool readPod(HalFile& file, T& value) {
   return false;
 }
 
+template <typename T>
+bool tryReadPod(HalFile& file, T& value) {
+  return file.read(reinterpret_cast<uint8_t*>(&value), sizeof(T)) == sizeof(T);
+}
+
 inline bool writeString(std::ostream& os, const std::string& s) {
   if (s.size() > UINT32_MAX) return false;
   const uint32_t len = s.size();
@@ -55,6 +67,11 @@ inline bool writeString(HalFile& file, const std::string& s) {
   if (s.size() > UINT32_MAX) return false;
   const uint32_t len = s.size();
   return writePod(file, len) && (len == 0 || file.write(reinterpret_cast<const uint8_t*>(s.data()), len) == len);
+}
+
+inline bool tryWriteString(HalFile& file, const std::string& s) {
+  const uint32_t len = s.size();
+  return tryWritePod(file, len) && (len == 0 || file.write(reinterpret_cast<const uint8_t*>(s.data()), len) == len);
 }
 
 // A cache record reader. Failure is sticky, including seeks and short reads, so
@@ -127,5 +144,18 @@ inline bool readString(std::istream& is, std::string& s, size_t maxBytes = 4096)
 inline bool readString(HalFile& file, std::string& s, size_t maxBytes = 4096) {
   CheckedReader reader(file);
   return reader.string(s, maxBytes);
+}
+
+inline bool tryReadString(HalFile& file, std::string& s, const size_t maxLength) {
+  uint32_t len = 0;
+  if (!tryReadPod(file, len)) return false;
+  const int remaining = file.available();
+  if (static_cast<size_t>(len) > maxLength || static_cast<size_t>(len) > s.max_size() ||
+      len > static_cast<uint32_t>(std::numeric_limits<int>::max()) || remaining < 0 ||
+      len > static_cast<uint32_t>(remaining)) {
+    return false;
+  }
+  s.resize(len);
+  return len == 0 || file.read(&s[0], len) == static_cast<int>(len);
 }
 }  // namespace serialization

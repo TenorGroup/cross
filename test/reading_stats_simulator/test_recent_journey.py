@@ -205,12 +205,12 @@ class RecentJourneyTest(unittest.TestCase):
                     self.assertEqual(self.so_hang_cuoi(log), mong_doi,
                                      f"so hang sai voi {so_sach} sach (thieu {thieu}): {frames(log)}")
                     if hang_cuoi is not None:
-                        self.assertIn("Entering activity: TxtReader", log, "CONFIRM o hang cuoi phai mo sach")
+                        self.assertIn("Entering activity: EpubReader", log, "CONFIRM o hang cuoi phai mo sach")
                         self.assertEqual(json.loads((self.store / "state.json").read_text())["openEpubPath"],
                                          hang_cuoi,
                                          "hang cuoi phai la sach gan nhat thu nam (bo qua tep thieu)")
                     else:
-                        self.assertNotIn("Entering activity: TxtReader", log, "0 sach: CONFIRM khong duoc mo gi")
+                        self.assertNotIn("Entering activity: EpubReader", log, "0 sach: CONFIRM khong duoc mo gi")
                     DO_DUOC[f"rows_{so_sach}_thieu_{len(thieu)}"] = self.so_hang_cuoi(log)
                 finally:
                     tra_lai()
@@ -221,7 +221,7 @@ class RecentJourneyTest(unittest.TestCase):
         self.dat_state()
         # Mot nhip CONFIRM ngay khi vao Home = HANG 1 = the dang hien sach moi nhat.
         log = self.chay("2500:CONFIRM;4500:BACK;5500:QUIT", shots=[(4000, "the-dau")])
-        self.assertIn("Entering activity: TxtReader", log)
+        self.assertIn("Entering activity: EpubReader", log)
         self.assertEqual(json.loads((self.store / "state.json").read_text())["openEpubPath"], "/book1.txt")
         recent = json.loads((self.store / "recent.json").read_text())["books"]
         self.assertEqual([b["path"] for b in recent[:5]],
@@ -296,11 +296,11 @@ class RecentJourneyTest(unittest.TestCase):
         # HANG 1 -> RIGHT -> HANG 2 -> RIGHT -> HANG 3 = book3.
         log = self.chay("2500:RIGHT;3200:RIGHT;4200:CONFIRM;6500:BACK;8000:CONFIRM;9800:BACK;11000:QUIT",
                         shots=[(5800, "sau-back")])
-        self.assertEqual(log.count("Entering activity: TxtReader"), 2, "phai mo trinh doc dung hai lan")
+        self.assertEqual(log.count("Entering activity: EpubReader\n"), 2, "phai mo trinh doc dung hai lan")
         self.assertEqual(json.loads((self.store / "state.json").read_text())["openEpubPath"], "/book3.txt",
                          "nhip CONFIRM thu hai phai mo lai dung cuon vua doc, khong mo cuon khac")
         # Sau BACK, Home vao lai o HANG 1 va sach do la sach moi nhat (the Doc tiep).
-        after_back = log.split("Entering activity: TxtReader", 1)[1].split("Exiting activity: Home", 1)[-1]
+        after_back = log.split("Entering activity: EpubReader", 1)[1].split("Exiting activity: Home", 1)[-1]
         self.assertIn("Entering activity: Home", after_back)
         hang_sau_back = [row for row, _, _ in frames(after_back)]
         self.assertEqual(hang_sau_back[0], 1, f"con tro sau BACK phai o HANG 1: {hang_sau_back}")
@@ -324,7 +324,7 @@ class RecentJourneyTest(unittest.TestCase):
         self.assertEqual(self.so_hang_cuoi(log), 4, f"tep thieu khong duoc chiem hang: {frames(log)}")
         # Bon sach con lai (book1,book2,book4,book5): hang cuoi la book5.
         self.assertEqual(json.loads((self.store / "state.json").read_text())["openEpubPath"], "/book5.txt")
-        self.assertEqual(log.count("Entering activity: TxtReader"), 1, "khong duoc mo nham cuon khac")
+        self.assertEqual(log.count("Entering activity: EpubReader\n"), 1, "khong duoc mo nham cuon khac")
         DO_DUOC["rows_sau_khi_mat_tep"] = self.so_hang_cuoi(log)
 
     # --- 5. thanh trang thai TAT --------------------------------------------

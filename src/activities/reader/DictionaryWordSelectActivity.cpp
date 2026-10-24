@@ -56,6 +56,15 @@ void indexBuildYield(void*) { vTaskDelay(1); }
 void DictionaryWordSelectActivity::onEnter() {
   Activity::onEnter();
   fontId = SETTINGS.getReaderFontId();
+  if (!lookupText.empty()) {
+    // The words were chosen on a ClipSelectionActivity: no selection here, only the lookup.
+    lookupOnly = true;
+    lookupPending = true;
+    popupMsg = StrId::STR_DICT_LOOKING_UP;
+    popup = Popup::Busy;
+    requestUpdate();
+    return;
+  }
   lineHeight = renderer.getLineHeight(fontId);
   // No null check: a failed allocation just disables the differential
   // fast path (drawHighlightWithSnapshot skips the read), keeping the
@@ -205,14 +214,19 @@ void DictionaryWordSelectActivity::performLookup() {
   std::string definition;
   std::string headword;
   Dictionary::LookupResult result = Dictionary::LookupResult::NotFound;
-  std::string phrase = words[selected].text;
-  // Build at most three adjacent words on the same rendered line. The policy
-  // helper tries the longest phrase first, then backs off to one token while
-  // preserving UTF-8 and Vietnamese marks.
-  for (int i = selected + 1; i < static_cast<int>(words.size()) && i < selected + 3; ++i) {
-    if (words[i].row != words[selected].row) break;
-    phrase.push_back(' ');
-    phrase += words[i].text;
+  std::string phrase;
+  if (lookupOnly) {
+    phrase = lookupText;
+  } else {
+    phrase = words[selected].text;
+    // Build at most three adjacent words on the same rendered line. The policy
+    // helper tries the longest phrase first, then backs off to one token while
+    // preserving UTF-8 and Vietnamese marks.
+    for (int i = selected + 1; i < static_cast<int>(words.size()) && i < selected + 3; ++i) {
+      if (words[i].row != words[selected].row) break;
+      phrase.push_back(' ');
+      phrase += words[i].text;
+    }
   }
   const auto candidates = DictionaryLookupPolicy::phraseCandidates(phrase);
   bool found = false;
@@ -235,6 +249,30 @@ void DictionaryWordSelectActivity::performLookup() {
       !heapfloor::leaves(definition.size(), definition.size(), ESP.getFreeHeap(), ESP.getMaxAllocHeap())) {
     found = false;
     result = Dictionary::LookupResult::LowMemory;
+  }
+  if (found && lookupOnly) {
+    // The definition screen follows links in the definition (recursive lookup) and hands its result back;
+    // this controller has nothing left to show, so it ends with it.
+    {
+      RenderLock lock;
+      popup = Popup::None;
+      page.reset();
+    }
+    auto activity = makeUniqueNoThrow<DictionaryDefinitionActivity>(renderer, mappedInput, std::move(headword),
+                                                                    std::move(definition), dict.definitionsAreHtml());
+    if (!activity || !activity->enableLookup(dict, std::move(phrase))) {
+      LOG_ERR("DICT", "OOM: definition activity");
+      popup = Popup::Error;
+      popupMsg = StrId::STR_DICT_LOW_MEMORY;
+      popupTime = millis();
+      requestUpdate();
+      return;
+    }
+    startActivityForResult(std::move(activity), [this](const ActivityResult& result) {
+      setResult(ActivityResult{result});
+      finish();
+    });
+    return;
   }
   if (found) {
     popup = Popup::None;
@@ -339,6 +377,16 @@ void DictionaryWordSelectActivity::confirmQuotation() {
 }
 
 void DictionaryWordSelectActivity::loop() {
+  if (lookupPending) {
+    lookupPending = false;
+    performLookup();
+    return;
+  }
+  if (lookupOnly) {
+    // A miss or an error is shown for a moment and the reader is back.
+    if ((popup == Popup::NotFound || popup == Popup::Error) && millis() - popupTime >= POPUP_DURATION_MS) finish();
+    return;
+  }
   if (popup == Popup::Saved) {
     if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
         mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
@@ -550,9 +598,9 @@ void DictionaryWordSelectActivity::render(RenderLock&&) {
   // the in-RAM glyph cache during the real draw.
   auto* fcm = renderer.getFontCacheManager();
   auto scope = fcm->createPrewarmScope();
-  page->render(renderer, fontId, marginLeft, marginTop);
+  if (page) page->render(renderer, fontId, marginLeft, marginTop);
   scope.endScanAndPrewarm();
-  page->render(renderer, fontId, marginLeft, marginTop);
+  if (page) page->render(renderer, fontId, marginLeft, marginTop);
 
   if (!words.empty()) {
     if (quoteMode && anchor >= 0) {
@@ -571,7 +619,7 @@ void DictionaryWordSelectActivity::render(RenderLock&&) {
       drawHighlightWithSnapshot();
   }
 
-  drawHints();
+  if (!lookupOnly) drawHints();
 
   if (popup != Popup::None) {
     // The popup overdraws the page, so the snapshot no longer matches the
