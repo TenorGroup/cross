@@ -55,6 +55,12 @@
 #include "WebPathPolicy.h"
 #include "WifiCredentialStore.h"
 #include "shells/Shell.h"
+#include "util/BookCacheUtils.h"
+#include "util/DictionaryRegistry.h"
+#include "util/FirmwareIdentity.h"
+#include "util/PluginHttp.h"
+#include "util/PluginLocations.h"
+#include "util/TaskWatchdog.h"
 #include "util/Timezones.h"
 #include "WifiPowerSaveGuard.h"
 #include "html/FilesPageHtml.generated.h"
@@ -3577,13 +3583,13 @@ void CrossPointWebServer::handleFontUploadData() {
       while (remaining > 0) {
         size_t space = UploadState::UPLOAD_BUFFER_SIZE - fontUpload.bufferPos;
         size_t chunk = (remaining < space) ? remaining : space;
-        memcpy(upload.buffer.get() + fontUpload.bufferPos, src, chunk);
+        memcpy(this->upload.buffer.get() + fontUpload.bufferPos, src, chunk);
         fontUpload.bufferPos += chunk;
         src += chunk;
         remaining -= chunk;
 
         if (fontUpload.bufferPos >= UploadState::UPLOAD_BUFFER_SIZE) {
-          if (fontUpload.file.write(upload.buffer.get(), fontUpload.bufferPos) != fontUpload.bufferPos) {
+          if (fontUpload.file.write(this->upload.buffer.get(), fontUpload.bufferPos) != fontUpload.bufferPos) {
             LOG_ERR("WEB", "Font upload write failed: %s", fontUpload.filePath.c_str());
             fontUpload.valid = false;
             fontUpload.code = "write";
@@ -3603,7 +3609,7 @@ void CrossPointWebServer::handleFontUploadData() {
       fontUpload.valid = fontUpload.valid && (fontUpload.vector ? fontUpload.check.complete() : fontUpload.magicChecked);
       // Flush remaining buffer
       if (fontUpload.valid && fontUpload.bufferPos > 0) {
-        if (fontUpload.file.write(upload.buffer.get(), fontUpload.bufferPos) != fontUpload.bufferPos) {
+        if (fontUpload.file.write(this->upload.buffer.get(), fontUpload.bufferPos) != fontUpload.bufferPos) {
           LOG_ERR("WEB", "Font upload write failed: %s", fontUpload.filePath.c_str());
           fontUpload.valid = false;
         }
