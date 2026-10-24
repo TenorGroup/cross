@@ -86,18 +86,17 @@ def la_cuoi_tuan(ma):
     return datetime.date(ma // 10000, ma // 100 % 100, ma % 100).weekday() >= 5
 
 
-def _dem_dai_ink(image, y0, y1, toi_thieu=1):
-    """So dai dong chu (nhom hang co muc) trong vung [y0, y1); mot hang trang tach hai dai.
-    Hang co muc khi it nhat `toi_thieu` diem lay mau (cot chan) toi."""
+def _dem_dai_ink(image, y0, y1, khoang=1):
+    """So dai dong chu (nhom hang co muc) trong vung [y0, y1); `khoang` hang trang lien nhau moi tach hai dai."""
     px = image.load()
     x0, x1 = 24, image.width - 24
     dai = 0
-    trong = True
+    trong = khoang
     for y in range(max(0, y0), min(image.height, y1)):
-        muc = sum(sum(px[x, y]) < 300 for x in range(x0, x1, 2)) >= toi_thieu
-        if muc and trong:
+        muc = any(sum(px[x, y]) < 300 for x in range(x0, x1, 2))
+        if muc and trong >= khoang:
             dai += 1
-        trong = not muc
+        trong = 0 if muc else trong + 1
     return dai
 
 
@@ -586,10 +585,10 @@ class StatsContractTest(unittest.TestCase):
             image = kb.anh(f"cuoi-30-ngay-{nhan}")
             tl = _ty_le(image)
             do_duoc[nhan] = {
-                # Chu xam cham diem: hang le cua so phut (x 432-487, y 657 o v1.0.76) chi co mot diem roi
-                # dung cot lay mau khi thanh tat (x=440), khi bat thi khong co. Hang can >= 2 diem lay mau,
-                # mot hang trang van tach hai dong chu that.
-                "so_dai_ink": _dem_dai_ink(image, int(140 * tl), int(image.height - 40 * tl), toi_thieu=2),
+                # Chu xam cham diem ve tung hang le cach 1 hang trang: dem moi hang la mot dai thi so dai
+                # theo noi dung xam (75 so 74 o v1.0.76), khong theo so dong. 2 hang trang moi tach hai
+                # dong chu that (cach nhau xa hon nhieu): 12 dong o ca hai khung.
+                "so_dai_ink": _dem_dai_ink(image, int(140 * tl), int(image.height - 40 * tl), khoang=2),
                 "hop_chon": _hop_chon(image, int(140 * tl)),
                 "cao": image.height, "rong": image.width, "anh": image,
             }
