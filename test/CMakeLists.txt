@@ -311,6 +311,7 @@ add_subdirectory(button_symbols)
 
 add_subdirectory(dropcap_raster)
 add_subdirectory(wake_boot_memo)
+add_subdirectory(frontlight_schedule)
 add_subdirectory(recent_excerpt)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)

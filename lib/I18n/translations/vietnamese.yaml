@@ -345,6 +345,8 @@ STR_CLOCK_SYNC_NO_WIFI_HINT: "Hãy kết nối Wi-Fi trước, rồi thử lại
 STR_CLOCK_SYNCED: "Đã đồng bộ đồng hồ"
 STR_SUNLIGHT_FADING_FIX: "Chế độ đọc dưới nắng"
 STR_RESTORE_LIGHT_ON_WAKE: "Bật lại đèn khi máy thức"
+STR_LIGHT_FROM_HOUR: "Đèn tự bật từ (giờ)"
+STR_LIGHT_UNTIL_HOUR: "Đèn tự bật tới (giờ)"
 STR_REMAP_FRONT_BUTTONS: "Gán nút mặt trước"
 STR_BOOKMARKS: "Dấu trang"
 STR_BOOKMARK_ADDED: "Đã thêm dấu trang."

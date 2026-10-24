@@ -97,6 +97,7 @@
 #include "activities/settings/ClockSyncActivity.h"
 #include "activities/settings/KOReaderAuthActivity.h"
 #include "SilentRestart.h"
+#include "util/FrontlightSchedule.h"
 #ifdef TENOR_PRESS_PROBE
 #include "activities/util/KeyboardEntryActivity.h"
 #endif
@@ -908,8 +909,14 @@ void setup() {
   // light off unless Restore Light on Wake is enabled; silent maintenance
   // reboots replay the live state captured at restart, so they neither go dark
   // nor light up against the user's wake preference.
+  // The light's daily hours light it too, at any wake or start inside them, once the clock holds the time.
+  uint8_t hour = 0, minute = 0;
+  const bool scheduledLight = !isSilentReboot && halClock.hasValidTime() && halClock.getTime(hour, minute) &&
+                              frontlightschedule::lightOnAt(hour, SETTINGS.frontlightFromHour,
+                                                            SETTINGS.frontlightUntilHour);
   const bool restoreLightOn =
-      isSilentReboot ? silentRebootLightOn : (SETTINGS.frontlightOn != 0 && SETTINGS.frontlightRestoreOnWake != 0);
+      isSilentReboot ? silentRebootLightOn
+                     : (SETTINGS.frontlightOn != 0 && SETTINGS.frontlightRestoreOnWake != 0) || scheduledLight;
   Frontlight.begin(SETTINGS.frontlightBrightness, SETTINGS.frontlightWarmth, restoreLightOn);
 
   switch (wakeupReason) {

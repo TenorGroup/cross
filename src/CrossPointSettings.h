@@ -628,6 +628,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Restore the saved on/off state after a normal boot or wake. Brightness and
   // warmth are always remembered even when this is disabled.
   uint8_t frontlightRestoreOnWake = 1;
+  // The light's daily hours (util/FrontlightSchedule.h): a wake inside [from, until) lights it. Equal = no schedule.
+  uint8_t frontlightFromHour = 0;
+  uint8_t frontlightUntilHour = 0;
   // Language setting (Language enum index, default 0 = EN)
   uint8_t language = 0;
   // Keyboard layouts the user can reach, using keyboard_layouts::ALL table bits.

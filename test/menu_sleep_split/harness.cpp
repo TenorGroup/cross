@@ -186,6 +186,8 @@ int main(int argc, char** argv) {
   ok &= check(!routes.count("settings/wakeButtons"),"retired wakeButtons row is gone on every board");
   const bool light=BoardConfig::hasPwmFrontlight()||BoardConfig::hasI2cFrontlight();
   ok &= check(light ? routes["settings/frontlightRestoreOnWake"]==7 : !routes.count("settings/frontlightRestoreOnWake"),"restore light belongs to Sleep only on supported board");
+  for (const char* key : {"settings/frontlightFromHour", "settings/frontlightUntilHour"})
+    ok &= check(light ? routes[key]==7 : !routes.count(key), "the light's daily hours belong to Sleep only on a board with a light");
   const auto before=web.server->output;
   web.server->output.clear(); web.handleGetSettings();
   ok &= check(before==web.server->output,"grouping and pin route leave web JSON byte identical");

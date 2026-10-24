@@ -426,6 +426,10 @@ inline void forEachBaseSetting(const std::function<void(SettingInfo&&)>& emit) {
 #if FREEINK_CAP_FRONTLIGHT
     emit(SettingInfo::Toggle(StrId::STR_RESTORE_LIGHT_ON_WAKE, &CrossPointSettings::frontlightRestoreOnWake,
                             "frontlightRestoreOnWake", StrId::STR_CAT_DISPLAY));
+    emit(SettingInfo::Value(StrId::STR_LIGHT_FROM_HOUR, &CrossPointSettings::frontlightFromHour, {0, 23, 1},
+                            "frontlightFromHour", StrId::STR_CAT_DISPLAY));
+    emit(SettingInfo::Value(StrId::STR_LIGHT_UNTIL_HOUR, &CrossPointSettings::frontlightUntilHour, {0, 23, 1},
+                            "frontlightUntilHour", StrId::STR_CAT_DISPLAY));
 #endif
 
     // --- Reader ---
@@ -856,7 +860,9 @@ inline int deviceSettingsTab(const SettingInfo& setting) {
       setting.valuePtr == &CrossPointSettings::wakeNotice ||
       setting.valuePtr == &CrossPointSettings::sleepBwFold ||
       setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes ||
-      setting.valuePtr == &CrossPointSettings::frontlightRestoreOnWake)
+      setting.valuePtr == &CrossPointSettings::frontlightRestoreOnWake ||
+      setting.valuePtr == &CrossPointSettings::frontlightFromHour ||
+      setting.valuePtr == &CrossPointSettings::frontlightUntilHour)
     return static_cast<int>(settingstabs::Tab::SLEEP);
   if (setting.valuePtr == &CrossPointSettings::statusBarClock)
     return static_cast<int>(settingstabs::Tab::SCREEN);

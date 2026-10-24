@@ -1065,6 +1065,14 @@ std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
                static_cast<unsigned int>(SETTINGS.*(setting.valuePtr)));
       return valueBuffer;
     }
+    if (setting.valuePtr == &CrossPointSettings::frontlightFromHour ||
+        setting.valuePtr == &CrossPointSettings::frontlightUntilHour) {
+      // The light's daily hours: equal hours are no schedule (util/FrontlightSchedule.h).
+      if (SETTINGS.frontlightFromHour == SETTINGS.frontlightUntilHour) return tr(STR_STATE_OFF);
+      char hourText[8];
+      snprintf(hourText, sizeof(hourText), "%u:00", static_cast<unsigned>(SETTINGS.*(setting.valuePtr)));
+      return hourText;
+    }
     return std::to_string(SETTINGS.*(setting.valuePtr));
   }
   if (setting.type == SettingType::ACTION && setting.stringGetter) return setting.stringGetter();

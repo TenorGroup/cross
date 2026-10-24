@@ -1313,6 +1313,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
+      "STR_LIGHT_FROM_HOUR:0:frontlightFromHour",
+      "STR_LIGHT_UNTIL_HOUR:0:frontlightUntilHour",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -1384,6 +1386,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
+      "STR_LIGHT_FROM_HOUR:0:frontlightFromHour",
+      "STR_LIGHT_UNTIL_HOUR:0:frontlightUntilHour",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -1455,6 +1459,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
+      "STR_LIGHT_FROM_HOUR:0:frontlightFromHour",
+      "STR_LIGHT_UNTIL_HOUR:0:frontlightUntilHour",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -1527,6 +1533,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
+      "STR_LIGHT_FROM_HOUR:0:frontlightFromHour",
+      "STR_LIGHT_UNTIL_HOUR:0:frontlightUntilHour",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -1597,6 +1605,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
+      "STR_LIGHT_FROM_HOUR:0:frontlightFromHour",
+      "STR_LIGHT_UNTIL_HOUR:0:frontlightUntilHour",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -1668,6 +1678,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
+      "STR_LIGHT_FROM_HOUR:0:frontlightFromHour",
+      "STR_LIGHT_UNTIL_HOUR:0:frontlightUntilHour",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -1739,6 +1751,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
+      "STR_LIGHT_FROM_HOUR:0:frontlightFromHour",
+      "STR_LIGHT_UNTIL_HOUR:0:frontlightUntilHour",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -1811,6 +1825,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
+      "STR_LIGHT_FROM_HOUR:0:frontlightFromHour",
+      "STR_LIGHT_UNTIL_HOUR:0:frontlightUntilHour",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
