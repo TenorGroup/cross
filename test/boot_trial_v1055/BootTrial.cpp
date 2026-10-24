@@ -61,7 +61,15 @@ void advance(uint64_t us) {
 
 enum class BootResume { Splash, Silent, SplashlessWake };
 constexpr unsigned SILENT_REBOOT_TARGET_READER = 1, SILENT_REBOOT_TARGET_SETTINGS = 2, SILENT_REBOOT_TARGET_TRANSFER = 4,
-                SILENT_REBOOT_TARGET_FONTS = 5;
+                SILENT_REBOOT_TARGET_FONTS = 5, SILENT_REBOOT_TARGET_TASK = 6;
+// The fresh-boot Wi-Fi tasks (v1.0.76): the routing builds one, the harness only needs it to exist.
+enum class FreshBootTask { ClockSync, KOReaderLogin, KOReaderSignUp };
+struct Activity { virtual ~Activity() = default; };
+struct ClockSyncActivity : Activity { template<class... T> explicit ClockSyncActivity(T...) {} };
+struct KOReaderAuthActivity : Activity {
+  enum class Mode { AUTHENTICATE, SIGN_UP };
+  template<class... T> explicit KOReaderAuthActivity(T...) {}
+};
 bool recoveryFirmwareMode = false, rebootedFromPanic = false, updateBoot = false, wakeToBook = false;
 bool needsWakeRefresh = false;
 BootResume resume = BootResume::Splash;
