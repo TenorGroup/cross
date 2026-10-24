@@ -41,6 +41,16 @@ EDITS = (
      "    return write(reinterpret_cast<const uint8_t *>(buf), size);\n"
      "  }\n"),
     ("WebServer.h", "  NetworkClient client();\n", "  NetworkClient &client();\n"),
+    ("WebServer.cpp", "#include <thread>\n",
+     "#include <thread>\n\n"
+     "// The client a handler writes to (client() by reference); dropped with the request, so the peer sees the\n"
+     "// end of the body when the server closes the socket.\n"
+     "static NetworkClient &simHeldClient() {\n"
+     "  static NetworkClient held;\n"
+     "  return held;\n"
+     "}\n"),
+    ("WebServer.cpp", "  void resetRequest() {\n    currentClient = -1;\n",
+     "  void resetRequest() {\n    simHeldClient() = NetworkClient();\n    currentClient = -1;\n"),
     ("WebServer.cpp",
      "NetworkClient WebServer::client() {\n"
      "  if (impl_->currentClient < 0)\n"
@@ -51,9 +61,8 @@ EDITS = (
      "            strerror(errno));\n"
      "  return NetworkClient(fd);\n"
      "}\n",
-     # ponytail: one held client for the whole server; the simulator serves one request at a time.
      "NetworkClient &WebServer::client() {\n"
-     "  static NetworkClient held;\n"
+     "  NetworkClient &held = simHeldClient();\n"
      "  if (impl_->currentClient < 0) {\n"
      "    held = NetworkClient(-1);\n"
      "    return held;\n"

@@ -65,10 +65,16 @@ constexpr unsigned SILENT_REBOOT_TARGET_READER = 1, SILENT_REBOOT_TARGET_SETTING
 // The fresh-boot Wi-Fi tasks (v1.0.76): the routing builds one, the harness only needs it to exist.
 enum class FreshBootTask { ClockSync, KOReaderLogin, KOReaderSignUp };
 struct Activity { virtual ~Activity() = default; };
-struct ClockSyncActivity : Activity { template<class... T> explicit ClockSyncActivity(T...) {} };
+int clockTasks = 0, logins = 0, signUps = 0, freshTasks = 0;
+struct ClockSyncActivity : Activity {
+  template<class R, class I> ClockSyncActivity(R, I, bool fresh) { ++clockTasks; freshTasks += fresh; }
+};
 struct KOReaderAuthActivity : Activity {
   enum class Mode { AUTHENTICATE, SIGN_UP };
-  template<class... T> explicit KOReaderAuthActivity(T...) {}
+  template<class R, class I> KOReaderAuthActivity(R, I, Mode mode, bool fresh) {
+    ++(mode == Mode::SIGN_UP ? signUps : logins);
+    freshTasks += fresh;
+  }
 };
 bool recoveryFirmwareMode = false, rebootedFromPanic = false, updateBoot = false, wakeToBook = false;
 bool needsWakeRefresh = false;
@@ -132,6 +138,12 @@ int main(int argc, char** argv) {
     resume = BootResume::Silent;
     snapshotTarget = SILENT_REBOOT_TARGET_FONTS;
   }
+  // A Wi-Fi task's own fresh boot (v1.0.76): the task it was asked for, opened as that boot's.
+  if (name == "silent-task-clock" || name == "silent-task-login" || name == "silent-task-signup") {
+    state = ESP_OTA_IMG_VALID;
+    resume = BootResume::Silent;
+    snapshotTarget = SILENT_REBOOT_TARGET_TASK + (name == "silent-task-clock" ? 0 : name == "silent-task-login" ? 1 : 2);
+  }
   if (name == "wake-large-book") { resume = BootResume::SplashlessWake; wakeToBook = true; }
   if (name == "valid-wake-book") { state = ESP_OTA_IMG_VALID; wakeToBook = true; }
   if (name == "recovery") recoveryFirmwareMode = true;
@@ -167,6 +179,10 @@ int main(int argc, char** argv) {
   else if (name == "silent-fonts")
     ok = abortReason.empty() && transfers == 1 && fontStores == 1 && readers == 0 &&
          activityManager.home == HomeMenuItem::NONE;
+  else if (name == "silent-task-clock" || name == "silent-task-login" || name == "silent-task-signup")
+    ok = abortReason.empty() && freshTasks == 1 && readers == 0 && transfers == 0 &&
+         clockTasks == (name == "silent-task-clock") && logins == (name == "silent-task-login") &&
+         signUps == (name == "silent-task-signup");
   else if (name == "valid-wake-book")
     ok = abortReason.empty() && readers == 1 && marked == 0 && created == 0;
   else if (name == "valid" || name == "new" || name == "aborted" || name == "query-error")

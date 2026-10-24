@@ -43,6 +43,7 @@ void expect(const bool condition, const char* name) {
 }
 
 void resetPlatform() {
+  releasedSettingsCatalogs = 0;
   testMillis = 0;
   WiFi.reset();
   WIFI_STORE = WifiCredentialStore{};
@@ -74,6 +75,7 @@ void updateBootKeepsSavedAttempt() {
   WIFI_STORE.addCredential("last-network", "saved-password");
   WIFI_STORE.setLastConnectedSsid("last-network");
   f.activity.onEnter();
+  expect(releasedSettingsCatalogs == 1, "every Wi-Fi session frees the settings catalog before the radio");
   expect(f.activity.state == WifiSelectionState::AUTO_CONNECTING &&
          f.activity.selectedSSID == "last-network" && f.activity.enteredPassword == "saved-password",
          "update boot uses the last saved SSID and password");
