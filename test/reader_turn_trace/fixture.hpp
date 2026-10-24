@@ -43,8 +43,11 @@ struct RenderLock {
   bool acquired() const { return owns; }
   static bool peek() { return busy; }
 };
+enum class HomeMenuItem { NONE, RECENT_CONTINUE };
 struct ActivityManager {
   uint32_t generation = 1;
+  int homes = 0;
+  void goHome(HomeMenuItem) { ++homes; }  // a held side button under SIDE_HOLD_BACK (v1.0.76)
   bool toReaderPage = false;
   bool returningToReaderPage() const { return toReaderPage; }
   uint32_t activityGeneration() const { return generation; }
@@ -70,7 +73,9 @@ struct Renderer {};
 struct MappedInput {
   unsigned long getHeldTime() const { return 0; }
 };
-struct PageTurns { bool prev = false, next = false, prevLongPressed = false, nextLongPressed = false, fromTilt = false; };
+struct PageTurns {
+  bool prev = false, next = false, prevLongPressed = false, nextLongPressed = false, fromTilt = false, sideBack = false;
+};
 struct TouchTurns { bool prev = false, next = false; unsigned long heldMs = 0; };
 PageTurns passTurns;
 namespace ReaderUtils {
@@ -88,6 +93,9 @@ struct Settings {
   enum { FONT_SIZE_STEP = 1, CHAPTER_SKIP = 2 };
   uint8_t longPressButtonBehavior = 0;
 } SETTINGS;
+namespace ReaderUtils {
+inline bool holdSkipsChapters() { return SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP; }
+}  // namespace ReaderUtils
 // The page turner module: a page turn gives a Failed link note back to the title.
 namespace bleturner {
 inline void acknowledgeLinkNote() {}

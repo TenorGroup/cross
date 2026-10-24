@@ -41,7 +41,7 @@ namespace freeink { struct PowerManager { struct AbortedSleepInfo { bool aborted
 struct { bool isUsbConnected() const { return false; } } gpio;
 #define LOG_INF(...) ((void)0)
 struct Book { std::string path; };
-struct { std::string openEpubPath = "/book.epub"; WakePlace wake; } APP_STATE;
+struct { std::string openEpubPath = "/book.epub"; WakePlace wake; int saves = 0; void saveToFile() { ++saves; } } APP_STATE;
 struct {
   std::vector<Book> books{{"/book.epub"}};
   const std::vector<Book>& getBooks() const { return books; }

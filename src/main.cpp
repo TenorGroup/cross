@@ -1004,12 +1004,14 @@ void setup() {
   // "Pick up where I left off": the place the sleep kept, if it can still be reopened. Spent either way:
   // the write that follows the first frame carries the cleared state to the card.
   bool deepSleepReset = isSleepWake;  // not a power-on, a watchdog or a brownout: a place is not kept through those
+  bool powerButtonStart = isSleepWake;  // a book also reopens after a power-on (power lost in sleep), not a watchdog
 #ifndef SIMULATOR
   deepSleepReset = isSleepWake && esp_reset_reason() == ESP_RST_DEEPSLEEP;
+  powerButtonStart = deepSleepReset || (isSleepWake && esp_reset_reason() == ESP_RST_POWERON);
 #endif
   const WakePlace wakePlace =
       wakeTarget == CrossPointSettings::WAKE_RESUME
-          ? wakeplace::resolve(deepSleepReset, isSleepWake, SETTINGS.uiShell, APP_STATE.wake, RECENT_BOOKS.getBooks(), onCard,
+          ? wakeplace::resolve(deepSleepReset, powerButtonStart, SETTINGS.uiShell, APP_STATE.wake, RECENT_BOOKS.getBooks(), onCard,
                                [](const std::string& path) {
                                  auto dir = Storage.open(path.c_str());
                                  return dir && dir.isDirectory();

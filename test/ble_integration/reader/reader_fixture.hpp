@@ -29,7 +29,8 @@ struct RenderLock { struct TryTake{}; static inline bool busy=false; bool owns=f
  bool acquired()const{return owns;} static bool peek(){return busy;}
 };
 struct Activity {virtual ~Activity()=default;virtual bool isReaderActivity() const {return true;}};
-struct ActivityManager {enum class PendingAction{None,Push};PendingAction pendingAction=PendingAction::None;
+enum class HomeMenuItem{NONE,RECENT_CONTINUE};
+struct ActivityManager {void goHome(HomeMenuItem){}enum class PendingAction{None,Push};PendingAction pendingAction=PendingAction::None;
  std::shared_ptr<Activity>currentActivity;uint32_t generation=1;
  bool sleepTransition=false;bool exclusive=false,preventSleep=false;bool requiresExclusiveStorageLoop()const{return exclusive;}bool preventAutoSleep()const{return preventSleep;}bool isSleepTransition()const{return sleepTransition;}bool isForegroundReaderReady()const;bool isForegroundHomePainted()const{return false;}bool foregroundReaderHoldsRadio()const{return false;}bool foregroundReaderCoversPage()const;bool radioReady=true;int radioReadyAsks=0;bool yieldForegroundReaderForRadio(){radioReadyAsks++;radioSteps.emplace_back("ready");return radioReady;}void goToReader(const std::string&){}bool pageTurn(bool);bool chapterSkip(bool);uint32_t activityGeneration()const{return generation;}
  bool isForegroundReaderActivity()const{return pendingAction==PendingAction::None&&currentActivity&&currentActivity->isReaderActivity();}
@@ -44,7 +45,8 @@ using MappedInputManager=FakeInput;FakeInput mappedInputManager;
 struct FakeSettings{static constexpr uint8_t READER_MENU=7,SAVE_QUOTE=8;enum Behavior{FONT_SIZE_STEP,CHAPTER_SKIP};Behavior longPressButtonBehavior=CHAPTER_SKIP;bleturner::Config ble;}SETTINGS;
 using CrossPointSettings=FakeSettings;
 namespace ReaderUtils {constexpr int SKIP_HOLD_MS=500;
-struct Turns{bool prev=false,next=false,prevLongPressed=false,nextLongPressed=false,fromTilt=false;};
+struct Turns{bool prev=false,next=false,prevLongPressed=false,nextLongPressed=false,fromTilt=false,sideBack=false;};
+inline bool holdSkipsChapters(){return SETTINGS.longPressButtonBehavior==CrossPointSettings::CHAPTER_SKIP;}
 struct Touch{bool prev=false,next=false;unsigned long heldMs=0;};
 Turns detectPageTurn(FakeInput&i){Turns t;t.prev=i.prev;t.next=i.next;return t;}
 template<class Renderer>Touch detectTouchPageTurn(Renderer&,FakeInput&){return {};}template<class Renderer>bool isTouchMenuGesture(Renderer&,FakeInput&,bool=false){return false;}}
