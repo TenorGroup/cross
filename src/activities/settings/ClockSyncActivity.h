@@ -32,8 +32,9 @@ class ClockSyncActivity final : public Activity {
  public:
   tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Device; }
   std::string x3NavigationLabel() const override { return I18N.get(StrId::STR_CLOCK_SYNC); }
-  explicit ClockSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-      : Activity("ClockSync", renderer, mappedInput) {}
+  // freshBoot: opened by the boot silentRestartToClockSync() asked for. Any other opening restarts into that boot.
+  explicit ClockSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool freshBoot = false)
+      : Activity("ClockSync", renderer, mappedInput), freshBoot(freshBoot) {}
 
   void onEnter() override;
   void onExit() override;
@@ -43,6 +44,7 @@ class ClockSyncActivity final : public Activity {
 
  private:
   enum State { SYNCING, SUCCESS, NO_WIFI, FAILED, TIMEZONE_FAILED };
+  const bool freshBoot;
   State state = SYNCING;
   char syncedTime[16] = {0};
   bool runtimeStarted = false;

@@ -28,6 +28,19 @@ void ClockSyncActivity::onEnter() {
   runtimeStarted = false;
   shouldTearDownWifiOnExit = false;
   idleTimerStarted = false;
+#ifndef SIMULATOR
+  if (!freshBoot && SETTINGS.clockAutoTimezone && WiFi.status() != WL_CONNECTED) {
+    // Wi-Fi and the TLS time zone lookup want about 94 KB of the X3's internal heap. Opened from Settings > Clock it
+    // had 68 KB (30 KB left at TLS, refused). The session ends in a restart anyway, so it runs on a fresh boot's
+    // heap instead, as the update does (silentRestartToOta). NTP alone (no time zone lookup) needs no TLS.
+    {
+      RenderLock lock(*this);
+      silentRestartToClockSync();
+    }
+    finish();  // sleep took over the restart
+    return;
+  }
+#endif
   // Keep BLE stopped for Wi-Fi selection, NTP, and optional HTTPS timezone lookup.
   if (!filetransfer::acquire()) {
     LOG_ERR("CLK", "BLE teardown incomplete; leaving clock sync");

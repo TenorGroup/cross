@@ -293,7 +293,9 @@ constexpr uint32_t SILENT_REBOOT_TARGET_OTA = 3;
 constexpr uint32_t SILENT_REBOOT_TARGET_TRANSFER = 4;
 // Tải font inside Connections: the store's own Wi-Fi restart (a download or an update done) comes back to the store.
 constexpr uint32_t SILENT_REBOOT_TARGET_FONTS = 5;
-constexpr uint32_t SILENT_REBOOT_TARGET_MAX = SILENT_REBOOT_TARGET_FONTS;
+// A clock sync asked for on any screen runs on the heap of a fresh boot (silentRestartToClockSync).
+constexpr uint32_t SILENT_REBOOT_TARGET_CLOCK = 6;
+constexpr uint32_t SILENT_REBOOT_TARGET_MAX = SILENT_REBOOT_TARGET_CLOCK;
 constexpr uint32_t SILENT_REBOOT_LIGHT_ON = cardrescue::PAYLOAD_LIGHT_ON;
 
 // How the device is coming back to life, resolved once at boot. Both resume
@@ -402,6 +404,8 @@ void silentRestartToFontStore() {
 void silentRestartToReader() { silentRestartTo(SILENT_REBOOT_TARGET_READER, "reader"); }
 
 void silentRestartToSettings() { silentRestartTo(SILENT_REBOOT_TARGET_SETTINGS, "settings"); }
+
+void silentRestartToClockSync() { silentRestartTo(SILENT_REBOOT_TARGET_CLOCK, "clock"); }
 
 void silentRestartForCard() {
   if (deepSleepInProgress) return;
@@ -1156,6 +1160,12 @@ void setup() {
   } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_READER &&
              !APP_STATE.openEpubPath.empty()) {
     activityManager.goToReader(APP_STATE.openEpubPath);
+  } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_CLOCK) {
+    // Straight to the clock sync, on the heap of a fresh boot; it restarts to Home on its way out, as before.
+    if (auto sync = makeUniqueNoThrow<ClockSyncActivity>(renderer, mappedInputManager, /*freshBoot=*/true))
+      activityManager.replaceActivity(std::move(sync));
+    else
+      activityManager.goHome();
   } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_SETTINGS) {
     // Back out of the WiFi rows and the user is where they left off, not on Home.
     activityManager.goToSettings();
