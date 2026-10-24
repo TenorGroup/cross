@@ -222,13 +222,7 @@ class SettingsActivity final : public UiTabListActivity {
   std::vector<std::string> rowValues_;
   std::vector<freeink::ui::ListItem> rowItems_;
 
-  void rebuildSettings();
   void rebuildRowItems();
-  void toggleSelectedSetting();
-  void openSleepTimeoutPicker();
-  void applyUiSettingChange(uint8_t CrossPointSettings::* valuePtr);
-  void syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged);
-  static std::string settingValueText(const SettingInfo& setting);
 
   static constexpr int categoryCount = settingstabs::TAB_COUNT;
 
@@ -242,6 +236,9 @@ class SettingsActivity final : public UiTabListActivity {
   }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
+  void onTabAction(int index) override;
+  void stepTab(int direction) override;
+  bool handleButtons() override;
   bool handleCustomInput() override;
   void pollTilt() override;
   bool allowsTiltTabNavigation() const override { return !optionPopup.isActive(); }
