@@ -641,6 +641,7 @@ void ReaderActivity::loop() {
   const auto touch = ReaderUtils::detectTouchPageTurn(renderer, mappedInput);
   const auto turns = ReaderUtils::detectPageTurn(mappedInput);
   if (turns.sideBack) {  // a held side button does what Back does
+    leaving.store(true, std::memory_order_release);  // as Back: a gray pass still running stops early
     activityManager.goHome(HomeMenuItem::RECENT_CONTINUE);
     return;
   }

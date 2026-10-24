@@ -2030,10 +2030,12 @@ void EpubReaderActivity::loop() {
 
   const auto turns = ReaderUtils::detectPageTurn(mappedInput);
   if (turns.sideBack) {  // a held side button does what Back does: out of a footnote, else out of the book
-    if (footnoteDepth > 0)
+    if (footnoteDepth > 0) {
       restoreSavedPosition();
-    else
+    } else {
+      leaving.store(true, std::memory_order_release);  // as Back: a gray pass still running stops early
       activityManager.goHome(HomeMenuItem::RECENT_CONTINUE);
+    }
     return;
   }
   const bool prevPageTriggered = turns.prev || touch.prev;

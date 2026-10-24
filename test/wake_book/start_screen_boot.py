@@ -120,7 +120,14 @@ int main() {
   APP_STATE.wake = WakePlace{WakeKind::Book, 0, 0, 0, "/book.epub", ""};
   currentReset = ESP_RST_DEEPSLEEP;
   require(decide(true, false, false, false, false).opensPlace, "cross resume out of deep sleep");
-  std::printf("GREEN production boot guard: %d ugly contexts, 2 cross contexts\n", checks);
+  // A sleep that lost its power: the power-button start reopens the book, and nothing reaches the card before the
+  // hold is judged (a press that fails it must find the place again on the next wake).
+  APP_STATE.wake = WakePlace{WakeKind::Book, 0, 0, 0, "/book.epub", ""};
+  currentReset = ESP_RST_POWERON;
+  const int savesBefore = APP_STATE.saves;
+  require(decide(true, false, false, false, false).opensPlace, "cross resume after a sleep that lost its power");
+  require(APP_STATE.saves == savesBefore, "the spent place is written only after the wake hold is judged");
+  std::printf("GREEN production boot guard: %d ugly contexts, 3 cross contexts\n", checks);
 }
 '''
 harness = (harness.replace("@@WAKE_FIELDS@@", wake_fields).replace("@@FIELDS@@", fields)

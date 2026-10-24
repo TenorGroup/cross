@@ -987,7 +987,7 @@ void setup() {
   bool needsWakeRefresh = false;
   // A crash may have come from the book that was open: the next wake does not reopen it.
   // The place the sleep kept goes the same way: a screen that crashed is not reopened.
-  // The place needs no write: only a deep-sleep wake reads it, and the next sleep writes it again.
+  // The place needs no write: the next sleep writes it again; a power-on that reopens the book writes it below.
   if (rebootedFromPanic) APP_STATE.wake = {};
   if (rebootedFromPanic && !APP_STATE.openEpubPath.empty()) {
     APP_STATE.openEpubPath.clear();
@@ -1040,9 +1040,6 @@ void setup() {
 #endif
 #endif
   APP_STATE.wake = {};
-  // A power-on reopening the book (the sleep lost its power) spends the place on the card first: a book that hangs
-  // before its first frame is then not reopened by the next power cut, the one way out the user has.
-  if (wakePlace.kind == WakeKind::Book && !deepSleepReset) APP_STATE.saveToFile();
   std::string wakeBook =
       wakebook::bookToOpen(isSleepWake, wakeTarget == CrossPointSettings::WAKE_BOOK, APP_STATE.openEpubPath,
                            RECENT_BOOKS.getBooks(), onCard, shell::isUgly() && normalUglyBoot && normalColdBoot);
@@ -1101,6 +1098,10 @@ void setup() {
       sleepUntilPowerButton();
     }
   }
+  // A power-on reopening the book (the sleep lost its power) spends the place on the card once the wake is
+  // confirmed and before the book opens: a book that hangs before its first frame is then not reopened by the
+  // next power cut, the one way out the user has. A press that fails the hold above keeps the place on the card.
+  if (wakePlace.kind == WakeKind::Book && !deepSleepReset) APP_STATE.saveToFile();
 
   // A wake on its way to Home, with the hold just judged and the "Wake-up notice" setting on (off by
   // default): the sleep screen stays and takes the notice the going-to-sleep one has, in one fast
