@@ -154,6 +154,8 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   // Hold-Select function - list position differs from the number on a board without an IMU, so the
   // row in SettingsList is dynamic and the generic loop skips it. Saved as the number.
   doc["longPressMenuFunction"] = longPressMenuFunction;
+  // Page-turn hold: dynamic row as well (number 3 is retired, the list skips it). Saved as the number.
+  doc["longPressButtonBehavior"] = longPressButtonBehavior;
   // SD card font family name - not in SettingsList, save manually
   doc["sdFontFamilyName"] = sdFontFamilyName;
   // Dictionary folder name - uses dynamic getter/setter in SettingsList, save manually
@@ -492,6 +494,9 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   fontFamily = NOTOSANS;
   // Hold-Select function - dynamic row too. A number this board does not offer (the tilt toggle without an IMU,
   // or one from a newer file) keeps the default, as the generic loop's clamp did.
+  // Page-turn hold: a number this build offers, else the default; 3 (retired) was made OFF above.
+  const uint8_t storedHold = doc["longPressButtonBehavior"] | longPressButtonBehavior;
+  if (storedHold < LONG_PRESS_BUTTON_BEHAVIOR_COUNT && storedHold != FONT_SIZE_STEP) longPressButtonBehavior = storedHold;
   const uint8_t storedLongPress = doc["longPressMenuFunction"] | longPressMenuFunction;
   if (storedLongPress < LONG_PRESS_MENU_FUNCTION_COUNT &&
 #if !FREEINK_CAP_BLE_HID_HOST

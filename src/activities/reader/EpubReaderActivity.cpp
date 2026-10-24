@@ -2029,6 +2029,13 @@ void EpubReaderActivity::loop() {
   }
 
   const auto turns = ReaderUtils::detectPageTurn(mappedInput);
+  if (turns.sideBack) {  // a held side button does what Back does: out of a footnote, else out of the book
+    if (footnoteDepth > 0)
+      restoreSavedPosition();
+    else
+      activityManager.goHome(HomeMenuItem::RECENT_CONTINUE);
+    return;
+  }
   const bool prevPageTriggered = turns.prev || touch.prev;
   const bool nextPageTriggered = turns.next || touch.next;
   const bool prevTriggered = prevPageTriggered || turns.prevLongPressed;
@@ -2046,7 +2053,7 @@ void EpubReaderActivity::loop() {
           static_cast<unsigned>(ESP.getMaxAllocHeap()), static_cast<unsigned>(ESP.getMinFreeHeap()));
 #endif
 
-  if (SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP) {
+  if (ReaderUtils::holdSkipsChapters()) {
     if (turns.prevButtonPressed) rememberChapterHoldOrigin(-1);
     if (turns.nextButtonPressed) rememberChapterHoldOrigin(1);
   }
@@ -2072,7 +2079,7 @@ void EpubReaderActivity::loop() {
     return;
   }
 
-  if (longPress && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP) {
+  if (longPress && ReaderUtils::holdSkipsChapters()) {
     // Giu nut = doi DUNG MOT chuong theo muc luc; nha nut sau do khong sinh luot lat
     // them vi wasLongPressed da nuot luot release (xem detectPageTurn). Sach khong co
     // muc luc thi giu nguyen kha nang cu: nhay mot doan trang. Nút bên cạnh còn giữ

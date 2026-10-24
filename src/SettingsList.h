@@ -197,6 +197,23 @@ inline SettingInfo buildDictionarySetting(const std::vector<DictionaryEntry>& di
 // Hold-Select row. The list shows the functions this board offers, in stored-number order; what is saved is
 // the number (CrossPointSettings.cpp saves and loads it by hand, like the dictionary). A board without an IMU
 // leaves the tilt toggle out, so there Save quotation sits at list position 6 and is still stored as 7.
+// Page-turn hold: Off, chapter, orientation, side buttons back. The list skips number 3 (retired), so the row is
+// dynamic and saved by hand (CrossPointSettings.cpp); list position 3 is number 4.
+inline SettingInfo buildLongPressButtonSetting() {
+  return SettingInfo::DynamicEnum(
+      StrId::STR_LONG_PRESS_BEHAVIOR,
+      {StrId::STR_LONG_PRESS_BEHAVIOR_OFF, StrId::STR_LONG_PRESS_BEHAVIOR_SKIP,
+       StrId::STR_LONG_PRESS_BEHAVIOR_ORIENTATION, StrId::STR_LONG_PRESS_BEHAVIOR_SIDE_BACK},
+      []() -> uint8_t {
+        const uint8_t number = SETTINGS.longPressButtonBehavior;
+        return number == CrossPointSettings::SIDE_HOLD_BACK ? 3 : number;
+      },
+      [](const uint8_t position) {
+        SETTINGS.longPressButtonBehavior = position == 3 ? CrossPointSettings::SIDE_HOLD_BACK : position;
+      },
+      "longPressButtonBehavior", StrId::STR_CAT_CONTROLS);
+}
+
 inline SettingInfo buildLongPressMenuSetting(const bool hasTilt) {
   static constexpr StrId LABELS[] = {StrId::STR_KOSYNC,     StrId::STR_DISABLED,        StrId::STR_BOOKMARK_OPTION,
                                      StrId::STR_DICTIONARY, StrId::STR_READER_MENU,     StrId::STR_FILE_TRANSFER,
@@ -527,10 +544,7 @@ inline void forEachBaseSetting(const std::function<void(SettingInfo&&)>& emit) {
     emit(SettingInfo::Toggle(StrId::STR_KEYBOARD_AXIS_SWAP, &CrossPointSettings::keyboardAxisSwapped,
                             "keyboardAxisSwapped", StrId::STR_CAT_KEYBOARD));
     emit(SettingInfo::String(StrId::STR_DEVICE_NAME, &SETTINGS.deviceName[0], sizeof(SETTINGS.deviceName), "deviceName"));
-    emit(SettingInfo::Enum(StrId::STR_LONG_PRESS_BEHAVIOR, &CrossPointSettings::longPressButtonBehavior,
-                          {StrId::STR_LONG_PRESS_BEHAVIOR_OFF, StrId::STR_LONG_PRESS_BEHAVIOR_SKIP,
-                           StrId::STR_LONG_PRESS_BEHAVIOR_ORIENTATION},
-                          "longPressButtonBehavior", StrId::STR_CAT_CONTROLS));
+    emit(buildLongPressButtonSetting());
     emit(buildLongPressMenuSetting(hasTilt));
     // X4 Pro only; hidden elsewhere by settingHiddenOnThisBoard (#3089).
     emit(SettingInfo::Toggle(StrId::STR_DBL_CLICK_PWR_LIGHT, &CrossPointSettings::doubleClickPwrLight,

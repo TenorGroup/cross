@@ -640,6 +640,10 @@ void ReaderActivity::loop() {
 
   const auto touch = ReaderUtils::detectTouchPageTurn(renderer, mappedInput);
   const auto turns = ReaderUtils::detectPageTurn(mappedInput);
+  if (turns.sideBack) {  // a held side button does what Back does
+    activityManager.goHome(HomeMenuItem::RECENT_CONTINUE);
+    return;
+  }
   const bool prevTriggered = turns.prev || turns.prevLongPressed || touch.prev;
   const bool nextTriggered = turns.next || turns.nextLongPressed || touch.next;
   if (!prevTriggered && !nextTriggered) return;
@@ -654,7 +658,7 @@ void ReaderActivity::loop() {
     if (docCoChuMotNac(nextTriggered ? 1 : -1)) requestUpdate();
     return;
   }
-  const bool skip = longPress && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP;
+  const bool skip = longPress && ReaderUtils::holdSkipsChapters();
 
   const bool changed = skip ? skipPages(prevTriggered ? -10 : 10) : pageTurn(!prevTriggered);
   if (changed) requestUpdate();
