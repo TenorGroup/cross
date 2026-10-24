@@ -3443,7 +3443,7 @@ void EpubReaderActivity::renderBook() {
     renderer.clearScreen();
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-    GUI.drawPopup(renderer, message ? message : tr(STR_INDEX_FAILED));
+    GUI.drawPopup(renderer, tr(STR_INDEX_FAILED));
     automaticPageTurnActive = false;
     // A reselection waits for its own page only; after a failed build the next page drawn is
     // wherever the reader moves to, so the selector must not open over it.
