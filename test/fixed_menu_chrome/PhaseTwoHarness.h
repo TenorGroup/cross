@@ -89,6 +89,8 @@ struct PhaseActivityBoundary {
   bool recoveryMode = false, isApMode = false, autoConnecting = false, deferManualNetworkList = false, grid = true, readable = true, failed = true;
   bool cursorMode = false, urlPanel = false, symbols = false, shifted = false, passwordVisible = false;
   bool firstProgressFrame = false;
+  bool tabBandDrawn = false;
+  const char* browserTitle() const { return "Catalog"; }
   bool togglePos = false;
   unsigned long lastProgressReceived = 100, lastProgressTotal = 200, lastCompleteAt = 1, writtenBytes = 100, firmwareSize = 200;
   unsigned long downloadProgress = 100, downloadTotal = 200;

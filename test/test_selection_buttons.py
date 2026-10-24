@@ -9,7 +9,14 @@ source = (ROOT / "src/activities/reader/ClipSelectionActivity.cpp").read_text()
 header = (ROOT / "src/activities/reader/ClipSelectionActivity.h").read_text()
 # Compile the production poller with a controllable render lock and button clock.
 shared = (ROOT / "src/util/WordSelectionInput.h").read_text()
-helpers = "class WordSelectionInput" + shared.split("class WordSelectionInput", 1)[1] + "\nusing Input = WordSelectionInput;\n"
+# The Left/Right repeat is the Tenor ramp (pause, then faster steps): compile the production header and
+# source. The device's unsigned long is 32 bits, so the host copy is narrowed to match the wrap checks.
+repeat_header = (ROOT / "src/activities/reader/WordSelectRepeat.h").read_text().replace("#pragma once", "").replace(
+    "#include <cstdint>", "")
+repeat_source = (ROOT / "src/activities/reader/WordSelectRepeat.cpp").read_text().replace(
+    '#include "WordSelectRepeat.h"', "")
+repeat = ("#include <cstdint>\n" + repeat_header + repeat_source).replace("unsigned long", "uint32_t")
+helpers = repeat + "\nclass WordSelectionInput" + shared.split("class WordSelectionInput", 1)[1] + "\nusing Input = WordSelectionInput;\n"
 method = "void ClipSelectionActivity::loopButtons()" + source.split(
     "void ClipSelectionActivity::loopButtons()", 1
 )[1].split("void ClipSelectionActivity::loop()", 1)[0]
@@ -72,22 +79,26 @@ int main() {
   assert(activity.pendingButtonCount == 1);
   poll(710, 0, 0);
   assert(activity.selected == 6 && activity.pendingButtonCount == 0);
-  // Hold repeats are captured during refresh, then stop upon release.
+  // Hold repeats are captured during refresh, then stop upon release. The first repeat waits out
+  // the 400 ms pause, the next comes after the 150 ms rung.
   RenderLock::busy = true;
   poll(1000, Input::INPUT_RIGHT, Input::INPUT_RIGHT);
-  poll(1499, 0, Input::INPUT_RIGHT);
+  poll(1399, 0, Input::INPUT_RIGHT);
   assert(activity.pendingButtonCount == 1);
-  poll(1500, 0, Input::INPUT_RIGHT);
-  poll(2000, 0, Input::INPUT_RIGHT);
-  poll(2010, 0, 0);
+  poll(1400, 0, Input::INPUT_RIGHT);
+  poll(1549, 0, Input::INPUT_RIGHT);
+  assert(activity.pendingButtonCount == 2);
+  poll(1550, 0, Input::INPUT_RIGHT);
+  poll(1560, 0, 0);
+  poll(2000, 0, 0);
   RenderLock::busy = false;
   poll(3000, 0, 0);
   assert(activity.selected == 9 && activity.pendingButtonCount == 0);
   // A new press resets the repeat delay; unsigned elapsed time survives wrap.
   poll(UINT32_MAX - 100, Input::INPUT_LEFT, Input::INPUT_LEFT);
-  poll(398, 0, Input::INPUT_LEFT);
+  poll(298, 0, Input::INPUT_LEFT);
   assert(activity.selected == 8);
-  poll(399, 0, Input::INPUT_LEFT);
+  poll(299, 0, Input::INPUT_LEFT);
   assert(activity.selected == 7);
   poll(410, 0, 0);
   // Overflow preserves the queued prefix and reports failure instead of overwriting it.

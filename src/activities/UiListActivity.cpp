@@ -919,14 +919,29 @@ void UiListActivity::syncListViewport(UiScreen& screen, fui::ListProps& props, c
   // Touch: the rows a page holds are counted with the height and gap list() lays them out with (56 + 6 on
   // the X4 Pro), not the theme's touch target (74): the follow and the end clamp land on the real last page.
   const auto laid = rowsFramed ? screen.resolveListProps(props) : props;
+  const int prevTop = activeNav().top;
+  const bool trusted = activeNav().trusts(listCount());
+  const int drawn = activeNav().drawnRows;
   activeNav().syncToProps(screen.body(), rowsFramed ? laid.rowHeight : rowHeight, rowsFramed ? laid.rowGap : rowGap,
                           listCount(), props);
+  keepViewportOnVisibleSelection(props, prevTop, trusted, drawn);
   keepUglyRows(props);
   measurePageScrollbar(screen, laid);
 
   activeNav().selected = kepConTro(activeNav().selected, listCount());
   // The touch shell has no cursor row: a tap opens or changes the row, nothing waits "selected".
   props.selectedIndex = tenorchrome::kTouchShell ? int16_t{-1} : static_cast<int16_t>(activeNav().selected);
+}
+
+void UiListActivity::keepViewportOnVisibleSelection(fui::ListProps& props, const int prevTop, const bool trusted,
+                                                    const int drawn) {
+  auto& n = activeNav();
+  if (!n.followPending || !trusted || drawn <= 0) return;
+  const int sel = props.selectedIndex;
+  if (sel >= prevTop && sel < prevTop + drawn) {
+    n.top = prevTop;
+    props.topIndex = static_cast<uint16_t>(prevTop);
+  }
 }
 
 void UiListActivity::renderUi() {

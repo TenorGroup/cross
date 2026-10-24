@@ -40,9 +40,11 @@ def extend(root, read_source, function, fixture, names):
                     branch = '  } else if (tenorchrome::x3ScreenLayoutEnabled())'
                 margin_snippets[name] = function(screen, branch).replace('} else if', 'if', 1)
             if name in ('WifiSelection', 'OpdsBookBrowser'):
-                method = 'screenHeader' if name == 'OpdsBookBrowser' else 'buildListScreen'
+                # The OPDS browser takes its X3 body from the shared settings adapter (x3settings::beginScreen).
+                method = 'buildScreen' if name == 'OpdsBookBrowser' else 'buildListScreen'
                 screen = function(source, f'void {name}Activity::{method}(')
-                branch = '  if (tenorchrome::x3ScreenLayoutEnabled())'
+                branch = '  if (x3settings::beginScreen(screen, renderer))' if name == 'OpdsBookBrowser' else \
+                    '  if (tenorchrome::x3ScreenLayoutEnabled())'
                 if branch not in screen:
                     branch = '  } else if (tenorchrome::x3ScreenLayoutEnabled())'
                 margin_snippets[name] = function(screen, branch).replace('} else if', 'if', 1)
@@ -77,6 +79,8 @@ const char* tr(StrId id) {
     adapter = read_source('src/activities/X3ActivityLayout.h')
     adapter = '\n'.join(line for line in adapter.splitlines() if not line.startswith('#'))
     adapter = adapter.replace('  title = title ? title : "";', '  tenorchrome::phaseBars.push_back(rect);\n  title = title ? title : "";')
+    settings_layout = read_source('src/activities/settings/X3SettingsLayout.h')
+    adapter += '\nnamespace x3settings {\n' + function(settings_layout, 'inline bool beginScreen(') + '\n}\n'
     bounds = bounds.replace('// PHASE_TWO_ADAPTER', adapter)
     popup = read_source('src/activities/X3OptionPopup.h')
     bounds = bounds.replace('// PHASE_TWO_POPUP', '\n'.join(
@@ -380,7 +384,7 @@ def verify_keyboard(root, work, output, function):
     unit = Path(__file__).with_name('X3KeyboardStyleTest.cpp').read_text()
     unit = unit.replace('// KEYBOARD_CASES', ',\n'.join('{' + ', '.join(case.split()) + '}' for case in cases))
     unit = unit.replace('// KEYBOARD_STYLE', styles)
-    url_layers = keyboard[keyboard.index('#define UK('):keyboard.index('// tenor/ugly on the button readers: every key')]
+    url_layers = keyboard[keyboard.index('constexpr uint8_t URL_KEY_WIDTH'):keyboard.index('// tenor/ugly on the button readers: every key')]
     unit = unit.replace('PRODUCTION_URL_LAYERS', url_layers)
     unit = unit.replace('PRODUCTION_LAYOUT_METHOD', function(keyboard, 'const fui::KeyboardLayout& KeyboardEntryActivity::currentLayout(').replace('KeyboardEntryActivity::', ''))
     path = work / 'keyboard.cpp'

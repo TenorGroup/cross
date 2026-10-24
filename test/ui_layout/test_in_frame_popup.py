@@ -83,6 +83,7 @@ struct PageScrollbar {
  void draw(const GfxRenderer&,fui::DrawTarget&,int,int,int,int,const void*){}
 };
 namespace shell {bool isUgly(){return false;}}
+namespace haptic_feedback {void touchAction(){}}
 namespace tenorchrome {
 void drawContextActionIcon(const GfxRenderer&,int,int,int){}
 constexpr bool kTouchShell=true;constexpr int FOOT_BACK_X=16,PANEL_RADIUS=20;
@@ -110,13 +111,13 @@ struct Popup {
  bool anchored=false,inFrame=true,hasAnchor=false,alignSelected=false,marked=false,active=true,uiReady=true;
  fui::Rect frameRect,anchor;mutable fui::Rect lastRenderedFrame;
  mutable bool headLaid=false;mutable int boldLines=0,scrollTop=-1,shownRows=16,shownPitch=56;
- mutable std::vector<std::string> headLines;std::string title="Paired devices",headline;
+ mutable std::vector<std::string> headLines;std::string title="Paired devices",headline,message;
  std::vector<std::string> ownedStrings{"Connect","Forget"};int selectedIndex=0;
  std::function<void(int)> onSelectCallback;mutable fui::InteractionBuffer<17> interactions;
  static int rowsInFrame(int h,int head,int row,int count){return optionPopupFrameRows(h,head,row,count);}
  static void uglyPaper(const GfxRenderer&,fui::Rect){}
  static void uglyText(const GfxRenderer&,fui::Rect,const char*){}
-''' + method(popup, '  static void drawAction(') + '\n' + method(popup, '  static void drawChoice(') + '\n' + 'template<typename Frame>\n' + method(popup, '  void renderAnchored(') + '\n' + method(popup, '  bool handleInput(') + r'''
+''' + method(popup, '  static void drawAction(') + '\n' + method(popup, '  static void drawChoice(') + '\n' + 'template<typename Frame>\n' + method(popup, '  void renderAnchored(') + '\n' + method(popup, '  bool handleInput(') + '\n' + method(popup, '  bool handleButtons(') + r'''
  void paint(GfxRenderer&r,Target&t,fui::DeviceContext&d){
    interactions.beginPublishCycle();fui::InputSnapshot input;
    fui::Frame<17> frame(t,d,input,interactions);renderAnchored(r,frame,d.screen());interactions.publish();

@@ -351,8 +351,12 @@ void UiTabListActivity::syncTabListViewport(UiScreen& screen, fui::ListProps& pr
   reserveRowFrame(screen, rowGap);
   // Touch: count a page with the rows list() lays out (see UiListActivity::syncListViewport).
   const auto laid = rowsFramed ? screen.resolveListProps(props) : props;
+  const int prevTop = n.top;
+  const bool trusted = n.trusts(count);
+  const int drawn = n.drawnRows;
   n.syncToProps(screen.body(), rowsFramed ? laid.rowHeight : rowHeight, rowsFramed ? laid.rowGap : rowGap, count,
                 props, 1);
+  keepViewportOnVisibleSelection(props, prevTop, trusted, drawn);
   keepUglyRows(props);
   measurePageScrollbar(screen, laid);
   // The touch shell shows no cursor row; SDK navigation still owns the viewport.

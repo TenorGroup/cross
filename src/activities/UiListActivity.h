@@ -339,6 +339,10 @@ class UiListActivity : public Activity, protected UiAppHost {
   // hardware the denser override below uses the theme's *-with-subtitle row
   // height instead of its single-line one (see syncListViewport()).
   void syncListViewport(UiScreen& screen, freeink::ui::ListProps& props, bool hasSubtitle = false);
+  // A button follow whose selection the last measured layout already shows leaves the viewport where it
+  // was: the follow's estimate counts fixed-height rows, and wrapped rows would make it jump. A swipe
+  // clears followPending and keeps the viewport it chose. Call right after nav.syncToProps().
+  void keepViewportOnVisibleSelection(freeink::ui::ListProps& props, int prevTop, bool trusted, int drawn);
 
   // Kep con tro ve trong so dong dang co.
   //
