@@ -281,10 +281,9 @@ class ChapterHtmlSlimParser {
   // Set by requestCheckpoint(): the next eligible block close stops the parse, page finished or not.
   bool checkpointWanted_ = false;
   bool replayingCheckpoint_ = false;
-  // A TXT or Markdown file converted by TxtToHtml (its version comment says so): its lines are separated by <br />
+  // A TXT or Markdown file converted by TxtToHtml (the open path says so, setLineBreakCheckpoints): its lines are separated by <br />
   // alone, so the end of a <br /> is a place to park and resume at, with the soft block that waits there kept.
   bool lineBreakCheckpoints_ = false;
-  static void XMLCALL commentHandler(void* userData, const XML_Char* data);
   // The state of the empty block after a line break, as bits: 1 first-line indent already used, 2 paragraph start
   // emitted (ParsedText::firstLineState), 4 soft (BlockStyle::fromBrElement: no paragraph gap before it).
   uint8_t lineBreakState() const;
@@ -403,6 +402,9 @@ class ChapterHtmlSlimParser {
   void setParagraphIndentSpaces(const uint8_t spaces) { paragraphIndentSpaces = spaces; }
   // Whether h1..h6 get a size of their own (HEADING_SIZES in ReaderRenderSpec.h says what a board does).
   void setHeadingSizes(const bool on) { headingSizes = on; }
+  // On for the HTML of a TXT or Markdown file only. A comment inside a book cannot switch it on: a cold parse and a
+  // resumed one (which replays only the prolog) would then disagree about where a page may be parked.
+  void setLineBreakCheckpoints(const bool on) { lineBreakCheckpoints_ = on; }
 
   // One-shot parse: builds every page before returning (begin + step* + finish).
   bool parseAndBuildPages();

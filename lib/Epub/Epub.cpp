@@ -1682,6 +1682,8 @@ bool Epub::extractItemToFile(const std::string& itemHref, const std::string& des
   return ok;
 }
 
+bool Epub::isPlainText() const { return Txt::isTxtOrMd(filepath); }
+
 bool Epub::getItemSize(const std::string& itemHref, size_t* size) const {
   if (Txt::isTxtOrMd(filepath)) {
     HalFile f;

@@ -123,6 +123,9 @@ class Epub {
   // Extract an item to a file on SD. On failure the partial file is removed.
   bool extractItemToFile(const std::string& itemHref, const std::string& destPath) const;
   bool getItemSize(const std::string& itemHref, size_t* size) const;
+  // A TXT or Markdown file: its chapter is the HTML TxtToHtml makes of it. Said by the open path (the file's
+  // extension), not by anything inside the HTML, which a book can carry in a comment.
+  bool isPlainText() const;
   BookMetadataCache::SpineEntry getSpineItem(int spineIndex) const;
   BookMetadataCache::TocEntry getTocItem(int tocIndex) const;
   int getSpineItemsCount() const;

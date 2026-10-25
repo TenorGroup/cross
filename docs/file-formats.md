@@ -95,8 +95,8 @@ if (parsedSize != fileSize) {
 Version 71 keeps version 70's page layout and rebuilds every completed and partial section written at 70 (development
 builds of 1.1.0 only). The header byte after the drop cap mode, which held Focus Reading alone, is a set of flags:
 bit 0 Focus Reading, bit 1 headings sized (a board with PSRAM), bit 2 sizes of SD and vector faces loaded; a card moved
-between boards rebuilds. A converted TXT or Markdown file (its HTML carries a `TXT_CACHE_VERSION` or `MD_CACHE_VERSION`
-comment) parks and resumes at the end of a `<br />`: a checkpoint gains a byte of state (first-line indent used,
+between boards rebuilds. A converted TXT or Markdown file (told by its extension at the open, not by a comment in the HTML:
+a book that carries a `TXT_CACHE_VERSION` comment is still an EPUB) parks and resumes at the end of a `<br />`: a checkpoint gains a byte of state (first-line indent used,
 paragraph start emitted, soft block) and so does a resume point of `<spine>.dd` (its former padding byte). The magic of
 `<spine>.dd` is tied to the section version, so the resume points of a build at another version are never read; the
 staging files of a build (`.part`, `.lut.part`, `.checkpoint.part`) are removed when a build starts. The unzipped

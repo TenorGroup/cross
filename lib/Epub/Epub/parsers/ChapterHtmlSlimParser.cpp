@@ -3126,13 +3126,6 @@ void ChapterHtmlSlimParser::trackCheckpointEnd(const XML_Char* name) {
   checkpointWanted_ = false;
 }
 
-void XMLCALL ChapterHtmlSlimParser::commentHandler(void* userData, const XML_Char* data) {
-  // TxtToHtml's second line: <!-- TXT_CACHE_VERSION: n --> or <!-- MD_CACHE_VERSION: n -->.
-  if (strstr(data, "TXT_CACHE_VERSION") || strstr(data, "MD_CACHE_VERSION")) {
-    static_cast<ChapterHtmlSlimParser*>(userData)->lineBreakCheckpoints_ = true;
-  }
-}
-
 uint8_t ChapterHtmlSlimParser::lineBreakState() const {
   if (!lineBreakCheckpoints_ || !currentTextBlock) return 0;
   const bool soft = currentTextBlock->getBlockStyle().fromBrElement;
@@ -3365,7 +3358,6 @@ bool ChapterHtmlSlimParser::beginParse() {
   XML_SetUserData(xmlParser_, this);
   XML_SetElementHandler(xmlParser_, startElement, endElement);
   XML_SetCharacterDataHandler(xmlParser_, characterData);
-  XML_SetCommentHandler(xmlParser_, commentHandler);
   XML_SetXmlDeclHandler(xmlParser_, [](void* data, const XML_Char*, const XML_Char* encoding, int) {
     if (encoding && strcasecmp(encoding, "UTF-8") != 0 && strcasecmp(encoding, "US-ASCII") != 0)
       static_cast<ChapterHtmlSlimParser*>(data)->checkpointAllowed_ = false;

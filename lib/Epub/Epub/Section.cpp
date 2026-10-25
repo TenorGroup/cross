@@ -520,6 +520,7 @@ std::unique_ptr<ChapterHtmlSlimParser> Section::makeBuildParser(BuildContext* ct
     parser->setTextSpacing(spec.characterSpacing, spec.wordSpacingPercent);
     parser->setParagraphIndentSpaces(spec.paragraphIndentSpaces);
     parser->setHeadingSizes(HEADING_SIZES);
+    parser->setLineBreakCheckpoints(epub->isPlainText());
   }
   if (parser && ctxPtr->ddOn) {
     parser->resumePointFn = [this, ctxPtr](const ChapterHtmlSlimParser::ResumePoint& point, const std::string& prefix,

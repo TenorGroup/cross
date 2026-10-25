@@ -29,6 +29,7 @@ class Epub {
   const std::string& getCachePath() const { return cachePath; }
   SpineItem getSpineItem(int) const { return {}; }
   CssParser* getCssParser() const { return nullptr; }
+  bool isPlainText() const { return false; }
   int getTocIndexForSpineIndex(int) const { return tocCount > 0 ? 0 : -1; }
   int getTocItemsCount() const { return tocCount; }
   TocItem getTocItem(int i) const {
