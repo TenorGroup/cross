@@ -79,6 +79,16 @@ filebrowser::SortMode filebrowser::settingsSort() { return SortMode::Name; }
 void filebrowser::chooseSettingsSort(SortMode) {}
 
 struct RenderLock { template<class T> explicit RenderLock(T&) {} };
+// The screens Settings opens by going elsewhere: what the plugin entry asks the activity manager for.
+static struct ActivityManagerBoundary {
+  unsigned plugins = 0;
+  bool showOpds = false;
+  void goToPlugins(const bool opds) { ++plugins; showOpds = opds; }
+} activityManager;
+static struct OpdsStoreBoundary {
+  std::vector<int> servers;
+  const std::vector<int>& getServers() const { return servers; }
+} OPDS_STORE;
 namespace shell { bool isUgly() { return false; } }
 struct SettingsActivity {
   // Same shape as freeink::ui::ListNav: the selection is atomic (read by the render task).
@@ -97,6 +107,7 @@ struct SettingsActivity {
   std::atomic<bool> formPaintReady_{false};
   void bindForm() {}
   void rebuildSettingsLists(bool lockHeld = false);
+  void openPluginCatalog();
   void releaseClosedTabs();
   bool closedTabsReleased_ = false;
   static constexpr int categoryCount = settingstabs::TAB_COUNT;
@@ -391,6 +402,45 @@ int main(int argc, char** argv) {
                     signature(system) == full[system],
                 "a pin on a closed tab after the Bluetooth screen lands on its row");
     activity.closedTabsReleased_ = false;
+  }
+  {
+    // The plugin catalog and Plugin Hub open from Other, right under the OPDS browser, and only while plugins are
+    // on (as upstream's Home row did). The toggle stays on Device. The tab keeps its exact reserve both ways.
+    const auto named = [&activity](const settingstabs::Tab tab, const StrId id) {
+      const auto& rows = activity.danhSachCuaThe(tab);
+      return std::count_if(rows.begin(), rows.end(), [id](const auto& row) { return row.nameId == id; });
+    };
+    const auto entryUnderOpds = [&activity] {
+      const auto& rows = activity.otherSettings;
+      const auto opds = std::find_if(rows.begin(), rows.end(), [](const auto& row) { return row.nameId == StrId::STR_OPDS_BROWSER; });
+      return opds != rows.end() && opds + 1 != rows.end() && (opds + 1)->nameId == StrId::STR_PLUGINS;
+    };
+    SETTINGS.pluginsEnabled = 0;
+    activity.rebuildSettingsLists();
+    const size_t without = activity.otherSettings.size();
+    ok &= check(named(settingstabs::Tab::OTHER, StrId::STR_PLUGINS) == 0, "plugins off: no catalog entry in Other");
+    ok &= check(named(settingstabs::Tab::DEVICE, StrId::STR_PLUGINS) == 1, "plugins off: the toggle is on Device");
+    SETTINGS.pluginsEnabled = 1;
+    activity.rebuildSettingsLists();
+    ok &= check(named(settingstabs::Tab::OTHER, StrId::STR_PLUGINS) == 1 && entryUnderOpds(),
+                "plugins on: the catalog entry is in Other, under the OPDS browser");
+    ok &= check(activity.otherSettings.size() == without + 1 &&
+                    activity.otherSettings.capacity() == activity.otherSettings.size(),
+                "plugins on: Other reserves exactly one more row");
+    ok &= check(named(settingstabs::Tab::DEVICE, StrId::STR_PLUGINS) == 1, "plugins on: the toggle stays on Device");
+    SETTINGS.pluginsEnabled = 0;
+    activity.rebuildSettingsLists();
+    ok &= check(named(settingstabs::Tab::OTHER, StrId::STR_PLUGINS) == 0 && activity.otherSettings.size() == without &&
+                    activity.otherSettings.capacity() == without,
+                "plugins turned off again: the entry goes and the reserve is exact");
+    // The entry goes to the plugin catalog, with the OPDS row inside it only when a server is set.
+    ok &= check(activityManager.plugins == 0, "nothing opened the catalog yet");
+    activity.openPluginCatalog();
+    ok &= check(activityManager.plugins == 1 && !activityManager.showOpds, "the entry opens the plugin catalog, no OPDS row");
+    OPDS_STORE.servers.push_back(1);
+    activity.openPluginCatalog();
+    ok &= check(activityManager.plugins == 2 && activityManager.showOpds, "with an OPDS server the catalog lists it first");
+    OPDS_STORE.servers.clear();
   }
   ok &= dynamicLifetime();
   ok &= longFontNames();

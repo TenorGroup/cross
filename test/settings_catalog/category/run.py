@@ -129,6 +129,12 @@ for mode in modes:
                             'std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe')
     methods += method_slice(sources[paths[2]], 'bool SettingsActivity::listedAsRow(')
     methods += method_slice(sources[paths[2]], 'void SettingsActivity::rebuildSettingsLists(')
+    # A revision that cannot open the plugin catalog from Settings has no such method: an empty one, so the
+    # harness reports what the screen does not do instead of failing to compile.
+    try:
+        methods += method_slice(sources[paths[2]], 'void SettingsActivity::openPluginCatalog(')
+    except ValueError:
+        methods += 'void SettingsActivity::openPluginCatalog() {}\n'
     methods += method_slice(sources[paths[2]], 'void SettingsActivity::releaseClosedTabs(')
     methods += method_slice(sources[paths[2]], 'void SettingsActivity::selectCategory(')
     methods += method_slice(sources[paths[2]], 'int SettingsActivity::focusFavorite(')
