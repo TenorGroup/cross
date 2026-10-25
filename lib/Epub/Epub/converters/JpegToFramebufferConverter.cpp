@@ -215,7 +215,7 @@ int jpegDrawCallback(JPEGDRAW* pDraw) {
       if (y > lastSrcY) y = lastSrcY;
       if (y < blockY) {
         if (above) {
-          left = haveLeft ? ctx->carryCorner : above[blockX];
+          left = haveLeft ? ctx->carryCorner : above[std::max(blockX, 0)];
           return above;
         }
         y = blockY;  // no row above: repeat the block's first row
@@ -277,9 +277,14 @@ int jpegDrawCallback(JPEGDRAW* pDraw) {
     // its last row (and the pixel above its last column) for the MCU row below.
     for (int r = 0; r < blockH; r++) ctx->carryCol[r] = pixels[r * stride + validW - 1];
     ctx->carryColBlockY = blockY;
+    // The row is as wide as the kept part: a cropped picture hands over blocks that start before it,
+    // end after it, or lie wholly outside it, and only the columns inside are kept.
     if (ctx->carryRow) {
-      ctx->carryCorner = ctx->carryRow[srcXEnd - 1];
-      memcpy(ctx->carryRow + blockX, &pixels[(blockH - 1) * stride], validW);
+      const int keepFrom = std::max(blockX, 0), keepTo = std::min(srcXEnd, ctx->scaledSrcWidth);
+      if (srcXEnd >= 1 && srcXEnd <= ctx->scaledSrcWidth) ctx->carryCorner = ctx->carryRow[srcXEnd - 1];
+      if (keepFrom < keepTo) {
+        memcpy(ctx->carryRow + keepFrom, &pixels[(blockH - 1) * stride + keepFrom - blockX], keepTo - keepFrom);
+      }
     }
     return 1;
   }
