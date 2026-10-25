@@ -3372,6 +3372,31 @@ TEST_F(SectionCacheTest, ATxtBookParksAtACheckpointAndResumesToTheColdBytes) {
   EXPECT_EQ(bytes(cache()), cold);
 }
 
+// A TXT in another encoding, or with a stray byte, must still lay out: the converter declares UTF-8 and the parser
+// stops on a byte that is not.
+TEST_F(SectionCacheTest, ATxtWithBytesThatAreNotUtf8StillLaysOut) {
+  epub->contents = txtHtml("first line\nstray \x80 byte, cut \xE2\x82 sequence, \xFF end\rold mac line\nlast line\n");
+  spec.viewportWidth = 300;
+  spec.viewportHeight = 200;
+  std::filesystem::remove_all(root / "html");
+  std::filesystem::remove(cache());
+  Section section(epub, 0, renderer);
+  ASSERT_TRUE(section.createSectionFile(spec));
+  std::vector<std::string> words;
+  for (uint16_t i = 0; i < section.pageCount; ++i) {
+    auto page = section.loadPage(i);
+    ASSERT_NE(page, nullptr);
+    for (const auto& element : page->elements) {
+      if (element->getTag() != TAG_PageLine) continue;
+      const auto* block = static_cast<const PageLine&>(*element).getBlock();
+      for (uint16_t w = 0; w < block->wordCount(); ++w) words.emplace_back(block->wordText(w));
+    }
+  }
+  const std::vector<std::string> want{"first",  "line",  "stray",  "\xEF\xBF\xBD", "byte,", "cut",  "\xEF\xBF\xBD",
+                                      "sequence,", "\xEF\xBF\xBD", "end", "old", "mac", "line", "last", "line"};
+  EXPECT_EQ(words, want);
+}
+
 // Parked and resumed under every spacing, indent and alignment the reader offers, the TXT lays out as a cold build.
 TEST_F(SectionCacheTest, AResumedTxtLaysOutAsAColdOneForEveryParagraphLook) {
   epub->contents = txtHtml(txtBook(500));
