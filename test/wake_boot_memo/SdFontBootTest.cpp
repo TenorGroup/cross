@@ -719,6 +719,24 @@ TEST_F(SdFontBoot, ASizeTheHeapCannotHoldIsRefusedOnABoardWithPsramNotQuietlyDro
   // The id is the same whatever the heap was when it was asked first: a cached section keeps its meaning.
   EXPECT_EQ(renderer.variantProvider.resolveFont(base, 1.3f), roomy);
 }
+// An X4C with the radio up, at the open of a book (log of the unit: free 84,760 B, largest block 40,948 B). A heading size
+// is a font object and the style records in internal RAM, about 2 KB; its tables are in PSRAM. The chapter whose first block
+// is a heading was never built on that heap, and every press asked again for the same answer.
+TEST_F(SdFontBoot, AHeadingSizeLoadsOnTheHeapAnX4cHasWithTheRadioUp) {
+  SdCardFontSystem system;
+  GfxRenderer renderer;
+  boot(ESP_RST_POWERON, system, renderer);
+  const int base = system.resolveFontId("Bokerlam", 14);
+  ESP.largest = 40948;
+  ESP.freeBytes = 84760;
+  const int answer = renderer.variantProvider.resolveFont(base, 1.3f);
+  ESP.largest = 256 * 1024;
+  ESP.freeBytes = 256 * 1024;
+  EXPECT_NE(answer, FontVariantProvider::REFUSED) << "the size was refused at the heap of an X4C with the radio up";
+  EXPECT_NE(answer, 0);
+  EXPECT_EQ(renderer.fonts.count(answer), 1u);
+}
+
 #endif
 
 // A board without PSRAM loads no SD size at all, for any font-size in the book's CSS: the answer is the same whatever the
