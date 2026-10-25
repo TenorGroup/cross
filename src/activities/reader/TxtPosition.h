@@ -99,4 +99,14 @@ inline std::string statsFileOf(const std::string& bookPath) {
 // percent second, else -1 (the start of the book; the caller logs it).
 inline int percentToOpenAt(const int fromIndex, const int fromStats) { return fromIndex >= 0 ? fromIndex : fromStats; }
 
+// Whether the v1.0.76 cache of the book may go after a save. It holds the only place the reader has until the share
+// above has been laid out as a page of the new cache: a save made while that jump waits, or before any page stands
+// (the heap could not lay it out), is page 0 of the chapter and not the place, and the next open would not return to
+// the old cache for it.
+inline bool legacyCacheMayGo(const bool saved, const bool jumpPending, const bool pageLaidOut) {
+  (void)jumpPending;
+  (void)pageLaidOut;
+  return saved;
+}
+
 }  // namespace txtposition

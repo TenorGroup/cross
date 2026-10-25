@@ -115,4 +115,12 @@ TEST(TxtPosition, TheIndexSaysFirstThenTheStats) {
   EXPECT_EQ(txtposition::percentToOpenAt(-1, -1), -1);
 }
 
+TEST(TxtPosition, TheOldCacheGoesOnlyWithAPlaceThatWasLaidOut) {
+  EXPECT_TRUE(txtposition::legacyCacheMayGo(true, false, true));
+  EXPECT_FALSE(txtposition::legacyCacheMayGo(false, false, true));  // the card refused the save
+  EXPECT_FALSE(txtposition::legacyCacheMayGo(true, true, true));    // the jump to the old share is still waiting
+  EXPECT_FALSE(txtposition::legacyCacheMayGo(true, true, false));   // ... with no section yet
+  EXPECT_FALSE(txtposition::legacyCacheMayGo(true, false, false));  // no page stands (the heap could not build one)
+}
+
 }  // namespace

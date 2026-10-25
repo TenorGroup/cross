@@ -4209,13 +4209,15 @@ void EpubReaderActivity::saveProgressIfMoved() {
 bool EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageCount) {
   if (preview) return true;
   std::optional<uint32_t> offset;
-  if (section && spineIndex == currentSpineIndex && currentPage >= 0 && currentPage < section->pageCount) {
+  const bool pageLaidOut =
+      section && spineIndex == currentSpineIndex && currentPage >= 0 && currentPage < section->pageCount;
+  if (pageLaidOut) {
     offset = (currentPage == section->currentPage && currentPageVisibleOffset.has_value())
                  ? currentPageVisibleOffset
                  : section->getVisibleTextOffsetForPage(static_cast<uint16_t>(currentPage));
   }
   const bool saved = EpubReaderUtils::saveProgress(*epub, spineIndex, currentPage, pageCount, offset);
-  if (saved && !legacyTxtCache.empty()) {
+  if (!legacyTxtCache.empty() && txtposition::legacyCacheMayGo(saved, pendingPercentJump, pageLaidOut)) {
     // The place is in the new cache: the v1.0.76 TXT cache has done its one job.
     if (!Storage.removeDir(legacyTxtCache.c_str())) LOG_ERR("ERS", "Could not remove %s", legacyTxtCache.c_str());
     legacyTxtCache.clear();
