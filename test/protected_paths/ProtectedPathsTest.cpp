@@ -44,6 +44,26 @@ TEST(ProtectedPaths, PluginPathRules) {
   EXPECT_FALSE(isPluginPath("/.crosspoint/./koreader.json"));
   EXPECT_FALSE(isPluginPath("relative/path"));
   EXPECT_FALSE(isPluginPath("/"));
-  EXPECT_TRUE(isPluginPath("/.crosspoint/month-wallpaper.json"));
   EXPECT_TRUE(isPluginPath("/Books/new.epub"));
+}
+
+// A plugin writes (fetch, plugin-fs) and names token files; /.crosspoint holds the settings, the WebDAV login, the
+// OPDS tokens and every other store of the device, so a plugin gets its own folder there and no more, as the file
+// manager's WebPathPolicy keeps the whole tree out of reach.
+TEST(ProtectedPaths, APluginKeepsToItsOwnFolderInsideCrosspoint) {
+  for (const char* path : {"/.crosspoint/settings.json", "/.crosspoint/webdav.json", "/.crosspoint/opds_tokens.json",
+                           "/.crosspoint/library.idx", "/.crosspoint/month-wallpaper.json", "/.crosspoint/plugins",
+                           "/.crosspoint/plugins/", "/.crosspoint/plugins/foo", "/.crosspoint/plugins.json",
+                           "/.crosspoint/other/foo/x.json", "/.CrossPoint/state.json", "//.crosspoint//settings.json",
+                           "/.crosspoint/./settings.json", "/ .crosspoint/settings.json",
+                           "/.crosspoint ./settings.json", "/.crosspoint./settings.json",
+                           "/.crosspoint/plugins./settings.json", "/CROSSP~1/settings.json"}) {
+    EXPECT_FALSE(isPluginPath(path)) << path;
+  }
+  for (const char* path : {"/.crosspoint/plugins/foo/token.json", "/.crosspoint/plugins/foo/a/b.json",
+                           "/.CrossPoint/Plugins/foo/x.json", "//.crosspoint//plugins//foo//x.json",
+                           "/plugins/foo/config.json", "/.plugins/foo/config.json", "/Books/a.epub", "/.hidden/file",
+                           "/Books/.crosspoint/x.json", "/crosspoint/settings.json"}) {
+    EXPECT_TRUE(isPluginPath(path)) << path;
+  }
 }
