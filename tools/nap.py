@@ -11,8 +11,9 @@ identity:
 * X3, X4 (ESP32-C3) and X4 Classic answer as the chip's own USB-Serial/JTAG. esptool reads the
   partition table and otadata of the device and writes the image into the app slot it boots now.
 * The X4 Pro has its USB download mode fused off. Its release firmware keeps the TCF1 channel
-  (src/platform/CableFlash.h): HELLO, BEGIN, a yes on the device screen (or the recovery keys held
-  at power on), the image in 1 KB frames, END. It then follows the device through its restart until
+  (src/platform/CableFlash.h): HELLO, BEGIN, the image in 1 KB frames, END. A device from v1.1.0 on
+  starts at once; an older one answers WAIT and needs a tap on its screen first, which this tool still
+  waits for. It then follows the device through its restart until
   the new build runs and has passed its trial boot, or has rolled back.
 
 --dry-run checks the image, finds the device, asks the X4 Pro HELLO (read only) and prints the plan;
@@ -258,12 +259,12 @@ def flash_cable(image, port, args, log, serial_module, list_ports):
     if image.elf and status.get('elf') == image.elf[:16]:
         say('The device already runs this build; it is flashed again.')
     if args.dry_run:
-        say(f'Plan: TCF1 BEGIN {len(image.data)} B into {slot}, ask on the device, '
+        say(f'Plan: TCF1 BEGIN {len(image.data)} B into {slot}, '
             f'{-(-len(image.data) // 1024)} frames, END, restart on trial. Nothing written (--dry-run).')
         return 0
     link.send(f'TCF1 BEGIN {len(image.data)} {image.sha} {image.version}')
     answer = link.expect(('TCF1 WAIT', 'TCF1 READY', 'TCF1 FAIL'), 5)
-    if answer and answer.startswith('TCF1 WAIT'):
+    if answer and answer.startswith('TCF1 WAIT'):  # an older device asks for a tap first
         say(f'Tap "Update firmware" on the device ({answer.split()[2]} s).')
         answer = link.expect(('TCF1 READY', 'TCF1 FAIL'), int(answer.split()[2]) + 15)
     if not answer or answer.startswith('TCF1 FAIL'):

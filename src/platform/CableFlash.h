@@ -4,8 +4,8 @@
 // a host test can run them; the caller owns the port, the OTA slot and the clock.
 //
 // The host sends lines: "TCF1 HELLO" (read only) and "TCF1 BEGIN <size> <sha256> <version>". BEGIN
-// waits for the user's yes on the device, or the recovery keys held at power on. Then the device
-// answers "TCF1 READY <session> <payload max>" and reads frames, one at a time:
+// opens the session at once, with no tap on the device: the cable and every check below stand in for it.
+// The device answers "TCF1 READY <session> <payload max>" and reads frames, one at a time:
 //
 //   0  "TCF1"   4  type (1 data, 2 end, 3 abort)   5  0   6  payload length (LE16)
 //   8  session (LE32)   12  sequence (LE32)   16  image offset (LE32)
@@ -36,7 +36,6 @@ constexpr size_t kPayload = 1024;
 constexpr size_t kFrame = kHeader + kPayload;
 constexpr uint32_t kSilenceMs = 10000;  // no byte for this long ends the session
 constexpr uint32_t kQuietMs = 20;       // after a broken frame, the line is quiet this long before the NAK
-constexpr uint32_t kConsentMs = 60000;  // the yes on the device, or the recovery keys, last this long
 constexpr int kMaxBadFrames = 16;       // in a row
 constexpr uint32_t kMinImage = 64 * 1024;
 enum : uint8_t { kData = 1, kEnd = 2, kAbort = 3 };
@@ -57,13 +56,12 @@ struct PolicyInput {
   bool updateIsCable = false;
   bool updateFailed = false;
   const char* book = nullptr;
-  bool consented = false;  // the recovery keys were held at power on
 };
 
 struct PolicyDecision {
   PolicyAction action;
   const char* book;
-  bool askTap = false;  // the device asks for a tap before the session starts
+  bool askTap = false;  // always false: a session that can open starts without a tap (the host test holds it)
 };
 
 // The only policy for opening a cable session and leaving it. Callers supply screen facts and the
@@ -72,10 +70,9 @@ inline PolicyDecision decidePolicy(const PolicyInput& in) {
   if (in.ending) return {in.book && in.book[0] != '\0' ? PolicyAction::ReturnToBook : PolicyAction::Finish, in.book, false};
   if (in.confirmationOpen) return {PolicyAction::Reject, nullptr, false};
   if (in.updateOpen) {
-    const bool reopen = in.updateIsCable && in.updateFailed;
-    return {reopen ? PolicyAction::Replace : PolicyAction::Reject, in.book, reopen && !in.consented};
+    return {in.updateIsCable && in.updateFailed ? PolicyAction::Replace : PolicyAction::Reject, in.book, false};
   }
-  return {in.readerOpen ? PolicyAction::Replace : PolicyAction::Push, in.book, !in.consented};
+  return {in.readerOpen ? PolicyAction::Replace : PolicyAction::Push, in.book, false};
 }
 
 // "<size> <sha256 as 64 hex digits> <version>"; the version is what the user is asked about, and END

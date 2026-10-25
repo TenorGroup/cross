@@ -40,11 +40,11 @@ class SdFirmwareUpdateActivity : public Activity {
   explicit SdFirmwareUpdateActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool recoveryMode = false)
       : Activity("SdFirmwareUpdate", renderer, mappedInput), recoveryMode(recoveryMode) {}
 #if TENOR_CABLE_FLASH
-  // The image comes over the cable (platform/CableFlashLink.h) instead of from the card. The user is
-  // asked first, unless the recovery keys were held at power on (`consented`).
+  // The image comes over the cable (platform/CableFlashLink.h) instead of from the card. The session
+  // starts on the first loop pass; nobody is asked.
   SdFirmwareUpdateActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const cableflash::Begin& begin,
-                           bool consented, std::string returnBook = {})
-      : Activity("SdFirmwareUpdate", renderer, mappedInput), cable(true), cableStart(consented), cableBegin(begin),
+                           std::string returnBook = {})
+      : Activity("SdFirmwareUpdate", renderer, mappedInput), cable(true), cableStart(true), cableBegin(begin),
         cableReturnBook(std::move(returnBook)) {}
   static const SdFirmwareUpdateActivity* activeUpdate();
   bool isCable() const { return cable; }
@@ -82,6 +82,7 @@ class SdFirmwareUpdateActivity : public Activity {
   bool cableStart = false;  // the session starts on the next loop pass
   cableflash::Begin cableBegin;
   std::string cableReturnBook;
+  void startCableSession();
   void performCableUpdate();
   void leaveCableSession();
 #else

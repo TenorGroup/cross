@@ -68,18 +68,6 @@ TEST(ConfirmationProductionContract, ActivityMapsEveryTerminalDecisionToIsCancel
   EXPECT_NE(source.find("selectedIndex = 1 - selectedIndex;"), std::string::npos);
 }
 
-TEST(ConfirmationProductionContract, ATimedQuestionIsCancelledFromTheLoop) {
-  // The cable update asks for 60 s (SdFirmwareUpdateActivity): the loop cancels a question that stood too long,
-  // in both shells, before it reads any input.
-  const auto source = normalizeWhitespace(readSource("src/activities/util/ConfirmationActivity.cpp"));
-  EXPECT_NE(source.find("void ConfirmationActivity::loop() { if (confirmationExpired(content.timeoutMs, shownAt, "
-                        "millis())) { complete(true); return; }"),
-            std::string::npos);
-  EXPECT_NE(source.find("shownAt = millis();"), std::string::npos);
-  EXPECT_NE(readSource("src/activities/settings/SdFirmwareUpdateActivity.cpp").find("content.timeoutMs = cableflash::kConsentMs;"),
-            std::string::npos);
-}
-
 TEST(ConfirmationProductionContract, AllFiveCrossCallersProvideTheirOwnedContent) {
   // The font store asks in its own pop-up box since v1.0.71 (one flow, one kind of box).
   constexpr std::array<const char*, 3> callers{

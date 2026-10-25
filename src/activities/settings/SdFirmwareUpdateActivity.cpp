@@ -54,10 +54,7 @@ void SdFirmwareUpdateActivity::onEnter() {
   LOG_INF("FW", "SdFirmwareUpdateActivity build=%s %s recovery=%d", __DATE__, __TIME__, recoveryMode ? 1 : 0);
   state = State::PICKING;
 #if TENOR_CABLE_FLASH
-  if (cable) {
-    if (!cableStart) promptConfirmation();
-    return;
-  }
+  if (cable) return;  // the session starts on the first loop pass
 #endif
   launchPicker();
 }
@@ -188,50 +185,21 @@ void SdFirmwareUpdateActivity::promptConfirmation() {
     RenderLock lock(*this);
     state = State::CONFIRMING;
   }
-  // Show "Update firmware?" with the file path as the body line; over the cable, the version the
-  // computer offers (the session checks the image says the same).
-  std::string heading = cable ? tr(STR_CABLE_UPDATE_PROMPT) : tr(STR_FIRMWARE_UPDATE_PROMPT);
+  // Show "Update firmware?" with the file path as the body line.
+  std::string heading = tr(STR_FIRMWARE_UPDATE_PROMPT);
   // Use the basename only to keep the body short.
   std::string body = firmwarePath;
   const auto pos = body.find_last_of('/');
   if (pos != std::string::npos) body = body.substr(pos + 1);
-#if TENOR_CABLE_FLASH
-  if (cable) body = cableBegin.version;
-#endif
 
   auto content = ConfirmationContent{heading, body, tr(STR_ALERT_FIRMWARE_ACTION_SHORT),
                                      tr(STR_ALERT_FIRMWARE_ACTION_LONG), "", false};
-#if TENOR_CABLE_FLASH
-  if (cable) {
-    content.timeoutMs = cableflash::kConsentMs;
-    content.touchMessage = heading + " " + body;  // the touch sheet shows one message: say who asks
-  }
-#endif
   startActivityForResult(
       std::make_unique<ConfirmationActivity>(renderer, mappedInput, heading, body, std::move(content)),
       [this](const ActivityResult& result) { onConfirmationResult(result); });
 }
 
 void SdFirmwareUpdateActivity::onConfirmationResult(const ActivityResult& result) {
-#if TENOR_CABLE_FLASH
-  if (cable && result.isCancelled) {
-    cableflash::say("TCF1 FAIL denied");  // No, or nobody answered within the minute
-    leaveCableSession();
-    return;
-  }
-  if (cable) {
-    {
-      RenderLock lock(*this);
-      state = State::UPDATING;
-      writtenBytes = 0;
-      firmwareSize = cableBegin.size;
-      lastRenderedPercent = 101;
-    }
-    requestUpdateAndWait();
-    performCableUpdate();
-    return;
-  }
-#endif
   if (result.isCancelled) {
     if (recoveryMode) {
       // Go back to the picker rather than exiting recovery.
@@ -251,6 +219,20 @@ void SdFirmwareUpdateActivity::onConfirmationResult(const ActivityResult& result
   requestUpdateAndWait();
   performUpdate();
 }
+
+#if TENOR_CABLE_FLASH
+void SdFirmwareUpdateActivity::startCableSession() {
+  {
+    RenderLock lock(*this);
+    state = State::UPDATING;
+    writtenBytes = 0;
+    firmwareSize = cableBegin.size;
+    lastRenderedPercent = 101;
+  }
+  requestUpdateAndWait();
+  performCableUpdate();
+}
+#endif
 
 void SdFirmwareUpdateActivity::performUpdate() {
   LOG_INF("FW", "SD update: %s (%u bytes)", firmwarePath.c_str(), static_cast<unsigned>(firmwareSize));
@@ -365,9 +347,8 @@ void SdFirmwareUpdateActivity::performCableUpdate() {
 void SdFirmwareUpdateActivity::loop() {
 #if TENOR_CABLE_FLASH
   if (cableStart) {
-    // The recovery keys were the yes: straight to the session.
     cableStart = false;
-    onConfirmationResult(ActivityResult{});
+    startCableSession();
     return;
   }
 #endif

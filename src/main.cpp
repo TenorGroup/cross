@@ -1087,10 +1087,6 @@ void setup() {
   const bool recoveryFirmwareMode = wakeupReason == HalGPIO::WakeupReason::PowerButton && !BoardConfig::isPaperMono() &&
                                     gpio.isPressed(HalGPIO::BTN_POWER) && !BoardConfig::isPicco() &&
                                     mappedInputManager.isPressed(recoveryButton);
-#if TENOR_CABLE_FLASH
-  // The keys held at power on are the yes for the first cable update, card or no card.
-  if (recoveryFirmwareMode) cableflash::grantRecoveryConsent();
-#endif
 
   halTiltSensor.begin();
   halClock.begin(/*seedSystemClock=*/false);  // the RTC seeds the clock below, through trustedtime::adopt

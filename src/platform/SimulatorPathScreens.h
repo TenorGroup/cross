@@ -30,9 +30,8 @@ inline void simulatorPathScreen(GfxRenderer& renderer, MappedInputManager& input
     cableflash::Begin begin;
     begin.size = 6330080;
     std::strcpy(begin.version, "v1.0.59");
-    // CableConfirm: the question; CableUpdate: as after the recovery keys, straight to the session.
-    activityManager.pushActivity(std::make_unique<SdFirmwareUpdateActivity>(
-        renderer, input, begin, std::strcmp(target, "CableUpdate") == 0));
+    // CableUpdate: the session starts at once, as a BEGIN from a computer does.
+    activityManager.pushActivity(std::make_unique<SdFirmwareUpdateActivity>(renderer, input, begin));
     return;
   }
 #endif

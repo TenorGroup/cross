@@ -27,11 +27,6 @@ constexpr ConfirmationDecision confirmationDecision(const ConfirmationLayout& la
   return ConfirmationDecision::Wait;
 }
 
-// A question with a time limit (the cable update asks for 60 s) is cancelled once it has stood that long.
-constexpr bool confirmationExpired(uint32_t timeoutMs, uint32_t shownAt, uint32_t now) {
-  return timeoutMs != 0 && static_cast<uint32_t>(now - shownAt) >= timeoutMs;
-}
-
 // buttonBoardRadius: the corner of the box on the boards with buttons, the theme's popup radius.
 constexpr ConfirmationLayout confirmationLayout(bool touch, int screenWidth, int contentTop, int contentBottom,
                                                 int headerHeight, int buttonBoardRadius) {

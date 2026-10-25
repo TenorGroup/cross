@@ -28,8 +28,6 @@
 
 namespace cableflash {
 namespace {
-unsigned long recoveryUntil = 0;
-
 #ifndef SIMULATOR
 const char* stateName(const esp_partition_t* part) {
   esp_ota_img_states_t state;
@@ -97,8 +95,6 @@ struct MillisClock {
 #endif
 }  // namespace
 
-void grantRecoveryConsent() { recoveryUntil = millis() + kConsentMs; }
-
 void say(const char* line) {
 #if LOG_SERIAL_HAS_TX_TIMEOUT
   sendLine(logSerial, line, 1);  // back to main.cpp's load-bearing 1 ms
@@ -137,17 +133,9 @@ void onLine(const char* line, GfxRenderer& renderer, MappedInputManager& input) 
       state == ESP_OTA_IMG_PENDING_VERIFY)
     return say("TCF1 FAIL trial");
 #endif
-  const bool consented = recoveryUntil != 0 && static_cast<long>(recoveryUntil - millis()) > 0;
-  recoveryUntil = 0;  // one session per hold of the keys
-  auto screen = makeUniqueNoThrow<SdFirmwareUpdateActivity>(renderer, input, begin, consented, std::move(returnBook));
+  auto screen = makeUniqueNoThrow<SdFirmwareUpdateActivity>(renderer, input, begin, std::move(returnBook));
   if (!screen) return say("TCF1 FAIL heap");
-  LOG_INF("CABLE", "begin size=%lu version=%s consented=%d", static_cast<unsigned long>(begin.size), begin.version,
-          consented);
-  if (!consented) {
-    char wait[24];
-    snprintf(wait, sizeof(wait), "TCF1 WAIT %u", static_cast<unsigned>(kConsentMs / 1000));
-    say(wait);
-  }
+  LOG_INF("CABLE", "begin size=%lu version=%s", static_cast<unsigned long>(begin.size), begin.version);
   // A book is closed the usual way (its progress saved) before the slot is written.
   if (decision.action == PolicyAction::Replace)
     activityManager.replaceActivity(std::move(screen));
