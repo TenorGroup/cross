@@ -98,3 +98,25 @@ target_include_directories(KOReaderRestartChainBehaviorTest PRIVATE
 target_compile_definitions(KOReaderRestartChainBehaviorTest PRIVATE FREEINK_DEVICE_X3=1)
 target_link_libraries(KOReaderRestartChainBehaviorTest PRIVATE crosspoint_test_common GTest::gtest_main)
 gtest_discover_tests(KOReaderRestartChainBehaviorTest)
+
+set(NOTE_LEFT_BOOK_EXTRACT ${CMAKE_CURRENT_BINARY_DIR}/KOReaderNoteLeftBook.inc)
+add_custom_command(
+  OUTPUT ${NOTE_LEFT_BOOK_EXTRACT}
+  COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/extract_before_open.py
+          ${REPO_ROOT}/src/KOReaderAutoSync.cpp ${NOTE_LEFT_BOOK_EXTRACT} noteLeftBook
+  DEPENDS ${REPO_ROOT}/src/KOReaderAutoSync.cpp ${CMAKE_CURRENT_SOURCE_DIR}/extract_before_open.py
+  VERBATIM
+)
+add_executable(KOReaderNoteLeftBookBehaviorTest
+  NoteLeftBookBehaviorTest.cpp
+  ${NOTE_LEFT_BOOK_EXTRACT}
+)
+set_source_files_properties(${NOTE_LEFT_BOOK_EXTRACT} PROPERTIES HEADER_FILE_ONLY TRUE)
+target_include_directories(KOReaderNoteLeftBookBehaviorTest PRIVATE
+  ${CMAKE_CURRENT_BINARY_DIR}
+  ${REPO_ROOT}/lib/KOReaderSync
+  ${REPO_ROOT}/.pio/libdeps/gh_release/ArduinoJson/src
+)
+target_compile_definitions(KOReaderNoteLeftBookBehaviorTest PRIVATE ARDUINOJSON_ENABLE_ARDUINO_STRING=0)
+target_link_libraries(KOReaderNoteLeftBookBehaviorTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(KOReaderNoteLeftBookBehaviorTest)

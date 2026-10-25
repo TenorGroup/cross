@@ -14,6 +14,7 @@ targets = {
     "pullGated": ("PullResult pullGated(", ("pullNow(", "keepPullPath(", "preparePageTurnerAfterPull(")),
     "noteStart": ("void noteStart(", ("takePullMagic(", "APP_STATE.openEpubPath", "debtAfterStart(")),
     "PullRestartActivity": ("class PullRestartActivity", ("pullRestartReady(", "markPageTurnerRestartSpent(")),
+    "noteLeftBook": ("void noteLeftBook(", ("pendingNote = std::move(debt)", "flushNote()", "deferWrite(&flushNote)")),
     "afterFirstFrame": ("void afterFirstFrame(", ("hasPendingMark", "RenderLock::TryTake", "flushMark()")),
 }
 signature, required = targets[target]
