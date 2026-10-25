@@ -8,8 +8,10 @@
 #include <algorithm>
 #include <cstring>
 
+// v2: bytes that are not UTF-8 are written as U+FFFD, and a CR alone ends a line (v1 kept them and dropped every CR).
+// The parser looks for these words in the comment (ChapterHtmlSlimParser::commentHandler).
 const char* TxtToHtml::cacheVersionTag(std::string_view filename) {
-  return FsHelpers::hasMarkdownExtension(filename) ? "<!-- MD_CACHE_VERSION: 1 -->" : "<!-- TXT_CACHE_VERSION: 1 -->";
+  return FsHelpers::hasMarkdownExtension(filename) ? "<!-- MD_CACHE_VERSION: 2 -->" : "<!-- TXT_CACHE_VERSION: 2 -->";
 }
 
 size_t TxtToHtml::escapedHtmlSize(const std::string_view text) {
@@ -71,6 +73,74 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
   size_t pendingSpaces = 0;
   int bytesRead = 0;
 
+  // The parser reads UTF-8 and stops on a byte that is not, so a file in another encoding or with a stray byte
+  // would not open at all: every maximal piece that is not UTF-8 is shown as U+FFFD, as browsers do. A character
+  // can end in the next read, so the bytes of one wait here until it is whole.
+  uint8_t pending[4];
+  size_t pendingLen = 0, pendingNeed = 0;
+  uint8_t secondLo = 0x80, secondHi = 0xBF;  // the range the byte after a lead byte may take
+  bool afterCr = false;                      // the last byte was a CR: a LF right after it is the same line end
+  const auto replacement = [&]() { writeStr("\xEF\xBF\xBD"); };
+  const auto beginText = [&]() {
+    // Spaces held back are written before the first byte of text; a space only before a line end is dropped.
+    if (pendingSpaces > 0) {
+      for (size_t s = 0; s < pendingSpaces - 1; s++) writeStr("&#160;");
+      writeByte(' ');
+      pendingSpaces = 0;
+    }
+    atLineStart = false;
+  };
+  const auto lineEnd = [&]() {
+    pendingSpaces = 0;
+    writeStr("<br />");
+    atLineStart = true;
+  };
+  // One byte outside a multi-byte character.
+  const auto plain = [&](const uint8_t b) {
+    if (b == '\r') {
+      lineEnd();
+      afterCr = true;
+      return;
+    }
+    const bool skipLf = b == '\n' && afterCr;
+    afterCr = false;
+    if (skipLf) return;
+    if (b == '\n') {
+      lineEnd();
+      return;
+    }
+    if (b == ' ') {
+      if (atLineStart) {
+        writeStr("&#160;");
+      } else {
+        pendingSpaces++;
+      }
+      return;
+    }
+    if (b >= 0x80) {
+      beginText();
+      if (b >= 0xC2 && b <= 0xF4) {
+        pending[0] = b;
+        pendingLen = 1;
+        pendingNeed = b < 0xE0 ? 1 : b < 0xF0 ? 2 : 3;
+        secondLo = b == 0xE0 ? 0xA0 : b == 0xF0 ? 0x90 : 0x80;
+        secondHi = b == 0xED ? 0x9F : b == 0xF4 ? 0x8F : 0xBF;
+      } else {
+        replacement();  // a continuation byte alone, an overlong lead (C0, C1), or past U+10FFFF
+      }
+      return;
+    }
+    beginText();
+    if (b == '&' || b == '<' || b == '>') {
+      const char special = static_cast<char>(b);
+      TxtToHtml::streamEscapedHtml(writeStr, std::string_view(&special, 1));
+    } else if (b < 0x20 && b != '\t') {
+      writeByte(' ');
+    } else {
+      writeByte(b);
+    }
+  };
+
   while ((bytesRead = readFn(readerCtx, inBuf.get(), IN_BUF_SIZE)) > 0) {
     int startIdx = 0;
     if (isStart) {
@@ -81,42 +151,27 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
     }
 
     for (int i = startIdx; i < bytesRead; i++) {
-      uint8_t b = inBuf[i];
-      if (b == '\r') continue;
-
-      if (b == '\n') {
-        pendingSpaces = 0;
-        writeStr("<br />");
-        atLineStart = true;
-        continue;
-      }
-
-      if (b == ' ') {
-        if (atLineStart) {
-          writeStr("&#160;");
-        } else {
-          pendingSpaces++;
+      const uint8_t b = inBuf[i];
+      if (pendingLen > 0) {
+        const bool second = pendingLen == 1;
+        if (b >= (second ? secondLo : 0x80) && b <= (second ? secondHi : 0xBF)) {
+          pending[pendingLen++] = b;
+          if (pendingLen == pendingNeed + 1) {
+            // U+FFFE and U+FFFF are no XML characters.
+            if (pending[0] == 0xEF && pending[1] == 0xBF && pending[2] >= 0xBE) {
+              replacement();
+            } else {
+              for (size_t k = 0; k < pendingLen; k++) writeByte(pending[k]);
+            }
+            pendingLen = 0;
+          }
+          continue;
         }
-        continue;
+        // Not the continuation the character needs: what came so far is one invalid piece, and this byte starts afresh.
+        replacement();
+        pendingLen = 0;
       }
-
-      if (pendingSpaces > 0) {
-        for (size_t s = 0; s < pendingSpaces - 1; s++) {
-          writeStr("&#160;");
-        }
-        writeByte(' ');
-        pendingSpaces = 0;
-      }
-      atLineStart = false;
-
-      if (b == '&' || b == '<' || b == '>') {
-        const char special = static_cast<char>(b);
-        TxtToHtml::streamEscapedHtml(writeStr, std::string_view(&special, 1));
-      } else if (b < 0x20 && b != '\t') {
-        writeByte(' ');
-      } else {
-        writeByte(b);
-      }
+      plain(b);
     }
   }
 
@@ -125,6 +180,7 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
     return false;
   }
 
+  if (pendingLen > 0) replacement();  // the file ends inside a character
   writeStr("\n</body>\n</html>\n");
   flushOut();
   if (!outputOk) {
