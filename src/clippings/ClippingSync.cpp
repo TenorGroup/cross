@@ -140,7 +140,7 @@ bool clippingSync::run(const std::string& bookPath, const std::string& documentH
   if (!KOREADER_STORE.hasCredentials()) return false;
   if (!CLIPPINGS.loadForBook(bookPath, "", "", "epub")) return false;
   struct Unload {
-    ~Unload() { CLIPPINGS.unload(); }
+    ~Unload() { ClippingStore::release(); }
   } unload;
 
 #if defined(CONFIG_IDF_TARGET_ESP32C3) && CONFIG_IDF_TARGET_ESP32C3

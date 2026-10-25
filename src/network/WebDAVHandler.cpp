@@ -636,10 +636,9 @@ void WebDAVHandler::handleMove(WebServer& s) {
     LOG_ERR("DAV", "MOVE %s: backup %s.davbak retained after committed replacement", dstPath.c_str(),
             dstPath.c_str());
   }
-  // The replaced book's clippings belong to the book that is gone. The moved book's own stay under its old
-  // name: ClippingStore has no call to move them onto an existing destination.
-  if (success && dstExists && !ClippingStore::deleteForFilePath(dstPath.c_str(), "epub")) {
-    LOG_ERR("DAV", "MOVE %s: replaced book's clippings were not removed", dstPath.c_str());
+  // The replaced book's clippings go with the book that is gone; the moved book's own follow it to the new name.
+  if (success && dstExists && !ClippingStore::moveStores(srcPath.c_str(), dstPath.c_str())) {
+    LOG_ERR("DAV", "MOVE %s: clippings were not moved with the book", dstPath.c_str());
   }
 
   if (success) {
