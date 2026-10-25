@@ -896,6 +896,12 @@ bool Dictionary::lookup(const char* word, std::string& definitionOut, std::strin
     }
     definitionOut.clear();
     definitionOut.reserve(combinedSize);
+    // std::string does not pass through the heap-floor door itself: judge the buffer just taken.
+    if (!heapfloor::judge(combinedSize, definitionOut.data(), "dict-joined")) {
+      std::string().swap(definitionOut);
+      setResult(LookupResult::LowMemory);
+      return false;
+    }
     for (size_t i = 0; i < fitCount; i++) {
       if (i != 0 && !htmlDefinitions) {
         definitionOut += kPlainSeparator;
