@@ -674,8 +674,16 @@ void ChapterHtmlSlimParser::layoutDropCapLines(
   const EpdFontFamily::Style capStyle = dropCap.bold ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
   dropCap = DropCapState{};
 
-  // Enlarging the family's largest built-in size keeps outlines smoothest.
-  const int capFontId = fontIdForScale(3.0f);
+  // Enlarging the family's largest built-in size keeps outlines smoothest. A size the font system turned down for want
+  // of memory is not laid out at the body size (the width beside the letter would depend on the heap): the build is
+  // starved, as for a heading's size (prepareBlockFont).
+  bool refused = false;
+  const int capFontId = fontIdForScale(3.0f, &refused);
+  if (refused) {
+    sizeRefused_ = true;
+    failBuild();
+    return;
+  }
   const int lineHeight = renderer.getLineHeight(layoutFontId, lineCompression);
   const int ascender = renderer.getFontAscenderSize(layoutFontId);
   int32_t advanceFP = 0;
