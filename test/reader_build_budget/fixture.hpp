@@ -197,6 +197,10 @@ struct Section {
   // against the 16,384 B floor).
   bool starveUntilFontsShed = false;
   bool buildStarved() const { return starved; }
+  // The font system refuses a heading size until the reader sheds its font caches (Section: a refused size parks the
+  // build with its pages kept; starvedBySize() stays set until the next try, which only a foreground demand makes).
+  bool sizeRefusedUntilFontsShed = false, starvedBySizeNow = false;
+  bool starvedBySize() const { return starvedBySizeNow; }
   int starts = 0, ticks = 0, suspends = 0, parks = 0, resumes = 0, ticksPerPage = 0, ticksIntoPage = 0;
   int ticksWhileRefreshing = 0;
   int restoredPagesAfterStart = 0;
@@ -236,7 +240,12 @@ struct Section {
       parked = false; ++resumes;
       ESP.free = ESP.free > parserFootprint ? ESP.free - parserFootprint : 0;
     }
+    starvedBySizeNow = false;
     if (failTick) return false;
+    if (sizeRefusedUntilFontsShed && fontSheds == 0) {
+      starved = starvedBySizeNow = parked = true;
+      return false;
+    }
     starved = (starveUntilRadioStopped && !freeink::ble::idleStoppedState) ||
               (starveUntilFontsShed && fontSheds == 0);
     if (starved) { parked = canPark; return false; }

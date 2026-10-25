@@ -313,6 +313,24 @@ int main() {
     require(r.section->ticks == 1 && r.section->resumes == 1 && !r.section->isBuildParked(),
             "recovered heap did not resume the parked parser");
   });
+  // A heading size the font system turned down parks the build with its pages kept (Section::buildSomeMore). The loop
+  // that lays pages out ahead must not take it up again on the same heap: every try lays the chapter out from its top.
+  test("a refused font size is not laid out again by the background until a foreground try", [] {
+    EpubReaderActivity r; SETTINGS.blePageTurnerEnabled = false; r.section->canPark = true;
+    r.section->sizeRefusedUntilFontsShed = true;
+    r.backgroundTick();
+    require(r.section->ticks == 1 && r.section->buildStarved() && r.section->starvedBySizeNow, "the first tick was not refused");
+    for (int n = 0; n < 30; ++n) r.backgroundTick();
+    require(r.section->ticks == 1, "the background laid the chapter out again on a heap that refuses the size");
+    require(!r.skipLoopDelay(), "a refused build keeps the loop from sleeping");
+    require(r.section->pageCount == 19 && r.section->currentPage == 4, "the refusal lost pages or the reading position");
+    // The reader pages on to the end of what is laid out: the foreground tries, sheds the font caches and goes on.
+    r.section->currentPage = r.section->pageCount;
+    { RenderLock held; r.foreground(); }
+    require(fontSheds == 1 && buildErrors == 0 && popupCount == 0, "the foreground did not free heap and try again");
+    require(r.section->pageCount > r.section->currentPage, "the foreground try did not lay the page out");
+    require(!r.section->starvedBySize(), "the refusal outlived the try that passed it");
+  });
   test("starved extension without radio keeps built pages and warns", [] {
     EpubReaderActivity r; SETTINGS.blePageTurnerEnabled = false; r.section->starveUntilRadioStopped = true;
     r.section->currentPage = r.section->pageCount;

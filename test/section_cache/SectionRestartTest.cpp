@@ -216,7 +216,7 @@ TEST_F(SectionRestartTest, AStarvedBuildThatIsLeftBehindLeavesNoStagingFileAndTh
   EXPECT_EQ(readAll(bin()), want);
 }
 
-TEST_F(SectionRestartTest, ASizeRefusedAfterPagesWereLaidOutStartsTheChapterOverWhenTheHeapIsBack) {
+TEST_F(SectionRestartTest, ASizeRefusedAfterPagesWereLaidOutKeepsThePagesAndStartsOverWhenTheHeapIsBack) {
   const std::string chapter = chapterWithHeadingAfter(60);
   epub->contents = chapter;
   const std::string want = cold(chapter);
@@ -224,9 +224,19 @@ TEST_F(SectionRestartTest, ASizeRefusedAfterPagesWereLaidOutStartsTheChapterOver
   ASSERT_TRUE(section.startBuild(spec));
   ASSERT_TRUE(section.buildSomeMore(4));
   ASSERT_GE(section.pageCount, 4);
+  const uint16_t laidOut = section.pageCount;
   heapIsShort = true;
   EXPECT_FALSE(section.buildSomeMore(0));
   EXPECT_TRUE(section.buildStarved()) << "pages were laid out before the heading, the build was thrown away";
+  // The reader may be on one of those pages: they stay readable for as long as the heap says no.
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    EXPECT_GE(section.pageCount, laidOut) << "the pages laid out before the heading were dropped (attempt " << attempt << ")";
+    EXPECT_NE(section.loadPage(laidOut - 1), nullptr) << "a page laid out before the heading cannot be read";
+    EXPECT_TRUE(section.isBuilding()) << "the build was thrown away instead of kept for the retry";
+    EXPECT_FALSE(section.buildSomeMore(0)) << "still short of heap";
+    EXPECT_TRUE(section.buildStarved());
+  }
+  EXPECT_GE(section.pageCount, laidOut);
   heapIsShort = false;
   ASSERT_TRUE(section.buildSomeMore(0));
   ASSERT_TRUE(section.isBuildComplete());
