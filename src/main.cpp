@@ -275,7 +275,8 @@ RTC_NOINIT_ATTR char probeDryRunUrl[128];  // 128 so the X4 Classic probe fits t
 // The last dry run's result line, printed again by the boot after it (the restart drops the port).
 constexpr uint32_t PROBE_DRYRUN_LINE_MAGIC = 0x4C494E45;
 RTC_NOINIT_ATTR uint32_t probeDryRunLineMagic;
-RTC_NOINIT_ATTR char probeDryRunLine[640];
+// 512: the longest line seen is 407 bytes; the N11 Settings slot (40 B) took the room 640 left on the X3 and X4 Classic probes
+RTC_NOINIT_ATTR char probeDryRunLine[512];
 void probeKeepDryRunLine(const char* line) {
   snprintf(probeDryRunLine, sizeof(probeDryRunLine), "%s", line);
   probeDryRunLineMagic = PROBE_DRYRUN_LINE_MAGIC;
