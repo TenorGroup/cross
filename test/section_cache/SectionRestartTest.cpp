@@ -6,6 +6,7 @@
 #include <Arduino.h>
 #include <Epub/Page.h>
 #include <Epub/Section.h>
+#include <css/CssParser.h>
 #include <GfxRenderer.h>
 #include <TxtToHtml.h>
 #include <Epub/parsers/ChapterHtmlSlimParser.h>
@@ -52,7 +53,12 @@ void writeAll(const fs::path& path, const std::string& data) {
 
 // The font system's answer for any size but the book's: refused for want of memory, or no size of its own.
 bool heapIsShort = false;
-int answerSizes(void*, int, float) { return heapIsShort ? FontVariantProvider::REFUSED : 0; }
+// A drop cap's letter is set 3x: its size has an id of its own while the heap allows (a different font from the book's).
+constexpr int DROP_CAP_FONT = 77;
+int answerSizes(void*, int, float scale) {
+  if (heapIsShort) return FontVariantProvider::REFUSED;
+  return scale >= 2.9f ? DROP_CAP_FONT : 0;
+}
 
 class SectionRestartTest : public ::testing::Test {
  protected:
@@ -98,6 +104,7 @@ class SectionRestartTest : public ::testing::Test {
   std::string cold(const std::string& chapterHtml) {
     auto coldEpub = std::make_shared<Epub>();
     coldEpub->cachePath = coldRoot.string();
+    coldEpub->cssParser = epub->cssParser;
     coldEpub->contents = chapterHtml;
     fs::remove_all(coldRoot);
     fs::create_directories(coldRoot);
@@ -216,6 +223,38 @@ TEST_F(SectionRestartTest, AHeadingSizeTheFontSystemRefusedStarvesTheBuildAndItG
   ASSERT_TRUE(section.buildSomeMore(0));
   ASSERT_TRUE(section.isBuildComplete());
   EXPECT_EQ(readAll(bin()), want);
+}
+
+// A drop cap's letter set by the book's CSS (a floated or oversized span, ::first-letter) is laid out at a size of its
+// own, asked of the font system like a heading's. The firmware draws no drop cap from the CSS today
+// (ParsedText::dropCapHeightFor), so the page is the same on any heap; the day those routes are drawn, a size the heap
+// refused must starve the build and not be set at the book's size (the lines beside the letter would be cut for another
+// letter width). Either way a chapter laid out short of heap and one laid out with room are the same bytes.
+TEST_F(SectionRestartTest, APageWithACssDropCapDoesNotDependOnTheHeap) {
+  spec.dropCapMode = readerSpacing::DROP_CAP_LARGE;
+  spec.embeddedStyle = true;
+  CssParser css(root.string());
+  epub->cssParser = &css;
+  std::string chapter =
+      "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>T</title>"
+      "</head><body><p><span style=\"float:left\">T</span>he first paragraph of a chapter, set beside a letter that is "
+      "taller than its line.</p>";
+  for (int i = 0; i < 12; ++i)
+    chapter += "<p>Paragraph " + std::to_string(i) + " alpha beta gamma delta epsilon zeta eta theta iota kappa.</p>";
+  chapter += "</body></html>";
+  epub->contents = chapter;
+  const std::string want = cold(chapter);
+  heapIsShort = true;
+  Section section(epub, SPINE, renderer);
+  ASSERT_TRUE(section.startBuild(spec));
+  if (!section.buildSomeMore(0)) {
+    ASSERT_TRUE(section.buildStarved()) << "a refused size broke the chapter";
+    ASSERT_TRUE(section.isBuilding());
+    heapIsShort = false;
+    ASSERT_TRUE(section.buildSomeMore(0));
+  }
+  ASSERT_TRUE(section.isBuildComplete());
+  EXPECT_EQ(readAll(bin()), want) << "the page depends on the heap the build ran on";
 }
 
 // A reader that leaves while the build waits for heap keeps nothing of it: no staging file, the next open builds as ever.
