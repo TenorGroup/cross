@@ -716,3 +716,30 @@ TEST_F(SdFontBoot, ASizeTheHeapCannotHoldIsRefusedOnABoardWithPsramNotQuietlyDro
   // The id is the same whatever the heap was when it was asked first: a cached section keeps its meaning.
   EXPECT_EQ(renderer.variantProvider.resolveFont(base, 1.3f), roomy);
 }
+
+// A board without PSRAM loads no SD size at all, for any font-size in the book's CSS: the answer is the same whatever the
+// heap was when asked (so a chapter paginates the same at a high and a low heap), and no size font stays loaded. This is
+// v1.0.76, which had no sizes. A board with PSRAM answers by the heap (the test above).
+TEST_F(SdFontBoot, ABoardWithoutPsramLoadsNoSdSizeWhateverTheHeap) {
+  SdCardFontSystem system;
+  GfxRenderer renderer;
+  boot(ESP_RST_POWERON, system, renderer);
+  const int base = system.resolveFontId("Bokerlam", 14);
+  const size_t loadsBefore = hostLoads.size();
+  for (const size_t largest : {size_t{512 * 1024}, size_t{256 * 1024}, size_t{32 * 1024}}) {
+    ESP.largest = largest;
+    for (const float scale : {0.8f, 1.3f, 2.0f}) {
+      const int answer = renderer.variantProvider.resolveFont(base, scale);
+#ifdef FREEINK_SIZES_NEED_ROOM
+      EXPECT_NE(answer, 0) << "scale " << scale << " largest " << largest << ": PSRAM board answers by heap";
+      (void)answer;
+#else
+      EXPECT_EQ(answer, 0) << "scale " << scale << " at largest free block " << largest;
+#endif
+    }
+  }
+  ESP.largest = 256 * 1024;
+#ifndef FREEINK_SIZES_NEED_ROOM
+  EXPECT_EQ(hostLoads.size(), loadsBefore) << "a size font was loaded";
+#endif
+}
