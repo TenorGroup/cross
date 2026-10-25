@@ -298,6 +298,7 @@ class SettingsActivity final : public UiTabListActivity {
   void noteValue(StrId name);  // tells the shell which row changed (shell::valueChanged)
   void openSleepTimeoutPicker();
   void rebuildSettingsLists(bool lockHeld = false);
+  void openPluginCatalog();
   // Before the Bluetooth screen: the eight closed tabs' rows go (about 14 KB on the X3, which the radio's
   // start needs), and from then on a rebuild builds the open tab alone, with the settings catalog let go.
   void releaseClosedTabs();

@@ -15,10 +15,10 @@ and the firmware carries no vendor names, URLs, or file-format knowledge.
 ```
 
 **Discovery and the on-device list.** The plugin subsystem is controlled by
-**Settings → Connectivity → Plugins**. When enabled, **Plugins** is
-shown on the Home screen even when no plugins are installed. Every plugin folder
+**Settings → Device → Plugins**. When enabled, a **Plugins** entry is
+shown in **Settings → Other**, under **OPDS Browser**, even when no plugins are installed. Every plugin folder
 (anything holding a `manifest.json`, `plugin.js`, or `device.json`) appears under
-**Home → Plugins**, showing its `title` and one-line `description`. Selecting a
+**Settings → Other → Plugins**, showing its `title` and one-line `description`. Selecting a
 plugin with an on-device catalog (`device.json`
 with `browse.url`) opens that catalog. Selecting any other plugin shows its
 `README.md` (up to 16KB, as plain paged text) when it has one, so even a
@@ -59,7 +59,7 @@ Hub is considered available when the first matching `pluginhub` directory has a
 `device.json` and is not quarantined by `.installing`; `manifest.json`,
 `plugin.js`, and `README.md` are not required for native availability. When
 plugins are enabled, no native Hub is available, and the installer has not
-been hidden, **Home → Plugins** contains a synthetic **Plugin Hub — Download,
+been hidden, **Settings → Other → Plugins** contains a synthetic **Plugin Hub — Download,
 discover, and update plugins** entry. Selecting it offers:
 
 - **Install** — download and install Plugin Hub over Wi-Fi. Backing out of the
@@ -69,7 +69,7 @@ discover, and update plugins** entry. Selecting it offers:
   sideloaded plugins continue to work normally.
 - **Cancel** — leave the entry visible and make no changes.
 
-The **Hide** preference persists across reboots. Setting **Settings → Connectivity →
+The **Hide** preference persists across reboots. Setting **Settings → Device →
 Plugins** to **Enabled** clears it, which brings the installer entry back.
 
 For users who prefer manual installation, Plugin Hub can be downloaded directly
@@ -144,7 +144,7 @@ api.registerAction('myaction', async (args) => {
 ## Surface 3: on-device manifests and catalog screens (`device.json`)
 
 A declarative manifest the firmware's generic `PluginCatalogActivity` renders
-under **Home → Plugins**. It expresses "authenticated JSON
+under **Settings → Other → Plugins**. It expresses "authenticated JSON
 catalog: sign in, browse, download, sidecar" — enough for most book services —
 without any code running on the device. Anything beyond this vocabulary
 belongs in `plugin.js`.
@@ -407,7 +407,7 @@ JSON catalogs may also map `description`, `detail_author`, and `repository` for 
 ### Testing a new manifest
 
 1. Copy the plugin folder to `/.crosspoint/plugins/<name>/` on the SD card.
-2. Enable **Settings → Connectivity → Plugins**, then open **Home → Plugins → your title**. With no token and no `auth`
+2. Enable **Settings → Device → Plugins**, then open **Settings → Other → Plugins → your title**. With no token and no `auth`
    block you should see the not-signed-in screen; with `auth`, the code/QR
    screen.
 3. Watch serial (`[PCAT]` tag) for request/parse failures — the log includes

@@ -235,6 +235,7 @@ struct SettingsActivity : UiListActivity {
   void renderUi() {}
   void rebuildSettingsLists() { ++rebuilds; }
   void releaseClosedTabs() {}
+  void openPluginCatalog() {}  // the plugin entry leaves Settings; the category suite runs it
   bool applyUiSettingChange(uint8_t CrossPointSettings::*) { return true; }
   bool applyUiSettingChange(uint8_t CrossPointSettings::* valuePtr, uint8_t value) {
     if (valuePtr != &CrossPointSettings::uiTextSize) return true;

@@ -30,6 +30,7 @@ enum class Action : uint8_t {
   HomeButton,
   About,
   Plugins,
+  OpenPlugins,
 };
 
 // MOTION is last by ID: a board without a motion sensor shows the tabs below it only.

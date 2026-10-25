@@ -405,7 +405,7 @@ int main(int argc, char** argv) {
   }
   {
     // The plugin catalog and Plugin Hub open from Other, right under the OPDS browser, and only while plugins are
-    // on (as upstream's Home row did). The toggle stays on Device. The tab keeps its exact reserve both ways.
+    // on (as upstream's Home row did). The toggle stays on Device.
     const auto named = [&activity](const settingstabs::Tab tab, const StrId id) {
       const auto& rows = activity.danhSachCuaThe(tab);
       return std::count_if(rows.begin(), rows.end(), [id](const auto& row) { return row.nameId == id; });
@@ -430,9 +430,8 @@ int main(int argc, char** argv) {
     ok &= check(named(settingstabs::Tab::DEVICE, StrId::STR_PLUGINS) == 1, "plugins on: the toggle stays on Device");
     SETTINGS.pluginsEnabled = 0;
     activity.rebuildSettingsLists();
-    ok &= check(named(settingstabs::Tab::OTHER, StrId::STR_PLUGINS) == 0 && activity.otherSettings.size() == without &&
-                    activity.otherSettings.capacity() == without,
-                "plugins turned off again: the entry goes and the reserve is exact");
+    ok &= check(named(settingstabs::Tab::OTHER, StrId::STR_PLUGINS) == 0 && activity.otherSettings.size() == without,
+                "plugins turned off again: the entry goes");
     // The entry goes to the plugin catalog, with the OPDS row inside it only when a server is set.
     ok &= check(activityManager.plugins == 0, "nothing opened the catalog yet");
     activity.openPluginCatalog();

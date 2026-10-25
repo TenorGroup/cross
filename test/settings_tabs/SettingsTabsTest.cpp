@@ -21,6 +21,10 @@ const std::vector<Action> kDongHanhDong = {
     Action::About,
 };
 
+// Rows that are on a tab only while a setting is on: they are counted apart, so the cap on a tab's standing rows
+// below stays what it was.
+const std::vector<Action> kDongCoDieuKien = {Action::OpenPlugins};
+
 std::map<Tab, int> demTheoThe() {
   std::map<Tab, int> dem;
   for (const auto action : kDongHanhDong) dem[settingstabs::nhaCua(action)]++;
@@ -112,6 +116,16 @@ TEST(SettingsTabs, KhongTheNaoQuaTranBayDong) {
   for (const auto& [tab, so] : demTheoThe()) {
     EXPECT_LE(so, 7) << "mot the om qua bay dong hanh dong";
   }
+}
+
+// The plugin catalog entry sits with the OPDS browser on Other (not on Device beside the Plugins switch, which would
+// show two rows of the same name), appears only while plugins are on, and is the one row past the seven.
+TEST(SettingsTabs, DongCoDieuKienOCungTheVoiDichVuTuongTu) {
+  EXPECT_EQ(settingstabs::nhaCua(Action::OpenPlugins), settingstabs::nhaCua(Action::BrowseOPDS));
+  auto dem = demTheoThe();
+  for (const auto action : kDongCoDieuKien) dem[settingstabs::nhaCua(action)]++;
+  EXPECT_EQ(dem.at(Tab::OTHER), 8) << "the Other tab with every conditional row on";
+  for (const auto& [tab, so] : dem) EXPECT_LE(so, 8) << "mot the om qua tam dong hanh dong";
 }
 
 // Moi dong co dung mot nha, va nha do phai la mot the co that.

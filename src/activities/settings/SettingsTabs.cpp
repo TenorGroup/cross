@@ -51,6 +51,7 @@ Tab nhaCua(const Action action) {
     case Action::OPDSBrowser:
     case Action::FileTransfer:
     case Action::BrowseOPDS:
+    case Action::OpenPlugins:
     case Action::ClearCache:
     case Action::CheckForUpdates:
     case Action::SdFirmwareUpdate:

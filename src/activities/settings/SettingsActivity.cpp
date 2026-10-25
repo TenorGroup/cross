@@ -39,6 +39,7 @@
 #include "shells/Shell.h"
 #include "shells/ugly/UglyShell.h"
 #include "OpdsServerListActivity.h"
+#include "OpdsServerStore.h"
 #include "OtaUpdateActivity.h"
 #include "PanelChip.h"
 #include "SdCardFontSystem.h"
@@ -79,7 +80,9 @@ std::string wakeKey(const SettingInfo& s) {
 }
 
 // The Picco's stock layout has one app slot (partitions_picco.csv), so it can update itself by neither route.
+// The plugin catalog entry is there only while plugins are on, as upstream's Home row was.
 bool actionOnThisBoard(const SettingAction action) {
+  if (action == SettingAction::OpenPlugins) return SETTINGS.pluginsEnabled;
   return !(BoardConfig::isPicco() && (action == SettingAction::CheckForUpdates || action == SettingAction::SdFirmwareUpdate));
 }
 }  // namespace
@@ -165,6 +168,7 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
       {StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync},
       {StrId::STR_OPDS_SERVERS, SettingAction::OPDSBrowser},
       {StrId::STR_OPDS_BROWSER, SettingAction::BrowseOPDS},
+      {StrId::STR_PLUGINS, SettingAction::OpenPlugins},
       {StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache},
       {StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates},
       {StrId::STR_SD_FIRMWARE_UPDATE, SettingAction::SdFirmwareUpdate},
@@ -276,6 +280,9 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
   if (shell::isUgly()) bindForm();
   if (closedTabsReleased_) releaseBaseSettingsList();  // the catalog is the other ~16 KB; nothing borrows it now
 }
+
+// The catalog lists the OPDS browser as its first row when a server is set, as upstream's Home row did.
+void SettingsActivity::openPluginCatalog() { activityManager.goToPlugins(!OPDS_STORE.getServers().empty()); }
 
 void SettingsActivity::releaseClosedTabs() {
   RenderLock lock(*this);
@@ -834,6 +841,9 @@ void SettingsActivity::toggleCurrentSetting() {
         break;
       case SettingAction::BrowseOPDS:
         activityManager.goToBrowser();
+        break;
+      case SettingAction::OpenPlugins:
+        openPluginCatalog();
         break;
       case SettingAction::BlePageTurner:
         releaseClosedTabs();
