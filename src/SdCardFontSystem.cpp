@@ -531,6 +531,7 @@ int SdCardFontSystem::resolveVariant(const int fontId, const float scale) {
   if (const int builtin = builtinReaderFontVariant(fontId, scale); builtin != 0) {
     return renderer_->getFontMap().count(builtin) ? builtin : 0;
   }
+  if (!FontVariantProvider::LOADS_SIZES) return 0;  // no PSRAM: SD and vector faces keep the book size
 #if CROSSPOINT_VECTOR_FONTS
   if (ttf_ && fontId == ttfFontId_) {
     // Vector faces render at any size.

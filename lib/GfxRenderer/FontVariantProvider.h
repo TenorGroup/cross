@@ -14,8 +14,13 @@ struct FontVariantProvider {
   // (it has no memory for a second size, always). FREEINK_SIZES_NEED_ROOM builds the first answer on a host.
 #if defined(BOARD_HAS_PSRAM) || defined(FREEINK_SIZES_NEED_ROOM)
   static constexpr int NO_ROOM = REFUSED;
+  // Whether the font system loads sizes of an SD or vector font at all. A board without PSRAM has no memory for a
+  // second size, so it never does, for a heading or any CSS font-size: the text stays at the book size at every
+  // heap, as in v1.0.76, and a page count does not follow the heap. (Built-in sizes live in flash and stay.)
+  static constexpr bool LOADS_SIZES = true;
 #else
   static constexpr int NO_ROOM = 0;
+  static constexpr bool LOADS_SIZES = false;
 #endif
 
   void* ctx = nullptr;

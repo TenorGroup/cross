@@ -639,6 +639,7 @@ TEST_F(SdFontBoot, ReleasedCatalogDoesNotAnswerWithTheWakeFamily) {
   EXPECT_TRUE(hostLoads.empty() || hostLoads.back() == "/.fonts/Bokerlam/Bokerlam-SD_20.cpfont");
 }
 
+#ifdef FREEINK_SIZES_NEED_ROOM  // a board without PSRAM loads no size (the last test below)
 // A heading at 145% asks the reader font for a sized variant while the first page lays out, after the book released the
 // catalog at open. The variant is built from the family already loaded: the 37-family list (4.8 KB in about a hundred
 // blocks on the X3) stays out of the heap while the book is read. Leaving the book gives the variant font back, so Home
@@ -668,7 +669,9 @@ TEST_F(SdFontBoot, SizedVariantKeepsTheCatalogReleasedAndTheBookGivesTheVariantB
   EXPECT_TRUE(system.catalogHeld());
   EXPECT_EQ(hostDiscoveries, 1);
 }
+#endif
 
+#ifdef FREEINK_SIZES_NEED_ROOM
 // The X3 card of the journey (31 families here, 37 on the unit). Opening a book that has a heading and leaving it again must leave the heap
 // where Home had it before the book: no font list (about two blocks a family) and no variant font behind.
 TEST_F(SdFontBoot, AWholeBookWithAHeadingLeavesNoFontBlocksBehind) {
@@ -716,6 +719,7 @@ TEST_F(SdFontBoot, ASizeTheHeapCannotHoldIsRefusedOnABoardWithPsramNotQuietlyDro
   // The id is the same whatever the heap was when it was asked first: a cached section keeps its meaning.
   EXPECT_EQ(renderer.variantProvider.resolveFont(base, 1.3f), roomy);
 }
+#endif
 
 // A board without PSRAM loads no SD size at all, for any font-size in the book's CSS: the answer is the same whatever the
 // heap was when asked (so a chapter paginates the same at a high and a low heap), and no size font stays loaded. This is
