@@ -1,4 +1,5 @@
 #pragma once
+#define HOST_STUB_OWN_ESP
 #include "../../secure_http/stubs/Arduino.h"
 struct TestSerial {
   explicit operator bool() const { return false; }
