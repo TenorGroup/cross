@@ -229,6 +229,11 @@ struct ClippingStore {
     clippingsDeleted.push_back(path);
     return true;
   }
+  // A replace: the stores of the moved book replace the destination's (the destination's go first, inside the call).
+  static bool moveStores(const std::string& from, const std::string& to) {
+    Storage.operations.push_back("clippings-stores:" + from + ":" + to);
+    return true;
+  }
 };
 
 std::map<std::string, std::string> cache;
@@ -324,7 +329,7 @@ int main() {
     expect(std::count(Storage.operations.begin(), Storage.operations.end(), "clippings-move:/m1.epub:/m2.epub") == 1,
            "ClippingStore moved the book");
 
-    begin("MOVE over an existing book keeps the atomic replace and drops the replaced book's clippings");
+    begin("MOVE over an existing book keeps the atomic replace and moves the stores onto the destination");
     clippingsDeleted.clear();
     Storage.files["/m1.epub"] = {"new"};
     Storage.files["/m2.epub"] = {"old"};
@@ -333,7 +338,9 @@ int main() {
     expect(o.code == 204 && Storage.files.at("/m2.epub").data == "new", "destination replaced");
     expect(std::count(Storage.operations.begin(), Storage.operations.end(), "clippings-move:/m1.epub:/m2.epub") == 0,
            "a replace does not go through ClippingStore::moveBook");
-    expect(clippingsDeleted == std::vector<std::string>{"/m2.epub"}, "replaced book's clippings removed");
+    expect(std::count(Storage.operations.begin(), Storage.operations.end(), "clippings-stores:/m1.epub:/m2.epub") == 1,
+           "the moved book's clippings follow it onto the destination");
+    expect(clippingsDeleted.empty(), "the handler no longer deletes the destination's stores itself");
   }
   for (const char* ext : {".epub", ".txt", ".xtc"}) {
     const std::string path = std::string("/delete") + ext;
