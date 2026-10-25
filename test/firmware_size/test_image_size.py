@@ -69,6 +69,24 @@ class FirmwareSizeTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.api["check_image_size"](self.image, self.table, 0x7E0000)
 
+    def test_picco_recovery_slot_does_not_limit_the_image(self):
+        # partitions_picco.csv: a 0xC0000 `safeboot` factory app before the one `app` ota_0 slot. The image is
+        # flashed to the ota slot only, so the recovery partition is not a slot it has to fit.
+        def entry(kind, subtype, offset, size, name):
+            return struct.pack("<HBBII16sI", 0x50AA, kind, subtype, offset, size, name, 0)
+
+        payload = b"".join([entry(1, 2, 0x9000, 0xC000, b"nvs"), entry(1, 0, 0x15000, 0x2000, b"otadata"),
+                            entry(0, 0x00, 0x20000, 0xC0000, b"safeboot"),
+                            entry(0, 0x10, 0xE0000, 0xE70000, b"app")])
+        self.table.write_bytes(payload + b"\xeb\xeb" + b"\xff" * 14 + hashlib.md5(payload).digest())
+        with self.image.open("wb") as stream:
+            stream.truncate(6232448)
+        self.check()
+        with self.image.open("wb") as stream:
+            stream.truncate(0xE70000 - 131072 + 1)
+        with self.assertRaisesRegex(ValueError, "app at 0xe0000"):
+            self.check()
+
     def test_smaller_second_ota_slot_limits_the_image(self):
         self.fixture(0x630000 - 131072, slots=(0x640000, 0x630000))
         self.check()
