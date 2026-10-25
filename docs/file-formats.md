@@ -90,16 +90,25 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Version 69
+
+Version 69 is the section format of tenor/cross 1.1.0, built on CrossPoint 2.0.0. It
+rebuilds completed and partial sections written by tenor/cross 1.0.x (versions up to
+58) and by CrossPoint builds up to its version 68, because the line-spacing,
+letter-spacing, word-spacing, paragraph-indent and drop-cap choices now reach the
+layout through one render spec, and because text that is laid out in bounded
+(`maxLines`) chunks leaves the words below the chunk unsplit until they are laid out
+at their final width, which removes mid-line hyphens left by drop-cap layout. A drop
+cap is stored as a height on its text block, not as a style bit: bit 128 of a word's
+style is small caps, as in CrossPoint. CSS cache version 20 replaces 19, and the book
+cache version is 10. Book metadata and saved progress are kept.
+
 ### Version 68
 
-Version 68 is the section format of tenor/cross 1.1.0, built on CrossPoint 2.0.0. It
-rebuilds completed and partial sections written by tenor/cross 1.0.x (versions up to
-58) and by older CrossPoint builds, because the line-spacing, letter-spacing,
-word-spacing, paragraph-indent and drop-cap choices now reach the layout through one
-render spec. A drop cap is stored as a height on its text block, not as a style bit:
-bit 128 of a word's style is small caps, as in CrossPoint. CSS cache version 20
-replaces 19, and the book cache version is 10. Book metadata and saved progress are
-kept.
+CrossPoint only. Version 68 preserved the binary layout but rebuilt completed and
+partial sections to remove mid-line hyphens left by drop-cap layout; the lines beside
+the drop cap used bounded greedy wrapping and the rest kept their usual wrapping.
+tenor/cross 1.1.0 never writes version 68 and rejects it.
 
 ### Version 67
 
@@ -371,7 +380,7 @@ import std.mem;
 import std.string;
 import std.core;
 
-#define EXPECTED_VERSION 68
+#define EXPECTED_VERSION 69
 #define MAX_STRING_LENGTH 65535
 #define FOOTNOTE_NUMBER_LEN 32
 #define FOOTNOTE_HREF_LEN 256

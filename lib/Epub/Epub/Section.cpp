@@ -105,6 +105,10 @@ namespace {
 // v67: Count only stretchable literal spaces after visual text reordering.
 // v68: Merged build. The header carries the render spec of both histories (paragraph indent spaces,
 //      character spacing, word spacing percent, drop cap mode, focus reading).
+//      CrossPoint's own v68 (text below drop caps left unsplit until laid out at full width) is the same
+//      number for a different change; this firmware's layout carries that fix, so it is folded into v69.
+// v69: Above this firmware's v58 and CrossPoint's v68. The layout beside a drop cap is bounded (maxLines)
+//      and leaves words below it unsplit for the full width; sections of both histories are rebuilt.
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects

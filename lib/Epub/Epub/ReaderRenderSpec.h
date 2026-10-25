@@ -8,7 +8,7 @@
 // Keep the reader return-position key and section-cache format on the same
 // version. A cache format change must invalidate saved page labels too.
 // This is the only definition: Section.cpp uses it and does not declare its own.
-inline constexpr uint8_t SECTION_FILE_VERSION = 68;
+inline constexpr uint8_t SECTION_FILE_VERSION = 69;
 
 // The resolved text-rendering configuration a reader hands to the layout
 // engine. Section-cache validation keys on every field: a section file built

@@ -919,7 +919,8 @@ bool ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
   // A set stop flag abandons the block on purpose: false without layoutFailed, so the caller can tell
   // it from a layout that failed.
   if (stopRequested && *stopRequested) return false;
-  if (words.empty()) return true;
+  // Nothing to lay out, or no line asked for: a success, not a failure (CrossPoint 4173 maxLines == 0).
+  if (words.empty() || maxLines == 0) return true;
   // Stamped here rather than at construction: the parser replaces blockStyle as CSS resolves.
   blockStyle.characterSpacing = characterSpacing;
   this->wordSpacingPercent = wordSpacingPercent;
@@ -1029,23 +1030,28 @@ bool ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
 #endif
 
   std::vector<size_t> lineBreakIndices;
-  if (hyphenationEnabled || dropCapInset) {
-    // Use greedy layout that can split words mid-loop when a hyphenated prefix fits.
-    lineBreakIndices =
-        computeHyphenatedLineBreaks(renderer, fontId, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore);
+  if (hyphenationEnabled || dropCapInset || maxLines != SIZE_MAX) {
+    // Use greedy layout that can split words mid-loop when a hyphenated prefix fits. A bounded layout
+    // (maxLines) stops after that many lines and leaves the words beyond them unsplit for the full
+    // width they are laid out at later (CrossPoint 4173).
+    lineBreakIndices = computeHyphenatedLineBreaks(renderer, fontId, pageWidth, wordWidths, wordContinues,
+                                                   wordNoSpaceBefore, maxLines);
   } else {
     lineBreakIndices = computeLineBreaks(renderer, fontId, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore);
   }
 #ifdef TENOR_UI_ACCEPTANCE
   const unsigned long breaksEndMs = millis();
 #endif
-  const size_t lineCount = std::min(maxLines, includeLastLine ? lineBreakIndices.size() : lineBreakIndices.size() - 1);
+  // The bounded pass computed at most maxLines lines; the last one is the paragraph's end only when it
+  // reaches the final word, and only then may includeLastLine = false hold it back.
+  const bool allLinesComputed = lineBreakIndices.back() == words.size();
+  const size_t lineCount = lineBreakIndices.size() - (!includeLastLine && allLinesComputed ? 1 : 0);
 #ifdef TENOR_PRESS_PROBE
   buildprobe::us[buildprobe::Breaks] += micros() - stageStarted;
 #endif
 
   BUILD_PROBE_SCOPE(Extract);
-  const bool endIsKnown = includeLastLine && lineCount == lineBreakIndices.size();
+  const bool endIsKnown = includeLastLine && allLinesComputed;
   for (size_t i = 0; i < lineCount; ++i) {
     if (stopRequested && *stopRequested) {
       linesAfterCurrent = -1;
@@ -1509,13 +1515,15 @@ std::vector<size_t> ParsedText::computeLineBreaks(const GfxRenderer& renderer, c
 std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const GfxRenderer& renderer, const int fontId,
                                                             const int pageWidth, std::vector<uint16_t>& wordWidths,
                                                             std::vector<bool>& continuesVec,
-                                                            std::vector<bool>& noSpaceBeforeVec) {
+                                                            std::vector<bool>& noSpaceBeforeVec,
+                                                            const size_t maxLines) {
   std::vector<size_t> lineBreakIndices;
   size_t currentIndex = 0;
 
-  while (currentIndex < wordWidths.size()) {
+  while (currentIndex < wordWidths.size() && lineBreakIndices.size() < maxLines) {
     const size_t lineStart = currentIndex;
-    int lineWidth = 0;
+    size_t lastFittingBreak = lineStart;
+    int lineWidth = calculateRubyExtraStartOffset(lineStart, wordWidths.size(), renderer, fontId);
 
     // First line has reduced width due to text-indent
     const int effectivePageWidth = pageWidth - lineIndent(lineBreakIndices.size(), renderer, fontId);
@@ -1539,9 +1547,15 @@ std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const GfxRenderer& r
       const int candidateWidth = spacing + wordWidths[currentIndex];
 
       // Word fits on current line
+      const int extraEndOffset = calculateRubyExtraEndOffset(lineStart, currentIndex + 1, renderer, fontId);
       if (lineWidth + candidateWidth <= effectivePageWidth) {
         lineWidth += candidateWidth;
         ++currentIndex;
+        if (lineWidth + extraEndOffset <= effectivePageWidth &&
+            (currentIndex == wordWidths.size() ||
+             TokenBoundary::allowsBreak(continuesVec[currentIndex], noSpaceBeforeVec[currentIndex]))) {
+          lastFittingBreak = currentIndex;
+        }
         continue;
       }
 
@@ -1549,11 +1563,12 @@ std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const GfxRenderer& r
       const int availableWidth = effectivePageWidth - lineWidth - spacing;
       const bool allowFallbackBreaks = isFirstWord;  // Only for first word on line
 
-      if (availableWidth > 0 && (hyphenationEnabled || allowFallbackBreaks) &&
-          !(currentIndex == 0 && capIsFirstWord()) &&
+      if (lineWidth + candidateWidth > effectivePageWidth && availableWidth > 0 &&
+          (hyphenationEnabled || allowFallbackBreaks) && !(currentIndex == 0 && capIsFirstWord()) &&
           hyphenateWordAtIndex(currentIndex, availableWidth, renderer, fontId, wordWidths, allowFallbackBreaks)) {
         // Prefix now fits; append it to this line and move to next line
         ++currentIndex;
+        lastFittingBreak = currentIndex;
         break;
       }
 
@@ -1563,6 +1578,8 @@ std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const GfxRenderer& r
       }
       break;
     }
+
+    if (lastFittingBreak > lineStart) currentIndex = lastFittingBreak;
 
     // Don't break before a continuation word (e.g., orphaned "?" after "question").
     // Backtrack to the start of the continuation group so the whole group moves to the next line.
@@ -1802,7 +1819,7 @@ bool ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
 
   // Calculate spacing (account for indent reducing effective page width on first line)
   const int effectivePageWidth = pageWidth - firstLineIndent;
-  const bool isLastLine = breakIndex == lineBreakIndices.size() - 1;
+  const bool isLastLine = lineBreak == words.size();
 
   // For RTL, implicit/default Left alignment becomes Right alignment.
   // Explicit text-align:left must remain left for CSS correctness.
