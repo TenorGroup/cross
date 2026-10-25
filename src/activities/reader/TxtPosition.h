@@ -105,11 +105,7 @@ inline int percentToOpenAt(const int fromIndex, const int fromStats) { return fr
 // the old cache for it.
 // While the share has not become a laid-out page the reader has no place of the new cache to save: a save then would
 // be page 0, and the next open, finding a saved place, would never go back to the old cache for the share.
-inline bool legacyPlaceWaits(const bool jumpPending, const bool pageLaidOut) {
-  (void)jumpPending;
-  (void)pageLaidOut;
-  return false;
-}
+inline bool legacyPlaceWaits(const bool jumpPending, const bool pageLaidOut) { return jumpPending || !pageLaidOut; }
 
 inline bool legacyCacheMayGo(const bool saved, const bool jumpPending, const bool pageLaidOut) {
   return saved && !jumpPending && pageLaidOut;
