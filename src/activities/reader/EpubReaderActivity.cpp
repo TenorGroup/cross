@@ -5871,8 +5871,9 @@ void EpubReaderActivity::renderOverlay() {
   if (overlay == Overlay::Contents && !ReaderToolbarUi::usesX3Bar()) {
     model.panelTitle = tr(STR_TOOL_CONTENTS);
     model.itemCount = epub->getTocItemsCount();
-    const int currentTocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
-    model.rowMarked = [currentTocIndex](int i) { return currentTocIndex >= 0 && i == currentTocIndex; };
+    // The sub-chapter on the page (the chapter list's own mark), not the first row of the chapter file.
+    const int markedRow = currentTocIndex();
+    model.rowMarked = [markedRow](int i) { return markedRow >= 0 && i == markedRow; };
     model.rowText = [this](int i) {
       const auto item = epub->getTocItem(i);
       const int depth = item.level > 1 ? (item.level - 1) * 2 : 0;
