@@ -153,3 +153,61 @@ TEST(PageImageDownscale, BlockEdgesLeaveNoLine) {
     }
   }
 }
+
+// A picture cropped at the decoder's source side (the sleep screen of a wide photo, the viewer's CROP):
+// the decoder still hands over every block of the whole picture, those left of and right of the kept
+// part included. Each decodes to the same levels as the kept part cut out and decoded alone, and none
+// writes outside the carry row (the test is built with AddressSanitizer: a block that is not in the
+// kept columns used to copy its last row to before or after the row).
+namespace {
+std::vector<uint8_t> decodeCropped(const std::vector<uint8_t>& gray, const int w, const int h, const float cropX,
+                                   const float cropY, const int dw, const int dh, const int blockRows,
+                                   const int blockCols) {
+  hostJpeg.width = w;
+  hostJpeg.height = h;
+  hostJpeg.gray = gray;
+  hostJpeg.blockRows = blockRows;
+  hostJpeg.blockCols = blockCols;
+  hostFiles.clear();
+  GfxRenderer renderer;
+  RenderConfig config{};
+  config.maxWidth = dw;
+  config.maxHeight = dh;
+  config.useExactDimensions = true;
+  config.sourceCropX = cropX;
+  config.sourceCropY = cropY;
+  config.cachePath = CACHE;
+  JpegToFramebufferConverter converter;
+  EXPECT_TRUE(converter.decodeToFramebuffer("/page.jpg", renderer, config));
+  const auto& file = hostFiles[CACHE];
+  const size_t header = file.size() >= 3 && file[0] == 'P' && file[1] == 'X' && file[2] == 'C' ? 8 : 4;
+  const int bytesPerRow = (dw + 3) / 4;
+  std::vector<uint8_t> levels(static_cast<size_t>(dw) * dh, 0);
+  if (file.size() < header + static_cast<size_t>(bytesPerRow) * dh) return {};
+  for (int y = 0; y < dh; y++)
+    for (int x = 0; x < dw; x++) levels[y * dw + x] = (file[header + y * bytesPerRow + x / 4] >> (6 - (x & 3) * 2)) & 3;
+  return levels;
+}
+}  // namespace
+
+TEST(PageImageDownscale, ACroppedPictureDecodesAsItsKeptPart) {
+  setImage(false, 16);
+  const std::vector<uint8_t> whole = hostJpeg.gray;
+  struct Crop {
+    float x, y;
+  };
+  for (const Crop crop : {Crop{0.5f, 0.0f}, Crop{0.0f, 0.25f}, Crop{0.5f, 0.25f}, Crop{0.3f, 0.0f}}) {
+    const int left = static_cast<int>(SRC_W * crop.x / 2), top = static_cast<int>(SRC_H * crop.y / 2);
+    const int keptW = SRC_W - 2 * left, keptH = SRC_H - 2 * top;
+    std::vector<uint8_t> kept(static_cast<size_t>(keptW) * keptH);
+    for (int y = 0; y < keptH; y++)
+      for (int x = 0; x < keptW; x++) kept[y * keptW + x] = whole[(y + top) * SRC_W + x + left];
+    const int dw = keptW * 3 / 4, dh = keptH / 2;
+    for (const auto& shape : {std::pair{16, 128}, std::pair{8, 96}}) {
+      const auto cropped = decodeCropped(whole, SRC_W, SRC_H, crop.x, crop.y, dw, dh, shape.first, shape.second);
+      const auto alone = decodeCropped(kept, keptW, keptH, 0.0f, 0.0f, dw, dh, shape.first, shape.second);
+      ASSERT_FALSE(cropped.empty());
+      EXPECT_EQ(cropped, alone) << crop.x << "," << crop.y << " " << shape.first << "x" << shape.second;
+    }
+  }
+}

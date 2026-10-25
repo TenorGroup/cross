@@ -14,5 +14,8 @@ target_include_directories(ImageDownscaleTest PRIVATE
   ${REPO_ROOT}/lib/GfxRenderer
   ${REPO_ROOT}/lib/Memory
 )
+# The filter keeps a row of the block above in a buffer one source row wide: run it with bounds checks.
+target_compile_options(ImageDownscaleTest PRIVATE -fsanitize=address -fno-omit-frame-pointer)
+target_link_options(ImageDownscaleTest PRIVATE -fsanitize=address)
 target_link_libraries(ImageDownscaleTest PRIVATE GTest::gtest_main)
 gtest_discover_tests(ImageDownscaleTest)
