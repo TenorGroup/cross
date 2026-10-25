@@ -90,6 +90,22 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Version 71
+
+Version 71 keeps version 70's page layout and rebuilds every completed and partial section written at 70 (development
+builds of 1.1.0 only). The header byte after the drop cap mode, which held Focus Reading alone, is a set of flags:
+bit 0 Focus Reading, bit 1 headings sized (a board with PSRAM), bit 2 sizes of SD and vector faces loaded; a card moved
+between boards rebuilds. A converted TXT or Markdown file (its HTML carries a `TXT_CACHE_VERSION` or `MD_CACHE_VERSION`
+comment) parks and resumes at the end of a `<br />`: a checkpoint gains a byte of state (first-line indent used,
+paragraph start emitted, soft block) and so does a resume point of `<spine>.dd` (its former padding byte). The magic of
+`<spine>.dd` is tied to the section version, so the resume points of a build at another version are never read; the
+staging files of a build (`.part`, `.lut.part`, `.checkpoint.part`) are removed when a build starts. The unzipped
+`html/<n>.html` does not depend on the layout and is kept.
+
+A build that cannot go on from a resume point lays the chapter out again from its first byte, once: a checkpoint that does
+not restore, or one that restores and then parses to an error. A chapter that fails from its top too is reported as a
+build error, as before.
+
 ### Version 70
 
 Version 70 is the section format of tenor/cross 1.1.0, built on CrossPoint 2.0.0. It
@@ -99,8 +115,9 @@ the moment. A board without PSRAM (the X3 and the original X4) lays h1..h6 out a
 size, with or without a size in the book's CSS, as tenor/cross 1.0.x did, and loads no
 second size of an SD or vector font for any CSS `font-size` either, so a page count never
 depends on the heap (sizes of the built-in font stay). A board with PSRAM gives a heading its size, and when the font
-system cannot load that size the chapter is not built at all (it is built on a later try),
-where version 69 quietly fell back to the body size and moved the page breaks. CSS cache
+system cannot load that size (it asks for a free block of 48 KB first) the chapter is not built at all, where version 69
+quietly fell back to the body size and moved the page breaks. That build is short of heap, like any other: the reader
+frees the font caches and the radio's heap and builds again, or shows the memory notice and keeps the saved page. CSS cache
 version 20 and book cache version 10 stay. Book metadata and saved progress are kept.
 
 ### Version 69

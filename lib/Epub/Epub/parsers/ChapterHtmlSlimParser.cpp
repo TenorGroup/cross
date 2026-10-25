@@ -3706,7 +3706,10 @@ int ChapterHtmlSlimParser::prepareBlockFont(ParsedText& text, const float scale)
   for (uint8_t slot = 1; slot < text.sizeSlotsInUse(); ++slot) {
     text.setSizeSlotFontId(slot, fontIdForScale(text.sizeSlotScale(slot), &refused));
   }
-  if (refused) failBuild();
+  if (refused) {
+    sizeRefused_ = true;
+    failBuild();
+  }
   blockStyle.fontId = layoutFontId == fontId ? 0 : layoutFontId;
   return layoutFontId;
 }

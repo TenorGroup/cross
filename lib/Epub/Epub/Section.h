@@ -73,6 +73,10 @@ class Section {
     // Nonzero when that checkpoint is the one inside the partial file at filePath (a restored
     // build), at this byte offset; zero when it is the park's own checkpoint file.
     uint32_t checkpointInPartialAt = 0;
+    // The parser was restored from a checkpoint (a partial's or a park's) and has not been laid out again from the
+    // chapter's top since; and whether it was, once (a resume that fails is dropped once, not in a loop).
+    bool resumed = false;
+    bool coldRetried = false;
     ReaderRenderSpec spec;
     HalFile lut;
     // The last pages' entries, written to `lut` a block at a time. Written one per page, each
@@ -118,6 +122,12 @@ class Section {
   std::unique_ptr<ChapterHtmlSlimParser> makeBuildParser(BuildContext* context, const ReaderRenderSpec& spec,
                                                          const std::function<void()>& popupFn = nullptr);
   bool resumeParkedBuild();
+  // Drops the parser, every resume point and every staging page of the running build, with the staging files open
+  // again and empty, ready for a parser at the chapter's first byte. False: a staging file would not open; the
+  // caller abandons the build.
+  bool rewindToChapterTop();
+  // The same, parked: the CSS is let go too and resumeParkedBuild starts the parser at the top.
+  bool parkAtChapterTop();
   // Parse on to the next checkpoint, within CHECKPOINT_REACH_MAX_MS / _STEPS and the step heap floor.
   // True with the parser at a checkpoint, or with the build finalized because the chapter ended.
   bool reachCheckpoint();

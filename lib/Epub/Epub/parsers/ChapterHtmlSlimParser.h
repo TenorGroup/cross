@@ -253,6 +253,7 @@ class ChapterHtmlSlimParser {
   // Set by requestStop(): the parse ends at the next check and the caller discards the block in hand.
   // failBuild() sets it too, so the stop checks of the CrossPoint paths also end a failed build.
   bool stopRequested = false;
+  bool sizeRefused_ = false;
   // True once the build failed or a stop was asked for: nothing more is laid out.
   bool halted() const { return buildFailed_ || stopRequested; }
 
@@ -448,6 +449,9 @@ class ChapterHtmlSlimParser {
 
   void failBuild();
   bool hasFailed() const { return buildFailed_; }
+  // The build failed because the font system turned a size down for want of memory (prepareBlockFont): the chapter is
+  // sound and builds once the heap is back, from its top (what was laid out so far is not kept).
+  bool sizeRefused() const { return sizeRefused_; }
 
   void addLineToPage(std::unique_ptr<TextBlock> line, uint32_t visibleOffset);
   // True when the chapter targets still ahead (always recorded) will not fit beside the 16 KB a page build needs,

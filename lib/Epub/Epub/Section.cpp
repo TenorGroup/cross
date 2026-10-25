@@ -909,6 +909,7 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
 #else
     if (restorePartialBuild()) {
 #endif
+      build_->resumed = true;
       LOG_INF("SCT", "Resumed checkpoint: %u pages, HTML byte %u", builtPageCount_,
               static_cast<unsigned>(build_->parser->parseBytesConsumed()));
     } else if (!stepHeapAvailable()) {
@@ -923,16 +924,7 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
     } else {
       // A legacy or damaged checkpoint keeps the readable partial and starts a
       // fresh parser. Recreate both staging files after any failed prefix copy.
-      build_->parser.reset();
-      ddClose(*build_, false, false);
-      ddOpen(*build_, false);  // laid out again from the top: its own points, from the first
-      file.close();
-      build_->lut.close();
-      builtPageCount_ = 0;
-      build_->failed = false;
-      build_->lastVisibleTextOffset = 0;
-      if (!Storage.openFileForWrite("SCT", binTmpPath(), file) || !writeSectionFileHeader(spec) ||
-          !Storage.openFileForWrite("SCT", lutTmpPath(), build_->lut)) {
+      if (!rewindToChapterTop()) {
         abandonBuild();
         return false;
       }
@@ -1158,10 +1150,14 @@ bool Section::resumeParkedBuild() {
 #endif
   HalFile checkpoint;
   const uint32_t inPartialAt = build_->checkpointInPartialAt;
-  if (!Storage.openFileForRead("SCT", inPartialAt ? filePath : checkpointTmpPath(), checkpoint)) return false;
-  if (inPartialAt && !checkpoint.seek(inPartialAt)) {
-    checkpoint.close();
-    return false;
+  // No checkpoint behind the park: the build waits at the chapter's first byte (parkAtChapterTop), nothing to restore.
+  const bool fromTop = !build_->checkpointOnDisk;
+  if (!fromTop) {
+    if (!Storage.openFileForRead("SCT", inPartialAt ? filePath : checkpointTmpPath(), checkpoint)) return false;
+    if (inPartialAt && !checkpoint.seek(inPartialAt)) {
+      checkpoint.close();
+      return false;
+    }
   }
   // The checkpoint restores anchors too: drop the parked copy before the parser takes its own, so
   // the table is held once.
@@ -1170,9 +1166,9 @@ bool Section::resumeParkedBuild() {
   if (restored) {
     build_->parser = makeBuildParser(build_.get(), build_->spec);
     restored = build_->parser && build_->parser->beginParse() &&
-               build_->parser->restoreCheckpoint(checkpoint, builtPageCount_);
+               (fromTop || build_->parser->restoreCheckpoint(checkpoint, builtPageCount_));
   }
-  const bool closed = checkpoint.close();
+  const bool closed = fromTop || checkpoint.close();
   if (!restored || !closed) {
     // Read while the parser still holds its heap: a restore that failed short of heap (the radio up
     // beside the book) is a starved build, parked as it was. Dropped, the chapter was laid out again
@@ -1182,11 +1178,53 @@ bool Section::resumeParkedBuild() {
     if (build_->cssParser) build_->cssParser->clear();
     return false;
   }
+  if (fromTop) {
+    build_->totalBytes = build_->parser->parseTotalBytes();
+    build_->bytesConsumed = build_->parser->parseBytesConsumed();
+  } else {
+    build_->resumed = true;
+  }
 #ifdef TENOR_UI_ACCEPTANCE
   LOG_DBG("SCT", "EPUB_RESUME pages=%u ms=%u free=%u largest=%u", static_cast<unsigned>(builtPageCount_),
           static_cast<unsigned>(millis() - started), static_cast<unsigned>(ESP.getFreeHeap()),
           static_cast<unsigned>(ESP.getMaxAllocHeap()));
 #endif
+  return true;
+}
+
+bool Section::rewindToChapterTop() {
+  auto& build = *build_;
+  build.parser.reset();
+  ddClose(build, false, false);
+  build.ddCount = 0;
+  build.ddPendingCount = 0;
+  build.ddLastWritten = 0;
+  build.ddLastValid = false;
+  build.ddProlog = 0;
+  if (!preview_) ddOpen(build, false);  // laid out again from the top: its own points, from the first
+  std::deque<std::pair<std::string, uint16_t>>().swap(build.parkedAnchors);
+  build.checkpointOnDisk = false;
+  build.checkpointInPartialAt = 0;
+  build.checkpointPages = 0;
+  build.checkpointBytes = 0;
+  build.checkpointAnchors = 0;
+  build.resumed = false;
+  Storage.remove(checkpointTmpPath().c_str());
+  file.close();
+  build.lut.close();
+  builtPageCount_ = 0;
+  pageCount = partial_ ? partialPageCount_ : 0;
+  build.lutPendingCount = 0;
+  build.failed = false;
+  build.lastVisibleTextOffset = 0;
+  build.bytesConsumed = 0;
+  return Storage.openFileForWrite("SCT", binTmpPath(), file) && writeSectionFileHeader(build.spec) &&
+         Storage.openFileForWrite("SCT", lutTmpPath(), build.lut);
+}
+
+bool Section::parkAtChapterTop() {
+  if (!rewindToChapterTop()) return false;
+  if (build_->cssParser) build_->cssParser->clear();
   return true;
 }
 
@@ -1197,7 +1235,15 @@ size_t Section::parkedAnchorCountForTest() const { return build_ ? build_->parke
 bool Section::buildSomeMore(const int maxPages, bool (*yieldNow)()) {
   BUILD_PROBE_SCOPE(Tick);
   buildStarved_ = false;
-  if (!build_ || !resumeParkedBuild()) {
+  bool ready = build_ && resumeParkedBuild();
+  if (!ready && build_ && !buildStarved_ && !build_->coldRetried && !build_->failed) {
+    // A resume point that does not restore (damaged, or written by a layout this parser reads otherwise): dropped, the
+    // chapter is laid out again from its first byte, once. A cold build that fails is reported as it always was.
+    LOG_ERR("SCT", "Resume point does not restore; laying the chapter out again from its start");
+    build_->coldRetried = true;
+    ready = parkAtChapterTop() && resumeParkedBuild();
+  }
+  if (!ready) {
     if (buildStarved_) {
       LOG_ERR("SCT", "Resume starved of heap free=%u largest=%u; staying parked at %u pages",
               static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
@@ -1211,7 +1257,7 @@ bool Section::buildSomeMore(const int maxPages, bool (*yieldNow)()) {
   // Pace on pages laid out by THIS build, not pageCount: during a rebuild over a partial,
   // pageCount stays pinned at the partial's watermark until the build passes it, which
   // would otherwise turn one "small" chunk into a blocking rebuild of the whole watermark.
-  const int startCount = builtPageCount_;
+  int startCount = builtPageCount_;
   const uint32_t tickStart = millis();
   buildStarved_ = false;
 #ifdef TENOR_UI_ACCEPTANCE
@@ -1240,9 +1286,33 @@ bool Section::buildSomeMore(const int maxPages, bool (*yieldNow)()) {
       return false;
     }
     if (status == ChapterHtmlSlimParser::ParseStatus::Error || build_->failed) {
-      LOG_ERR("SCT", "Parse error during incremental build free=%u largest=%u",
-              static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
-      abandonBuild();
+      if (!build_->failed && build_->parser->sizeRefused()) {
+        // The font system turned a size down for want of memory: the chapter is sound, the heap is short. A starved
+        // build, as every other: the reader frees heap and builds on, or says it could not. The failed parser is let
+        // go for one at the last checkpoint, or at the top when no page was finished since (a page cannot be
+        // taken back out of the staging file).
+        LOG_ERR("SCT", "Build starved of heap: a font size was refused free=%u largest=%u; %u pages kept",
+                static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
+                static_cast<unsigned>(builtPageCount_));
+        buildStarved_ = true;
+        if (!parkAtLastCheckpoint() && !parkAtChapterTop()) abandonBuild();
+        return false;
+      }
+      if (!build_->failed && build_->resumed && !build_->coldRetried) {
+        // A resume point that parsed on to an error: the chapter is laid out again from its first byte, once.
+        LOG_ERR("SCT", "Parse error after a resume free=%u largest=%u; laying the chapter out again from its start",
+                static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+        build_->coldRetried = true;
+        if (parkAtChapterTop() && resumeParkedBuild()) {
+          startCount = 0;
+          continue;
+        }
+      }
+      if (build_) {
+        LOG_ERR("SCT", "Parse error during incremental build free=%u largest=%u",
+                static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+        abandonBuild();
+      }
       return false;
     }
     if (status == ChapterHtmlSlimParser::ParseStatus::Done) {
@@ -1690,6 +1760,11 @@ bool Section::finalizeBuild() {
 
 void Section::suspendBuild() {
   if (!build_) return;
+  // Parked at the chapter's first byte (a refused size, a resume point dropped): no page, nothing to keep.
+  if (!build_->parser && !build_->checkpointOnDisk) {
+    abandonBuild();
+    return;
+  }
 #ifdef TENOR_PRESS_PROBE
   // Teardown cost on the exit path: a parked build is reloaded only to be written out.
   const uint32_t suspendStarted = millis();

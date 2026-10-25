@@ -7,6 +7,7 @@
 #include <Epub/Page.h>
 #include <Epub/Section.h>
 #include <GfxRenderer.h>
+#include <TxtToHtml.h>
 #include <gtest/gtest.h>
 
 #include <cstring>
@@ -195,6 +196,26 @@ TEST_F(SectionRestartTest, AHeadingSizeTheFontSystemRefusedStarvesTheBuildAndItG
   EXPECT_EQ(readAll(bin()), want);
 }
 
+// A reader that leaves while the build waits for heap keeps nothing of it: no staging file, the next open builds as ever.
+TEST_F(SectionRestartTest, AStarvedBuildThatIsLeftBehindLeavesNoStagingFileAndTheNextOpenBuilds) {
+  const std::string want = cold(html);
+  heapIsShort = true;
+  {
+    Section section(epub, SPINE, renderer);
+    ASSERT_TRUE(section.startBuild(spec));
+    EXPECT_FALSE(section.buildSomeMore(0));
+    ASSERT_TRUE(section.buildStarved());
+  }
+  for (const char* left : {"1.bin", "1.bin.part", "1.bin.lut.part", "1.bin.checkpoint.part", "1.dd.part"})
+    EXPECT_FALSE(fs::exists(sidecar(left))) << left;
+  heapIsShort = false;
+  Section next(epub, SPINE, renderer);
+  ASSERT_FALSE(next.loadSectionFile(spec));
+  ASSERT_TRUE(next.startBuild(spec));
+  ASSERT_TRUE(next.buildSomeMore(0));
+  EXPECT_EQ(readAll(bin()), want);
+}
+
 TEST_F(SectionRestartTest, ASizeRefusedAfterPagesWereLaidOutStartsTheChapterOverWhenTheHeapIsBack) {
   const std::string chapter = chapterWithHeadingAfter(60);
   epub->contents = chapter;
@@ -275,6 +296,44 @@ TEST_F(SectionRestartTest, APartialWhoseCheckpointDoesNotRestoreStartsFromTheTop
   ASSERT_TRUE(section.loadSectionFile(spec));
   ASSERT_TRUE(section.startBuild(spec));
   ASSERT_TRUE(section.buildSomeMore(0));
+  ASSERT_TRUE(section.isBuildComplete());
+  EXPECT_EQ(readAll(bin()), want);
+}
+
+// A converted TXT parks and resumes at the end of a <br />, with the state of the soft block that waits there (a bit
+// the cold parser sets from the file's version comment): the chapter laid out again from the top is the cold one.
+namespace {
+struct HtmlSink : Print {
+  std::string str;
+  size_t write(uint8_t b) override {
+    str.push_back(static_cast<char>(b));
+    return 1;
+  }
+  size_t write(const uint8_t* data, size_t length) override {
+    str.append(reinterpret_cast<const char*>(data), length);
+    return length;
+  }
+};
+}  // namespace
+
+TEST_F(SectionRestartTest, AParseErrorAfterAParkedResumeOfATxtLaysItOutAgainAsTheColdOne) {
+  std::string text;
+  for (unsigned line = 0; line < 500; ++line) {
+    for (unsigned word = 0; word < 6 + line % 30; ++word) text += "w" + std::to_string(line) + "x" + std::to_string(word) + " ";
+    text += line % 9 == 4 ? "\n\n" : "\n";
+  }
+  HtmlSink converted;
+  ASSERT_TRUE(TxtToHtml::stream("book.txt", text, converted));
+  epub->contents = converted.str;
+  const std::string want = cold(converted.str);
+  Section section(epub, SPINE, renderer);
+  ASSERT_TRUE(section.startBuild(spec));
+  ASSERT_TRUE(section.buildSomeMore(6));
+  ASSERT_TRUE(section.parkBuild());
+  std::string checkpoint = readAll(sidecar("1.bin.checkpoint.part"));
+  ASSERT_TRUE(openOneMoreAncestor(checkpoint));
+  writeAll(sidecar("1.bin.checkpoint.part"), checkpoint);
+  ASSERT_TRUE(section.buildSomeMore(0)) << "the resume point that led to a parse error is not dropped";
   ASSERT_TRUE(section.isBuildComplete());
   EXPECT_EQ(readAll(bin()), want);
 }

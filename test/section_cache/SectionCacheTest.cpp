@@ -2185,7 +2185,9 @@ TEST_F(SectionCacheTest, CheckpointReadCrcAndParserOomFailuresKeepCommittedBytes
     } else {
       allocationProbe::rejectNextNothrow = true;
     }
-    EXPECT_FALSE(section.buildSomeMore(1));
+    // The resume point that does not read, check or restore is dropped and the chapter is laid out again from its
+    // first byte (SectionRestartTest); the file committed before is the reader's until a build replaces it.
+    EXPECT_TRUE(section.buildSomeMore(1)) << "the build ended with the resume point";
     allocationProbe::rejectNextNothrow = false;
     storageFault::reset();
     EXPECT_EQ(bytes(cache()), valid);
