@@ -1,6 +1,9 @@
 #pragma once
 
+#include <string>
 #include <string_view>
+
+#include "ProtectedPaths.h"
 
 namespace web_path {
 constexpr char lowerAscii(char c) { return c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c; }
@@ -14,7 +17,8 @@ constexpr bool equalsFolded(std::string_view a, std::string_view b) {
 }
 
 // Apply to the decoded path before normalisation or any C-string conversion.
-// FAT aliases and trailing dots/spaces must not bypass protected ancestors.
+// FAT aliases and leading or trailing dots/spaces must not bypass protected ancestors (SdFat opens " .crosspoint"
+// as ".crosspoint": it skips the leading spaces of every name).
 // Dot-named items are ordinary data (they can be listed and deleted from the file manager, #4031), except the
 // root /.crosspoint tree: it holds every credential store (wifi, opds, opds tokens, koreader, webdav, lcp), not
 // only the three files upstream's ProtectedPaths.h names.
@@ -30,7 +34,10 @@ constexpr bool allowed(std::string_view path) {
         return false;
       continue;
     }
-    const auto part = path.substr(start, i - start);
+    auto part = path.substr(start, i - start);
+    const bool spaced = !part.empty() && part.front() == ' ';
+    while (!part.empty() && part.front() == ' ') part.remove_prefix(1);
+    if (spaced && part.empty()) return false;
     const auto tilde = part.find('~');
     const auto dot = part.find('.');
     const auto base = part.substr(0, dot);
@@ -61,12 +68,14 @@ inline bool davAllowed(std::string_view path) {
     if (path[start] == '/') {
       ++start;
     } else {
-      if (path[start] == '.') return false;
+      size_t name = start;
+      while (name < path.size() && path[name] == ' ') ++name;  // SdFat skips them
+      if (name < path.size() && path[name] == '.') return false;
       const size_t slash = path.find('/', start);
       if (slash == std::string_view::npos) break;
       start = slash + 1;
     }
   }
-  return allowed(path);
+  return allowed(path) && !protectedpaths::isSensitivePath(std::string(path).c_str());
 }
 }  // namespace web_path

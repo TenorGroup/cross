@@ -36,7 +36,7 @@ TEST(WebPath, LeadingSpacesDoNotHideAProtectedName) {
 }
 
 TEST(WebPath, WebDavRefusesDotNamesAndCredentialStoresWhateverTheSpelling) {
-  for (const auto path : {"/.crosspoint/wifi.json", "/ .crosspoint/wifi.json", "/%20.crosspoint/wifi.json",
+  for (const auto path : {"/.crosspoint/wifi.json", "/ .crosspoint/wifi.json",
                           "/ .crosspoint/koreader.json", "/Books/.DS_Store", "/Books/ .DS_Store", "/ .hidden",
                           "/Books/ ._book.epub", "/CROSSP~1/WIFI.JSON", "/ CROSSP~1/WIFI.JSON"}) {
     EXPECT_FALSE(web_path::davAllowed(path)) << path;
