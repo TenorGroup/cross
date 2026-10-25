@@ -416,6 +416,8 @@ add_test(NAME clipping_selection_text COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURR
 
 add_test(NAME DictionaryJoinedDefinitionHeapDoor
   COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/dictionary_heap_door/check.py ${REPO_ROOT})
+add_test(NAME PluginTokenFileIsWrittenAtomically
+  COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/plugin_token_atomic/check.py ${REPO_ROOT})
 add_test(NAME recursive_dictionary COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_recursive_dictionary.py)
 
 # v1.1.0 merge suites: TXT position move to EPUB (D17), the idle chapter build stops on a key (D18),
