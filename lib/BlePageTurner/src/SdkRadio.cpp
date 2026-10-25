@@ -4,9 +4,11 @@
 
 #include <BleKeyboardHost.h>
 #include <esp_attr.h>
+#include <Preferences.h>
 #include <esp_timer.h>
 
 #include <atomic>
+#include <cstring>
 
 #include "RadioPort.h"
 #include "freertos/FreeRTOS.h"
@@ -94,6 +96,22 @@ void forget(const char* addr) { hid().forget(addr); }
 bool takeConnectFailure(char* out, const size_t outLen) { return hid().takeConnectFailure(out, outLen); }
 uint8_t bondCount() { return hid().pairedCount(); }
 Peer bond(const uint8_t index) { return peerOf(hid().paired(index).addr, hid().paired(index).name); }
+bool firstSavedBond(char* addr, const size_t addrLen, char* name, const size_t nameLen) {
+  // Namespace "freeink-hid": "n" the count, "b" the list of PairedHidDevice, at most kMaxBonds (the SDK's own layout).
+  Preferences saved;
+  if (!saved.begin("freeink-hid", true)) return false;
+  freeink::PairedHidDevice bonds[freeink::BleKeyboardHost::kMaxBonds] = {};
+  const uint8_t count = saved.getUChar("n", 0);
+  const bool ok = count > 0 && count <= freeink::BleKeyboardHost::kMaxBonds &&
+                  saved.getBytes("b", bonds, count * sizeof(bonds[0])) == count * sizeof(bonds[0]);
+  saved.end();
+  if (!ok) return false;
+  strncpy(addr, bonds[0].addr, addrLen - 1);
+  addr[addrLen - 1] = '\0';
+  strncpy(name, bonds[0].name, nameLen - 1);
+  name[nameLen - 1] = '\0';
+  return true;
+}
 uint8_t foundCount() { return hid().deviceCount(); }
 Peer found(const uint8_t index) { return peerOf(hid().device(index).addr, hid().device(index).name); }
 

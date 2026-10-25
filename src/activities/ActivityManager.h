@@ -139,7 +139,8 @@ class ActivityManager {
 
   // goTo... functions are convenient wrapper for replaceActivity()
   void goToFileTransfer(bool openFontStore = false, std::string returnBook = {});
-  void goToJoinNetwork();  // File Transfer straight into Join Network (post heap-defrag reboot)
+  // File Transfer straight into Join Network (post heap-defrag reboot); returnBook: the book it was opened from.
+  void goToJoinNetwork(std::string returnBook = {});
   void goToUsbDrive();
   // theBanDau: the mo san cua man Cai dat. Man chinh bay cac nhom thanh dong nen no
   // goi thang vao dung the, khoi bat nguoi ta nhay the lai tu dau.
@@ -190,6 +191,9 @@ class ActivityManager {
   // True while goToSleep() closes the foreground activity for deep sleep.
   bool isSleepTransition() const { return sleepTransition; }
   bool requiresExclusiveStorageLoop() const;
+  // True while Back (a Pop) is the pending change, as the outgoing screen's onExit() runs: it leaves for the screen below
+  // it, not for Home by the home gesture (a Replace).
+  bool isPopping() const { return pendingAction == PendingAction::Pop; }
   bool isReaderActivity() const;
   bool isForegroundReaderActivity() const;
   bool isForegroundActivityManagingTiltSensor() const;
@@ -219,9 +223,6 @@ class ActivityManager {
   bool isForegroundReader() const;
   bool isRemoteReaderContext() const;
   bool remoteClick(RemoteButton button);
-  // Home is in front and has painted a frame of its own (not one left from the screen before).
-  // Same fact as isForegroundHomePainted() above; the page turner reads it under this name.
-  bool isForegroundHomeShown() const;
   uint32_t visit() const { return screenVisit; }
   bool remoteTurn(bool forward, bool chapter);
   // A remote button mapped to the reader menu (true) or to a new clipping (false).

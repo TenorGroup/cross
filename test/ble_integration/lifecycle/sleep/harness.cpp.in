@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -102,7 +103,11 @@ struct ActivityManager {
   }
 } activityManager;
 
-struct HalPowerManager { struct Lock {}; void setPowerSaving(bool) {} } powerManager;
+struct HalPowerManager {
+  struct Lock {};
+  void setPowerSaving(bool) {}
+  unsigned getBatteryPercentage() const { return 81; }
+} powerManager;
 struct CrossPointSettings {
   enum class SLEEP_SCREEN_MODE { QUICK_RESUME, TRANSPARENT_CUSTOM, TENOR, UGLY };
   enum class QUICK_RESUME_SLEEP_SCREEN { QUICK_RESUME_AFTER_TIMEOUT, NONE };
@@ -129,6 +134,7 @@ struct AppState {
   bool lastSleepFromReader = false;
   bool showBootScreen = true;
   uint32_t sleepStartedAt = 0;
+  uint8_t batteryAtSleep = 255;
   WakePlace wake;
   void saveToFile() { events.push_back("state-save"); }
 } APP_STATE;
@@ -149,6 +155,7 @@ struct RendererBoundary {
 } renderer;
 namespace koautosync {  // automatic KOReader sync is off in this harness
 inline uint32_t sleepStamp() { return 0; }
+inline bool pushIsOwed() { return false; }
 template <class R> void pushBeforeSleep(R&) {}
 }  // namespace koautosync
 struct StorageBoundary {
@@ -158,8 +165,10 @@ struct StorageBoundary {
 } Storage;
 static constexpr int WIFI_MODE_NULL = 0;
 static constexpr int WIFI_OFF = 0;
+static constexpr int WL_CONNECTED = 3;
 struct WifiBoundary {
   int getMode() { return WIFI_MODE_NULL; }
+  int status() { return 0; }
   void disconnect(bool) {}
   void mode(int) {}
 } WiFi;
@@ -233,6 +242,7 @@ static void deliverSleepPluginEvents(const bool allowNetwork) {
 @TILT_ROUTE@
 @GO_TO_SLEEP@
 
+@TEAR_DOWN_SLEEP_WIFI@
 @ENTER_DEEP_SLEEP@
 
 static void runMainSleepGate(bool userActivity) {

@@ -317,7 +317,7 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
   // into a pristine heap and land straight back here; the flag prevents a second
   // reboot on that return. No-op on touch boards, which fall through.
   if (mode == NetworkMode::JOIN_NETWORK && !startInJoinNetwork) {
-    silentRestartToJoinNetwork();  // does not return on non-touch boards
+    silentRestartToJoinNetwork(!returnBook.empty());  // does not return on non-touch boards
   }
 
   const char* modeName = "Join Network";

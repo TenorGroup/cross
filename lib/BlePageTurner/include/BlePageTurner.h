@@ -3,6 +3,7 @@
 #include <cstdarg>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 #include "BleKeyBinding.h"
 
@@ -223,6 +224,11 @@ void disconnect();
 // Forgets the bond, its button table and, if it was the chosen remote, the choice.
 // True when the Config changed (the host saves it).
 bool forget(const char* addr);
+// v1.0.76 started the radio in the book for any remote the stack held a bond for, whatever blePeerAddr said. A reader
+// who paired in an older version has the bond and no blePeerAddr: at the first start after the upgrade the first saved
+// bond (read without starting the stack) becomes the chosen remote, once. Only with the radio switched on and no remote
+// chosen. True when the Config changed (the host saves it).
+bool adoptSavedBond();
 uint8_t bondCount();
 Peer bond(uint8_t index);
 uint8_t foundCount();

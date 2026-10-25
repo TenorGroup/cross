@@ -144,6 +144,14 @@ void forget(const char* addr) { theRadio.forgotten.emplace_back(addr); }
 bool takeConnectFailure(char*, size_t) { return false; }
 uint8_t bondCount() { return static_cast<uint8_t>(theRadio.bonds.size()); }
 Peer bond(const uint8_t index) { return {theRadio.bonds[index].c_str(), ""}; }
+bool firstSavedBond(char* addr, const size_t addrLen, char* name, const size_t nameLen) {
+  if (theRadio.bonds.empty()) return false;
+  std::strncpy(addr, theRadio.bonds[0].c_str(), addrLen - 1);
+  addr[addrLen - 1] = '\0';
+  std::strncpy(name, theRadio.savedBondName.c_str(), nameLen - 1);
+  name[nameLen - 1] = '\0';
+  return true;
+}
 uint8_t foundCount() { return 0; }
 Peer found(uint8_t) { return {"", ""}; }
 bool spawnStart() {

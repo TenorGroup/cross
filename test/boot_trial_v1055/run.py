@@ -25,18 +25,29 @@ route_start = source.index('  if (recoveryFirmwareMode) {\n    // Skip normal ho
 route_end = source.index('\n  if (resume == BootResume::Silent) {\n    // Block until', route_start)
 accept_start = source.index('#ifndef SIMULATOR\n  esp_ota_img_states_t otaState;')
 accept_end = source.index('\n  allowSleepAt =', accept_start)
+def function_of(signature):
+    start = source.index(signature)
+    depth = 0
+    for i in range(source.index('{', start), len(source)):
+        depth += (source[i] == '{') - (source[i] == '}')
+        if depth == 0:
+            return source[start:i + 1] + '\n'
+# The silent boot's own routing helpers (a Settings tab to come back to, a task over it, Join Network's book).
+(out / 'helpers.inc').write_text(''.join(function_of(f) for f in (
+    'static void openJoinNetwork(', 'static void openSettingsAt(', 'static void openFreshBootTask(')))
 (out / 'adapter.inc').write_text(begin + '\n' + source[route_start:route_end] + '\n' + source[accept_start:accept_end])
 binary = out / 'boot-trial'
 boot_source = args.boot_source or repo / 'src/platform/BootTrial.cpp'
 subprocess.run([args.cxx, '-std=c++17', '-Wall', '-Wextra', '-Werror',
                 '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-DFREEINK_DEVICE_X4PRO=1',
-                '-I' + str(here / 'stubs'), '-I' + str(boot_source.parent), '-I' + str(repo / 'src/platform'),
+                '-I' + str(here / 'stubs'), '-I' + str(boot_source.parent), '-I' + str(repo / 'src/platform'), '-I' + str(repo / 'src'),
                 '-I' + str(out), str(here / 'BootTrial.cpp'), str(boot_source),
                 '-o', str(binary)], check=True)
 cases = ['valid', 'new', 'aborted', 'query-error', 'pass', 'recovery', 'no-touch', 'mark-error',
          'create-error', 'start-error', 'hung-paint', 'valid-race', 'silent-large-book',
          'wake-large-book', 'valid-wake-book', 'silent-transfer', 'silent-fonts',
-         'silent-task-clock', 'silent-task-login', 'silent-task-signup']
+         'silent-task-clock', 'silent-task-login', 'silent-task-signup', 'silent-task-over-settings',
+         'silent-settings-place', 'silent-settings-first-tab', 'silent-join-book', 'silent-join-home']
 results = []
 for case in cases:
     proc = subprocess.run([str(binary), case], text=True, capture_output=True)

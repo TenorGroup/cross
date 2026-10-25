@@ -17,7 +17,7 @@ namespace fs = std::filesystem;
 const std::set<std::string> kOwn = {"BlePageTurner.h", "BlePageTurnerJson.h", "BleKeyBinding.h",
                                     "RadioPolicy.h",   "RadioPort.h",         "Runtime.h"};
 const std::set<std::string> kStd = {"array", "atomic", "cstdarg", "cstddef", "cstdint", "cstdio", "cstring"};
-const std::set<std::string> kSdkRadioOnly = {"BleKeyboardHost.h", "esp_attr.h", "esp_timer.h", "freertos/FreeRTOS.h",
+const std::set<std::string> kSdkRadioOnly = {"BleKeyboardHost.h", "Preferences.h", "esp_attr.h", "esp_timer.h", "freertos/FreeRTOS.h",
                                              "freertos/task.h"};
 
 TEST(BlePageTurnerSourceContractTest, IncludesStayInsideTheAllowList) {

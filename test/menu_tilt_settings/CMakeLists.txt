@@ -80,3 +80,8 @@ get_target_property(_hold_link_options MenuTiltSettingsTest LINK_OPTIONS)
 target_link_options(MenuBleHoldSettingsTest PRIVATE ${_hold_link_options})
 add_test(NAME MenuBleHoldSettingsNoImu COMMAND MenuBleHoldSettingsTest no-imu)
 add_test(NAME MenuBleHoldSettingsImu COMMAND MenuBleHoldSettingsTest imu)
+
+# Every outcome of a quick action has its case in main.cpp, and a clip reaches the reader.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME QuickActionOutcomeCases
+  COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_LIST_DIR}/quick_action_cases.py ${REPO_ROOT})

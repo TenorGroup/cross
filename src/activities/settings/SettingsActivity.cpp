@@ -58,6 +58,7 @@
 #include "components/UIThemeTokens.h"
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
+#include "util/FrontlightSchedule.h"
 #include "util/PluginEvents.h"
 
 namespace fui = freeink::ui;
@@ -852,7 +853,10 @@ void SettingsActivity::toggleCurrentSetting() {
                                });
         break;
       case SettingAction::Network: {
-        auto activity = makeUniqueNoThrow<WifiSelectionActivity>(renderer, mappedInput, false);
+        // With the automatic time zone on, the lookup is not made here: Settings leaves the X3 about 25 KB and the
+        // lookup's TLS wants about 40. A joined network ends in the restart into the clock sync's own boot instead.
+        auto activity = makeUniqueNoThrow<WifiSelectionActivity>(renderer, mappedInput, false,
+                                                                 /*syncClock=*/!SETTINGS.clockAutoTimezone);
         if (!activity) {
           LOG_ERR("SETTINGS", "OOM: WifiSelectionActivity");
           return;
@@ -864,8 +868,11 @@ void SettingsActivity::toggleCurrentSetting() {
           // release the driver's heap. The scan alone brings it up, so tear
           // down whether or not the user joined a network.
           if (WiFi.getMode() == WIFI_MODE_NULL) return;
+          const bool joined = WiFi.status() == WL_CONNECTED;
           WiFi.disconnect(false);
           delay(30);
+          // Outside any lock: startsOnFreshBoot takes the RenderLock itself to paint the restart notice.
+          if (joined && SETTINGS.clockAutoTimezone && startsOnFreshBoot(false, FreshBootTask::ClockSync)) return;
           // Unlike the onExit() teardowns, this runs from the loop task with
           // no lock held; the restart popup paints straight to the panel.
           RenderLock lock;
@@ -976,6 +983,22 @@ void SettingsActivity::toggleCurrentSetting() {
     }
   } else if (setting.type == SettingType::VALUE && setting.valuePtr) {
     const auto range = setting.valueRange;
+    if (isLightWindowRow(setting) && tenorchrome::kTouchShell) {
+      std::vector<std::string> labels;
+      const bool minutes = setting.valuePtr == &CrossPointSettings::frontlightFromMinute ||
+                           setting.valuePtr == &CrossPointSettings::frontlightUntilMinute;
+      char text[8];
+      for (int value = range.min; value <= range.max; value += range.step) {
+        snprintf(text, sizeof(text), minutes ? "%02d" : "%d", value);
+        labels.emplace_back(text);
+      }
+      showSettingsChoices(optionPopup, setting.nameId, labels, (current - range.min) / range.step, row,
+                          [this, row, range](const int index) {
+                            applySettingValue(row, static_cast<uint8_t>(range.min + index * range.step));
+                          });
+      requestUpdate();
+      return;
+    }
     applySettingValue(row, current + range.step > range.max ? range.min : current + range.step);
   }
 }
@@ -1088,13 +1111,23 @@ std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
                static_cast<unsigned int>(SETTINGS.*(setting.valuePtr)));
       return valueBuffer;
     }
-    if (setting.valuePtr == &CrossPointSettings::frontlightFromHour ||
-        setting.valuePtr == &CrossPointSettings::frontlightUntilHour) {
-      // The light's daily hours: equal hours are no schedule (util/FrontlightSchedule.h).
-      if (SETTINGS.frontlightFromHour == SETTINGS.frontlightUntilHour) return tr(STR_STATE_OFF);
-      char hourText[8];
-      snprintf(hourText, sizeof(hourText), "%u:00", static_cast<unsigned>(SETTINGS.*(setting.valuePtr)));
-      return hourText;
+    if (isLightWindowRow(setting)) {
+      // The light's daily window: the same ends are no schedule (util/FrontlightSchedule.h). An hour row shows the
+      // whole time of its end, a minute row the minutes.
+      using frontlightschedule::minuteOfDay;
+      if (minuteOfDay(SETTINGS.frontlightFromHour, SETTINGS.frontlightFromMinute) ==
+          minuteOfDay(SETTINGS.frontlightUntilHour, SETTINGS.frontlightUntilMinute))
+        return tr(STR_STATE_OFF);
+      char text[12];
+      if (setting.valuePtr == &CrossPointSettings::frontlightFromMinute ||
+          setting.valuePtr == &CrossPointSettings::frontlightUntilMinute)
+        snprintf(text, sizeof(text), "%02u", static_cast<unsigned>(SETTINGS.*(setting.valuePtr)));
+      else
+        snprintf(text, sizeof(text), "%u:%02u", static_cast<unsigned>(SETTINGS.*(setting.valuePtr)),
+                 static_cast<unsigned>(setting.valuePtr == &CrossPointSettings::frontlightFromHour
+                                           ? SETTINGS.frontlightFromMinute
+                                           : SETTINGS.frontlightUntilMinute));
+      return text;
     }
     return std::to_string(SETTINGS.*(setting.valuePtr));
   }

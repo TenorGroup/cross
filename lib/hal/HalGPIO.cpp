@@ -596,6 +596,18 @@ bool HalGPIO::isUsbConnected() const {
     if (usbGaugeSampled && static_cast<uint32_t>(now - usbGaugeSampleMs) < 250) return usbGaugeConnected;
     usbGaugeSampleMs = now;
     usbGaugeSampled = true;
+    usbGaugeConnected = false;
+    // X3: infer USB/charging via the BQ27220 Current() register (signed mA, positive means charging). A read that
+    // fails is tried once more 2 ms later, as v1.0.76 did: one bus glitch must not read as an unplugged cable.
+    for (uint8_t attempt = 0; attempt < 2; ++attempt) {
+      uint16_t raw = 0;
+      if (X3GPIO::readI2CReg16LE(BoardConfig::ACTIVE.batteryGauge.gaugeAddr, BQ27220_CUR_REG, &raw)) {
+        usbGaugeConnected = static_cast<int16_t>(raw) > 0;
+        return usbGaugeConnected;
+      }
+      delay(2);
+    }
+    return false;
   }
   // X3 uses GPIO20 for I2C, not USB detection. Boards without a digital
   // USB-detect line (e.g. Sticky, whose PWR_IN_VOLT is an analog
@@ -608,9 +620,7 @@ bool HalGPIO::isUsbConnected() const {
   static const BatteryMonitor battery;
   bool known = false;
   const bool present = battery.isExternalPowerPresent(&known);
-  const bool connected = known ? present : battery.isCharging();
-  if (deviceIsX3()) usbGaugeConnected = connected;
-  return connected;
+  return known ? present : battery.isCharging();
 }
 
 bool HalGPIO::coldBootImpliesPowerButton() const {
@@ -640,8 +650,13 @@ HalGPIO::WakeupReason HalGPIO::getWakeupReason() const {
   // CMD:WAKE_TIMER: a timed wake stands in for the power button, so wake can be measured over the cable.
   if (resetReason == ESP_RST_DEEPSLEEP && wakeupCause == ESP_SLEEP_WAKEUP_TIMER) return WakeupReason::PowerButton;
 #endif
+  // The X4 Classic and X4 Pro latch their own power rail, so the old rule above would turn every flash or a
+  // charger that ended at 100% (STAT reads as no USB) into a button boot. After a power loss the button that
+  // switched the rail on is still down, and that is the one cold boot there that is surely the button.
+  const bool heldColdBoot =
+      (BoardConfig::isX4Classic() || BoardConfig::isX4Pro()) && inputMgr.isPowerButtonPhysicallyPressed();
   if (wakeupCause == ESP_SLEEP_WAKEUP_UNDEFINED && resetReason == ESP_RST_POWERON && !usbConnected &&
-      coldBootImpliesPowerButton()) {
+      (coldBootImpliesPowerButton() || heldColdBoot)) {
     return WakeupReason::PowerButton;
   }
   if (wakeupCause == ESP_SLEEP_WAKEUP_UNDEFINED && resetReason == ESP_RST_UNKNOWN && usbConnected) {

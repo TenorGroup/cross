@@ -815,10 +815,10 @@ void ActivityManager::goToFileTransfer(const bool openFontStore, std::string ret
   replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput, std::move(book), openFontStore));
 }
 
-void ActivityManager::goToJoinNetwork() {
+void ActivityManager::goToJoinNetwork(std::string returnBook) {
   // Post heap-defrag reboot: enter the web-server activity straight in Join
   // Network mode (skips mode selection, does not reboot again).
-  replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput, std::string{}, false,
+  replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput, std::move(returnBook), false,
                                                                   /*startInJoinNetwork=*/true));
 }
 
@@ -1133,11 +1133,6 @@ bool ActivityManager::isRemoteReaderContext() const {
 bool ActivityManager::remoteClick(const RemoteButton button) {
   if (!isRemoteReaderContext() || RenderLock::peek() || requestedUpdate.load()) return false;
   return mappedInput.injectRemoteClick(button);
-}
-
-bool ActivityManager::isForegroundHomeShown() const {
-  return pendingAction == PendingAction::None && currentActivity && currentActivity->name == "Home" &&
-         paintedVisit.load(std::memory_order_acquire) == screenVisit;
 }
 
 bool ActivityManager::remoteShortcut(const bool readerMenu) {

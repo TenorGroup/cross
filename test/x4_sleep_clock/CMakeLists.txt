@@ -10,3 +10,6 @@ add_test(NAME X3StoredWakeButtonsSleepLikePowerOnly
 add_test(NAME GaugeReadsOnlyOnTheLoopTask
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/gauge_task.py
     --output ${CMAKE_CURRENT_BINARY_DIR}/gauge --cxx ${CMAKE_CXX_COMPILER})
+add_test(NAME ColdGaugeKeepsTheSleepValue
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/gauge_task.py --test cold_gauge.cpp
+    --output ${CMAKE_CURRENT_BINARY_DIR}/cold --cxx ${CMAKE_CXX_COMPILER})

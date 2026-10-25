@@ -9,6 +9,7 @@
 #include "Logging.h"
 #include "BootTrial.h"
 #include "StartupRoute.h"
+#include "util/WakePlace.h"
 
 struct FakeTimer {
   esp_timer_create_args_t args;
@@ -66,7 +67,10 @@ constexpr unsigned SILENT_REBOOT_TARGET_READER = 1, SILENT_REBOOT_TARGET_SETTING
 enum class FreshBootTask { ClockSync, KOReaderLogin, KOReaderSignUp };
 constexpr unsigned SILENT_REBOOT_TARGET_TASK_LAST = SILENT_REBOOT_TARGET_TASK + static_cast<unsigned>(FreshBootTask::KOReaderSignUp);
 struct Activity { virtual ~Activity() = default; };
-int clockTasks = 0, logins = 0, signUps = 0, freshTasks = 0;
+int clockTasks = 0, logins = 0, signUps = 0, freshTasks = 0, pushes = 0, wakePlaces = 0, settingsFirst = 0;
+std::string joinBook = "-";
+WakePlace returnPlace;  // the Settings tab the restart left (util/WakeReturn.h), when it left one
+bool returnToBook = false;
 struct ClockSyncActivity : Activity {
   template<class R, class I> ClockSyncActivity(R, I, bool fresh) { ++clockTasks; freshTasks += fresh; }
 };
@@ -103,14 +107,18 @@ struct {
   HomeMenuItem home = HomeMenuItem::NONE;
   template<class T> void replaceActivity(std::unique_ptr<T>) {}
   void goToCrashReport() {}
-  void goToSettings() {}
+  void goToSettings() { ++settingsFirst; }
+  template<class T> void pushActivity(std::unique_ptr<T>) { ++pushes; }
   void goToFileTransfer(bool openFontStore = false) { ++transfers; fontStores += openFontStore; }
-  void goToJoinNetwork() { ++transfers; }  // the restart on the way into Join Network lands in File Transfer
+  void goToJoinNetwork(const std::string& book = {}) { ++transfers; joinBook = book; }  // lands in File Transfer
   void goHome(HomeMenuItem tab = HomeMenuItem::NONE, bool = false) { home = tab; }
-  template<class P> void goToWakePlace(const P&, bool) {}
+  template<class P> void goToWakePlace(const P&, bool) {}  // the wake's own place: none is kept here
+  void goToWakePlace(const WakePlace& place, bool) { ++wakePlaces; wokenTab = place.tab; }
   void goToReader(const std::string&) { ++readers; advance(35000000); }
   void requestUpdateAndWait() { ++paints; advance(1000000); }
+  int wokenTab = -1;
 } activityManager;
+#include "helpers.inc"
 
 void runBoot() {
 #include "adapter.inc"
@@ -145,6 +153,20 @@ int main(int argc, char** argv) {
     state = ESP_OTA_IMG_VALID;
     resume = BootResume::Silent;
     snapshotTarget = SILENT_REBOOT_TARGET_TASK + (name == "silent-task-clock" ? 0 : name == "silent-task-login" ? 1 : 2);
+  }
+  // Back out of a Wi-Fi task, or a Settings row's restart, comes back to the tab it left; a task goes over that tab.
+  if (name == "silent-task-over-settings" || name == "silent-settings-place" || name == "silent-settings-first-tab") {
+    state = ESP_OTA_IMG_VALID;
+    resume = BootResume::Silent;
+    snapshotTarget = name == "silent-task-over-settings" ? SILENT_REBOOT_TARGET_TASK : SILENT_REBOOT_TARGET_SETTINGS;
+    if (name != "silent-settings-first-tab") returnPlace = WakePlace{WakeKind::SettingsTab, 0, 4, 0, "", "clockAutoTimezone"};
+  }
+  // Join Network after its restart: the book it was opened from is handed back, Connections' session nothing.
+  if (name == "silent-join-book" || name == "silent-join-home") {
+    state = ESP_OTA_IMG_VALID;
+    resume = BootResume::Silent;
+    snapshotTarget = SILENT_REBOOT_TARGET_JOIN_NETWORK;
+    returnToBook = name == "silent-join-book";
   }
   if (name == "wake-large-book") { resume = BootResume::SplashlessWake; wakeToBook = true; }
   if (name == "valid-wake-book") { state = ESP_OTA_IMG_VALID; wakeToBook = true; }
@@ -185,6 +207,17 @@ int main(int argc, char** argv) {
     ok = abortReason.empty() && freshTasks == 1 && readers == 0 && transfers == 0 &&
          clockTasks == (name == "silent-task-clock") && logins == (name == "silent-task-login") &&
          signUps == (name == "silent-task-signup");
+  else if (name == "silent-task-over-settings")
+    ok = abortReason.empty() && freshTasks == 1 && clockTasks == 1 && wakePlaces == 1 && activityManager.wokenTab == 4 &&
+         pushes == 1 && settingsFirst == 0 && readers == 0;
+  else if (name == "silent-settings-place")
+    ok = abortReason.empty() && wakePlaces == 1 && activityManager.wokenTab == 4 && settingsFirst == 0 && pushes == 0;
+  else if (name == "silent-settings-first-tab")
+    ok = abortReason.empty() && wakePlaces == 0 && settingsFirst == 1 && pushes == 0;
+  else if (name == "silent-join-book")
+    ok = abortReason.empty() && transfers == 1 && joinBook == "/huge.epub" && readers == 0;
+  else if (name == "silent-join-home")
+    ok = abortReason.empty() && transfers == 1 && joinBook.empty() && readers == 0;
   else if (name == "valid-wake-book")
     ok = abortReason.empty() && readers == 1 && marked == 0 && created == 0;
   else if (name == "valid" || name == "new" || name == "aborted" || name == "query-error")

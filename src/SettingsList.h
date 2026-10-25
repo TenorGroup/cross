@@ -495,7 +495,9 @@ inline int deviceSettingsTab(const SettingInfo& setting) {
       setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes ||
       setting.valuePtr == &CrossPointSettings::frontlightRestoreOnWake ||
       setting.valuePtr == &CrossPointSettings::frontlightFromHour ||
-      setting.valuePtr == &CrossPointSettings::frontlightUntilHour)
+      setting.valuePtr == &CrossPointSettings::frontlightFromMinute ||
+      setting.valuePtr == &CrossPointSettings::frontlightUntilHour ||
+      setting.valuePtr == &CrossPointSettings::frontlightUntilMinute)
     return static_cast<int>(settingstabs::Tab::SLEEP);
   if (setting.valuePtr == &CrossPointSettings::statusBarClock)
     return static_cast<int>(settingstabs::Tab::SCREEN);

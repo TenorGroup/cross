@@ -20,3 +20,8 @@ add_test(NAME SettingsSaveFailureRegression
           --output "${CMAKE_CURRENT_BINARY_DIR}/settings-save-failure-regression"
           --sanitize)
 set_tests_properties(SettingsSaveFailureRegression PROPERTIES RUN_SERIAL TRUE TIMEOUT 180)
+
+# Settings > Wi-Fi hands the time zone lookup to a fresh boot (the heap under Settings is too small for its TLS).
+add_test(NAME SettingsWifiRowFreshBootClockSync
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/wifi_row/run.py" --repo "${REPO_ROOT}"
+          --cxx "${CMAKE_CXX_COMPILER}")

@@ -35,4 +35,12 @@ struct State {
 //   right away.
 uint8_t next(State& s, uint8_t raw, bool charging, uint32_t nowMs);
 
+// After a power-on reset the BQ27220 answers what it held before the supply dropped, for about nine seconds
+// (a domestic X3 logged 6, 6, 6, 6, 6, then 81). `slept` is the percentage the machine went to sleep with
+// (state.json), UNKNOWN_PERCENT when it has none. Inside the first COLD_GAUGE_MS a reading below it is not
+// believed and `slept` stands in; a higher reading, or any reading once the window is over, is taken as it is.
+constexpr uint8_t UNKNOWN_PERCENT = 255;
+constexpr uint32_t COLD_GAUGE_MS = 12000;
+uint8_t trustCold(uint8_t raw, uint8_t slept, uint32_t sinceBootMs);
+
 }  // namespace battshown

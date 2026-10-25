@@ -209,12 +209,13 @@ void EpdBus::cmdData2(uint8_t c, uint8_t d0, uint8_t d1) {
   const uint8_t d[2] = {d0, d1};
   cmdData(c, d, 2);
 }
-// The SDK's scoped transaction: its bytes go to the model, there is no chip select to frame.
+// A scoped transaction (the SDK's EpdBus::Transaction): its bytes go to the model, chip select and the SPI clock
+// lock are of no interest to it.
 EpdBus::~EpdBus() {}
-EpdBus::Transaction EpdBus::beginTxn() { return Transaction(*this); }
-EpdBus::Transaction::Transaction(EpdBus& bus) : _bus(&bus), _active(true) {}
+EpdBus::Transaction::Transaction(EpdBus& bus) : _bus(&bus), _pmLock(bus), _active(true) {}
 EpdBus::Transaction::~Transaction() { end(); }
-EpdBus::Transaction::Transaction(Transaction&& other) noexcept : _bus(other._bus), _active(other._active) {
+EpdBus::Transaction::Transaction(Transaction&& other) noexcept
+    : _bus(other._bus), _pmLock(std::move(other._pmLock)), _active(other._active) {
   other._bus = nullptr;
   other._active = false;
 }
@@ -222,6 +223,7 @@ EpdBus::Transaction& EpdBus::Transaction::operator=(Transaction&& other) noexcep
   if (this != &other) {
     end();
     _bus = other._bus;
+    _pmLock = std::move(other._pmLock);
     _active = other._active;
     other._bus = nullptr;
     other._active = false;
@@ -229,13 +231,11 @@ EpdBus::Transaction& EpdBus::Transaction::operator=(Transaction&& other) noexcep
   return *this;
 }
 void EpdBus::Transaction::end() { _active = false; }
+uint8_t EpdBus::Transaction::transfer(uint8_t) { return 0; }
 void EpdBus::Transaction::cmd(uint8_t c) { ctl.cmd(c); }
 void EpdBus::Transaction::data(uint8_t d) { ctl.data(&d, 1); }
-uint8_t EpdBus::Transaction::transfer(uint8_t d) {
-  ctl.data(&d, 1);
-  return 0;
-}
 void EpdBus::Transaction::writeBytes(const uint8_t* d, uint16_t len) { ctl.writeRow(d, len); }
+EpdBus::Transaction EpdBus::beginTxn() { return Transaction(*this); }
 void EpdBus::waitBusy(const char*) {}
 void EpdBus::waitBusy(BusyPolarity, const char*) {}
 void EpdBus::waitRefreshComplete(const char*) {}

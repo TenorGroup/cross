@@ -2065,6 +2065,10 @@ void EpubReaderActivity::loop() {
     openDictionaryWordSelect(true);
     return;
   }
+  if (shortcut == ReaderShortcut::Clip && !endOfBookMenuOpen) {
+    startClipSelection();
+    return;
+  }
   if (shortcut == ReaderShortcut::Menu && !endOfBookMenuOpen) confirmReleased = true;
   if (confirmLongPressed) {
     switch (SETTINGS.longPressMenuFunction) {

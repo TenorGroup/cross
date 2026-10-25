@@ -20,7 +20,7 @@ row_end=reader.index('\n}',row_start)+2
 activity=(repo/'src/activities/settings/SettingsActivity.cpp').read_text()
 start=activity.index('std::string SettingsActivity::settingValueText(')
 end=activity.index('\nvoid SettingsActivity::buildScreen',start)
-(out/'SettingsValueSlice.cpp').write_text('#include "SettingsList.h"\n#include "MenuCustomization.h"\n#include "components/TenorMenuChrome.h"\n'
+(out/'SettingsValueSlice.cpp').write_text('#include "SettingsList.h"\n#include "MenuCustomization.h"\n#include "components/TenorMenuChrome.h"\n#include "util/FrontlightSchedule.h"\n'
     'struct NotoHintBoundary { bool needsNotoPack() const { return false; }\n'
     '  uint8_t effectiveWeight() const { return readerInk::clamp(SETTINGS.readerInkWeight); } };\n'
     'static NotoHintBoundary sdFontSystem;\n'+activity[start:end]+'\n')

@@ -60,6 +60,7 @@ void CrossPointState::toJson(JsonDocument& doc) const {
   doc["lastSleepFromReader"] = lastSleepFromReader;
   doc["showBootScreen"] = showBootScreen;
   if (sleepStartedAt) doc["sleepStartedAt"] = sleepStartedAt;
+  if (batteryAtSleep <= 100) doc["batteryAtSleep"] = batteryAtSleep;
   if (wake.kind != WakeKind::None) {
     doc["wakeKind"] = static_cast<uint8_t>(wake.kind);
     doc["wakeShell"] = wake.shell;
@@ -107,6 +108,7 @@ bool CrossPointState::fromJson(JsonVariantConst doc) {
   lastSleepFromReader = doc["lastSleepFromReader"] | false;
   showBootScreen = doc["showBootScreen"] | true;
   sleepStartedAt = doc["sleepStartedAt"] | 0u;
+  batteryAtSleep = doc["batteryAtSleep"] | static_cast<uint8_t>(255);
   wake = {};
   wake.kind = static_cast<WakeKind>(doc["wakeKind"] | 0);
   if (wake.kind != WakeKind::None) {

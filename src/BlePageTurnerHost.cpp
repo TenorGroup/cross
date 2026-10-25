@@ -15,6 +15,7 @@
 #include <Logging.h>
 #include <BlePageTurner.h>
 #include "../lib/BlePageTurner/src/RadioPort.h"
+#include "CrossPointSettings.h"
 #include "KOReaderPullResume.h"
 #include "platform/ColdLogProbe.h"
 
@@ -113,6 +114,11 @@ void beginPageTurner(GfxRenderer& renderer, bleturner::Config& config, void (*sh
   runShortcut = shortcut;
   restartBook = restartIntoBook;
   bleturner::begin(bleHost, config);
+  // A v1.0.76 reader with a bond and no chosen remote keeps linking: the first saved bond becomes the chosen one.
+  if (bleturner::adoptSavedBond()) {
+    LOG_INF("BLE", "Adopted the saved bond as the chosen remote");
+    SETTINGS.saveToFile();
+  }
 }
 
 bool preparePageTurnerAfterPull(const bool enabled, const bool usedNetwork, const bool succeeded) {

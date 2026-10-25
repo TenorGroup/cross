@@ -256,6 +256,10 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     } else {
       const uint8_t fieldDefault = s.*(info.valuePtr);  // struct-initializer default, read before we overwrite it
       uint8_t v = doc[info.key] | fieldDefault;
+      if (info.valuePtr == &CrossPointSettings::shortPwrBtn && v == PWR_READER_MENU) {
+        v = READER_MENU;  // the 2.0.0 Reader menu action is the tenor one (QuickAction.h powerLabels)
+        needsResave = true;
+      }
       if (info.type == SettingType::ENUM) {
         v = clamp(v, (uint8_t)info.enumLabels().size(), fieldDefault);
       } else if (info.type == SettingType::TOGGLE) {

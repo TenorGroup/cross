@@ -193,7 +193,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     CREATE_CLIPPING = 9,
     PWR_BOOKMARK = 10,
     PWR_SYNC = 11,
-    PWR_READER_MENU = 12,
+    PWR_READER_MENU = 12,  // retired: the same action as READER_MENU (7); a saved 12 loads as 7, the row does not list it
     SHORT_PWRBTN_COUNT
   };
 
@@ -652,6 +652,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // The light's daily hours (util/FrontlightSchedule.h): a wake inside [from, until) lights it. Equal = no schedule.
   uint8_t frontlightFromHour = 0;
   uint8_t frontlightUntilHour = 0;
+  // Minutes of those ends, in steps of 5 (0..55). Files from v1.0.76 have none: 0, the window they had.
+  uint8_t frontlightFromMinute = 0;
+  uint8_t frontlightUntilMinute = 0;
   // What the slide switch controls (boards with one): frontlight on/off or
   // night mode. The switch's position is applied at boot and on each change.
   enum SLIDE_SWITCH_ACTION : uint8_t {

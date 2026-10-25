@@ -27,6 +27,7 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--source-root', type=Path)
     parser.add_argument('--cxx', default='c++')
+    parser.add_argument('--test', default='gauge_task.cpp')
     args = parser.parse_args()
     here = Path(__file__).resolve().parent
     repo = (args.source_root or here.parents[1]).resolve()
@@ -47,7 +48,7 @@ def main():
            '-fno-omit-frame-pointer', '-DSOC_PM_SUPPORT_EXT1_WAKEUP=0', f'-DLOOP_POLL={polls[0]}',
            '-I' + str(here / 'stubs'), '-I' + str(production), '-I' + str(here), '-I' + str(sdk / 'include'),
            str(production / 'HalPowerManager.cpp'), str(production / 'BattShown.cpp'), str(sdk / 'src/PowerManager.cpp'),
-           str(here / 'gauge_task.cpp'), '-o', str(binary)]
+           str(here / args.test), '-o', str(binary)]
     subprocess.run(cmd, check=True)
     run = subprocess.run([str(binary)], capture_output=True, text=True)
     print(f'loop poll: powerManager.{polls[0]}()')

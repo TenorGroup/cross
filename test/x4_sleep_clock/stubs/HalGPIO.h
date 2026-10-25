@@ -1,9 +1,12 @@
 #pragma once
 #include <BoardConfig.h>
 
+#include "BatteryMonitor.h"
+
 // Extra BQ27220 registers HalPowerManager.cpp's pollGaugeDiagnostics() reads (About screen
 // rows); values match lib/hal/HalGPIO.h. gauge_task.cpp fakes the reader itself.
 #define BQ27220_VOLT_REG 0x08
+#define BQ27220_CUR_REG 0x0C
 #define BQ27220_SOC_REG 0x2C
 #define BQ27220_AVG_CUR_REG 0x14
 #define BQ27220_RM_REG 0x10
@@ -17,8 +20,14 @@ namespace X3GPIO {
 // gauge_task.cpp/behavior.cpp/journey.cpp compile HalPowerManager.cpp whole, so this needs a
 // definition even where the test never exercises pollGaugeDiagnostics(); none of them assert
 // on it, so one untracked, always-succeeding inline fake covers every harness here.
-inline bool readI2CReg16LE(uint8_t, uint8_t, uint16_t* outValue) {
+inline bool readI2CReg16LE(uint8_t, uint8_t reg, uint16_t* outValue) {
   *outValue = 0;
+  if (reg != BQ27220_CUR_REG) return true;
+  // Current(): what HalGPIO::isUsbConnected() reads for the X3's charging check (counted, and it can fail).
+  ++fakebattery::gaugeReads;
+  if (fakebattery::failReads > 0) { --fakebattery::failReads; return false; }
+  if (!fakebattery::readable) return false;
+  *outValue = static_cast<uint16_t>(fakebattery::current);
   return true;
 }
 }  // namespace X3GPIO

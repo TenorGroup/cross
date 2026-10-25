@@ -82,8 +82,12 @@ struct MappedInputManager {
 enum WiFiMode { WIFI_MODE_NULL };
 struct WiFiBoundary {
   WiFiMode getMode() const { return WIFI_MODE_NULL; }
+  int status() const { return 0; }
   void disconnect(bool) {}
 } WiFi;
+constexpr int WL_CONNECTED = 3;
+enum class FreshBootTask { ClockSync, KOReaderLogin, KOReaderSignUp };
+bool startsOnFreshBoot(bool, FreshBootTask) { return false; }
 void delay(unsigned long) {}
 unsigned long millis() { return 0; }
 void silentRestartToSettings() {}

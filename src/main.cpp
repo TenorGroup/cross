@@ -13,6 +13,7 @@
 #include "activities/settings/OtaUpdateActivity.h"
 #include "network/UpdateBoot.h"
 #include <Arduino.h>
+#include <algorithm>
 #include <BlePageTurner.h>
 #include <BoardConfig.h>
 
@@ -134,6 +135,7 @@
 #include "util/Timezones.h"
 #include "util/WakeBook.h"
 #include "util/WakePlace.h"
+#include "util/WakeReturn.h"
 
 #if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
 // The serial commands scan integers and words only. newlib's sscanf brings its float scanner and
@@ -243,6 +245,10 @@ RTC_NOINIT_ATTR uint32_t silentRebootMagic;
 RTC_NOINIT_ATTR uint32_t silentRebootTarget;
 RTC_NOINIT_ATTR uint32_t silentRebootHomeMenu;
 RTC_NOINIT_ATTR uint32_t silentRebootPayload;
+// Join Network after its restart: 1 when the session was opened from the open book, which its exit hands back.
+RTC_NOINIT_ATTR uint32_t silentRebootFromBook;
+// The Settings tab and row the restart comes back to, when it was armed under one (util/WakeReturn.h).
+RTC_NOINIT_ATTR wakereturn::Slot silentRebootPlace;
 // The restart into the update screen (UpdateBoot.h): armed only by silentRestartToOta().
 RTC_NOINIT_ATTR update_boot::Slot otaBootSlot;
 
@@ -345,6 +351,11 @@ static void armSilentReboot(const uint32_t target) {
   silentRebootTarget = target;
   if (target == SILENT_REBOOT_TARGET_HOME)
     silentRebootHomeMenu = static_cast<uint32_t>(activityManager.homeMenuOrigin());
+  // Settings, and a Wi-Fi task that Settings opened, come back to the tab and row the user left; any other restart
+  // keeps no place (store() of a place that is not Settings clears the slot).
+  const bool keepsPlace = target == SILENT_REBOOT_TARGET_SETTINGS ||
+                          (target >= SILENT_REBOOT_TARGET_TASK && target <= SILENT_REBOOT_TARGET_TASK_LAST);
+  wakereturn::store(silentRebootPlace, keepsPlace ? activityManager.captureWakePlace() : WakePlace{});
   silentRebootPayload = cardrescue::payload(Frontlight.isOn());
   silentRebootMagic = SILENT_REBOOT_MAGIC;
 }
@@ -407,7 +418,12 @@ static bool probeKeptHeap() {
 
 void silentRestart() {
   if (probeKeptHeap()) return;
-  silentRestartTo(SILENT_REBOOT_TARGET_HOME, "home");
+  // Back out of a Wi-Fi screen that Settings opened: the way on is that Settings tab. Left by the home gesture (a
+  // Replace, not a Pop) it is Home, as every Wi-Fi screen does.
+  if (activityManager.isPopping() && activityManager.captureWakePlace().kind == WakeKind::SettingsTab)
+    silentRestartTo(SILENT_REBOOT_TARGET_SETTINGS, "settings");
+  else
+    silentRestartTo(SILENT_REBOOT_TARGET_HOME, "home");
 }
 
 void silentRestartToFileTransfer() {
@@ -472,7 +488,7 @@ static void restartIntoOpenBook() {
 }
 #endif
 
-void silentRestartToJoinNetwork() {
+void silentRestartToJoinNetwork(const bool fromBook) {
   if (deepSleepInProgress) return;
 #if FREEINK_CAP_TOUCH
   // A software reset would cycle touch/frontlight rails; those boards proceed
@@ -481,6 +497,7 @@ void silentRestartToJoinNetwork() {
   if (BoardConfig::hasTouch()) return;
 #endif
   armSilentReboot(SILENT_REBOOT_TARGET_JOIN_NETWORK);
+  silentRebootFromBook = fromBook ? 1 : 0;
   LOG_DBG("MAIN", "Silent restart (target=join-network)");
   GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
   delay(50);
@@ -724,6 +741,16 @@ static bool holdSleepWhileUsbPowered() {
 }
 #endif
 
+// Tear down WiFi so the modem power domain isn't held alive across deep sleep. Wake from deep sleep is effectively a
+// chip reset, so no state needs to survive. Not while a join the plugin events made is up and the KOReader push still
+// has books to send (D12): pushBeforeSleep() reuses that join, then takes the radio down itself.
+static void tearDownSleepWifi() {
+  if (WiFi.getMode() == WIFI_MODE_NULL) return;
+  if (WiFi.status() == WL_CONNECTED && koautosync::pushIsOwed()) return;
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+}
+
 // Enter deep sleep mode
 void enterDeepSleep(bool fromTimeout = false) {
   const uint32_t sleepStarted = millis();
@@ -764,6 +791,7 @@ void enterDeepSleep(bool fromTimeout = false) {
   // One write of the state, once the sleep screen is up: what that screen chose (the quote shown,
   // the picture) goes in this write instead of a second write of the same file of its own.
   APP_STATE.sleepStartedAt = koautosync::sleepStamp();  // the wake pull runs only after a long sleep
+  APP_STATE.batteryAtSleep = static_cast<uint8_t>(std::min<unsigned>(powerManager.getBatteryPercentage(), 100));
   APP_STATE.saveToFile();
   LOG_INF("SLP", "Timing save-state=%lu ms", static_cast<unsigned long>(millis() - sleepStarted));
   if (!asleep) {
@@ -786,12 +814,7 @@ void enterDeepSleep(bool fromTimeout = false) {
   }
 
   LOG_INF("SLP", "Timing retained-frame=%lu ms", static_cast<unsigned long>(millis() - retainedStarted));
-  // Tear down WiFi so the modem power domain isn't held alive across deep sleep.
-  // Wake from deep sleep is effectively a chip reset, so no state needs to survive.
-  if (WiFi.getMode() != WIFI_MODE_NULL) {
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-  }
+  tearDownSleepWifi();
 
 #if FREEINK_DEVICE_PICCO
   // The I2C LED driver keeps its state through deep sleep; switch it off here
@@ -899,6 +922,41 @@ void setupDisplayAndFonts(bool seamless = false, bool sdFonts = true) {
   LOG_DBG("MAIN", "Fonts setup");
 }
 
+// Join Network after its restart. Entered from the open book, leaving it opens that book again, as before the restart.
+static void openJoinNetwork(const bool fromBook) {
+  activityManager.goToJoinNetwork(fromBook ? APP_STATE.openEpubPath : std::string{});
+}
+
+// The screen a silent boot of Settings opens on: the tab and row the restart left, else the first tab.
+static void openSettingsAt(const WakePlace& returnPlace) {
+  if (returnPlace.kind == WakeKind::SettingsTab)
+    activityManager.goToWakePlace(returnPlace, /*cleanInitialRefresh=*/false);
+  else
+    activityManager.goToSettings();
+}
+
+// The Wi-Fi task a fresh boot runs (startsOnFreshBoot). Opened from a Settings tab it goes over that tab, so Back lands
+// there; otherwise it is the only screen.
+static void openFreshBootTask(const FreshBootTask task, const WakePlace& returnPlace) {
+  std::unique_ptr<Activity> run;
+  if (task == FreshBootTask::ClockSync)
+    run = makeUniqueNoThrow<ClockSyncActivity>(renderer, mappedInputManager, /*freshBoot=*/true);
+  else
+    run = makeUniqueNoThrow<KOReaderAuthActivity>(
+        renderer, mappedInputManager,
+        task == FreshBootTask::KOReaderSignUp ? KOReaderAuthActivity::Mode::SIGN_UP
+                                              : KOReaderAuthActivity::Mode::AUTHENTICATE,
+        /*freshBoot=*/true);
+  if (!run) {
+    activityManager.goHome();
+  } else if (returnPlace.kind == WakeKind::SettingsTab) {
+    openSettingsAt(returnPlace);
+    activityManager.pushActivity(std::move(run));
+  } else {
+    activityManager.replaceActivity(std::move(run));
+  }
+}
+
 void setup() {
   BoardConfig::holdPowerRails();
 
@@ -951,10 +1009,14 @@ void setup() {
 #ifdef TENOR_PRESS_PROBE
   restartlog::boot(isSilentReboot, snapshotTarget, silentRebootPayload);
 #endif
+  const WakePlace returnPlace = isSilentReboot ? wakereturn::load(silentRebootPlace) : WakePlace{};
+  const bool returnToBook = isSilentReboot && silentRebootFromBook == 1;
+  silentRebootFromBook = 0;
   silentRebootMagic = 0;
   silentRebootTarget = 0;
   silentRebootHomeMenu = 0;
   silentRebootPayload = 0;
+  wakereturn::store(silentRebootPlace, WakePlace{});
   // Spent here on every boot, like the flags above: whatever ends the update boot, the next one
   // is a normal boot unless the update screen arms another.
   const update_boot::Request otaBoot = update_boot::take(otaBootSlot);
@@ -1051,6 +1113,11 @@ void setup() {
   logHeapMark("storage");
 
   APP_STATE.loadFromFile();
+#ifndef SIMULATOR  // no fuel gauge there
+  // A power-on reset leaves the BQ27220 stale for its first seconds: hold the value the machine slept with.
+  if (esp_reset_reason() == ESP_RST_POWERON && HalPowerManager::hasBq27220Gauge())
+    powerManager.holdSleepPercent(APP_STATE.batteryAtSleep);
+#endif
 #ifdef TENOR_PRESS_PROBE
   logHeapMark("store-state");
 #endif
@@ -1125,8 +1192,10 @@ void setup() {
   // The light's daily hours light it too, at any wake or start inside them, once the clock holds the time.
   uint8_t hour = 0, minute = 0;
   const bool scheduledLight = !isSilentReboot && halClock.hasValidTime() && halClock.getTime(hour, minute) &&
-                              frontlightschedule::lightOnAt(hour, SETTINGS.frontlightFromHour,
-                                                            SETTINGS.frontlightUntilHour);
+                              frontlightschedule::lightOnAtMinute(
+                                  frontlightschedule::minuteOfDay(hour, minute),
+                                  frontlightschedule::minuteOfDay(SETTINGS.frontlightFromHour, SETTINGS.frontlightFromMinute),
+                                  frontlightschedule::minuteOfDay(SETTINGS.frontlightUntilHour, SETTINGS.frontlightUntilMinute));
   const bool restoreLightOn =
       isSilentReboot ? silentRebootLightOn
                      : (SETTINGS.frontlightOn != 0 && SETTINGS.frontlightRestoreOnWake != 0) || scheduledLight;
@@ -1404,27 +1473,14 @@ void setup() {
   } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_JOIN_NETWORK) {
     // Rebooted on the way *into* File Transfer > Join Network for a fresh heap;
     // resume that flow directly instead of landing on home.
-    activityManager.goToJoinNetwork();
+    openJoinNetwork(returnToBook);
   } else if (resume == BootResume::Silent && snapshotTarget >= SILENT_REBOOT_TARGET_TASK &&
              snapshotTarget <= SILENT_REBOOT_TARGET_TASK_LAST) {
-    // Straight to the Wi-Fi task, on the heap of a fresh boot; it restarts to Home on its way out, as before.
-    const auto task = static_cast<FreshBootTask>(snapshotTarget - SILENT_REBOOT_TARGET_TASK);
-    std::unique_ptr<Activity> run;
-    if (task == FreshBootTask::ClockSync)
-      run = makeUniqueNoThrow<ClockSyncActivity>(renderer, mappedInputManager, /*freshBoot=*/true);
-    else
-      run = makeUniqueNoThrow<KOReaderAuthActivity>(
-          renderer, mappedInputManager,
-          task == FreshBootTask::KOReaderSignUp ? KOReaderAuthActivity::Mode::SIGN_UP
-                                                : KOReaderAuthActivity::Mode::AUTHENTICATE,
-          /*freshBoot=*/true);
-    if (run)
-      activityManager.replaceActivity(std::move(run));
-    else
-      activityManager.goHome();
+    // Straight to the Wi-Fi task, on the heap of a fresh boot; it restarts on its way out, as before.
+    openFreshBootTask(static_cast<FreshBootTask>(snapshotTarget - SILENT_REBOOT_TARGET_TASK), returnPlace);
   } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_SETTINGS) {
     // Back out of the WiFi rows and the user is where they left off, not on Home.
-    activityManager.goToSettings();
+    openSettingsAt(returnPlace);
   } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_FONTS) {
     // Back in the font store a download or an update left: the fonts on the card, as they are now.
     activityManager.goToFileTransfer(/*openFontStore=*/true);
@@ -1614,6 +1670,9 @@ static void runQuickAction(const uint8_t action, const quickaction::Trigger trig
     case quickaction::Outcome::SaveQuote:
       activityManager.readerShortcut(outcome == quickaction::Outcome::ReaderMenu ? ReaderShortcut::Menu
                                                                                  : ReaderShortcut::Quote);
+      break;
+    case quickaction::Outcome::Clip:
+      activityManager.readerShortcut(ReaderShortcut::Clip);
       break;
     case quickaction::Outcome::SideForward:
 #ifndef SIMULATOR  // no motion sensor there, so no double tap reaches this

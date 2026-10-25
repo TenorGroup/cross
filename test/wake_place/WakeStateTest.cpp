@@ -45,3 +45,22 @@ TEST(WakeState, TheKindsOfV1072StillRoundTrip) {
   EXPECT_EQ(out.tab, 3);
   EXPECT_EQ(out.name, "action/5");
 }
+
+TEST(WakeState, TheBatteryItSleptWithSurvivesTheCardAndAnOldFileMeansUnknown) {
+  auto& state = CrossPointState::getInstance();
+  state.batteryAtSleep = 81;
+  JsonDocument doc;
+  state.toJson(doc);
+  std::string text;
+  serializeJson(doc, text);
+  state.batteryAtSleep = 7;
+  JsonDocument parsed;
+  ASSERT_FALSE(deserializeJson(parsed, text));
+  ASSERT_TRUE(state.fromJson(parsed.as<JsonVariantConst>()));
+  EXPECT_EQ(state.batteryAtSleep, 81);
+  // A state.json from v1.0.76 has no such key: unknown, so the gauge is believed as before.
+  JsonDocument old;
+  ASSERT_FALSE(deserializeJson(old, "{\"showBootScreen\":false}"));
+  ASSERT_TRUE(state.fromJson(old.as<JsonVariantConst>()));
+  EXPECT_EQ(state.batteryAtSleep, 255);
+}

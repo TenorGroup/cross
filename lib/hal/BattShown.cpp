@@ -43,4 +43,8 @@ uint8_t next(State& s, uint8_t raw, const bool charging, const uint32_t nowMs) {
   return s.shown;
 }
 
+uint8_t trustCold(const uint8_t raw, const uint8_t slept, const uint32_t sinceBootMs) {
+  return slept <= 100 && sinceBootMs < COLD_GAUGE_MS && raw < slept ? slept : raw;
+}
+
 }  // namespace battshown

@@ -29,8 +29,9 @@ void silentRestartToOta(uint8_t dryRunsLeft = 0, uint8_t dryRunsTotal = 0);
 // Reboot into the File Transfer > Join Network flow on a pristine heap, so the
 // WiFi + TLS working set has the contiguous RAM it needs on tight boards. A
 // no-op on touch boards (a soft reset would cycle their externally-powered
-// rails); the caller then proceeds without a reboot.
-void silentRestartToJoinNetwork();
+// rails); the caller then proceeds without a reboot. fromBook: the session was opened from the open book, whose
+// exit hands that book back (v1.0.76 did, with no restart in between).
+void silentRestartToJoinNetwork(bool fromBook = false);
 
 // Reboots immediately after an activity releases exclusive raw storage. The
 // RTC target ensures setup() lands on Home instead of resuming a reader.

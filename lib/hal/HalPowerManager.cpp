@@ -7,6 +7,7 @@
 #include <driver/gpio.h>
 #include <soc/soc_caps.h>
 
+#include <algorithm>
 #include <cassert>
 
 #include "HalGPIO.h"
@@ -42,6 +43,13 @@ void HalPowerManager::begin() {
   // once here so the first paint, drawn by the render task, already has a real value.
   _gaugeTask = xTaskGetCurrentTaskHandle();
   pollGauge();
+}
+
+void HalPowerManager::holdSleepPercent(const uint8_t slept) {
+  if (BoardConfig::ACTIVE.batteryGauge.gaugeAddr == 0) return;
+  _sleptPercent = slept;
+  _batteryCachedPercent = battshown::trustCold(static_cast<uint8_t>(std::min<int>(_batteryCachedPercent, 100)),
+                                               _sleptPercent, millis());
 }
 
 void HalPowerManager::pollGauge() const {
@@ -275,10 +283,18 @@ uint16_t HalPowerManager::getBatteryPercentage() const {
       return _batteryCachedPercent;
     }
 #ifdef TENOR_PRESS_PROBE
-    LOG_INF("BAT", "soc=%u prev=%d task=%s", static_cast<unsigned>(percent), _batteryCachedPercent,
-            pcTaskGetName(nullptr));
+    // The registers behind a cold start (domestic X3 after POWERON, v1.0.76 log: 6, 6, 6, 6, 6, then 81 at ~9 s):
+    // Voltage(), BatteryStatus() and OperationStatus(), to see whether volts or a flag shows the gauge is settled.
+    uint16_t mv = 0, flags = 0, op = 0;
+    const uint8_t gaugeAddr = BoardConfig::ACTIVE.batteryGauge.gaugeAddr;
+    X3GPIO::readI2CReg16LE(gaugeAddr, BQ27220_VOLT_REG, &mv);
+    X3GPIO::readI2CReg16LE(gaugeAddr, BQ27220_STATUS_REG, &flags);
+    X3GPIO::readI2CReg16LE(gaugeAddr, 0x3A, &op);
+    LOG_INF("BAT", "soc=%u prev=%d task=%s mv=%u flags=0x%04x op=0x%04x slept=%u", static_cast<unsigned>(percent),
+            _batteryCachedPercent, pcTaskGetName(nullptr), static_cast<unsigned>(mv), static_cast<unsigned>(flags),
+            static_cast<unsigned>(op), static_cast<unsigned>(_sleptPercent));
 #endif
-    _batteryCachedPercent = percent;
+    _batteryCachedPercent = battshown::trustCold(static_cast<uint8_t>(std::min<int>(percent, 100)), _sleptPercent, now);
     return _batteryCachedPercent;
   }
 

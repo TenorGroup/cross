@@ -1315,7 +1315,9 @@
       "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_LIGHT_FROM_HOUR:0:frontlightFromHour",
+      "STR_LIGHT_FROM_MINUTE:0:frontlightFromMinute",
       "STR_LIGHT_UNTIL_HOUR:0:frontlightUntilHour",
+      "STR_LIGHT_UNTIL_MINUTE:0:frontlightUntilMinute",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -1389,7 +1391,9 @@
       "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_LIGHT_FROM_HOUR:0:frontlightFromHour",
+      "STR_LIGHT_FROM_MINUTE:0:frontlightFromMinute",
       "STR_LIGHT_UNTIL_HOUR:0:frontlightUntilHour",
+      "STR_LIGHT_UNTIL_MINUTE:0:frontlightUntilMinute",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -1463,7 +1467,9 @@
       "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_LIGHT_FROM_HOUR:0:frontlightFromHour",
+      "STR_LIGHT_FROM_MINUTE:0:frontlightFromMinute",
       "STR_LIGHT_UNTIL_HOUR:0:frontlightUntilHour",
+      "STR_LIGHT_UNTIL_MINUTE:0:frontlightUntilMinute",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -1538,7 +1544,9 @@
       "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_LIGHT_FROM_HOUR:0:frontlightFromHour",
+      "STR_LIGHT_FROM_MINUTE:0:frontlightFromMinute",
       "STR_LIGHT_UNTIL_HOUR:0:frontlightUntilHour",
+      "STR_LIGHT_UNTIL_MINUTE:0:frontlightUntilMinute",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -1611,7 +1619,9 @@
       "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_LIGHT_FROM_HOUR:0:frontlightFromHour",
+      "STR_LIGHT_FROM_MINUTE:0:frontlightFromMinute",
       "STR_LIGHT_UNTIL_HOUR:0:frontlightUntilHour",
+      "STR_LIGHT_UNTIL_MINUTE:0:frontlightUntilMinute",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -1685,7 +1695,9 @@
       "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_LIGHT_FROM_HOUR:0:frontlightFromHour",
+      "STR_LIGHT_FROM_MINUTE:0:frontlightFromMinute",
       "STR_LIGHT_UNTIL_HOUR:0:frontlightUntilHour",
+      "STR_LIGHT_UNTIL_MINUTE:0:frontlightUntilMinute",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -1759,7 +1771,9 @@
       "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_LIGHT_FROM_HOUR:0:frontlightFromHour",
+      "STR_LIGHT_FROM_MINUTE:0:frontlightFromMinute",
       "STR_LIGHT_UNTIL_HOUR:0:frontlightUntilHour",
+      "STR_LIGHT_UNTIL_MINUTE:0:frontlightUntilMinute",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []
@@ -1834,7 +1848,9 @@
       "STR_WAKE_TARGET:0:wakeTarget",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_LIGHT_FROM_HOUR:0:frontlightFromHour",
+      "STR_LIGHT_FROM_MINUTE:0:frontlightFromMinute",
       "STR_LIGHT_UNTIL_HOUR:0:frontlightUntilHour",
+      "STR_LIGHT_UNTIL_MINUTE:0:frontlightUntilMinute",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ],
     []

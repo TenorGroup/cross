@@ -8,8 +8,8 @@ namespace shell {
 inline bool isUgly() { return false; }
 }
 constexpr auto wakeTarget = CrossPointSettings::WAKE_HOME;
-// No place is kept in this suite: a wake goes to a book or to Home.
-enum class WakeKind { None };
+#include "util/WakePlace.h"
+// No place is kept by the wake in this suite: a wake goes to a book or to Home.
 constexpr struct { WakeKind kind = WakeKind::None; } wakePlace;
 constexpr bool wakeToScreen = false;
 struct HalDisplay { static constexpr int FULL_REFRESH = 1; };

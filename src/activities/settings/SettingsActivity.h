@@ -169,7 +169,15 @@ struct SettingInfo {
   }
 };
 
+// The four rows of the light's daily window (hour and minute of each end; X4 Pro). 24 and 12 values: on the touch
+// shell each opens a list with a check mark on the chosen one (dynamic bar rule 15, from 7 values), not a tap-to-cycle.
+inline bool isLightWindowRow(const SettingInfo& setting) {
+  return setting.nameId == StrId::STR_LIGHT_FROM_HOUR || setting.nameId == StrId::STR_LIGHT_FROM_MINUTE ||
+         setting.nameId == StrId::STR_LIGHT_UNTIL_HOUR || setting.nameId == StrId::STR_LIGHT_UNTIL_MINUTE;
+}
+
 inline bool settingOpensNext(const SettingInfo& setting) {
+  if (isLightWindowRow(setting)) return tenorchrome::kTouchShell;
   if (setting.action == SettingAction::Language)
     return settingsChoiceStyle(getLanguageCount(), true) == SettingsChoiceStyle::Page;
   if (setting.nameId == StrId::STR_TIME_TO_SLEEP) return true;

@@ -695,6 +695,16 @@ bool forget(const char* addr) {
   return changed;
 }
 
+bool adoptSavedBond() {
+  if (!config->enabled || config->peerAddr[0] != '\0') return false;
+  char addr[sizeof(Config::peerAddr)];
+  char name[sizeof(Config::peerName)];
+  if (!port::firstSavedBond(addr, sizeof(addr), name, sizeof(name)) || addr[0] == '\0') return false;
+  memcpy(config->peerAddr, addr, sizeof(config->peerAddr));
+  memcpy(config->peerName, name, sizeof(config->peerName));
+  return true;
+}
+
 uint8_t bondCount() { return port::bondCount(); }
 Peer bond(const uint8_t index) { return port::bond(index); }
 uint8_t foundCount() { return port::foundCount(); }

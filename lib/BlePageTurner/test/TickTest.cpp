@@ -646,4 +646,30 @@ TEST_F(TickTest, ARadioLeftUpWithNoRemoteChosenStopsInTheBook) {
   EXPECT_FALSE(radio().running);
 }
 
+// v1.0.76 started the radio in the book for any remote the stack had a bond for, whatever blePeerAddr said (its
+// hasBond was the count of saved bonds). A reader who paired in an older version has the bond and no blePeerAddr: at
+// the first start after the upgrade the first saved bond becomes the chosen remote, once, so the book keeps linking.
+TEST_F(TickTest, ABondWithNoChosenRemoteIsAdoptedOnceAndThenTheBookStartsTheRadio) {
+  config.peerAddr[0] = '\0';
+  for (int i = 0; i < 5; ++i) pass(fake::reading());
+  ASSERT_EQ(radio().creates, 0u) << "before the adoption nothing could link";
+
+  EXPECT_TRUE(bleturner::adoptSavedBond());
+  EXPECT_STREQ(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  EXPECT_STREQ(config.peerName, "Free3");
+  pass(fake::reading());
+  EXPECT_GT(radio().creates, 0u) << "the book starts the radio for the adopted remote";
+
+  // Spent: a chosen remote is never replaced by a saved bond, and with the radio off nothing is written.
+  EXPECT_FALSE(bleturner::adoptSavedBond());
+  EXPECT_STREQ(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  config.peerAddr[0] = '\0';
+  config.enabled = 0;
+  EXPECT_FALSE(bleturner::adoptSavedBond());
+  EXPECT_STREQ(config.peerAddr, "");
+  config.enabled = 1;
+  radio().bonds.clear();
+  EXPECT_FALSE(bleturner::adoptSavedBond()) << "no saved bond, nothing to adopt";
+}
+
 }  // namespace

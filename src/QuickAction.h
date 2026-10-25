@@ -65,9 +65,12 @@ inline constexpr uint8_t SHAKE_ORDER[] = {CrossPointSettings::IGNORE,    CrossPo
                                           CrossPointSettings::BACK,      CrossPointSettings::PWR_CONFIRM};
 
 // The rows of the two settings, built from CHOICES.
+// The 2.0.0 Reader menu action (number 12) is the tenor one (7) under another number: the row lists it once, and a
+// saved 12 loads as 7 (CrossPointSettings::loadFromFile). Being last, the choices that stay keep their places.
 inline std::vector<StrId> powerLabels() {
   std::vector<StrId> labels;
-  for (const auto& choice : CHOICES) labels.push_back(choice.label);
+  for (const auto& choice : CHOICES)
+    if (choice.action != CrossPointSettings::PWR_READER_MENU) labels.push_back(choice.label);
   return labels;
 }
 inline std::vector<StrId> shakeLabels() {

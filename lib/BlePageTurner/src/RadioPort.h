@@ -61,6 +61,8 @@ void forget(const char* addr);
 bool takeConnectFailure(char* out, size_t outLen);
 uint8_t bondCount();
 Peer bond(uint8_t index);
+// The first remote the stack has saved (NVS), read without starting the stack; false when it has none.
+bool firstSavedBond(char* addr, size_t addrLen, char* name, size_t nameLen);
 uint8_t foundCount();
 Peer found(uint8_t index);
 

@@ -142,3 +142,17 @@ TEST(BattShown, FivePointsBelowStillEasesDown) {
 }
 
 }  // namespace
+
+// After a power-on reset the BQ27220 answers what it held before the supply dropped (x3nd-76c.log: 6, 6, 6, 6, 6,
+// then 81 at 9 s). For the first COLD_GAUGE_MS a reading below the value the machine slept with is not believed.
+TEST(BattShown, ColdGaugeReadingBelowTheSleepValueIsNotBelievedInsideTheWindow) {
+  EXPECT_EQ(battshown::trustCold(6, 81, 148), 81);
+  EXPECT_EQ(battshown::trustCold(6, 81, battshown::COLD_GAUGE_MS - 1), 81);
+  EXPECT_EQ(battshown::trustCold(6, 81, battshown::COLD_GAUGE_MS), 6) << "the window is over: a real low battery shows";
+}
+
+TEST(BattShown, ColdGaugeRuleNeverHoldsBackAHigherOrUnknownReading) {
+  EXPECT_EQ(battshown::trustCold(81, 6, 148), 81) << "charged while asleep";
+  EXPECT_EQ(battshown::trustCold(6, battshown::UNKNOWN_PERCENT, 148), 6) << "no sleep value known";
+  EXPECT_EQ(battshown::trustCold(6, 6, 148), 6);
+}

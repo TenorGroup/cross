@@ -778,6 +778,22 @@ int runV1076Meaning() {
   ok = expect(loadValue(before, "shortPwrBtn", 77) && SETTINGS.shortPwrBtn == CrossPointSettings::CREATE_CLIPPING,
               "an unknown power action does not load") && ok;
 
+  // The two Reader menu actions are one: 2.0.0's number 12 is read as the tenor 7 and saved as 7, and the row lists
+  // the action once.
+  ok = expect(loadValue(before, "shortPwrBtn", CrossPointSettings::PWR_READER_MENU) &&
+                  SETTINGS.shortPwrBtn == CrossPointSettings::READER_MENU,
+              "a saved 2.0.0 Reader menu action loads as Reader menu") && ok;
+  ok = expect(saved()["shortPwrBtn"] == static_cast<int>(CrossPointSettings::READER_MENU), "and is saved as the tenor number") && ok;
+  const SettingInfo* powerRow = catalogRow("shortPwrBtn");
+  ok = expect(powerRow != nullptr, "shortPwrBtn row") && ok;
+  if (powerRow) {
+    int readerMenus = 0;
+    for (const auto label : powerRow->enumLabels()) readerMenus += label == StrId::STR_READER_MENU;
+    ok = expect(readerMenus == 1, "the row lists Reader menu once") && ok;
+    ok = expect(powerRow->enumLabels().size() == CrossPointSettings::PWR_READER_MENU,
+                "and the retired number 12 is not a choice") && ok;
+  }
+
   // 4. Hold-Select function: the row maps list place to number, so check the label at the place the row shows.
   static const Wire holdWire[] = {
       {0, StrId::STR_KOSYNC},        {1, StrId::STR_DISABLED},     {2, StrId::STR_BOOKMARK_OPTION},

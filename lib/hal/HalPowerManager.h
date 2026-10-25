@@ -20,6 +20,7 @@ class HalPowerManager {
 
   mutable int _batteryCachedPercent = 0;         // Last read battery percentage (0-100)
   mutable unsigned long _batteryLastPollMs = 0;  // Timestamp of last battery read in milliseconds
+  uint8_t _sleptPercent = battshown::UNKNOWN_PERCENT;  // set after a power-on reset: the value to hold (BattShown.h)
   TaskHandle_t _gaugeTask = nullptr;             // The loop task, the only one that reads an I2C gauge
 
   // Display-smoothing state for getDisplayedBatteryPercentage(). That accessor is the only
@@ -66,6 +67,11 @@ class HalPowerManager {
   static constexpr unsigned long BATTERY_POLL_MS = 1500;       // ms
 
   void begin();
+
+  // After a power-on reset, with the percentage the machine slept with: the BQ27220 answers stale for its first
+  // seconds, so a reading below it is not believed until battshown::COLD_GAUGE_MS (BattShown.h). Raw and displayed
+  // value both follow, since both come from getBatteryPercentage().
+  void holdSleepPercent(uint8_t slept);
 
   // Control CPU frequency for power saving
   void setPowerSaving(bool enabled);

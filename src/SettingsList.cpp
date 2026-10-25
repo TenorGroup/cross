@@ -95,8 +95,12 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
                           "frontlightRestoreOnWake", StrId::STR_CAT_DISPLAY));
   emit(SettingInfo::Value(StrId::STR_LIGHT_FROM_HOUR, &CrossPointSettings::frontlightFromHour, {0, 23, 1},
                           "frontlightFromHour", StrId::STR_CAT_DISPLAY));
+  emit(SettingInfo::Value(StrId::STR_LIGHT_FROM_MINUTE, &CrossPointSettings::frontlightFromMinute, {0, 55, 5},
+                          "frontlightFromMinute", StrId::STR_CAT_DISPLAY));
   emit(SettingInfo::Value(StrId::STR_LIGHT_UNTIL_HOUR, &CrossPointSettings::frontlightUntilHour, {0, 23, 1},
                           "frontlightUntilHour", StrId::STR_CAT_DISPLAY));
+  emit(SettingInfo::Value(StrId::STR_LIGHT_UNTIL_MINUTE, &CrossPointSettings::frontlightUntilMinute, {0, 55, 5},
+                          "frontlightUntilMinute", StrId::STR_CAT_DISPLAY));
 #endif
 #if FREEINK_DEVICE_PICCO
   emit(SettingInfo::Enum(StrId::STR_SLIDE_SWITCH, &CrossPointSettings::slideSwitchAction,

@@ -140,7 +140,31 @@ void x3ChargingPollIsBounded() {
   check(fakebattery::gaugeReads == wrapReads + 1, "wrap polls at 250 ms");
 }
 
+// v1.0.76 tried a failed gauge read of an X3 once more, 2 ms later: one bus glitch is not an unplugged cable.
+void x3FailedChargingReadIsTriedOnce() {
+  boot(BoardConfig::Board::X3);
+  HalGPIO local;
+  fakebattery::current = 10;
+  fakebattery::readable = true;
+  int before = fakebattery::gaugeReads;
+  fakebattery::failReads = 1;
+  check(local.isUsbConnected(), "a glitch on the first read does not read as unplugged");
+  check(fakebattery::gaugeReads == before + 2, "the failed read is tried once more");
+  fake::ms += 250;
+  before = fakebattery::gaugeReads;
+  fakebattery::failReads = 2;
+  check(!local.isUsbConnected(), "two failed reads are no answer: unplugged until the next sample");
+  check(fakebattery::gaugeReads == before + 2, "and no third read is made");
+  fake::ms += 250;
+  before = fakebattery::gaugeReads;
+  fakebattery::current = -10;
+  check(!local.isUsbConnected(), "a read that works and says not charging is the answer");
+  check(fakebattery::gaugeReads == before + 1, "and is read once");
+  fakebattery::failReads = 0;
+}
+
 int main() {
+  x3FailedChargingReadIsTriedOnce();
   x4LoopLeavesTheAdcAlone();
   x4DrawReadsTheDivider();
   x3LoopPollsTheGauge();

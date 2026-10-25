@@ -31,6 +31,9 @@ class CrossPointState : public PersistableStore<CrossPointState> {
   // Unix seconds when the machine last went to sleep with automatic KOReader sync on and a trusted
   // clock; 0 otherwise. The wake pull runs only after a long enough sleep (kosyncauto).
   uint32_t sleepStartedAt = 0;
+  // The battery percentage the machine slept with, 255 when unknown. After a power-on reset the BQ27220 reports
+  // stale for its first seconds; HalPowerManager::holdSleepPercent keeps this value until the gauge settles.
+  uint8_t batteryAtSleep = 255;
   // Where the machine stood when it went to sleep, for "On wake" = pick up where I left off. Set by the
   // sleep path, spent (cleared) by the wake that uses it.
   WakePlace wake;
