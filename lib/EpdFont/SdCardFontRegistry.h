@@ -14,6 +14,7 @@ struct SdCardFontFileInfo {
                       // Vector family in a folder: the style ROLE of this file:
                       // 0=regular, 1=bold, 2=italic, 3=bold-italic.
   uint8_t stem;       // index into SdCardFontFamilyInfo::stems (.cpfont only)
+  uint8_t sizeDigits = 0;  // digits of a zero padded size in the file name (Bookerly_016.cpfont: 3); 0 = unpadded
 #if CROSSPOINT_VECTOR_FONTS
   std::string path;   // full path of a vector (.ttf/.otf/.ttc) file
 #endif
@@ -103,7 +104,9 @@ class SdCardFontRegistry {
  private:
   std::vector<SdCardFontFamilyInfo> families_;  // sorted alphabetically
 
-  static bool parseFilename(const char* filename, uint8_t& size, uint8_t& style, std::string& stem);
+  // `digits` (when given) gets the width of a zero padded size (Bookerly_016.cpfont: 3), 0 for an unpadded one.
+  static bool parseFilename(const char* filename, uint8_t& size, uint8_t& style, std::string& stem,
+                            uint8_t* digits = nullptr);
 #if CROSSPOINT_VECTOR_FONTS
   // Match a loose vector font filename (.ttf/.otf/.ttc, case-insensitive) and
   // return the length of the base name (extension stripped) in `baseLen`.

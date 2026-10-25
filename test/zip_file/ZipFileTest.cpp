@@ -215,10 +215,8 @@ TEST_F(ZipFileTest, StreamsEntriesInChunks) {
 
 TEST_F(ZipFileTest, LookupCacheDoesNotOutliveTheOpenArchive) {
   // This firmware remembers lookups across ZipFile objects, keyed on path, size, directory offset and
-  // entry count (ZipFile.cpp, `known`), so an archive replaced by another of the very same shape is
-  // answered from the old directory. Hardening that key is a decision left for the next release
-  // candidate; see LANE-H1.md.
-  GTEST_SKIP() << "cross-object lookup memory is keyed on the archive's shape, not its bytes";
+  // entry count (ZipFile.cpp, `known`). An archive replaced by another of the very same shape must not be
+  // answered from the old directory: a remembered entry is checked against its local header.
   ZipBuilder before;
   before.addStored("a.txt", "aaaa").addStored("b.txt", "bb");
   install(before);

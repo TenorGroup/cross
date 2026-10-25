@@ -462,7 +462,7 @@ EpubReaderActivity::~EpubReaderActivity() {
   if (epub) saveLinkStack();
 
   section.reset();
-  CLIPPINGS.unload();
+  ClippingStore::release();  // unloads the book's clippings and gives the store back
   if (pendingReadFolderMove && epub) {
     const std::string srcPath = epub->getPath();
     const std::string oldCachePath = epub->getCachePath();
@@ -698,12 +698,21 @@ bool EpubReaderActivity::handleJumpBar() {
 
 // The tap-zone map is up: it takes this pass's input. Its button hides it for good (one settings write,
 // after the page is back on the panel); any other tap, swipe or Back closes it for this open only. The
-// tap that closes it turns no page. The page comes back with 1 full refresh and its gray pass, nothing
+// tap that closes it turns no page; a side page key closes it too and goes on to turn one (the key is not a tap
+// on the box, and a reader on the buttons alone has no other way past it). The page comes back with 1 full refresh and its gray pass, nothing
 // before them: a page turn's lighter waveform left the map's lines on the glass (founder 06/10).
 bool EpubReaderActivity::handleTapTip() {
   int x = 0, y = 0;
   const bool tapped = mappedInput.wasScreenTapped(x, y);
-  const bool closing = tapped || mappedInput.wasSwipe() != MappedInputManager::SwipeDir::None ||
+  // A side key turns on press, or on release when a hold means Back (ReaderUtils::detectPageTurn). Not asked
+  // through detectPageTurn: its long-press question is a one-shot that the turn itself still needs.
+  const bool holdIsBack = SETTINGS.longPressButtonBehavior == CrossPointSettings::SIDE_HOLD_BACK;
+  const auto sideKey = [&](const MappedInputManager::Button b) {
+    return holdIsBack ? mappedInput.wasReleased(b) : mappedInput.wasPressed(b);
+  };
+  const bool pageKey =
+      sideKey(MappedInputManager::Button::PageForward) || sideKey(MappedInputManager::Button::PageBack);
+  const bool closing = tapped || pageKey || mappedInput.wasSwipe() != MappedInputManager::SwipeDir::None ||
                        mappedInput.wasReleased(MappedInputManager::Button::Back) ||
                        mappedInput.wasReleased(MappedInputManager::Button::Confirm);
   if (!closing) return true;
@@ -719,7 +728,7 @@ bool EpubReaderActivity::handleTapTip() {
   readertip::close();
   pagesUntilFullRefresh = 1;
   requestUpdate();
-  return true;
+  return !pageKey;
 }
 
 // Runs from onExit(). While reading, the thumbnail waited on idle passes for 96 KB free, which

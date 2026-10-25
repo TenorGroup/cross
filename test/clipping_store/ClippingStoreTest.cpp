@@ -281,3 +281,61 @@ TEST(ClippingStore, MoveRefusesExistingDestinationHistoryAndDeleteCleansSidecars
   EXPECT_FALSE(Storage.exists((path + ".bak").c_str()));
   EXPECT_FALSE(Storage.exists((path + ".tmp").c_str()));
 }
+
+// WebDAV MOVE onto a book that exists replaces the file itself; the moved book's clippings follow it and the
+// clippings of the book it replaces (and its leftovers) are gone.
+TEST(ClippingStore, MoveStoresOverwritesTheDestinationsClippings) {
+  fake::reset();
+  fake::add("/one.epub");
+  fake::add("/two.epub");
+  ClippingStore store;
+  ASSERT_TRUE(store.loadForBook("/one.epub", "One", "", "epub"));
+  ASSERT_EQ(add(store, "from one"), Result::Added);
+  store.unload();
+  const std::string oneStore = storePath();
+  ASSERT_TRUE(store.loadForBook("/two.epub", "Two", "", "epub"));
+  ASSERT_EQ(add(store, "from two"), Result::Added);
+  ASSERT_EQ(add(store, "from two again"), Result::Added);
+  store.unload();
+  std::string twoStore;
+  for (const auto& [path, node] : fake::files)
+    if (path.ends_with(".bin") && path != oneStore) twoStore = path;
+  ASSERT_FALSE(twoStore.empty());
+  fake::add(twoStore + ".bak", "stale");  // a leftover of the replaced book must not outlive its store
+
+  ASSERT_TRUE(ClippingStore::moveStores("/one.epub", "/two.epub"));
+  EXPECT_FALSE(Storage.exists((twoStore + ".bak").c_str()));
+  EXPECT_FALSE(Storage.exists(oneStore.c_str()));
+
+  ASSERT_TRUE(store.loadForBook("/two.epub", "Two", "", "epub"));
+  ASSERT_EQ(store.clippingCount(), 1u);
+  std::string text;
+  ASSERT_TRUE(store.readClippingText(0, text));
+  EXPECT_EQ(text, "from one");
+  store.unload();
+  ASSERT_TRUE(store.loadForBook("/one.epub", "One", "", "epub"));
+  EXPECT_EQ(store.clippingCount(), 0u);
+  store.unload();
+  // Nothing at all to move: still fine, and the destination's store is gone.
+  ASSERT_TRUE(ClippingStore::moveStores("/nothing.epub", "/two.epub"));
+  ASSERT_TRUE(store.loadForBook("/two.epub", "Two", "", "epub"));
+  EXPECT_EQ(store.clippingCount(), 0u);
+}
+
+// The store is made when something first asks for it and handed back when the reader leaves its book, so Home
+// carries none of its static RAM.
+TEST(ClippingStore, TheSharedStoreIsMadeOnFirstUseAndReleased) {
+  fake::reset();
+  ClippingStore::release();
+  ASSERT_FALSE(ClippingStore::created());
+  ClippingStore& first = ClippingStore::getInstance();
+  EXPECT_TRUE(ClippingStore::created());
+  EXPECT_EQ(&first, &ClippingStore::getInstance());
+  ASSERT_TRUE(first.loadForBook("/book.epub", "Book", "", "epub"));
+  ASSERT_EQ(add(first), Result::Added);
+  ClippingStore::release();  // saves what is loaded, then lets go
+  EXPECT_FALSE(ClippingStore::created());
+  ASSERT_TRUE(ClippingStore::getInstance().loadForBook("/book.epub", "Book", "", "epub"));
+  EXPECT_EQ(ClippingStore::getInstance().clippingCount(), 1u);
+  ClippingStore::release();
+}

@@ -138,7 +138,8 @@ class ReaderFormatJourneysTest(unittest.TestCase):
         files = list(self.store.glob('*/progress.bin'))
         self.assertEqual(len(files), 1, files)
         data = files[0].read_bytes()
-        if self.extension == 'epub':
+        if self.extension != 'xtc':
+            # EPUB, and TXT and Markdown since they open through the EPUB pipeline (D17): spine and page first.
             self.assertGreaterEqual(len(data), 4)
             return struct.unpack('<HH', data[:4])
         self.assertEqual(len(data), 4)
@@ -163,12 +164,9 @@ class ReaderFormatJourneysTest(unittest.TestCase):
         log = self.run_reader('1000:CONFIRM;3800:BACK;4800:QUIT', ((2800, 'reopened'),))
         self.assertEqual(self.progress(), (0, 2), log)
         self.compare_content('normal-saved', 'reopened', True)
-        if self.extension == 'epub':
+        if self.extension != 'xtc':  # TXT and Markdown keep a section cache like an EPUB (D17)
             self.assertIn('Section cache HIT:', log)
             self.assertNotIn('Section cache MISS:', log)
-        elif self.extension in ('txt', 'md'):
-            self.assertIn('Loaded page index cache:', log)
-            self.assertNotIn('Saved page index cache:', log)
 
     def ordinary(self, extension):
         self.fixture(extension)

@@ -27,7 +27,9 @@ std::string SdCardFontFamilyInfo::filePath(const SdCardFontFileInfo& file, const
     path += "/weight-";
     path += static_cast<char>('0' + weight);
   }
-  path += "/" + stems[file.stem] + "_" + std::to_string(file.pointSize) + ".cpfont";
+  char size[16];
+  snprintf(size, sizeof(size), "%0*u", static_cast<int>(file.sizeDigits), static_cast<unsigned>(file.pointSize));
+  path += "/" + stems[file.stem] + "_" + size + ".cpfont";
   return path;
 }
 
@@ -42,9 +44,9 @@ bool SdCardFontFamilyInfo::filePath(const SdCardFontFileInfo& file, char* out, c
   }
 #endif
   if (file.stem >= stems.size()) return false;
-  n = snprintf(out, outSize, "%s/%s/%s_%u.cpfont",
+  n = snprintf(out, outSize, "%s/%s/%s_%0*u.cpfont",
                hiddenRoot ? SdCardFontRegistry::FONTS_DIR_HIDDEN : SdCardFontRegistry::FONTS_DIR_VISIBLE, name.c_str(),
-               stems[file.stem].c_str(), static_cast<unsigned>(file.pointSize));
+               stems[file.stem].c_str(), static_cast<int>(file.sizeDigits), static_cast<unsigned>(file.pointSize));
   return n > 0 && static_cast<size_t>(n) < outSize;
 }
 
@@ -123,7 +125,8 @@ bool pathFits(const char* dirPath, const char* fileName) {
 
 // --- SdCardFontRegistry ---
 
-bool SdCardFontRegistry::parseFilename(const char* filename, uint8_t& size, uint8_t& style, std::string& stem) {
+bool SdCardFontRegistry::parseFilename(const char* filename, uint8_t& size, uint8_t& style, std::string& stem,
+                                       uint8_t* digits) {
   // V4 naming: <name>_<size>.cpfont (e.g. Bookerly-SD_14.cpfont)
   // Use an ends-with check rather than strstr() so that in-progress downloads
   // like "Foo_14.cpfont.tmp" or backups like "Foo_14.cpfont~" aren't accepted.
@@ -145,9 +148,15 @@ bool SdCardFontRegistry::parseFilename(const char* filename, uint8_t& size, uint
   if (!lastUnderscore || lastUnderscore == base) return false;
 
   const char* sizeStr = lastUnderscore + 1;
+  // Plain digits only (strtol would take " 14" and "+14", which filePath() could not give back).
+  if (*sizeStr < '0' || *sizeStr > '9') return false;
   char* endPtr;
   long sizeVal = strtol(sizeStr, &endPtr, 10);
   if (endPtr == sizeStr || *endPtr != '\0' || sizeVal < 1 || sizeVal > 255) return false;
+  const size_t width = static_cast<size_t>(endPtr - sizeStr);
+  const size_t plain = sizeVal > 99 ? 3 : sizeVal > 9 ? 2 : 1;
+  if (width > 8) return false;
+  if (digits) *digits = width == plain ? 0 : static_cast<uint8_t>(width);
   size = static_cast<uint8_t>(sizeVal);
   stem.assign(base, static_cast<size_t>(lastUnderscore - base));
   // V4 .cpfont files bundle every style (regular/bold/italic/bold-italic) into
@@ -319,9 +328,9 @@ void SdCardFontRegistry::scanDirectory(const char* dirPath, SdCardFontFamilyInfo
     // Skip macOS resource fork files (._*) and other hidden files
     if (nameBuffer[0] == '.' || nameBuffer[0] == '_') continue;
 
-    uint8_t size, style;
+    uint8_t size, style, digits = 0;
     std::string stem;
-    if (parseFilename(nameBuffer, size, style, stem)) {
+    if (parseFilename(nameBuffer, size, style, stem, &digits)) {
       // Reject duplicate (pointSize, style) entries in the same family. With
       // v4's bundle-everything design parseFilename always returns style=0, so
       // two files at the same size in the same family would silently shadow
@@ -351,6 +360,7 @@ void SdCardFontRegistry::scanDirectory(const char* dirPath, SdCardFontFamilyInfo
       info.pointSize = size;
       info.style = style;
       info.stem = stemIndex;
+      info.sizeDigits = digits;
       family.files.push_back(std::move(info));
       continue;
     }

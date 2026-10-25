@@ -114,4 +114,23 @@ TEST_F(SdFontRegistryTest, FilePathReportsTruncation) {
   EXPECT_EQ(tiny[sizeof(tiny) - 1], '\0');
 }
 
+// parseFilename takes a zero padded size, so the path the registry builds must give the file's own name back
+// (Bookerly_016.cpfont, not Bookerly_16.cpfont, which is not on the card).
+TEST_F(SdFontRegistryTest, ZeroPaddedSizesOpenTheFileTheyCameFrom) {
+  fake::add("/fonts/Bookerly/Bookerly_016.cpfont");
+  fake::add("/fonts/Bookerly/Bookerly_18.cpfont");
+  fake::add("/fonts/Bookerly/weight-2/Bookerly_016.cpfont");
+
+  ASSERT_TRUE(registry.discover());
+  const auto* family = registry.findFamily("Bookerly");
+  ASSERT_NE(family, nullptr);
+  const auto* padded = family->findFile(16);
+  ASSERT_NE(padded, nullptr);
+  EXPECT_EQ(pathOf(*family, *padded), "/fonts/Bookerly/Bookerly_016.cpfont");
+  EXPECT_EQ(family->filePath(*padded, 2), "/fonts/Bookerly/weight-2/Bookerly_016.cpfont");
+  EXPECT_TRUE(Storage.exists(pathOf(*family, *padded).c_str()));
+  EXPECT_TRUE(family->hasWeight(*padded, 2));
+  EXPECT_EQ(pathOf(*family, *family->findFile(18)), "/fonts/Bookerly/Bookerly_18.cpfont");
+}
+
 }  // namespace

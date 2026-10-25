@@ -467,6 +467,10 @@ bool ReaderActivity::handlePreviewInput() {
   if (processExternalPageTurn()) return true;
   const auto touch = ReaderUtils::detectTouchPageTurn(renderer, mappedInput);
   const auto turns = ReaderUtils::detectPageTurn(mappedInput);
+  if (turns.sideBack) {  // a held side button does what Back does, as in the reading loop
+    finish();
+    return true;
+  }
   if (turns.prev || touch.prev) {
     if (isAtEndOfBook()) {
       RenderLock lock(RenderLock::TryTake{});

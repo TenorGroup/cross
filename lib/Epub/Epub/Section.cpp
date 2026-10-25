@@ -1210,7 +1210,7 @@ bool Section::buildSomeMore(const int maxPages, bool (*yieldNow)()) {
 #endif
   unsigned steps = 0;
   for (;;) {
-    if (!stepHeapAvailable()) {
+    if (!stepHeapAvailable() || build_->parser->tocAnchorsNeedHeap()) {
       LOG_ERR("SCT", "Build starved of heap free=%u largest=%u; parking after %u pages",
               static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
               static_cast<unsigned>(builtPageCount_));

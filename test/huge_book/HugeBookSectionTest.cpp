@@ -236,3 +236,13 @@ TEST_F(HugeBookSection, TocJumpPastTheIdBudgetUnderRadioHeap) {
   expectChapterJump(700, 650, 34 * 1024);
   EXPECT_TRUE(radioReleased);
 }
+
+// v1.0.76 asked for room for the chapter table before it took the heap: a 300 chapter book (9 KB of table)
+// builds on with the radio up, a 700 chapter one (22 KB, on top of the 16 KB the page build needs) starves
+// at once so the reader stops the radio, rather than filling the heap and failing in the middle of a step.
+TEST_F(HugeBookSection, ChapterTableAheadStarvesTheBuildOnlyWhenItWillNotFit) {
+  expectChapterJump(300, 280, RADIO_HEAP);
+  EXPECT_FALSE(radioReleased) << "300 chapters fit beside the radio";
+  expectChapterJump(700, 650, RADIO_HEAP);
+  EXPECT_TRUE(radioReleased) << "700 chapters do not: the reader stops the radio first";
+}

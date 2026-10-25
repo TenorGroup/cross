@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -50,7 +51,11 @@ class ClippingStore {
     SaveFailed,
   };
 
-  static ClippingStore& getInstance() { return instance; }
+  // Made on first use, so a device that never opens a book carries none of its 176 B (release() gives it back).
+  static ClippingStore& getInstance();
+  static bool created() { return instance.load(std::memory_order_acquire) != nullptr; }
+  // Unloads the loaded book and gives the object back; the next getInstance() makes a new one.
+  static void release();
 
   bool loadForBook(const std::string& filePath, const std::string& title, const std::string& author,
                    const std::string& bookType);
@@ -78,9 +83,12 @@ class ClippingStore {
   static bool deleteForFilePath(const std::string& filePath, const std::string& bookType);
   // Move a book or folder together with its clipping stores and deletion journals.
   static bool moveBook(const std::string& from, const std::string& to);
+  // Move the clipping stores of one book file onto another's, replacing what the destination had (WebDAV MOVE
+  // over an existing book, after the file itself was replaced). No book is loaded from either path.
+  static bool moveStores(const std::string& from, const std::string& to);
 
  private:
-  static ClippingStore instance;
+  static std::atomic<ClippingStore*> instance;
 
   // Allocate only populated blocks; growing the index never duplicates existing records.
   static constexpr size_t CLIPPINGS_PER_BLOCK = 16;

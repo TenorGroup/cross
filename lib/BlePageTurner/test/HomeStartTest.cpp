@@ -109,21 +109,27 @@ TEST_F(HomeStartTest, PressesMadeAtHomeAreDroppedNotCarriedIntoTheBook) {
   EXPECT_TRUE(host().delivered.empty());
 }
 
-TEST_F(HomeStartTest, PressQueuedBetweenHomeAndReaderCannotTurnTheBook) {
+// The book's first pass drops the raw edges queued before it (v1.0.76): an old edge must not skip a chapter. A key
+// press queued while the book was opening is for that book and stays: Home's own passes already drop what was
+// pressed on Home, and the window left is the load itself, where a press used to be lost.
+TEST_F(HomeStartTest, TheFirstPassOfTheBookDropsRawEdgesButKeepsAPressMadeWhileItOpened) {
   pass(home());
   radio().connected = true;
   radio().name = "Generic Remote";
   ASSERT_TRUE(bleturner::beforeScreenChange(0, true));
+  bleturner::port::RawEdge edge;
+  edge.value = 0x02;
+  edge.byteIndex = 1;
+  edge.reportId = 3;
+  edge.pressed = true;
+  radio().raw.push_back(edge);
   bleturner::port::KeyPress key;
   key.keycode = bleturner::kUsageRight;
   key.pressed = true;
   radio().keys.push_back(key);
   pass(fake::reading(2));
+  EXPECT_TRUE(radio().raw.empty());
   EXPECT_TRUE(radio().keys.empty());
-  EXPECT_TRUE(host().delivered.empty());
-
-  radio().keys.push_back(key);
-  pass(fake::reading(2));
   ASSERT_EQ(host().delivered.size(), 1u);
   EXPECT_EQ(host().delivered.front(), bleturner::Action::NextPage);
 }

@@ -252,6 +252,23 @@ bool ZipFile::loadAllFileStatSlims() {
   return true;
 }
 
+// The key of a remembered entry is the zip's shape (path, size, directory offset, entry count), which a
+// replacement archive can share. The entry's local header is what extraction reads next, so the answer is only
+// as good as that header: its signature, name and method must be the remembered ones, and so must its sizes
+// unless the writer left them to a data descriptor (zero here). A replacement that keeps an
+// entry's name, method and offset under a descriptor still passes; hash the directory if that ever matters.
+bool ZipFile::stillDescribes(const FileStatSlim& stat, const char* filename, const size_t nameLen) {
+  uint8_t local[30 + MAX_NAME];
+  const size_t need = 30 + nameLen;
+  if (nameLen > MAX_NAME || stat.localHeaderOffset >= zipDetails.centralDirOffset ||
+      need > zipDetails.centralDirOffset - stat.localHeaderOffset || !file.seek(stat.localHeaderOffset) ||
+      file.read(local, need) != static_cast<int>(need)) return false;
+  if (le32(local) != 0x04034b50 || le16(local + 8) != stat.method || le16(local + 26) != nameLen ||
+      std::memcmp(local + 30, filename, nameLen) != 0) return false;
+  const bool descriptor = (le16(local + 6) & 0x08) != 0;
+  return descriptor || (le32(local + 18) == stat.compressedSize && le32(local + 22) == stat.uncompressedSize);
+}
+
 bool ZipFile::loadFileStatSlim(const char* filename, FileStatSlim* fileStat) {
   if (!fileStatSlimCache.empty()) {
     const auto it = fileStatSlimCache.find(filename);
@@ -278,7 +295,7 @@ bool ZipFile::loadFileStatSlim(const char* filename, FileStatSlim* fileStat) {
       const Known& slot = known[(knownNext + KNOWN_SLOTS - 1 - i) % KNOWN_SLOTS];
       if (slot.zip != key) continue;
       if (slot.name == name && slot.nameLen == nameLen && nameLen <= MAX_NAME &&
-          memcmp(slot.filename, filename, nameLen) == 0) {
+          memcmp(slot.filename, filename, nameLen) == 0 && stillDescribes(slot.stat, filename, nameLen)) {
         *fileStat = slot.stat;
         lastCentralDirPos = slot.next;
         lastCentralDirPosValid = true;

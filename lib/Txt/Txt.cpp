@@ -105,9 +105,25 @@ bool Txt::streamTxtToHtml(const std::string& filepath, Print& out) {
   const size_t srcSize = src.size();
   LOG_DBG("TXT", "Converting TXT/MD to HTML: %s (%zu bytes)", filepath.c_str(), srcSize);
 
-  const bool ok = TxtToHtml::stream(
-      filepath, &src, [](void* ctx, uint8_t* buf, size_t size) { return static_cast<HalFile*>(ctx)->read(buf, size); },
+  // Counts what the card handed over: a read that returns 0 early is an end of file to the converter, and the
+  // book would be cut short and still cached.
+  struct Source {
+    HalFile* file;
+    size_t bytes;
+  } source{&src, 0};
+  bool ok = TxtToHtml::stream(
+      filepath, &source,
+      [](void* ctx, uint8_t* buf, size_t size) {
+        auto* in = static_cast<Source*>(ctx);
+        const int count = in->file->read(buf, size);
+        if (count > 0) in->bytes += static_cast<size_t>(count);
+        return count;
+      },
       out);
+  if (ok && source.bytes != srcSize) {
+    LOG_ERR("TXT", "TXT/MD read ended at %zu of %zu bytes: %s", source.bytes, srcSize, filepath.c_str());
+    ok = false;
+  }
 
   LOG_DBG("TXT", "Converted TXT/MD to HTML in %lu ms (%zu bytes in)", millis() - t0, srcSize);
   return ok;

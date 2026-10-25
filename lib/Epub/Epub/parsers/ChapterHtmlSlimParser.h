@@ -222,7 +222,10 @@ class ChapterHtmlSlimParser {
   // ordinary ids, because a jump that cannot find it lands on the wrong page. Shared by the
   // parsers a build resumes, so the TOC is read once per build.
   std::shared_ptr<const std::vector<uint32_t>> tocAnchors;
+  size_t tocAnchorsHeld_ = SIZE_MAX;  // chapter targets in anchorData; SIZE_MAX = not counted yet
   bool isTocAnchor(const std::string& id) const;
+  size_t tocAnchorsAhead();
+  size_t tocAnchorsAheadBytes();
   void recordPendingAnchor();
   uint16_t xpathParagraphIndex = 0;
   uint16_t xpathListItemIndex = 0;
@@ -433,6 +436,11 @@ class ChapterHtmlSlimParser {
   bool hasFailed() const { return buildFailed_; }
 
   void addLineToPage(std::unique_ptr<TextBlock> line, uint32_t visibleOffset);
+  // True when the chapter targets still ahead (always recorded) will not fit beside the 16 KB a page build needs,
+  // yet would once the reader stops the radio. The build then starves and lays out later, with more heap, instead
+  // of filling the heap with the table. A table past ANCHOR_TABLE_STARVE_MAX never fits: it grows as the heap
+  // allows and the per-step heap floor parks the build.
+  bool tocAnchorsNeedHeap();
   // FNV-1a 32-bit hash that identifies a TOC anchor (see tocAnchors).
   static uint32_t anchorKey(const char* id, size_t length);
   const std::deque<std::pair<std::string, uint16_t>>& getAnchors() const { return anchorData; }

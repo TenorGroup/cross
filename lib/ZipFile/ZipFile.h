@@ -75,6 +75,7 @@ class ZipFile {
                       unsigned* readCount = nullptr, size_t* readBytes = nullptr);
   // This zip as it is on the card now (path, size, directory), for lookups remembered across objects.
   uint64_t zipKey() const;
+  bool stillDescribes(const FileStatSlim& stat, const char* filename, size_t nameLen);
   long getDataOffset(const FileStatSlim& fileStat);
   bool loadZipDetails();
 

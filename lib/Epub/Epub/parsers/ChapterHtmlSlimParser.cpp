@@ -54,6 +54,12 @@ constexpr size_t MAX_ANCHORS_PER_CHAPTER = 1024;
 // not asked: the query walks the allocator and ids arrive by the thousand.
 constexpr size_t ANCHOR_GROWTH_HEADROOM = 16 * 1024;
 constexpr size_t ANCHOR_HEAP_CHECK_FROM = 64;
+// A table of chapter targets up to this size fits once the reader stops the radio, so a build short of room for
+// it starves instead of filling the heap. Past it no heap holds the table.
+constexpr size_t ANCHOR_TABLE_STARVE_MAX = 32 * 1024;
+// A deque takes its heap a block at a time (512 B on the firmware's libstdc++, 4,096 B on the host's libc++): the
+// targets ahead may open one block more than their own bytes.
+constexpr size_t ANCHOR_BLOCK_SLACK = 4096;
 
 namespace {
 constexpr uint32_t CHECKPOINT_MAGIC = 0x43504b31;
@@ -396,18 +402,45 @@ bool ChapterHtmlSlimParser::isTocAnchor(const std::string& id) const {
   return hasTocAnchor(tocAnchors.get(), id.data(), id.size());
 }
 
+// Chapter targets this spine's TOC points at that anchorData does not hold yet. Counted once, after any
+// checkpoint restore; recordPendingAnchor keeps it current.
+size_t ChapterHtmlSlimParser::tocAnchorsAhead() {
+  if (!tocAnchors) return 0;
+  if (tocAnchorsHeld_ == SIZE_MAX) {
+    tocAnchorsHeld_ = std::count_if(anchorData.begin(), anchorData.end(),
+                                    [this](const auto& anchor) { return isTocAnchor(anchor.first); });
+  }
+  return tocAnchors->size() - std::min(tocAnchors->size(), tocAnchorsHeld_);
+}
+
+// Heap the chapter targets still ahead will take, which they always do: 700 of them are 22 KB that the page build then
+// lacks with the page-turner radio up. 0 for a table past ANCHOR_TABLE_STARVE_MAX, which no heap holds up front.
+size_t ChapterHtmlSlimParser::tocAnchorsAheadBytes() {
+  const size_t ahead = tocAnchorsAhead();
+  const size_t bytes = ahead * sizeof(anchorData[0]) + (ahead ? ANCHOR_BLOCK_SLACK : 0);
+  return bytes <= ANCHOR_TABLE_STARVE_MAX ? bytes : 0;
+}
+
+// Asked before each step, from the heap the allocator has: a deque has no capacity to look at.
+bool ChapterHtmlSlimParser::tocAnchorsNeedHeap() {
+  const size_t ahead = tocAnchorsAheadBytes();
+  return ahead > 0 && HalMemory::getDefaultHeap().freeBytes < ahead + ANCHOR_GROWTH_HEADROOM;
+}
+
 // Appends pendingAnchorId. Entries are only ever appended (a park rolls the table back by count). The
 // table is a deque, so it grows in small chunks and never needs one large free block.
 void ChapterHtmlSlimParser::recordPendingAnchor() {
   // The deque needs no large block, but a thousand ordinary ids (footnote and link targets) of 32 B each are 32 KB
-  // that the page build lacks with the page-turner radio up. Below the headroom an ordinary id is not recorded;
-  // chapter targets always are, they decide where a jump lands.
-  if (anchorData.size() >= ANCHOR_HEAP_CHECK_FROM && !isTocAnchor(pendingAnchorId) &&
-      HalMemory::getDefaultHeap().freeBytes < ANCHOR_GROWTH_HEADROOM) {
+  // that the page build lacks with the page-turner radio up. Below the headroom, and the room the chapter targets
+  // still ahead will take (and the block this id may open), an ordinary id is not recorded; chapter targets always are, they decide where a jump lands.
+  const bool chapter = isTocAnchor(pendingAnchorId);
+  if (anchorData.size() >= ANCHOR_HEAP_CHECK_FROM && !chapter &&
+      HalMemory::getDefaultHeap().freeBytes < ANCHOR_GROWTH_HEADROOM + ANCHOR_BLOCK_SLACK + tocAnchorsAheadBytes()) {
     pendingAnchorId.clear();
     return;
   }
   anchorData.push_back({std::move(pendingAnchorId), static_cast<uint16_t>(completedPageCount)});
+  if (chapter && tocAnchorsHeld_ != SIZE_MAX) ++tocAnchorsHeld_;
   pendingAnchorId.clear();
 }
 
@@ -3161,6 +3194,7 @@ bool ChapterHtmlSlimParser::restoreCheckpoint(HalFile& file, const uint16_t expe
   currentTextBlock->resetDropCap();
   pendingAnchorId.clear();
   anchorData.clear();
+  tocAnchorsHeld_ = SIZE_MAX;
   bool pagePresent = false;
   if (!reader.pod(currentPageNextY) || !reader.pod(imageCounter) || !reader.pod(dropCapBottom) ||
       !reader.pod(visibleTextOffset) || !reader.pod(partWordVisibleOffset) ||
@@ -3205,6 +3239,7 @@ bool ChapterHtmlSlimParser::restoreResumePoint(const std::string& prologAndPrefi
   currentTextBlock->resetDropCap();
   pendingAnchorId.clear();
   anchorData.clear();
+  tocAnchorsHeld_ = SIZE_MAX;
   visibleTextOffset = point.visible;
   currentPageVisibleOffset = point.visible;
   imageCounter = point.imageCounter;

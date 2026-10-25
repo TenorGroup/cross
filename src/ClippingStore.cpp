@@ -135,7 +135,23 @@ bool moveTreeStores(const std::string& from, const std::string& to, const MovePh
 }
 }  // namespace
 
-ClippingStore ClippingStore::instance;
+std::atomic<ClippingStore*> ClippingStore::instance{nullptr};
+
+ClippingStore& ClippingStore::getInstance() {
+  if (ClippingStore* made = instance.load(std::memory_order_acquire)) return *made;
+  auto* fresh = new ClippingStore;
+  ClippingStore* expected = nullptr;
+  if (instance.compare_exchange_strong(expected, fresh, std::memory_order_acq_rel)) return *fresh;
+  delete fresh;  // another task made it first
+  return *expected;
+}
+
+void ClippingStore::release() {
+  ClippingStore* made = instance.exchange(nullptr, std::memory_order_acq_rel);
+  if (!made) return;
+  made->unload();
+  delete made;
+}
 
 bool ClippingStore::loadForBook(const std::string& filePath, const std::string& title, const std::string& author,
                                 const std::string& bookType) {
@@ -691,6 +707,16 @@ bool ClippingStore::moveBook(const std::string& from, const std::string& to) {
   if (move(MovePhase::Move) && Storage.rename(from.c_str(), to.c_str())) return true;
   if (!move(MovePhase::Rollback)) {
     LOG_ERR("CLIP", "Book move rollback failed: %s -> %s", from.c_str(), to.c_str());
+  }
+  return false;
+}
+
+bool ClippingStore::moveStores(const std::string& from, const std::string& to) {
+  if (from == to) return true;
+  if (!deleteForFilePath(to, "epub")) return false;
+  if (moveStoreFiles(from, to, MovePhase::Move)) return true;
+  if (!moveStoreFiles(from, to, MovePhase::Rollback)) {
+    LOG_ERR("CLIP", "Clipping store move rollback failed: %s -> %s", from.c_str(), to.c_str());
   }
   return false;
 }

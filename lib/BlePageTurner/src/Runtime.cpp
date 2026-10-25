@@ -252,8 +252,10 @@ bool serveReader() {
   router.follow(linked);
   if (router.linked && !router.chosen) {
     // Edges queued while the book was not in front (the remote stays linked on Home) do not
-    // belong to this page: an old press must not skip a chapter when the book opens.
-    drainRemote();
+    // belong to this page: an old press must not skip a chapter when the book opens. Key presses stay
+    // queued: one made while the book was opening is for this page (Home drains its own).
+    while (port::popRaw(raw)) {
+    }
     const Peer peer = port::linked();
     router.table = tableFor(config->remotes, config->remoteCount, peer.addr, peer.name);
     router.chosen = true;

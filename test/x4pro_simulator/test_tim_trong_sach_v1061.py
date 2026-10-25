@@ -34,8 +34,9 @@ KEYS = {  # the Telex keyboard's letters on the English layout, row by row
     'u': (305, 473), 'i': (350, 473), 'o': (395, 473), 'p': (440, 473),
     'a': (35, 539), 's': (80, 539), 'd': (125, 539), 'f': (170, 539), 'g': (215, 539), 'h': (260, 539),
     'j': (305, 539), 'k': (350, 539), 'l': (395, 539),
-    'z': (35, 605), 'x': (80, 605), 'c': (125, 605), 'v': (170, 605), 'b': (215, 605), 'n': (260, 605),
-    'm': (305, 605)}
+    # the third row opens with the Shift key (Aa), which moves the letters one key to the right
+    'z': (80, 605), 'x': (125, 605), 'c': (170, 605), 'v': (215, 605), 'b': (260, 605), 'n': (305, 605),
+    'm': (350, 605)}
 OK_KEY = (413, 670)
 BACK = (46, 754)           # the bar's "<"
 STOP = (420, 754)          # the bar's Stop pill while searching

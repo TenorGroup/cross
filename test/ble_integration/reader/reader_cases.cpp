@@ -36,6 +36,14 @@ int main(){
  require(r->requests==1&&r->trangDaLat==1,"Next did not request exactly one repaint/stat");
  r->loop();require(r->requests==1&&r->trangDaLat==1,"queued Next repeated");
  });
+ test("BLE the first pass of a reader visit drops raw edges queued before the page but keeps a queued press",[]{
+ auto r=reader<XtcReaderActivity>();auto& host=freeink::BleKeyboardHost::getInstance();host.running=true;host.connected=true;
+ host.raw.push_back({});  // an edge from Home, where the remote stays linked
+ tap(1);                  // a press that arrived while the book was opening
+ MainPump p; p.pump();r->loop();
+ require(host.raw.empty(),"an old raw edge survived the first pass of the visit");
+ require(page(*r)==2,"a press queued while the book opened was thrown away");
+ });
  formatTests<XtcReaderActivity>("XTC");formatTests<EpubReaderActivity>("EPUB");
  test("EPUB chapter forward holds one nonrecursive lock",[]{auto r=reader<EpubReaderActivity>();r->section->currentPage=3;activityManager.pageTurn(true);r->loop();require(r->currentSpineIndex==1&&!r->section&&r->requests==1&&r->trangDaLat==1,"chapter forward has wrong model/repaint/stats");});
  test("EPUB chapter previous holds one nonrecursive lock",[]{auto r=reader<EpubReaderActivity>();r->section->currentPage=0;r->currentSpineIndex=1;activityManager.pageTurn(false);r->loop();require(r->currentSpineIndex==0&&!r->section&&r->pendingPageJump==65535&&r->requests==1&&r->trangDaLat==1,"chapter previous has wrong model/repaint/stats");});

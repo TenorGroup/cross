@@ -27,6 +27,14 @@ static void txtShortThenError() {
   Print out; out.allowedSpan = 1 << 20;
   CHECK(!Txt::streamTxtToHtml("/book.txt", out));
 }
+// A read that returns 0 before the file's size is an end of file to the converter; the book would be cut short and
+// still cached, so the conversion fails.
+static void txtEndsEarly() {
+  book("abcdefgh");
+  Storage.files.at("/book.txt")->readPlan = {3, 0};
+  Print out; out.allowedSpan = 1 << 20;
+  CHECK(!Txt::streamTxtToHtml("/book.txt", out));
+}
 static void txtShortCompletes() {
   book("abc & <d>\nefgh");
   Storage.files.at("/book.txt")->readPlan = {3, 2, 3};
@@ -108,7 +116,7 @@ int main(int argc, char** argv) {
   const std::string filter = argc > 1 ? argv[1] : "all";
   int total = 0, failures = 0;
   const std::vector<std::pair<const char*, std::function<void()>>> cases = {
-    {"READ-03 negative read", txtReadError}, {"READ-03 short reads complete", txtShortCompletes},
+    {"READ-03 negative read", txtReadError}, {"READ-03 short reads complete", txtShortCompletes}, {"READ-03 ends before the file's size", txtEndsEarly},
     {"READ-03 missing file", txtMissingFile}, {"READ-03 refused output", txtSinkFailure},
     {"IO-01 negative stored read", zipReadError},
     {"IO-01 short reads complete", zipShortCompletes}, {"IO-01 early stop contract", zipEarlyStop},
