@@ -525,7 +525,8 @@ bool wantsNote() { return KOREADER_STORE.getAutoSync() && KOREADER_STORE.hasCred
 
 void noteLeftBook(const std::string& path, const CrossPointPosition& position, const float percentage,
                   const bool sleeping) {
-  if (path.empty() || !std::isfinite(percentage)) return;
+  // Only an Epub has a place a KOReader can open; a text book's position is in a chapter made for the reader.
+  if (!isEpubPath(path) || !std::isfinite(percentage)) return;
   if (position.spineIndex < 0 || position.spineIndex > UINT16_MAX || position.pageNumber < 0 ||
       position.pageNumber > UINT16_MAX || position.totalPages < 0 || position.totalPages > UINT16_MAX) {
     return;
