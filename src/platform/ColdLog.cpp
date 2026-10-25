@@ -4,7 +4,15 @@
 
 #include <HalStorage.h>
 #include <esp_system.h>
+#ifdef TENOR_X3_CARD_PROBE
+#include <WiFi.h>
+#include <esp_log.h>
 
+#include <cstdarg>
+#include <cstdio>
+#endif
+
+#include <algorithm>
 #include <string>
 
 #include "ColdScript.h"
@@ -16,8 +24,14 @@ constexpr char LOG_DIR[] = "/x4pro/log";
 constexpr char LOG_FILE[] = "/x4pro/log/nhat-ky.txt";
 
 // Boots counted since power came on (RTC memory survives restarts, crashes and deep sleep).
+#ifdef TENOR_X3_CARD_PROBE
+// X3 RTC memory is full to the byte: the count restarts at each boot there.
+uint32_t bootMagic;
+uint32_t bootCount;
+#else
 RTC_NOINIT_ATTR uint32_t bootMagic;
 RTC_NOINIT_ATTR uint32_t bootCount;
+#endif
 constexpr uint32_t BOOT_MAGIC = 0x434F4C44;  // "COLD"
 
 uint32_t bootNumber() {
@@ -57,6 +71,19 @@ struct Card {
     return file.close() && written;
   }
 };
+#ifdef TENOR_X3_CARD_PROBE
+// The X3 has no serial link: ESP-IDF's own lines (Bluetooth controller, NimBLE, Wi-Fi errors) go to the
+// card log too, or a library step that fails leaves no trace.
+int idfToCard(const char* fmt, va_list args) {
+  char line[160];
+  va_list copy;
+  va_copy(copy, args);
+  const int n = vsnprintf(line, sizeof(line), fmt, copy);
+  va_end(copy);
+  if (n > 0) probeLogAppend(line, std::min<size_t>(static_cast<size_t>(n), sizeof(line) - 1));
+  return vprintf(fmt, args);
+}
+#endif
 }  // namespace
 
 void flush(const char* why) {
@@ -88,13 +115,36 @@ String nextLine(const bool firstFrameUp) {
     started = true;
     // Every ESP.restart (SD_FLASH, ROLLBACK_TEST, the restart after USB Drive) flushes first.
     esp_register_shutdown_handler([] { flush("restart"); });
+#ifdef TENOR_X3_CARD_PROBE
+    esp_log_set_vprintf(idfToCard);
+#endif
   }
 
   Card card;
   std::string line;
   switch (cold_script::take(card, SCRIPT, line)) {
     case cold_script::Take::Done:
+#ifdef TENOR_X3_CARD_PROBE
+      // X3 over Wi-Fi: a new script can be uploaded at any time, so look again in 2 s. Wi-Fi is the
+      // only way back into this unit: off for a minute with nothing left to run (a crash restart, a
+      // wake, a script that left the transfer screen) and the transfer screen is opened again.
+      waiting = true;
+      waitUntil = millis() + 2000;
+      {
+        static uint32_t offlineSince = 0;
+        if (WiFi.status() == WL_CONNECTED) {
+          offlineSince = 0;
+        } else if (offlineSince == 0) {
+          offlineSince = millis() | 1;
+        } else if (millis() - offlineSince > 60000) {
+          offlineSince = 0;
+          LOG_INF("COLD", "Offline for a minute: transfer screen again");
+          return String("CMD:FILE_TRANSFER_AUTOCONNECT");
+        }
+      }
+#else
       finished = true;
+#endif
       return String();
     case cold_script::Take::Failed:
       finished = true;

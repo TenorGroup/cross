@@ -45,6 +45,7 @@
 #include <Wire.h>  // fuel gauge reads of the probe build; the simulator has no I2C
 #endif
 #include <XteinkDetect.h>
+#include <nvs.h>
 #include <builtinFonts/all.h>
 #include <time.h>
 #ifndef SIMULATOR
@@ -128,6 +129,7 @@
 #include "platform/ColdLogProbe.h"
 #include "platform/PutFile.h"
 #include "platform/FirmwareProbe.h"
+#include "PanelChip.h"
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
 #include "util/PluginEvents.h"
@@ -987,7 +989,7 @@ void setup() {
 #else
   const bool trialBoot = false;
 #endif
-#if defined(TENOR_PRESS_PROBE) && FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)
+#if defined(TENOR_PRESS_PROBE) && (FREEINK_DEVICE_X4PRO || defined(TENOR_X3_CARD_PROBE)) && !defined(SIMULATOR)
   fwprobe::onBoot();  // CMD:ROLLBACK_TEST crashes the boots it was armed for, here
 #endif
 
@@ -2180,7 +2182,7 @@ void loop() {
                          ble.starting || ble.running || ble.stopping, ble.starting, ESP.getFreeHeap(),
                          ESP.getMaxAllocHeap());
 #endif
-#ifdef TENOR_UI_ACCEPTANCE
+#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_X3_CARD_PROBE)
       } else if (cmd == "FILE_TRANSFER_AUTOCONNECT") {
         auto activity = makeUniqueNoThrow<CrossPointWebServerActivity>(renderer, mappedInputManager);
         if (activity) {
@@ -2190,6 +2192,8 @@ void loop() {
         } else {
           logSerial.printf("UI_TRANSFER:LOW_MEMORY\n");
         }
+#endif
+#ifdef TENOR_UI_ACCEPTANCE
 #if !FREEINK_DEVICE_X3
       } else if (cmd == "WEBDAV_PULL") {
         // The WebDAV pull screen from a command (it joins Wi-Fi itself), so the heap of the TLS session behind it
@@ -2403,7 +2407,7 @@ void loop() {
         logSerial.setTxTimeoutMs(static_cast<uint32_t>(ms));
         logSerial.printf("TXTIMEOUT:%ld\n", ms);
 #endif
-#if FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)
+#if (FREEINK_DEVICE_X4PRO || defined(TENOR_X3_CARD_PROBE)) && !defined(SIMULATOR)
       } else if (fwprobe::command(cmd)) {
         // EFUSE, OTA_STATE, FLASH_DUMP, SD_FLASH, ROLLBACK_TEST: handled there
       } else if (cmd.startsWith("SHOT ")) {
@@ -2415,6 +2419,8 @@ void loop() {
         const bool ok = ScreenshotUtil::saveFramebufferAsBmp(path.c_str(), renderer.getFrameBuffer(),
                                                              renderer.getDisplayWidth(), renderer.getDisplayHeight());
         logSerial.printf("SHOT:ok=%d,path=%s\n", ok, path.c_str());
+#endif
+#if FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)
       } else if (cmd == "USB_DRIVE") {
         // CMD:USB_DRIVE: USB Drive, opened as the menu opens it. The log goes to the card first, the
         // host owns the card from here; its eject restarts the unit, which then runs the next script.
@@ -2680,6 +2686,85 @@ void loop() {
       } else if (cmd == "MEMORY") {
         logSerial.printf("MEMORY:%u,%u,%u\n", ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
 #ifndef SIMULATOR
+      } else if (cmd == "XTDET") {
+        // CMD:XTDET: what the boot's display-bus probe saw (valid only on a boot that probed, not a
+        // wake that reused the memo), the controller in use and the OEM hw_calib/screenType.
+        const auto& d = freeink::getXteinkDisplayProbeDiag();
+        uint8_t ver[3] = {};
+        const bool known = gpio.panelVersion(ver);
+        logSerial.printf("XTDET:valid=%d,read=%u,ver=%02X %02X %02X %02X %02X,flg=%02X,verdict=%u,busyTimeout=%d,"
+                         "controller=%u,variant=%u,panelVer=%d:%02X %02X %02X,chip=%s\n",
+                         d.valid, d.verBytesRead, d.ver[0], d.ver[1], d.ver[2], d.ver[3], d.ver[4], d.flg, d.verdict,
+                         d.busyTimedOut, static_cast<unsigned>(BoardConfig::ACTIVE.displayController),
+                         static_cast<unsigned>(BoardConfig::ACTIVE.displayControllerVariant), known, ver[0], ver[1],
+                         ver[2], panelchip::current().c_str());
+        if (d.mtpValid) {
+          logSerial.printf("XTDET:mtp=");
+          for (uint8_t b : d.mtp) logSerial.printf("%02X", b);
+          logSerial.printf("\n");
+        }
+        nvs_handle_t h;
+        uint8_t st = 0;
+        const bool haveSt = nvs_open("hw_calib", NVS_READONLY, &h) == ESP_OK && nvs_get_u8(h, "screenType", &st) == ESP_OK;
+        if (haveSt) nvs_close(h);
+        logSerial.printf("XTDET:screenType=%d:%u\n", haveSt, st);
+        // Every key the OEM left in hw_calib (a VCOM or panel id there names the glass).
+        nvs_iterator_t it = nullptr;
+        for (esp_err_t e = nvs_entry_find("nvs", "hw_calib", NVS_TYPE_ANY, &it); e == ESP_OK && it;
+             e = nvs_entry_next(&it)) {
+          nvs_entry_info_t info;
+          nvs_entry_info(it, &info);
+          int64_t v = 0;
+          nvs_handle_t kh;
+          if (info.type <= NVS_TYPE_I64 && nvs_open("hw_calib", NVS_READONLY, &kh) == ESP_OK) {
+            uint64_t raw = 0;
+            switch (info.type) {
+              case NVS_TYPE_U8: { uint8_t x = 0; nvs_get_u8(kh, info.key, &x); raw = x; break; }
+              case NVS_TYPE_I8: { int8_t x = 0; nvs_get_i8(kh, info.key, &x); raw = static_cast<uint64_t>(x); break; }
+              case NVS_TYPE_U16: { uint16_t x = 0; nvs_get_u16(kh, info.key, &x); raw = x; break; }
+              case NVS_TYPE_I16: { int16_t x = 0; nvs_get_i16(kh, info.key, &x); raw = static_cast<uint64_t>(x); break; }
+              case NVS_TYPE_U32: { uint32_t x = 0; nvs_get_u32(kh, info.key, &x); raw = x; break; }
+              case NVS_TYPE_I32: { int32_t x = 0; nvs_get_i32(kh, info.key, &x); raw = static_cast<uint64_t>(x); break; }
+              default: { nvs_get_u64(kh, info.key, &raw); break; }
+            }
+            nvs_close(kh);
+            v = static_cast<int64_t>(raw);
+          }
+          logSerial.printf("XTDET:nvs hw_calib/%s type=%u value=%lld\n", info.key, static_cast<unsigned>(info.type),
+                           static_cast<long long>(v));
+        }
+        nvs_release_iterator(it);
+#if FREEINK_DEVICE_X4PRO
+      } else if (cmd == "GT911_DUMP") {
+        // CMD:GT911_DUMP: product id, firmware, output resolution (0x8140..0x814D) and the whole
+        // config block (0x8047..0x8100) of the touch controller, read only. Same task as the touch poll.
+        const uint8_t addrs[] = {0x5D, 0x14};
+        for (uint8_t addr : addrs) {
+          auto readReg = [addr](uint16_t reg, uint8_t* buf, uint8_t len) {
+            Wire.beginTransmission(addr);
+            Wire.write(static_cast<uint8_t>(reg >> 8));
+            Wire.write(static_cast<uint8_t>(reg & 0xFF));
+            if (Wire.endTransmission(false) != 0) return false;
+            return Wire.requestFrom(addr, len, static_cast<uint8_t>(true)) == len && Wire.readBytes(buf, len) == len;
+          };
+          uint8_t info[14] = {};
+          if (!readReg(0x8140, info, sizeof(info))) {
+            logSerial.printf("GT911:addr=%02X absent\n", addr);
+            continue;
+          }
+          logSerial.printf("GT911:addr=%02X id=%c%c%c%c fw=%02X%02X xres=%u yres=%u vendor=%02X\n", addr, info[0], info[1],
+                           info[2], info[3], info[5], info[4], info[6] | (info[7] << 8), info[8] | (info[9] << 8),
+                           info[10]);
+          for (uint16_t reg = 0x8047; reg <= 0x8100; reg += 32) {
+            uint8_t cfg[32] = {};
+            const uint8_t n = static_cast<uint8_t>(std::min<int>(32, 0x8101 - reg));
+            if (!readReg(reg, cfg, n)) break;
+            logSerial.printf("GT911:cfg %04X", reg);
+            for (uint8_t i = 0; i < n; ++i) logSerial.printf(" %02X", cfg[i]);
+            logSerial.printf("\n");
+          }
+        }
+#endif
       } else if (cmd == "HEAP_MAP") {
         heapMapDump("command");
       } else if (cmd == "HEAP_INFO") {

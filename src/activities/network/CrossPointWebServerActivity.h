@@ -44,7 +44,7 @@ class CrossPointWebServerActivity final : public Activity {
   bool openFontStore = false;  // opened out of a font store restart: go straight into the store
   // Set once the exit reopens returnBook, so a Wi-Fi restart boots into it.
   bool toBook = false;
-#ifdef TENOR_UI_ACCEPTANCE
+#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_X3_CARD_PROBE)
   bool autoJoinForTest = false;
 #endif
   // Set when re-entered after the heap-defrag reboot: skip mode selection, go
@@ -85,7 +85,7 @@ class CrossPointWebServerActivity final : public Activity {
  public:
   tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Network; }
   std::string x3NavigationLabel() const override { return I18N.get(isApMode ? StrId::STR_HOTSPOT_MODE : StrId::STR_FILE_TRANSFER); }
-#ifdef TENOR_UI_ACCEPTANCE
+#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_X3_CARD_PROBE)
   void requestAutoJoinForTest() { autoJoinForTest = true; }
 #endif
   explicit CrossPointWebServerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,

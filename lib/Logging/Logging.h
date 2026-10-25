@@ -49,7 +49,8 @@ using LogSerialPort = HardwareSerial;
 
 // X4 Pro probe build: the unit under test may have no working serial link, so what the probe
 // prints is also kept for the card (src/platform/ColdLog.h) and read back over USB Drive.
-#if defined(TENOR_PRESS_PROBE) && FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)
+// The X3 card probe (TENOR_X3_CARD_PROBE) uses it too: a domestic X3 has no USB link at all.
+#if defined(TENOR_PRESS_PROBE) && (FREEINK_DEVICE_X4PRO || defined(TENOR_X3_CARD_PROBE)) && !defined(SIMULATOR)
 #define TENOR_COLD_LOG 1
 #else
 #define TENOR_COLD_LOG 0

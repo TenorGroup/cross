@@ -3,6 +3,7 @@
 
 #include <FreeInkUIIcon.h>
 #include <GfxRenderer.h>
+#include <Logging.h>
 #include <I18n.h>
 
 #include <algorithm>
@@ -256,6 +257,14 @@ ReaderToolbarUi::Routed ReaderToolbarUi::route(const MappedInputManager& input) 
   if (pending_.event == Event::Scrub && !touch.snap.touchReleased) pending_.event = Event::None;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   if (pending_.event == Event::SpacingDraft && touch.snap.touchReleased) pending_.event = Event::SpacingCommit;
+#endif
+#ifdef TENOR_PRESS_PROBE
+  // Every release on the sheet: where it landed and what it hit (event 0 = nothing).
+  if (touch.snap.touchReleased)
+    LOG_INF("TBAR", "tap x=%d y=%d event=%d value=%d routed=%d t=%lu", touch.snap.touchX, touch.snap.touchY,
+            static_cast<int>(pending_.event), pending_.value, touch.routed, millis());
+  else if (input.wasScreenTouchReleased())
+    LOG_INF("TBAR", "release not routed (ui not ready) t=%lu", millis());
 #endif
   return pending_;
 }

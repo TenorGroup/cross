@@ -217,7 +217,7 @@ void CrossPointWebServerActivity::onEnter() {
   lastHandleClientTime = 0;
   requestUpdate();
 
-#ifdef TENOR_UI_ACCEPTANCE
+#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_X3_CARD_PROBE)
   if (autoJoinForTest) {
     autoJoinForTest = false;
     onNetworkModeSelected(NetworkMode::JOIN_NETWORK);

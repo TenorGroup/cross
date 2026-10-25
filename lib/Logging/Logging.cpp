@@ -27,6 +27,8 @@ static constexpr uint32_t LOG_RTC_MAGIC = 0xDEADBEEF;
 // The lite probe (TENOR_PROBE_LITE) keeps 4 KB so a radio measurement is not skewed by 28 KB of RAM.
 #ifdef TENOR_PROBE_LITE
 static char probeLog[4096];
+#elif defined(TENOR_X3_CARD_PROBE)
+static char probeLog[4096];  // X3 heap (a 5 MB upload ran out at 8 KB); flushed every 2 s
 #else
 static char probeLog[32768];
 #endif
