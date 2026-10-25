@@ -645,6 +645,12 @@ and credential stores live there). A plugin keeps its own files in its install
 folder (`api.dir`). As with
 `/api/fetch`, writing a book file marks the Library index stale.
 
+There is no boundary between plugins: `plugin=<name>` is a label, the firmware does not tie `path` to it. A plugin may
+write `/.crosspoint/plugins/<other>/` as well as its own, and anything outside `/.crosspoint` (a token file kept at
+`/plugins/<name>/` is outside the tree, so every plugin, and every machine on the network while Plugins is on, can read and
+write it through this endpoint and `/api/fetch`). What is kept out of reach is the device's own tree and the credential
+files (`protectedpaths::isSensitivePath`, `isInPluginArea`).
+
 - **Success:** `200 {"ok":true,"bytes":N}`.
 - **Errors:** `400` (`bad path`, `empty body`, `missing file part`,
   `upload aborted`); `413 {"error":"too large"}` over 256KB; `500
