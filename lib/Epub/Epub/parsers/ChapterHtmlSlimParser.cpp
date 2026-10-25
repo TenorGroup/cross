@@ -621,6 +621,7 @@ void ChapterHtmlSlimParser::layoutCurrentBlock(const bool includeLastLine) {
   if (halted()) return;
   const int layoutFontId = prepareBlockFont(
       *currentTextBlock, inlineSize.valid ? inlineSize.scale : currentTextBlock->getBlockStyle().fontScale);
+  if (halted()) return;
   const int horizontalInset = currentTextBlock->getBlockStyle().totalHorizontalInset();
   const uint16_t effectiveWidth =
       (horizontalInset < viewportWidth) ? static_cast<uint16_t>(viewportWidth - horizontalInset) : viewportWidth;
@@ -1297,6 +1298,7 @@ void ChapterHtmlSlimParser::finishTableRow() {
     lines.reserve(estimatedLines);
     tableLineVisibleOffsets.reserve(estimatedLines);
     const int cellFontId = prepareBlockFont(*tableRowCells[column], tableRowCells[column]->getBlockStyle().fontScale);
+    if (buildFailed_) return;
     if (!tableRowCells[column]->layoutAndExtractLines(
         renderer, cellFontId,
         static_cast<uint16_t>(columnWidths[column] - tableRowCells[column]->getBlockStyle().paddingLeft -
@@ -3637,9 +3639,12 @@ void ChapterHtmlSlimParser::applyBlockFontScale(BlockStyle& blockStyle, const Cs
     if (entry.hasFontScale) parentScale = entry.fontScaleRem ? entry.fontScale : parentScale * entry.fontScale;
   }
   float scale = parentScale;
-  if (cssStyle.hasFontSize()) {
+  const bool heading = tagName[0] == 'h' && tagName[1] >= '1' && tagName[1] <= '6' && tagName[2] == '\0';
+  if (heading && !headingSizes) {
+    // No size of its own, in the browser defaults or the book's CSS: the book size, as v1.0.76 laid it out.
+  } else if (cssStyle.hasFontSize()) {
     scale = cssStyle.fontSize.unit == CssUnit::Rem ? cssStyle.fontSize.value : parentScale * cssStyle.fontSize.value;
-  } else if (tagName[0] == 'h' && tagName[1] >= '1' && tagName[1] <= '6' && tagName[2] == '\0') {
+  } else if (heading) {
     // Browser default heading sizes, h1..h6.
     static constexpr float HEADING_SCALES[] = {2.0f, 1.5f, 1.17f, 1.0f, 0.83f, 0.67f};
     scale = parentScale * HEADING_SCALES[tagName[1] - '1'];
@@ -3648,17 +3653,25 @@ void ChapterHtmlSlimParser::applyBlockFontScale(BlockStyle& blockStyle, const Cs
   blockStyle.fontScaleDefined = true;
 }
 
-int ChapterHtmlSlimParser::fontIdForScale(const float scale) const {
+int ChapterHtmlSlimParser::fontIdForScale(const float scale, bool* const refused) const {
   const int variant = renderer.resolveFontVariant(fontId, scale);
+  if (variant == FontVariantProvider::REFUSED) {
+    if (refused) *refused = true;
+    return fontId;
+  }
   return variant != 0 ? variant : fontId;
 }
 
 int ChapterHtmlSlimParser::prepareBlockFont(ParsedText& text, const float scale) {
   BlockStyle& blockStyle = text.getBlockStyle();
-  const int layoutFontId = fontIdForScale(scale);
+  // A size the font system turned down for want of memory is not laid out at the body size: that page break would
+  // sit elsewhere than in a build made with the heap to spare. The chapter is not built (the next try may succeed).
+  bool refused = false;
+  const int layoutFontId = fontIdForScale(scale, &refused);
   for (uint8_t slot = 1; slot < text.sizeSlotsInUse(); ++slot) {
-    text.setSizeSlotFontId(slot, fontIdForScale(text.sizeSlotScale(slot)));
+    text.setSizeSlotFontId(slot, fontIdForScale(text.sizeSlotScale(slot), &refused));
   }
+  if (refused) failBuild();
   blockStyle.fontId = layoutFontId == fontId ? 0 : layoutFontId;
   return layoutFontId;
 }

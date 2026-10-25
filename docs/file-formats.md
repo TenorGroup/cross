@@ -90,10 +90,22 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Version 70
+
+Version 70 is the section format of tenor/cross 1.1.0, built on CrossPoint 2.0.0. It
+keeps version 69's binary layout and rebuilds every section written at 69 (development
+builds of 1.1.0 only), because the size of a heading no longer follows the free heap of
+the moment. A board without PSRAM (the X3 and the original X4) lays h1..h6 out at the book
+size, with or without a size in the book's CSS, as tenor/cross 1.0.x did and without
+loading a second font size. A board with PSRAM gives a heading its size, and when the font
+system cannot load that size the chapter is not built at all (it is built on a later try),
+where version 69 quietly fell back to the body size and moved the page breaks. CSS cache
+version 20 and book cache version 10 stay. Book metadata and saved progress are kept.
+
 ### Version 69
 
-Version 69 is the section format of tenor/cross 1.1.0, built on CrossPoint 2.0.0. It
-rebuilds completed and partial sections written by tenor/cross 1.0.x (versions up to
+Version 69 was written by development builds of tenor/cross 1.1.0 only and is rejected by
+the release. It rebuilt completed and partial sections written by tenor/cross 1.0.x (versions up to
 58) and by CrossPoint builds up to its version 68, because the line-spacing,
 letter-spacing, word-spacing, paragraph-indent and drop-cap choices now reach the
 layout through one render spec, and because text that is laid out in bounded
@@ -380,7 +392,7 @@ import std.mem;
 import std.string;
 import std.core;
 
-#define EXPECTED_VERSION 69
+#define EXPECTED_VERSION 70
 #define MAX_STRING_LENGTH 65535
 #define FOOTNOTE_NUMBER_LEN 32
 #define FOOTNOTE_HREF_LEN 256

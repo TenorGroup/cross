@@ -333,7 +333,8 @@ class ChapterHtmlSlimParser {
   bool createPage();
   bool emitCurrentPage();
   void applyBlockFontScale(BlockStyle& blockStyle, const CssStyle& cssStyle, const char* tagName) const;
-  int fontIdForScale(float scale) const;
+  // refused (when given) is set if the font system turned the size down for want of memory (REFUSED).
+  int fontIdForScale(float scale, bool* refused = nullptr) const;
   int prepareBlockFont(ParsedText& text, float scale);
   static EpdFontFamily::Style fontStyleForTextDecoration(CssTextDecoration decoration);
   static void applyDirectionToEntry(StyleStackEntry& entry, const CssStyle& css);

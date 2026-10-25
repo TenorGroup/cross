@@ -8,7 +8,7 @@
 // Keep the reader return-position key and section-cache format on the same
 // version. A cache format change must invalidate saved page labels too.
 // This is the only definition: Section.cpp uses it and does not declare its own.
-inline constexpr uint8_t SECTION_FILE_VERSION = 69;
+inline constexpr uint8_t SECTION_FILE_VERSION = 70;
 
 // Whether h1..h6 are laid out at sizes of their own (the browser sizes, 2.0 down to 0.67) rather than at the book size.
 // A size of its own is a second font; a board without PSRAM has the memory for none, and v1.0.76 laid headings out at

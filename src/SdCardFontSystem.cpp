@@ -519,7 +519,7 @@ int SdCardFontSystem::variantFontId(const int readerFontId, const uint8_t pointS
   hash *= 16777619u;
   hash ^= 0x56415200u;  // "VAR\0" salt keeps variants apart from reader and UI ids
   const int id = static_cast<int>(hash);
-  return id != 0 ? id : 1;
+  return id != 0 && id != FontVariantProvider::REFUSED ? id : 1;
 }
 
 void SdCardFontSystem::unloadCpfonts(GfxRenderer& renderer) {
@@ -537,7 +537,7 @@ int SdCardFontSystem::resolveVariant(const int fontId, const float scale) {
     const int pointSize = std::clamp(static_cast<int>(ttfPointSize_ * scale + 0.5f), 6, 72);
     if (pointSize == ttfPointSize_) return fontId;
     const int id = variantFontId(fontId, static_cast<uint8_t>(pointSize));
-    return loadTtfVariant(static_cast<uint8_t>(pointSize), id) ? id : 0;
+    return loadTtfVariant(static_cast<uint8_t>(pointSize), id) ? id : FontVariantProvider::NO_ROOM;
   }
 #endif
   const std::string& familyName = manager_.currentFamilyName();
@@ -566,7 +566,8 @@ int SdCardFontSystem::resolveVariant(const int fontId, const float scale) {
   }
   if (chosen == base) return fontId;
   const int id = variantFontId(fontId, chosen);
-  return loadCpfontVariant(*family, chosen, id) ? id : 0;
+  // The size exists on the card; not loading it is the heap's doing (the 48 KB gate below, or the load itself).
+  return loadCpfontVariant(*family, chosen, id) ? id : FontVariantProvider::NO_ROOM;
 }
 
 bool SdCardFontSystem::loadVariant(const int fontId) {
@@ -604,7 +605,9 @@ bool SdCardFontSystem::loadCpfontVariant(const SdCardFontFamilyInfo& family, con
   // UI fallback sizes stay resident and must not enter the variant eviction list.
   if (manager_.getFontId(family.name, pointSize) == fontId) return true;
   // Each size keeps its interval tables resident (small for Latin, tens of KB for broad
-  // CJK subsets), so skip it on a tight heap: the text then stays at the reader size.
+  // CJK subsets), so skip it on a tight heap. resolveVariant then answers NO_ROOM: a board with PSRAM does
+  // not build the chapter at the reader size (it would break pages elsewhere than with the heap to spare);
+  // one without keeps the reader size.
   static constexpr size_t MIN_VARIANT_FREE_BLOCK = 48 * 1024;
   if (ESP.getMaxAllocHeap() < MIN_VARIANT_FREE_BLOCK) {
     LOG_DBG("SDFS", "Skipping %upt variant: largest free block %u", pointSize,

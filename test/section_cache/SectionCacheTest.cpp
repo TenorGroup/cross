@@ -741,10 +741,11 @@ TEST_F(SectionCacheTest, SpacingAndDropCapFieldsAreInTheCacheKey) {
   Section same(epub, 0, renderer);
   EXPECT_TRUE(same.loadSectionFile(spec));
 }
-// Both firmwares' last section versions (58 and CrossPoint's 67, 68) are below the merged one, so their caches rebuild.
+// Both firmwares' last section versions (58 and CrossPoint's 67, 68) and the 1.1.0 development builds' 69 (heading sizes
+// that followed the heap) are below the merged one, so their caches rebuild.
 TEST_F(SectionCacheTest, RejectsFinalCacheOfEarlierFirmwareVersions) {
-  ASSERT_EQ(SECTION_FILE_VERSION, 69);
-  for (const uint8_t version : {58, 67, 68}) {
+  ASSERT_EQ(SECTION_FILE_VERSION, 70);
+  for (const uint8_t version : {58, 67, 68, 69}) {
     std::string legacy = valid;
     legacy[0] = static_cast<char>(version);
     writeCache(legacy);
@@ -762,8 +763,8 @@ TEST_F(SectionCacheTest, RejectsPartialCacheOfEarlierFirmwareVersions) {
     ASSERT_TRUE(partial.isPartial());
   }
   const std::string current = bytes(cache());
-  ASSERT_EQ(static_cast<uint8_t>(current[0]), 0xFE - (69 - 28));
-  for (const uint8_t version : {58, 67, 68}) {
+  ASSERT_EQ(static_cast<uint8_t>(current[0]), 0xFE - (70 - 28));
+  for (const uint8_t version : {58, 67, 68, 69}) {
     std::string legacy = current;
     legacy[0] = static_cast<char>(0xFE - (version - 28));
     writeCache(legacy);

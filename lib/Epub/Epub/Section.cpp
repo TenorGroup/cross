@@ -511,6 +511,7 @@ std::unique_ptr<ChapterHtmlSlimParser> Section::makeBuildParser(BuildContext* ct
   if (parser) {
     parser->setTextSpacing(spec.characterSpacing, spec.wordSpacingPercent);
     parser->setParagraphIndentSpaces(spec.paragraphIndentSpaces);
+    parser->setHeadingSizes(HEADING_SIZES);
   }
   if (parser && ctxPtr->ddOn) {
     parser->resumePointFn = [this, ctxPtr](const ChapterHtmlSlimParser::ResumePoint& point, const std::string& prefix,
