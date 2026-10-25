@@ -453,6 +453,7 @@ lookup_methods = "\n".join(block(dictionary_source, name) for name in (
     "std::string Dictionary::cleanWord", "void Dictionary::stemVariants", "bool Dictionary::lookup"
 ))
 lookup_harness = r'''
+#include <HeapFloor.h>
 #include <algorithm>
 #include <cassert>
 #include <cctype>
@@ -551,7 +552,7 @@ with tempfile.TemporaryDirectory() as directory:
     ], check=True)
     subprocess.run([str(path / "navigation")], check=True)
     (path / "lookup.cpp").write_text(lookup_harness)
-    subprocess.run(["c++", "-std=c++20", "-Wall", "-Wextra", "-Werror", str(path / "lookup.cpp"),
-                    "-o", str(path / "lookup")], check=True)
+    subprocess.run(["c++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-I", str(ROOT / "lib/Memory"),
+                    str(path / "lookup.cpp"), "-o", str(path / "lookup")], check=True)
     subprocess.run([str(path / "lookup")], check=True)
 print("Recursive dictionary navigation checks passed")
