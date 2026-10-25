@@ -710,8 +710,11 @@ bool EpubReaderActivity::handleTapTip() {
   const auto sideKey = [&](const MappedInputManager::Button b) {
     return holdIsBack ? mappedInput.wasReleased(b) : mappedInput.wasPressed(b);
   };
-  const bool pageKey =
-      sideKey(MappedInputManager::Button::PageForward) || sideKey(MappedInputManager::Button::PageBack);
+  // The front Left/Right turn pages in the reader too (ReaderUtils::detectPageTurn), on press.
+  const bool pageKey = sideKey(MappedInputManager::Button::PageForward) ||
+                       sideKey(MappedInputManager::Button::PageBack) ||
+                       mappedInput.wasPressed(MappedInputManager::Button::Left) ||
+                       mappedInput.wasPressed(MappedInputManager::Button::Right);
   const bool closing = tapped || pageKey || mappedInput.wasSwipe() != MappedInputManager::SwipeDir::None ||
                        mappedInput.wasReleased(MappedInputManager::Button::Back) ||
                        mappedInput.wasReleased(MappedInputManager::Button::Confirm);
