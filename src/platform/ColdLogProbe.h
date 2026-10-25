@@ -51,12 +51,14 @@ void mark(Event event, uint32_t detail = 0, uint32_t aux = 0);
 void traceReset();
 void trace(TraceStage stage, int32_t code, uint32_t freeBytes, uint32_t largestBlock);
 void dump();
+uint32_t bootNumber();
 #else
 inline void boot(bool, uint32_t, uint32_t) {}
 inline void mark(Event, uint32_t = 0, uint32_t = 0) {}
 inline void traceReset() {}
 inline void trace(TraceStage, int32_t, uint32_t, uint32_t) {}
 inline void dump() {}
+inline uint32_t bootNumber() { return 0; }
 #endif
 
 }  // namespace restartlog

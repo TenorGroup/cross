@@ -158,6 +158,7 @@ add_subdirectory(utf8_middle_ellipsis)
 add_subdirectory(status_glyphs)
 add_subdirectory(rollback_probe)
 add_subdirectory(cold_script)
+add_subdirectory(hang_watch)
 
 add_subdirectory(book_title_display)
 

@@ -16,6 +16,9 @@
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)
 #include <esp_heap_caps.h>
 #endif
+#if defined(TENOR_PRESS_PROBE) && !defined(SIMULATOR)
+#include <esp_system.h>
+#endif
 
 #include "Activity.h"
 #include "CrossPointSettings.h"
@@ -37,6 +40,7 @@
 #include "home/CrashActivity.h"
 #include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
+#include "platform/HangWatch.h"
 #include "shells/Shell.h"
 #include "network/CrossPointWebServerActivity.h"
 #include "network/UsbDriveActivity.h"
@@ -339,6 +343,7 @@ void ActivityManager::renderTaskTrampoline(void* param) {
 void ActivityManager::renderTaskLoop() {
   while (true) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    hangwatch::renderBusy(true);
     // Acquire the lock before reading currentActivity to avoid a TOCTOU race
     // where the main task deletes the activity between the null-check and render().
     RenderLock lock;
@@ -380,6 +385,7 @@ void ActivityManager::renderTaskLoop() {
     if (waiter) {
       xTaskNotify(waiter, 1, eIncrement);
     }
+    hangwatch::renderBusy(false);
   }
 }
 
@@ -1228,6 +1234,11 @@ void ActivityManager::requestFirstPaintAndWait() {
 // RenderLock
 
 RenderLock::RenderLock(Mode mode) {
+#if defined(TENOR_PRESS_PROBE) && !defined(SIMULATOR)
+  // The mutex is not recursive: its holder waiting for it again waits for good. A panic names the caller instead.
+  if (mode != Mode::Try && xSemaphoreGetMutexHolder(activityManager.renderingMutex) == xTaskGetCurrentTaskHandle())
+    esp_system_abort("RenderLock taken again by its holder");
+#endif
   isLocked = xSemaphoreTake(activityManager.renderingMutex, mode == Mode::Try ? 0 : portMAX_DELAY) == pdTRUE;
   assert((mode == Mode::Try || isLocked) && "Blocking render lock acquisition failed");
 }

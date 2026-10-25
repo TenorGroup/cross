@@ -132,6 +132,7 @@ extern bool uc8253X3DiagNoSettle;
 #endif
 #include "platform/ColdLog.h"
 #include "platform/ColdLogProbe.h"
+#include "platform/HangWatch.h"
 #include "platform/PutFile.h"
 #include "platform/FirmwareProbe.h"
 #include "PanelChip.h"
@@ -1930,6 +1931,7 @@ void loop() {
 #ifdef TENOR_PRESS_PROBE
   probeReprintDryRunLine();
 #endif
+  hangwatch::loopAlive();
   gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
   mappedInputManager.update();
 #ifndef SIMULATOR

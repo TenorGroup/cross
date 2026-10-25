@@ -1,5 +1,7 @@
 #include "ColdLogProbe.h"
 
+#include "HangWatch.h"
+
 #if defined(TENOR_PRESS_PROBE) && FREEINK_DEVICE_X3 && !defined(SIMULATOR)
 
 #include <Arduino.h>
@@ -200,7 +202,13 @@ void dump() {
                      traceName(static_cast<TraceStage>(record.stage)), static_cast<long>(record.code),
                      static_cast<unsigned long>(record.freeBytes), static_cast<unsigned long>(record.largestBlock));
   }
+  hangwatch::dump();
   logSerial.printf("COLDLOG_END\n");
+}
+
+uint32_t bootNumber() {
+  ensure();
+  return ring.boots;
 }
 
 }  // namespace restartlog

@@ -67,6 +67,9 @@ struct SleepActivity {
 struct {
   int screenInverted = 0;
 } SETTINGS;
+namespace hangwatch {
+inline void renderBusy(bool) {}  // the measurement build's watchdog; nothing to watch here
+}
 std::atomic<bool> frameAfterDeferredWrite{false};
 std::atomic<bool> frameDrawn{false};
 std::atomic<uint32_t> frameDrawnGeneration{0};
