@@ -103,6 +103,14 @@ inline int percentToOpenAt(const int fromIndex, const int fromStats) { return fr
 // above has been laid out as a page of the new cache: a save made while that jump waits, or before any page stands
 // (the heap could not lay it out), is page 0 of the chapter and not the place, and the next open would not return to
 // the old cache for it.
+// While the share has not become a laid-out page the reader has no place of the new cache to save: a save then would
+// be page 0, and the next open, finding a saved place, would never go back to the old cache for the share.
+inline bool legacyPlaceWaits(const bool jumpPending, const bool pageLaidOut) {
+  (void)jumpPending;
+  (void)pageLaidOut;
+  return false;
+}
+
 inline bool legacyCacheMayGo(const bool saved, const bool jumpPending, const bool pageLaidOut) {
   return saved && !jumpPending && pageLaidOut;
 }

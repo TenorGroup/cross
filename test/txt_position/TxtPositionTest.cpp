@@ -123,4 +123,11 @@ TEST(TxtPosition, TheOldCacheGoesOnlyWithAPlaceThatWasLaidOut) {
   EXPECT_FALSE(txtposition::legacyCacheMayGo(true, false, false));  // no page stands (the heap could not build one)
 }
 
+TEST(TxtPosition, NoPlaceIsSavedWhileTheOldShareIsNotAPage) {
+  EXPECT_TRUE(txtposition::legacyPlaceWaits(true, true));
+  EXPECT_TRUE(txtposition::legacyPlaceWaits(true, false));
+  EXPECT_TRUE(txtposition::legacyPlaceWaits(false, false));
+  EXPECT_FALSE(txtposition::legacyPlaceWaits(false, true));
+}
+
 }  // namespace

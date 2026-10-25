@@ -4216,6 +4216,8 @@ bool EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageC
                  ? currentPageVisibleOffset
                  : section->getVisibleTextOffsetForPage(static_cast<uint16_t>(currentPage));
   }
+  // The old cache holds the place until the share it names is a page: nothing to save before (see TxtPosition.h).
+  if (!legacyTxtCache.empty() && txtposition::legacyPlaceWaits(pendingPercentJump, pageLaidOut)) return true;
   const bool saved = EpubReaderUtils::saveProgress(*epub, spineIndex, currentPage, pageCount, offset);
   if (!legacyTxtCache.empty() && txtposition::legacyCacheMayGo(saved, pendingPercentJump, pageLaidOut)) {
     // The place is in the new cache: the v1.0.76 TXT cache has done its one job.
