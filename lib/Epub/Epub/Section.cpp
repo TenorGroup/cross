@@ -1327,9 +1327,14 @@ bool Section::buildSomeMore(const int maxPages, bool (*yieldNow)()) {
         LOG_ERR("SCT", "Parse error after a resume free=%u largest=%u; laying the chapter out again from its start",
                 static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
         build_->coldRetried = true;
-        if (parkAtChapterTop() && resumeParkedBuild()) {
-          startCount = 0;
-          continue;
+        if (parkAtChapterTop()) {
+          if (resumeParkedBuild()) {
+            startCount = 0;
+            continue;
+          }
+          // Short of heap for the parser of the layout again (the radio came up beside it): the chapter is not
+          // broken, the build waits parked at its top and the reader frees heap and calls again.
+          if (buildStarved_) return false;
         }
       }
       if (build_) {
