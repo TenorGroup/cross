@@ -19,6 +19,7 @@
 #include "MappedInputManager.h"
 #include "activities/reader/ReaderActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
+#include "components/ButtonSymbols.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -703,12 +704,12 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
   const bool uglyLayout = shell::uglyParts() && tenorchrome::x3ScreenLayoutEnabled();
   if (uglyLayout) {
     const auto layout = tenorchrome::x3ScreenLayout(renderer, mode == Mode::Books && !files.empty()
-                                                               ? tenorchrome::tipHeight(renderer, tr(STR_FILE_SIDE_ACTIONS), 3) + 26
+                                                               ? tenorchrome::tipHeight(renderer, sideActionsTip(), 3) + 26
                                                                : 0);
     if (screen.body().bottom() > layout.bodyRect.bottom())
       screen.takeBottom(static_cast<int16_t>(screen.body().bottom() - layout.bodyRect.bottom()));
   } else if (!x3 && mode == Mode::Books && !SETTINGS.globalStatusBarHidden() && !tenorchrome::kTouchShell) {
-    const int actions = tenorchrome::tipHeight(renderer, tr(STR_FILE_SIDE_ACTIONS), 3);
+    const int actions = tenorchrome::tipHeight(renderer, sideActionsTip(), 3);
     screen.takeBottom(static_cast<int16_t>(28 + actions));
   }
 
@@ -860,11 +861,11 @@ void FileBrowserActivity::drawFooter() {
     const std::string path = std::string(tr(STR_HOME_TAB_FOLDER)) +
                              (basepath.empty() || basepath.front() != '/' ? "/" : "") + basepath;
     ugly::pathHints(renderer, path.c_str());
-    if (mode == Mode::Books && !files.empty()) tenorchrome::drawTip(renderer, tr(STR_FILE_SIDE_ACTIONS), 1, 3);
+    if (mode == Mode::Books && !files.empty()) tenorchrome::drawTip(renderer, sideActionsTip(), 1, 3);
   } else if (tenorchrome::x3ScreenLayoutEnabled()) {
     drawX3Content();
   } else if (mode == Mode::Books && !files.empty()) {
-    tenorchrome::drawTip(renderer, tr(STR_FILE_SIDE_ACTIONS), 1, 3);
+    tenorchrome::drawTip(renderer, sideActionsTip(), 1, 3);
   }
   const char* backLabel = tr(STR_BACK);
   // In PickFirmware mode, Confirm on a .bin returns the path to the caller (not "open"); show
@@ -885,12 +886,28 @@ const char* FileBrowserActivity::favoriteHintText() {
   return tr(STR_FILE_HOLD_ACTIONS);
 }
 
+// The side-button holds a book list names (preview, delete), only those the side layout gives a button; none
+// when the side buttons are off.
+const char* FileBrowserActivity::sideActionsTip() {
+  switch (buttonSymbols::sideHold()) {
+    case buttonSymbols::SideHold::Both:
+      return tr(STR_FILE_SIDE_ACTIONS);
+    case buttonSymbols::SideHold::PreviewOnly:
+      return tr(STR_FILE_SIDE_PREVIEW);
+    case buttonSymbols::SideHold::DeleteOnly:
+      return tr(STR_FILE_SIDE_DELETE);
+    case buttonSymbols::SideHold::None:
+      break;
+  }
+  return "";
+}
+
 std::string FileBrowserActivity::screenTip() {
   if (mode != Mode::Books || files.empty()) return {};
-  std::string text = tr(STR_FILE_SIDE_ACTIONS);
+  std::string text = sideActionsTip();
   if (!favoriteSaveFailed) {
     if (const char* hint = favoriteHintText()) {
-      text += "\n";
+      if (!text.empty()) text += "\n";
       text += hint;
     }
   }

@@ -140,6 +140,27 @@ int main(int argc, char** argv) {
   constexpr int kCx = 200, kCy = 200;
   constexpr int kRadius = 40;
 
+  if (argc == 2 && std::strcmp(argv[1], "--side-hold-tip") == 0) {
+    // The side holds a book list can name, by side layout: 0 Prev/Next and 1 Next/Prev both, 3 Next/Next preview only,
+    // 4 Prev/Prev delete only, 2 off none.
+    using buttonSymbols::SideHold;
+    const struct {
+      int layout;
+      SideHold hold;
+    } cases[] = {{CrossPointSettings::PREV_NEXT, SideHold::Both},
+                 {CrossPointSettings::NEXT_PREV, SideHold::Both},
+                 {CrossPointSettings::NEXT_NEXT, SideHold::PreviewOnly},
+                 {CrossPointSettings::PREV_PREV, SideHold::DeleteOnly},
+                 {CrossPointSettings::SIDE_BUTTONS_DISABLED, SideHold::None}};
+    for (const auto& c : cases) {
+      SETTINGS.sideButtonLayout = static_cast<uint8_t>(c.layout);
+      check(buttonSymbols::sideHold() == c.hold, "side hold does not follow the side layout");
+    }
+    SETTINGS.sideButtonLayout = CrossPointSettings::PREV_NEXT;
+    std::printf("%s: side hold tip by layout\n", failures ? "RED" : "GREEN");
+    return failures ? 1 : 0;
+  }
+
   if (argc == 2 && std::strcmp(argv[1], "--enter-reference") == 0) {
     for (const int net : {14, 18}) {
       const auto& expected = net == 14 ? enterReference::net14 : enterReference::net18;

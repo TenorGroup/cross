@@ -30,6 +30,18 @@ inlineSymbols::Spec resolve(int id) {
                           StrId::STR_DIR_DOWN, StrId::STR_DIR_LEFT, StrId::STR_DIR_RIGHT};
   return {shapes[id], I18N.get(labels[id])};
 }
+SideHold sideHold() {
+  switch (SETTINGS.sideButtonLayout) {
+    case CrossPointSettings::NEXT_NEXT:
+      return SideHold::PreviewOnly;
+    case CrossPointSettings::PREV_PREV:
+      return SideHold::DeleteOnly;
+    case CrossPointSettings::SIDE_BUTTONS_DISABLED:
+      return SideHold::None;
+    default:
+      return SideHold::Both;
+  }
+}
 void install() { inlineSymbols::configure(resolve, font); }
 int labelId(const char* label) {
   if (!label) return -1;

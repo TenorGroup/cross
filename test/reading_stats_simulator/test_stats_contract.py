@@ -380,7 +380,10 @@ class StatsContractTest(unittest.TestCase):
         # trang: 12 nhip cham trang cuoi.
         script = "1000:CONFIRM;" + ";".join(f"{2400 + i * 260}:RIGHT" for i in range(12))
         log = kb.chay(script + ";7000:BACK;9000:QUIT")
-        self.assertIn("Built complete page index: 13 pages", log, "12 nhip tu trang 1 chi cham trang cuoi khi sach co 13 trang")
+        # Since D17 a TXT goes through the same section builder as an EPUB (the TXT reader and its
+        # "Built complete page index" line are gone): the last of the 13 pages is page 12, and no 14th is built.
+        self.assertIn("[SCT] Page 12 processed", log, "12 nhip tu trang 1 chi cham trang cuoi khi sach co 13 trang")
+        self.assertNotIn("[SCT] Page 13 processed", log, "sach co dung 13 trang")
         du_lieu = kb.doc()
         luu = kb.doc_sach()
         cuon2 = du_lieu["activeBook"]

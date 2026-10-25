@@ -62,7 +62,7 @@ static Scale uiScaleSpec() { return {}; }
 static fui::TextStyle uiMenuLabelText(const fui::ThemeTokens& theme) { return theme.bodyText; }
 static constexpr int SMALL_FONT_ID = 0;
 enum {
-  STR_FILE_SIDE_ACTIONS, STR_NO_BIN_FILES, STR_NO_FILES_FOUND, STR_FOLDER_TOO_MANY, STR_MENU_SAVE_FAILED, STR_SEARCH_INCOMPLETE, STR_SEARCH = 99
+  STR_FILE_SIDE_ACTIONS, STR_FILE_SIDE_PREVIEW, STR_FILE_SIDE_DELETE, STR_NO_BIN_FILES, STR_NO_FILES_FOUND, STR_FOLDER_TOO_MANY, STR_MENU_SAVE_FAILED, STR_SEARCH_INCOMPLETE, STR_SEARCH = 99
 };
 static const char* tr(int id) { return id == STR_SEARCH ? "Search" : "empty"; }
 namespace tenorchrome {
@@ -141,8 +141,13 @@ std::string getFileExtension(const std::string& filename);
 void formatFileName(const std::string& filename, char* buffer, size_t bufferSize);
 void formatFileExtension(const std::string& filename, char* buffer, size_t bufferSize);
 #include "production_shell.inc"
+namespace buttonSymbols {
+enum class SideHold { Both, PreviewOnly, DeleteOnly, None };
+inline SideHold sideHold() { return SideHold::Both; }  // the layout the folder rows are laid out for (Prev/Next)
+}  // namespace buttonSymbols
 class FileBrowserActivity {
  public:
+  static const char* sideActionsTip();
   enum class Mode { Books, PickFirmware };
   Mode mode = Mode::Books;
   static constexpr int kSearchRows = ::kSearchRows;
@@ -194,6 +199,7 @@ class FileBrowserActivity {
   void buildScreen(UiScreen& screen);
   void buildFileSearch(UiScreen&) {}
   void syncListViewport(UiScreen& screen, fui::ListProps& props, bool hasSubtitle = false);
+  void keepViewportOnVisibleSelection(fui::ListProps& props, int prevTop, bool trusted, int drawn);
   void decoratePinnedRows(fui::ListProps&);
   void reserveFixedMenuContent(UiScreen&) {}
   void reserveFavoriteHint(UiScreen&) {}

@@ -40,6 +40,7 @@ def main():
         "const std::string& FileBrowserActivity::entryForVisibleRow(",
         "void FileBrowserActivity::provideRow(",
         "void FileBrowserActivity::prewarmRowGlyphs(",
+        "const char* FileBrowserActivity::sideActionsTip() {",
         "void FileBrowserActivity::buildScreen(UiScreen& screen) {",
     ]
     functions = "\n\n".join(function(source, sig) for sig in signatures)
@@ -50,6 +51,7 @@ def main():
         "UiListActivity::RowFrameLines UiListActivity::rowFrameLines(",
         "void UiListActivity::reserveRowFrame(",
         "void UiListActivity::syncListViewport(",
+        "void UiListActivity::keepViewportOnVisibleSelection(",
         "void UiListActivity::keepUglyRows(",
         "void UiListActivity::decoratePinnedRows(",
     ]).replace("UiListActivity::", "FileBrowserActivity::")

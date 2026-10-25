@@ -76,7 +76,8 @@ def main():
         (bm_ask,) = run(f3, to_ask, [17000], settings={'readerFavorites': [9], 'readerTapTip': 0}, write_books=bookmark)
         assert 'Entering activity: EpubReaderBookmarks' in (f3 / 'simulator.log').read_text(), 'fixture never reached Bookmarks'
         assert stands_over_bar(bm_ask), 'the delete bookmark question does not stand over the bar'
-        assert ink(bm_ask, (30, 140, 200, 260)) == 0, 'the delete bookmark question still hangs from the row'
+        # Below the row's own bottom border (y 140-141 since the list is the 2.0.0 one), where a question hung from it would sit.
+        assert ink(bm_ask, (30, 144, 200, 260)) == 0, 'the delete bookmark question still hangs from the row'
         # "Xóa dấu trang này?" on one line: the frame takes its caption's width (about 230 px) and its margins.
         assert frame_width(bm_ask) >= 250, ('the delete bookmark question wraps its caption', frame_width(bm_ask))
         f4 = Path(tmp) / 'bookmark-yes'

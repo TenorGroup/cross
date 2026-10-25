@@ -76,7 +76,12 @@ TEST(ReaderMenuTabs, FavoritesHintStandsOnlyWhileNothingIsPinned) {
 TEST(ReaderMenuTabs, BluetoothAppendsSavedActionAndKeepsFavoriteOrder) {
   EXPECT_EQ(static_cast<int>(MenuAction::SAVE_QUOTE), 19);
   EXPECT_EQ(static_cast<int>(MenuAction::BLUETOOTH), 20);
-  EXPECT_EQ(readermenu::ACTION_COUNT, 27);  // Search in book is 24; the two clipping actions are 25 and 26
+  // The saved numbers of what was appended stay (Search in book 24, the two clipping actions 25 and 26); a later
+  // action only raises the count, so the count is not pinned to a number here.
+  EXPECT_EQ(static_cast<int>(MenuAction::BOOK_SEARCH), 24);
+  EXPECT_EQ(static_cast<int>(MenuAction::SAVE_CLIPPING), 25);
+  EXPECT_EQ(static_cast<int>(MenuAction::VIEW_CLIPPINGS), 26);
+  EXPECT_GT(readermenu::ACTION_COUNT, static_cast<int>(MenuAction::VIEW_CLIPPINGS));
   const MenuAction pins[] = {MenuAction::SAVE_QUOTE, MenuAction::BLUETOOTH, MenuAction::SYNC};
   for (int flags = 0; flags < 16; ++flags) {
     const auto all = menu(flags & 1, flags & 2, flags & 4, flags & 8);
@@ -91,11 +96,17 @@ TEST(ReaderMenuTabs, BluetoothAppendsSavedActionAndKeepsFavoriteOrder) {
 // Quotations of this book is saved in settings.json as the number 21 when it is pinned, so
 // the number is part of the contract: it comes after Bluetooth, and every older number keeps
 // naming the command it named before.
-constexpr auto kQuotesOfBook = static_cast<MenuAction>(21);
+constexpr auto kQuotesOfBook = MenuAction::QUOTES_OF_BOOK;
 
 TEST(ReaderMenuTabs, QuotesOfBookIsAppendedAsActionTwentyOne) {
+  EXPECT_EQ(static_cast<int>(kQuotesOfBook), 21);
   EXPECT_EQ(static_cast<int>(MenuAction::BLUETOOTH), 20);
-  EXPECT_EQ(readermenu::ACTION_COUNT, 27);  // Search in book is 24; the two clipping actions are 25 and 26
+  // The saved numbers of what was appended stay (Search in book 24, the two clipping actions 25 and 26); a later
+  // action only raises the count, so the count is not pinned to a number here.
+  EXPECT_EQ(static_cast<int>(MenuAction::BOOK_SEARCH), 24);
+  EXPECT_EQ(static_cast<int>(MenuAction::SAVE_CLIPPING), 25);
+  EXPECT_EQ(static_cast<int>(MenuAction::VIEW_CLIPPINGS), 26);
+  EXPECT_GT(readermenu::ACTION_COUNT, static_cast<int>(MenuAction::VIEW_CLIPPINGS));
   const MenuAction pins[] = {kQuotesOfBook, MenuAction::SAVE_QUOTE, MenuAction::SYNC};
   for (int flags = 0; flags < 8; ++flags) {
     const auto all = menu(flags & 1, flags & 2, flags & 4);

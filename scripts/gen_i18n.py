@@ -18,8 +18,9 @@ The English file is the reference. Missing keys in other languages are
 automatically filled from English, with a warning.
 
 By default the script scans the src/ and lib/ trees for STR_* references and
-reports any translation keys that are never used.  Pass --strip-unused to
-omit those keys from the generated output entirely.
+reports any translation keys that are never used, and leaves them out of the
+generated output.  The same run (a PlatformIO build, a host test, by hand) gives
+the same files for the same tree; pass --keep-unused to keep every key.
 
 Usage:
     python gen_i18n.py [translations_dir [output_dir]] [options]
@@ -27,8 +28,8 @@ Usage:
 Examples:
     python gen_i18n.py
     python gen_i18n.py lib/I18n/translations lib/I18n/
-    python gen_i18n.py --strip-unused
-    python gen_i18n.py --strip-unused --src-dirs src lib/EpdFont
+    python gen_i18n.py --keep-unused
+    python gen_i18n.py --src-dirs src lib/EpdFont
 """
 
 import sys
@@ -919,7 +920,7 @@ def main(
     translations_dir: Optional[str] = None,
     output_dir: Optional[str] = None,
     src_dirs: Optional[List[str]] = None,
-    strip_unused: bool = False,
+    strip_unused: bool = True,
     verbose: bool = False,
     builtin_langs: Optional[str] = None,
 ) -> None:
@@ -1053,7 +1054,7 @@ def main(
         print(f"  String keys: {len(string_keys)}")
         if unused_set and not strip_unused:
             print(
-                f"  Unused keys: {len(unused_set)} (pass --strip-unused to remove them)"
+                f"  Unused keys kept: {len(unused_set)} (--keep-unused)"
             )
 
     except Exception as e:
@@ -1089,7 +1090,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--strip-unused",
         action="store_true",
-        help="Remove unused STR_* keys from the generated output",
+        help="Remove unused STR_* keys from the generated output (the default; kept for old command lines)",
+    )
+    parser.add_argument(
+        "--keep-unused",
+        action="store_true",
+        help="Keep unused STR_* keys in the generated output",
     )
     parser.add_argument(
         "--builtin-langs",
@@ -1108,7 +1114,7 @@ if __name__ == "__main__":
         args.translations_dir,
         args.output_dir,
         args.src_dirs,
-        args.strip_unused,
+        not args.keep_unused,
         args.verbose,
         args.builtin_langs,
     )

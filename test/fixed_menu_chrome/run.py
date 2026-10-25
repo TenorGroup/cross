@@ -650,7 +650,7 @@ else:
         fixture += '\n' + Path(__file__).with_name('Phase2ChromeHarness.h').read_text().replace(
             '// PHASE2_PATH_FUNCTIONS', adapters).replace('// PHASE2_READER_ICONS', reader_icons)
         extra_methods = {
-            'FileBrowserActivity': ('screenTip',),
+            'FileBrowserActivity': ('sideActionsTip', 'screenTip'),
             'QuoteTrimActivity': ('screenTip', 'screenInfo', 'areaTop', 'linesPerArea'),
             'EpubReaderMenuActivity': ('progressText', 'tabIcon', 'infoOverBar'),
             'EpubReaderChapterSelectionActivity': ('infoOverBar',),

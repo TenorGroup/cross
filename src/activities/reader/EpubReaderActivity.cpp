@@ -7665,6 +7665,8 @@ ScreenshotInfo EpubReaderActivity::getScreenshotInfo() const {
       int pct = static_cast<int>(epub->calculateProgress(currentSpineIndex, chapterProgress) * 100.0f + 0.5f);
       if (pct < 0) pct = 0;
       if (pct > 100) pct = 100;
+      // The last page of the last chapter is the end of the book (as the .76 text reader counted it).
+      if (currentSpineIndex + 1 >= epub->getSpineItemsCount() && section->currentPage + 1 >= info.totalPages) pct = 100;
       info.progressPercent = pct;
     }
   }

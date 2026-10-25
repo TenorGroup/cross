@@ -209,11 +209,33 @@ void EpdBus::cmdData2(uint8_t c, uint8_t d0, uint8_t d1) {
   const uint8_t d[2] = {d0, d1};
   cmdData(c, d, 2);
 }
-void EpdBus::beginTxn() {}
-void EpdBus::endTxn() {}
-void EpdBus::rawCmd(uint8_t c) { ctl.cmd(c); }
-void EpdBus::rawData(uint8_t d) { ctl.data(&d, 1); }
-void EpdBus::rawWriteBytes(const uint8_t* d, uint16_t len) { ctl.writeRow(d, len); }
+// The SDK's scoped transaction: its bytes go to the model, there is no chip select to frame.
+EpdBus::~EpdBus() {}
+EpdBus::Transaction EpdBus::beginTxn() { return Transaction(*this); }
+EpdBus::Transaction::Transaction(EpdBus& bus) : _bus(&bus), _active(true) {}
+EpdBus::Transaction::~Transaction() { end(); }
+EpdBus::Transaction::Transaction(Transaction&& other) noexcept : _bus(other._bus), _active(other._active) {
+  other._bus = nullptr;
+  other._active = false;
+}
+EpdBus::Transaction& EpdBus::Transaction::operator=(Transaction&& other) noexcept {
+  if (this != &other) {
+    end();
+    _bus = other._bus;
+    _active = other._active;
+    other._bus = nullptr;
+    other._active = false;
+  }
+  return *this;
+}
+void EpdBus::Transaction::end() { _active = false; }
+void EpdBus::Transaction::cmd(uint8_t c) { ctl.cmd(c); }
+void EpdBus::Transaction::data(uint8_t d) { ctl.data(&d, 1); }
+uint8_t EpdBus::Transaction::transfer(uint8_t d) {
+  ctl.data(&d, 1);
+  return 0;
+}
+void EpdBus::Transaction::writeBytes(const uint8_t* d, uint16_t len) { ctl.writeRow(d, len); }
 void EpdBus::waitBusy(const char*) {}
 void EpdBus::waitBusy(BusyPolarity, const char*) {}
 void EpdBus::waitRefreshComplete(const char*) {}

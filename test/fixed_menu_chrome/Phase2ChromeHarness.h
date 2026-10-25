@@ -29,6 +29,10 @@ constexpr int FOOTER_GAP = 8, GLYPH_TOP_GAP = 56, HINTS_CLEARANCE = 16, CHEVRON_
 int quotesHeaderBottom() { return 90; }
 int statusBlockHeight(const GfxRenderer&) { return 200; }
 void drawQuoteMark(const GfxRenderer&, int, int) {}
+namespace buttonSymbols {
+enum class SideHold { Both, PreviewOnly, DeleteOnly, None };
+inline SideHold sideHold() { return SideHold::Both; }  // the layout the tips are laid out for (Prev/Next)
+}  // namespace buttonSymbols
 struct FileBrowserActivity : UiListActivity {
   enum class Mode { Books, PickFirmware };
   GfxRenderer& renderer;
@@ -37,6 +41,7 @@ struct FileBrowserActivity : UiListActivity {
   std::string searchQuery;
   bool favoriteSaveFailed = false, tooMany = false;
   explicit FileBrowserActivity(GfxRenderer& target) : UiListActivity(target), renderer(target) {}
+  static const char* sideActionsTip();
   std::string screenTip();
   tenorchrome::X3ScreenLayout screenLayout();
   void drawX3Content();

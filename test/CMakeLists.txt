@@ -302,6 +302,7 @@ add_test(NAME WebFontWeightLayout COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRE
 add_test(NAME WebFontWeightParity COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/web_font_weights/test_parity.py)
 set_tests_properties(WebFontWeightParity PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 300)
 add_test(NAME UiTextRules COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/ui_text_rules/check.py)
+add_test(NAME I18nGeneration COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/i18n_generation/check.py)
 
 add_executable(sheet_radio_plan sheet_radio_plan/SheetRadioPlanTest.cpp)
 target_compile_options(sheet_radio_plan PRIVATE -UNDEBUG)

@@ -61,6 +61,32 @@ class KeyMarks(unittest.TestCase):
         drawn = set(re.findall(r'part=penmark cp=(\w+)', log))
         self.assertTrue({'E107', 'E108'} <= drawn, 'the side buttons of the tip are not drawn by the pen: %s' % sorted(drawn))
 
+    def drawn_side_marks(self, layout):
+        log, _, _ = frames(['DOWN', 'DOWN', 'CONFIRM'], folder, sideButtonLayout=layout)
+        self.assertIn('FileBrowser', re.findall(r'Entering activity: (\w+)', log), log[-1500:])
+        return set(re.findall(r'part=penmark cp=(\w+)', log))
+
+    def test_the_tip_names_only_the_side_holds_that_work_layout_3(self):
+        # Next/Next: both side buttons are PageForward, so only the preview hold exists (E104/E105 are the two buttons).
+        drawn = self.drawn_side_marks(3)
+        self.assertNotIn('E108', drawn, 'the tip names a delete hold the layout does not have: %s' % sorted(drawn))
+        self.assertTrue({'E104', 'E105'} <= drawn, 'the tip does not name both buttons: %s' % sorted(drawn))
+
+    def test_the_tip_names_only_the_side_holds_that_work_layout_4(self):
+        # Prev/Prev: both side buttons are PageBack, so only the delete hold exists.
+        drawn = self.drawn_side_marks(4)
+        self.assertNotIn('E107', drawn, 'the tip names a preview hold the layout does not have: %s' % sorted(drawn))
+        self.assertTrue({'E104', 'E105'} <= drawn, 'the tip does not name both buttons: %s' % sorted(drawn))
+
+    def test_the_tip_names_no_side_hold_layout_2(self):
+        # Side buttons off: no hold works, so the tip writes none of the four marks.
+        drawn = self.drawn_side_marks(2)
+        self.assertFalse({'E107', 'E108', 'E104', 'E105'} & drawn, 'the tip names side holds with the buttons off: %s' % sorted(drawn))
+
+    def test_the_tip_keeps_both_side_holds_layout_1(self):
+        drawn = self.drawn_side_marks(1)
+        self.assertTrue({'E107', 'E108'} <= drawn, 'Next/Prev lost a side hold of the tip: %s' % sorted(drawn))
+
     def test_the_last_tip_of_the_keyboard_writes_its_two_keys_by_hand(self):
         # The keyboard of "Tên thiết bị": "Giữ [Back]: Về Home. Giữ [erase]: Xóa hết". The erase key was the UI font's
         # box laid over the "xóa" after it; it is the pen's mark in its own cell now, the Back mark beside it.

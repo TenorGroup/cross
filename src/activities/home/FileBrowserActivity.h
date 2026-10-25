@@ -85,6 +85,7 @@ class FileBrowserActivity final : public UiListActivity {
   void buildScreen(UiScreen& screen) override;
   bool ownsX3Chrome() const override { return true; }
   tenorchrome::X3ScreenLayout screenLayout();
+  static const char* sideActionsTip();
   std::string screenTip();
   void drawX3Content();
   void activateIndex(int index) override;

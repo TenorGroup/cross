@@ -4,7 +4,7 @@
 // real, disk-backed catalogue so the host test does not need JSON or SD I/O.
 class CrossPointSettings {
  public:
-  enum { PREV_NEXT = 0, NEXT_PREV = 1 };
+  enum { PREV_NEXT = 0, NEXT_PREV = 1, SIDE_BUTTONS_DISABLED = 2, NEXT_NEXT = 3, PREV_PREV = 4 };
   uint8_t uiTextSize = 0;  // TenorMenuChrome.h sizes its header and tab band from it
   uint8_t tenorButtonSymbols = 1;
   uint8_t tipsEnabled = 1;
