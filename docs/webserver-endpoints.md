@@ -609,7 +609,8 @@ be edited. The reader enforces `expires` when the book opens.
 Downloads a URL straight to SD, so a large body never passes through the
 browser. Body: `{"plugin":"<name>","url":"...","dest":"/abs/path","headers":{...},"offset":0,"maxBytes":0}`.
 
-- `dest` must be absolute with no `..`; missing parent folders are created.
+- `dest` must be absolute with no `..` and, inside `/.crosspoint`, in
+  `/.crosspoint/plugins/<name>/`; missing parent folders are created.
 - The transfer is staged in `<dest>.part` and replaces `dest` only when the
   whole body has arrived, so a failed update keeps the previous file.
 - Installing a book file (`.epub`, `.txt`, `.md`, `.xtc`) marks the Library
@@ -638,8 +639,10 @@ browser. Body: `{"plugin":"<name>","url":"...","dest":"/abs/path","headers":{...
 Writes one small file to SD. The content is sent as a multipart file part
 (`api.writeFile()` builds it), so binary data, including NUL bytes, arrives
 intact. It streams to `<path>.tmp` and replaces `path` only after a complete,
-non-empty body. `path` must be absolute, without `..`, and not a credential
-store. A plugin keeps its own files in its install folder (`api.dir`). As with
+non-empty body. `path` must be absolute, without `..`, and not inside
+`/.crosspoint` unless in `/.crosspoint/plugins/<name>/` (the device's settings
+and credential stores live there). A plugin keeps its own files in its install
+folder (`api.dir`). As with
 `/api/fetch`, writing a book file marks the Library index stale.
 
 - **Success:** `200 {"ok":true,"bytes":N}`.

@@ -26,10 +26,11 @@ inline bool isShortAlias(const char* first, const char* last) {
   return base <= 8 && ext <= 3;
 }
 
-inline bool isSensitivePath(const char* path) {
-  // Canonicalise first ("//", "/./" and ".." would otherwise dodge the prefix
-  // match while still opening the same file).
-  std::string canon;
+// The path as SdFat would open it: empty components and "." dropped, ".." applied, leading spaces and trailing dots
+// and spaces trimmed from every name. False when a name (two levels down at most) is an 8.3 alias of a long name, which
+// no spelling check can map back.
+inline bool canonicalPath(const char* path, std::string& canon) {
+  canon.clear();
   canon.reserve(strlen(path) + 1);
   int depth = 0;
   for (const char* seg = path; *seg;) {
@@ -48,7 +49,7 @@ inline bool isSensitivePath(const char* path) {
       while (first < last && *first == ' ') first++;
       while (last > first && (last[-1] == '.' || last[-1] == ' ')) last--;
       // The stores sit two levels deep; an alias further down cannot reach one.
-      if (depth < 2 && isShortAlias(first, last)) return true;
+      if (depth < 2 && isShortAlias(first, last)) return false;
       if (first < last) {
         canon += '/';
         canon.append(first, static_cast<size_t>(last - first));
@@ -57,6 +58,14 @@ inline bool isSensitivePath(const char* path) {
     }
     seg += len;
   }
+  return true;
+}
+
+inline bool isSensitivePath(const char* path) {
+  // Canonicalise first ("//", "/./" and ".." would otherwise dodge the prefix
+  // match while still opening the same file).
+  std::string canon;
+  if (!canonicalPath(path, canon)) return true;
   for (const char* file : SENSITIVE_FILES) {
     // FAT names are case-insensitive.
     if (strncasecmp(canon.c_str(), file, strlen(file)) == 0) return true;
@@ -64,10 +73,29 @@ inline bool isSensitivePath(const char* path) {
   return false;
 }
 
+// Inside the device's own tree, /.crosspoint, a plugin has /.crosspoint/plugins/<name>/ and no more: the settings, the
+// WebDAV login, the OPDS tokens and the rest are not its to write, as the file manager keeps the whole tree out of
+// reach (WebPathPolicy.h). Everything outside the tree is the user's, and a plugin may name it.
+inline bool isInPluginArea(const char* path) {
+  std::string canon;
+  if (!canonicalPath(path, canon)) return false;
+  static constexpr char ROOT[] = "/.crosspoint";
+  constexpr size_t rootLen = sizeof(ROOT) - 1;
+  if (strncasecmp(canon.c_str(), ROOT, rootLen) != 0 || (canon.size() > rootLen && canon[rootLen] != '/')) return true;
+  // /.crosspoint/plugins/<name>/<something>
+  static constexpr char PLUGINS[] = "/plugins/";
+  constexpr size_t pluginsLen = sizeof(PLUGINS) - 1;
+  if (strncasecmp(canon.c_str() + rootLen, PLUGINS, pluginsLen) != 0) return false;
+  const size_t name = rootLen + pluginsLen;
+  const size_t slash = canon.find('/', name);
+  return slash != std::string::npos && slash > name && slash + 1 < canon.size();
+}
+
 // A plugin-supplied path (web request or device.json): absolute, no parent
-// refs, not a credential store.
+// refs, not a credential store, and inside the plugin area (isInPluginArea).
 inline bool isPluginPath(const std::string& p) {
-  return p.size() > 1 && p[0] == '/' && p.find("..") == std::string::npos && !isSensitivePath(p.c_str());
+  return p.size() > 1 && p[0] == '/' && p.find("..") == std::string::npos && !isSensitivePath(p.c_str()) &&
+         isInPluginArea(p.c_str());
 }
 
 }  // namespace protectedpaths
