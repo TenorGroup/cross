@@ -4,6 +4,7 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <NetworkTrust.h>
+#include <RecoverableFile.h>
 #include <SecureHttpClient.h>
 
 #include <algorithm>
@@ -141,6 +142,7 @@ bool loadTokenFromFile(const std::string& file, const std::string& path, std::st
   out.clear();
   if (file.empty()) return true;  // token-less plugin
   if (!allowedFile(file)) return false;
+  freeink::recoverFile(Storage, file.c_str());
   std::string raw;
   if (!Storage.readFileToString("PHTP", file, MAX_TOKEN_FILE_SIZE, raw)) return false;
   JsonDocument doc;
@@ -162,16 +164,25 @@ bool saveTokenToFile(const std::string& file, const std::string& path, const std
   node[segs.back()] = value;
   std::string out;
   serializeJson(doc, out);
+  // Whole to a temp file, then put in place: a cut or a short write (SD full, I/O fault) leaves the previous token.
+  const std::string tmp = file + ".tmp";
+  Storage.remove(tmp.c_str());
+  // A backup left by an interrupted replace is either brought back (the token file is missing) or stale.
+  freeink::recoverFile(Storage, file.c_str());
+  Storage.remove((file + ".davbak").c_str());
   HalFile f;
-  if (!Storage.openFileForWrite("PHTP", file, f)) return false;
+  if (!Storage.openFileForWrite("PHTP", tmp, f)) return false;
   const size_t written = f.write(out.data(), out.size());
   f.flush();
-  if (written != out.size()) {
-    // A short write (SD full, I/O fault) must not persist a truncated token:
-    // the writer would report success, then every later load fails.
+  const bool closed = f.close();
+  if (written != out.size() || !closed) {
     LOG_ERR("PHTP", "short token write (%u of %u)", static_cast<unsigned>(written), static_cast<unsigned>(out.size()));
-    if (f.isOpen()) f.close();
-    Storage.remove(file.c_str());
+    Storage.remove(tmp.c_str());
+    return false;
+  }
+  if (!freeink::replaceFile(Storage, tmp.c_str(), file.c_str())) {
+    LOG_ERR("PHTP", "token file not put in place: %s", file.c_str());
+    Storage.remove(tmp.c_str());
     return false;
   }
   return true;
