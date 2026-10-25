@@ -133,6 +133,13 @@ constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) +
                                  sizeof(int8_t) + sizeof(uint8_t) + sizeof(uint8_t) + sizeof(uint16_t) +
                                  sizeof(uint16_t) + sizeof(bool) + sizeof(bool) + sizeof(uint8_t) + sizeof(uint8_t) +
                                  sizeof(bool) + sizeof(uint16_t) + 5 * sizeof(uint32_t);
+// The header byte after drop cap mode, once Focus Reading's alone: bit 0 Focus Reading (never on here), bit 1 headings
+// sized (HEADING_SIZES), bit 2 sizes of SD and vector faces loaded (FontVariantProvider::LOADS_SIZES). The card moves
+// between boards, and a board that does otherwise with sizes lays the text out differently, so each rebuilds the other's.
+constexpr uint8_t layoutFlags(const ReaderRenderSpec& spec) {
+  return static_cast<uint8_t>((spec.focusReadingEnabled ? 1 : 0) | (HEADING_SIZES ? 2 : 0) |
+                              (FontVariantProvider::LOADS_SIZES ? 4 : 0));
+}
 // startBuild() keeps the SD font caches at or above this heap (see there).
 constexpr size_t BUILD_START_KEEP_FONT_CACHE_FREE = 64 * 1024;
 constexpr size_t BUILD_START_KEEP_FONT_CACHE_LARGEST = 32 * 1024;
@@ -190,7 +197,7 @@ bool Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
                                    sizeof(spec.paragraphAlignment) + sizeof(spec.viewportWidth) +
                                    sizeof(spec.viewportHeight) + sizeof(spec.hyphenationEnabled) +
                                    sizeof(spec.embeddedStyle) + sizeof(spec.imageRendering) +
-                                   sizeof(spec.dropCapMode) + sizeof(spec.focusReadingEnabled) + sizeof(pageCount) +
+                                   sizeof(spec.dropCapMode) + sizeof(layoutFlags(spec)) + sizeof(pageCount) +
                                    5 * sizeof(uint32_t),
                 "Header size mismatch");
   // Written as the incomplete sentinel; finalizeBuild() patches it to
@@ -209,7 +216,7 @@ bool Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
   if (!serialization::writePod(file, spec.embeddedStyle)) return false;
   if (!serialization::writePod(file, spec.imageRendering)) return false;
   if (!serialization::writePod(file, spec.dropCapMode)) return false;
-  if (!serialization::writePod(file, spec.focusReadingEnabled)) return false;
+  if (!serialization::writePod(file, layoutFlags(spec))) return false;
   if (!serialization::writePod(file, pageCount)) return false;  // Placeholder for page count (will be initially 0, patched later)
   if (!serialization::writePod(file, static_cast<uint32_t>(0))) return false;  // Placeholder for LUT offset (patched later)
   if (!serialization::writePod(file, static_cast<uint32_t>(0))) return false;  // Placeholder for anchor map offset (patched later)
@@ -261,7 +268,7 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
     bool fileEmbeddedStyle;
     uint8_t fileImageRendering;
     uint8_t fileDropCapMode;
-    bool fileFocusReadingEnabled;
+    uint8_t fileLayoutFlags;
     if (!reader.pod(fileFontId)) return invalid();
     if (!reader.pod(fileLineCompression)) return invalid();
     if (!reader.pod(fileExtraParagraphSpacing)) return invalid();
@@ -275,7 +282,7 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
     if (!reader.pod(fileEmbeddedStyle)) return invalid();
     if (!reader.pod(fileImageRendering)) return invalid();
     if (!reader.pod(fileDropCapMode)) return invalid();
-    if (!reader.pod(fileFocusReadingEnabled)) return invalid();
+    if (!reader.pod(fileLayoutFlags)) return invalid();
 
     if (spec.fontId != fileFontId || spec.lineCompression != fileLineCompression ||
         spec.extraParagraphSpacing != fileExtraParagraphSpacing ||
@@ -283,7 +290,8 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
         spec.wordSpacingPercent != fileWordSpacingPercent || spec.paragraphAlignment != fileParagraphAlignment ||
         spec.viewportWidth != fileViewportWidth || spec.viewportHeight != fileViewportHeight ||
         spec.hyphenationEnabled != fileHyphenationEnabled || spec.embeddedStyle != fileEmbeddedStyle ||
-        spec.imageRendering != fileImageRendering || spec.dropCapMode != fileDropCapMode) {
+        spec.imageRendering != fileImageRendering || spec.dropCapMode != fileDropCapMode ||
+        layoutFlags(spec) != fileLayoutFlags) {
       file.close();
       LOG_ERR("SCT", "Deserialization failed: Parameters do not match");
       LOG_INF("SCT", "Section cache MISS: params %ux%u font %d != file %ux%u font %d",
