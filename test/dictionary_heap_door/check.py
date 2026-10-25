@@ -18,7 +18,7 @@ if reserve < 0:
 else:
     after = text[reserve:reserve + 600]
     judged = re.match(
-        r'definitionOut\.reserve\(combinedSize\);\s*'
+        r'definitionOut\.reserve\(combinedSize\);\s*(?://[^\n]*\n\s*)*'
         r'if \(!heapfloor::judge\(combinedSize, definitionOut\.data\(\), "[^"]+"\)\) \{'
         r'[^}]*setResult\(LookupResult::LowMemory\);[^}]*return false;',
         after,
