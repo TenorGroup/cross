@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Bitmap.h>
+#include <Epub/converters/PixelCache.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -16,15 +17,20 @@ constexpr uint8_t GRAYSCALE_PALETTE[] = {0, 0, 0, 0, 85, 85, 85, 0, 170, 170, 17
 inline bool toBmp(const char* pxcPath, const char* bmpPath, const int expectedWidth, const int expectedHeight) {
   HalFile input, output;
   if (!Storage.openFileForRead("BMP", pxcPath, input)) return false;
-  uint16_t width, height;
-  if (input.read(&width, sizeof(width)) != sizeof(width) || input.read(&height, sizeof(height)) != sizeof(height) ||
-      width != expectedWidth || height != expectedHeight) {
+  uint8_t head[pxcfile::HEADER_BYTES];
+  if (input.read(head, sizeof(head)) != static_cast<int>(sizeof(head)) || !pxcfile::headerIsCurrent(head)) {
+    LOG_ERR("BMP", "Not a current sleep image pixel file");
+    return false;
+  }
+  const uint16_t width = static_cast<uint16_t>(head[4] | head[5] << 8);
+  const uint16_t height = static_cast<uint16_t>(head[6] | head[7] << 8);
+  if (width != expectedWidth || height != expectedHeight) {
     LOG_ERR("BMP", "Invalid sleep image pixels");
     return false;
   }
   const size_t pixelRowBytes = (width + 3) / 4;
   const size_t bmpRowBytes = (width + 15) / 16 * 4;
-  if (input.size() != 4 + pixelRowBytes * height) {
+  if (input.size() != pxcfile::HEADER_BYTES + pixelRowBytes * height) {
     LOG_ERR("BMP", "Incomplete sleep image pixels");
     return false;
   }

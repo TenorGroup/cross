@@ -6,7 +6,7 @@ add_executable(SleepCoverPxcTest
 target_include_directories(SleepCoverPxcTest BEFORE PRIVATE stubs)
 target_include_directories(SleepCoverPxcTest PRIVATE
   ${REPO_ROOT}/src/activities/util
-  ${REPO_ROOT}/lib/Epub/Epub/converters
+  ${REPO_ROOT}/lib/Epub
   ${REPO_ROOT}/lib/GfxRenderer
   ${REPO_ROOT}/lib/Memory
 )

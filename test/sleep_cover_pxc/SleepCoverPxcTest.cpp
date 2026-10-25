@@ -1,7 +1,7 @@
 // A JPEG set as the sleep screen goes through the .pxc the converter streams (PixelCache.h): "PXC", a format byte,
 // then width and height, then 2-bit rows. The BMP made from it must be the image, whatever the header length.
 #include <Arduino.h>
-#include <PixelCache.h>
+#include <Epub/converters/PixelCache.h>
 #include <PxcSleepBmp.h>
 #include <gtest/gtest.h>
 
