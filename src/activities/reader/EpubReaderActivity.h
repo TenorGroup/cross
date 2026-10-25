@@ -576,8 +576,8 @@ class EpubReaderActivity final : public ReaderActivity {
 
   // Modal shown when a protected book refuses to open (loan expired /
   // date unverified); OK exits, "Sync time" (when offered) verifies the
-  // clock over Wi-Fi and reopens the book.
-  OptionPopup loadFailurePopup;
+  // clock over Wi-Fi and reopens the book. Allocated where it is shown: by value it cost every open book 936 B.
+  std::unique_ptr<OptionPopup> loadFailurePopup;
   // Protection error captured by loadBook() for handleLoadFailure(); the
   // failed Epub itself does not outlive loadBook().
   std::string loadProtectionError;

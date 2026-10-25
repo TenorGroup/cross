@@ -176,6 +176,9 @@ void ReaderActivity::onExit() {
   // Settings (measured 18/09/2026: ~19 KB kept after leaving a book). They are
   // rebuilt by the next page prewarm, so hand them back here.
   if (auto* fcm = renderer.getFontCacheManager()) fcm->releaseSdFontCaches();
+  // The sized variants of the book's font (headings, CSS font-size) are as dead on Home as the arenas: the next
+  // page that wants one loads it again. v1.1.0 held two more font objects at Home than v1.0.76 for them.
+  sdFontSystem.releaseReaderVariants(renderer);
 
   if (RECENT_BOOKS.hasUnsavedExcerpt()) {
     if (sleeping) {

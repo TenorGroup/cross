@@ -217,6 +217,8 @@ bool SdCardFontSystem::releaseCatalog(const bool endsInRestart) {
     return false;
   uint8_t expected = CATALOG_READY;
   if (!catalog_.compare_exchange_strong(expected, CATALOG_PENDING, std::memory_order_acq_rel)) return false;
+  const auto* loaded = registry_.findFamily(manager_.currentFamilyName());
+  readerFamily_ = loaded ? *loaded : SdCardFontFamilyInfo{};
   registry_.adopt({});
   // The wake's family answers only until the boot's first read: past that it may be out of date.
   bootFamily_.name.clear();
@@ -240,6 +242,7 @@ bool SdCardFontSystem::readCatalogIfPending() const {
     } else {
       walkCatalog();
     }
+    readerFamily_ = SdCardFontFamilyInfo{};  // the list answers again
     const auto heap = HalMemory::getInternalHeap();
     LOG_INF("HEAP", "fonts-sd-registry free=%u largest=%u families=%d", static_cast<unsigned>(heap.freeBytes),
             static_cast<unsigned>(heap.largestBlockBytes), registry_.getFamilyCount());
@@ -278,6 +281,14 @@ const SdCardFontFamilyInfo* SdCardFontSystem::familyNamed(const std::string& nam
   return registry_.findFamily(name);
 }
 
+const SdCardFontFamilyInfo* SdCardFontSystem::variantFamily(const std::string& name) const {
+  if (catalog_.load(std::memory_order_acquire) == CATALOG_PENDING && !registryDirty_.load(std::memory_order_acquire) &&
+      !readerFamily_.name.empty() && readerFamily_.name == name) {
+    return &readerFamily_;
+  }
+  return familyNamed(name);
+}
+
 bool SdCardFontSystem::loadSelected(GfxRenderer& renderer, const SdCardFontFamilyInfo& family) {
   cpfontVariants_.clear();  // loadFamily frees every font the manager holds, variants included
   if (!manager_.loadFamily(family, renderer, SETTINGS.fontPointSize, readerInk::physical(SETTINGS.readerInkWeight))) {
@@ -301,6 +312,11 @@ bool SdCardFontSystem::loadSelected(GfxRenderer& renderer, const SdCardFontFamil
   setupUiFallbacks(renderer);
   LOG_DBG("SDFS", "Loaded SD font family: %s", family.name.c_str());
   return true;
+}
+
+void SdCardFontSystem::releaseReaderVariants(GfxRenderer& renderer) {
+  for (const auto& variant : cpfontVariants_) manager_.unloadFont(renderer, variant.fontId);
+  cpfontVariants_.clear();
 }
 
 void SdCardFontSystem::releaseForOta(GfxRenderer& renderer) {
@@ -526,7 +542,7 @@ int SdCardFontSystem::resolveVariant(const int fontId, const float scale) {
 #endif
   const std::string& familyName = manager_.currentFamilyName();
   if (familyName.empty() || fontId != manager_.getFontId(familyName)) return 0;
-  const auto* family = familyNamed(familyName);
+  const auto* family = variantFamily(familyName);
   if (!family) return 0;
 
   // Pick among the sizes installed for the family: shrinking takes the largest size at or
@@ -566,7 +582,7 @@ bool SdCardFontSystem::loadVariant(const int fontId) {
 #endif
   const std::string& familyName = manager_.currentFamilyName();
   if (familyName.empty()) return false;
-  const auto* family = familyNamed(familyName);
+  const auto* family = variantFamily(familyName);
   if (!family) return false;
   const int readerFontId = manager_.getFontId(familyName);
   for (const auto& file : family->files) {

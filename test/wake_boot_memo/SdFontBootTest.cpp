@@ -4,6 +4,8 @@
 #include <esp_system.h>
 
 #include <cstddef>
+#include <cstdlib>
+#include <new>
 #include <string>
 
 #include "CrossPointSettings.h"
@@ -14,6 +16,28 @@
 #include "ReaderInkWeight.h"
 
 void readerInk::apply(GfxRenderer&) {}
+
+// Live heap blocks while a test counts them: the X3 map of v1.1.0 held 357 blocks at Home after one short read against
+// 262 for v1.0.76, the difference being the font list and the variant font a heading loaded.
+namespace {
+bool countingBlocks = false;
+long liveBlocks = 0;
+}  // namespace
+
+void* operator new(std::size_t size) {
+  void* p = std::malloc(size ? size : 1);
+  if (!p) throw std::bad_alloc();
+  if (countingBlocks) ++liveBlocks;
+  return p;
+}
+void operator delete(void* p) noexcept {
+  if (p && countingBlocks) --liveBlocks;
+  std::free(p);
+}
+void operator delete(void* p, std::size_t) noexcept {
+  if (p && countingBlocks) --liveBlocks;
+  std::free(p);
+}
 
 namespace {
 
@@ -612,4 +636,57 @@ TEST_F(SdFontBoot, ReleasedCatalogDoesNotAnswerWithTheWakeFamily) {
   wake.ensureLoaded(renderer);
   EXPECT_EQ(hostSettings.fontPointSize, 20) << "the released catalog answered with the wake's family";
   EXPECT_TRUE(hostLoads.empty() || hostLoads.back() == "/.fonts/Bokerlam/Bokerlam-SD_20.cpfont");
+}
+
+// A heading at 145% asks the reader font for a sized variant while the first page lays out, after the book released the
+// catalog at open. The variant is built from the family already loaded: the 37-family list (4.8 KB in about a hundred
+// blocks on the X3) stays out of the heap while the book is read. Leaving the book gives the variant font back, so Home
+// does not keep either (X3 v1.1.0 against v1.0.76: 6.9 KB more held at Home after one short read).
+TEST_F(SdFontBoot, SizedVariantKeepsTheCatalogReleasedAndTheBookGivesTheVariantBack) {
+  SdCardFontSystem system;
+  GfxRenderer renderer;
+  boot(ESP_RST_POWERON, system, renderer);
+  ASSERT_TRUE(system.releaseCatalog());
+  ASSERT_FALSE(system.catalogHeld());
+  const int base = system.resolveFontId("Bokerlam", 14);
+  const int variant = renderer.variantProvider.resolveFont(base, 1.3f);  // 14 pt x 1.3 -> the 18 pt file
+  ASSERT_NE(variant, 0);
+  ASSERT_NE(variant, base);
+  EXPECT_EQ(renderer.fonts.count(variant), 1u);
+  EXPECT_FALSE(system.catalogHeld()) << "the variant brought the whole font list back";
+  // A cached id met again after an eviction loads the same way.
+  system.releaseReaderVariants(renderer);
+  EXPECT_EQ(renderer.fonts.count(variant), 0u) << "the variant font stayed loaded after the book";
+  EXPECT_EQ(renderer.fonts.count(base), 1u);
+  EXPECT_TRUE(renderer.variantProvider.load(renderer.variantProvider.ctx, variant));
+  EXPECT_EQ(renderer.fonts.count(variant), 1u);
+  EXPECT_FALSE(system.catalogHeld()) << "the reload brought the whole font list back";
+  EXPECT_EQ(hostDiscoveries, 1);
+  // A font menu still finds the list, from the RTC memo, without walking the card.
+  EXPECT_EQ(system.registry().getFamilyCount(), 2);
+  EXPECT_TRUE(system.catalogHeld());
+  EXPECT_EQ(hostDiscoveries, 1);
+}
+
+// The X3 card of the journey (31 families here, 37 on the unit). Opening a book that has a heading and leaving it again must leave the heap
+// where Home had it before the book: no font list (about two blocks a family) and no variant font behind.
+TEST_F(SdFontBoot, AWholeBookWithAHeadingLeavesNoFontBlocksBehind) {
+  hostCatalog.clear();
+  hostCardFiles.clear();
+  for (const auto& info : thirtyOneFamilies()) putOnCard(info);
+  SdCardFontSystem system;
+  GfxRenderer renderer;
+  boot(ESP_RST_POWERON, system, renderer);
+  ASSERT_TRUE(system.releaseCatalog());  // the reader does this when a book opens
+  const int base = system.resolveFontId("Bokerlam", 14);
+  countingBlocks = true;
+  const long atHome = liveBlocks;
+  const int variant = renderer.variantProvider.resolveFont(base, 1.3f);  // the first page's heading
+  ASSERT_NE(variant, 0);
+  const long whileReading = liveBlocks;
+  system.releaseReaderVariants(renderer);                                // the reader's exit
+  const long backAtHome = liveBlocks;
+  countingBlocks = false;
+  EXPECT_LE(whileReading - atHome, 6) << "reading a heading allocated " << whileReading - atHome << " blocks";
+  EXPECT_LE(backAtHome - atHome, 6) << "the book left " << backAtHome - atHome << " blocks behind";
 }

@@ -1547,8 +1547,8 @@ void EpubReaderActivity::openClippings() {
 }
 
 void EpubReaderActivity::loop() {
-  if (loadFailurePopup.isActive()) {
-    loadFailurePopup.handleInput(mappedInput, [this] { requestUpdate(); });
+  if (loadFailurePopup && loadFailurePopup->isActive()) {
+    loadFailurePopup->handleInput(mappedInput, [this] { requestUpdate(); });
     return;
   }
 #ifdef TENOR_PRESS_PROBE
@@ -3260,7 +3260,9 @@ bool EpubReaderActivity::handleLoadFailure() {
   }
   const char* options[2] = {I18N.get(offerSync ? StrId::STR_CLOCK_SYNC_NOW : StrId::STR_OK_BUTTON),
                             I18N.get(StrId::STR_OK_BUTTON)};
-  loadFailurePopup.showMessage("", I18N.get(msg), options, offerSync ? 2 : 1, 0, [this, offerSync](const int index) {
+  loadFailurePopup = makeUniqueNoThrow<OptionPopup>();
+  if (!loadFailurePopup) return false;  // no heap for the dialog: the open fails as any other
+  loadFailurePopup->showMessage("", I18N.get(msg), options, offerSync ? 2 : 1, 0, [this, offerSync](const int index) {
     if (offerSync && index == 0) {
       beginLoanTimeSync();
       return;
@@ -3290,7 +3292,11 @@ void EpubReaderActivity::beginLoanTimeSync() {
     if (!synced) {
       // Reopening would hit the same unverified-time refusal: offer a retry.
       const char* options[2] = {I18N.get(StrId::STR_RETRY), I18N.get(StrId::STR_OK_BUTTON)};
-      loadFailurePopup.showMessage("", I18N.get(StrId::STR_CLOCK_SYNC_FAIL), options, 2, 0, [this](const int index) {
+      if (!loadFailurePopup) {
+        finish();
+        return;
+      }
+      loadFailurePopup->showMessage("", I18N.get(StrId::STR_CLOCK_SYNC_FAIL), options, 2, 0, [this](const int index) {
         if (index == 0) {
           beginLoanTimeSync();
           return;
@@ -3310,9 +3316,9 @@ void EpubReaderActivity::beginLoanTimeSync() {
 }
 
 void EpubReaderActivity::render(RenderLock&& lock) {
-  if (loadFailurePopup.isActive()) {
+  if (loadFailurePopup && loadFailurePopup->isActive()) {
     renderer.clearScreen();
-    loadFailurePopup.processRender(renderer, mappedInput);
+    loadFailurePopup->processRender(renderer, mappedInput);
     return;
   }
   ReaderActivity::render(std::move(lock));

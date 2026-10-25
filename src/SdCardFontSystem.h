@@ -77,6 +77,11 @@ class SdCardFontSystem {
   // registry() on a way out that does not restart.
   // Caller holds RenderLock: the list it frees is the one a font menu draws from.
   bool releaseCatalog(bool endsInRestart = false);
+  // True while the catalog list sits in the heap: after a read, until releaseCatalog() lets it go.
+  bool catalogHeld() const { return catalog_.load(std::memory_order_acquire) != CATALOG_PENDING; }
+  // A book is left: the sized variants of its font (CSS font-size, headings) are given back. The next page that
+  // asks for one loads it again. Caller holds RenderLock and has released the font caches.
+  void releaseReaderVariants(GfxRenderer& renderer);
 
   /// If the registry is dirty, re-scan the SD card now and clear the flag.
   /// Used by the web UI so uploaded/deleted fonts appear in the list
@@ -109,6 +114,9 @@ class SdCardFontSystem {
   bool walkIfCatalogKept() const;
   // The family called `name`: the one the boot memo described while the catalog is unread.
   const SdCardFontFamilyInfo* familyNamed(const std::string& name) const;
+  // The same for a sized variant of the reader font, asked while a book is read: the copy of the loaded family
+  // that releaseCatalog() kept answers, so the page layout does not bring the whole list back into the heap.
+  const SdCardFontFamilyInfo* variantFamily(const std::string& name) const;
   // Loads `family` at the saved size and weight, remembers it for the next wake and sets up
   // the UI fallbacks. False when its file does not load.
   bool loadSelected(GfxRenderer& renderer, const SdCardFontFamilyInfo& family);
@@ -163,6 +171,9 @@ class SdCardFontSystem {
   GfxRenderer* renderer_ = nullptr;
 
   mutable SdCardFontRegistry registry_;
+  // The family the reader font came from, kept while the catalog is released (one family, about a hundred bytes,
+  // against the whole list's 4.8 KB on a 37-family card). Cleared when the list is read again.
+  mutable SdCardFontFamilyInfo readerFamily_;
   mutable std::atomic<uint8_t> catalog_{CATALOG_READY};
   // The catalog came from the RTC memo and has not been checked against the card since.
   mutable bool catalogKept_ = false;
