@@ -1,3 +1,8 @@
+#ifdef TENOR_PRESS_PROBE
+namespace freeink {
+extern bool uc8253X3DiagNoSettle;
+}
+#endif
 #ifdef FREEINK_TLS_AUDIT
 #include <SecureClient.h>
 #include <sys/time.h>
@@ -2347,6 +2352,10 @@ void loop() {
         probeWakeSeconds = static_cast<uint32_t>(cmd.substring(11).toInt());
         probeWakeMagic = PROBE_WAKE_MAGIC;
         logSerial.printf("WAKE_TIMER:%u\n", static_cast<unsigned>(probeWakeSeconds));
+      } else if (cmd.startsWith("X3_NO_SETTLE ")) {
+        // CMD:X3_NO_SETTLE <0|1>: drop the UC8253 settle pass after a full refresh (sleep screen ghost test).
+        freeink::uc8253X3DiagNoSettle = cmd.substring(13).toInt() != 0;
+        logSerial.printf("X3_NO_SETTLE:%d\n", freeink::uc8253X3DiagNoSettle ? 1 : 0);
       } else if (cmd == "WAKE_PLACE") {
         // CMD:WAKE_PLACE: the place state.json holds for the next wake, and the one a sleep now would keep.
         const auto line = [](const char* which, const WakePlace& p) {
