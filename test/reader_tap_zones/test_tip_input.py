@@ -29,10 +29,11 @@ struct AM { void deferWrite(void (*)()) { ++deferred; } } activityManager;
 void saveTapTipHidden() {}
 struct MappedInputManager {
   enum class SwipeDir { None, Left, Right, Up, Down };
-  enum class Button { Back, Confirm, PageForward, PageBack };
+  enum class Button { Back, Confirm, PageForward, PageBack, Left, Right };
   bool tap = false; int x = 0, y = 0; SwipeDir swipe = SwipeDir::None; bool back = false, confirm = false;
   bool pagePress = false, pageRelease = false;  // a side page key goes down / comes up this pass
-  bool wasPressed(Button b) const { return pagePress && b == Button::PageForward; }
+  bool frontPress = false;  // a front page key (Left/Right, what CMD:PRESS NEXT plays) goes down
+  bool wasPressed(Button b) const { return (pagePress && b == Button::PageForward) || (frontPress && b == Button::Right); }
   bool wasScreenTapped(int& tx, int& ty) const { tx = x; ty = y; return tap; }
   SwipeDir wasSwipe() const { return swipe; }
   bool wasReleased(Button b) const {
@@ -74,6 +75,12 @@ int main() {
     assert(!a.handleTapTip() && !readertip::shown && SETTINGS.readerTapTip == 1 && deferred == 0);
     assert(a.pagesUntilFullRefresh == 1 && a.updates == 1);
   }
+  // A front page key (Left/Right turn pages in the reader): closes the tip and is not swallowed either.
+  readertip::shown = true; a.updates = 0; a.pagesUntilFullRefresh = 9; deferred = 0;
+  SETTINGS.longPressButtonBehavior = 1;
+  a.mappedInput = {}; a.mappedInput.frontPress = true;
+  assert(!a.handleTapTip() && !readertip::shown && a.pagesUntilFullRefresh == 1 && a.updates == 1);
+  SETTINGS.longPressButtonBehavior = CrossPointSettings::SIDE_HOLD_BACK;
   // A key going down while a hold means Back is not yet a turn: the tip stays.
   readertip::shown = true; a.mappedInput = {}; a.mappedInput.pagePress = true;
   assert(a.handleTapTip() && readertip::shown);
@@ -91,4 +98,4 @@ with tempfile.TemporaryDirectory(prefix='tip-input-') as tmp:
     cpp.write_text(fixture + body + test)
     subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror', str(cpp), '-o', str(exe)], check=True)
     subprocess.run([str(exe)], check=True)
-print('GREEN: tip button hides it with one deferred write; tap, swipe, Back, Confirm only close it; a side page key closes it and turns the page')
+print('GREEN: tip button hides it with one deferred write; tap, swipe, Back, Confirm only close it; a side or front page key closes it and turns the page')
