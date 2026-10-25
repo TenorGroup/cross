@@ -8,13 +8,33 @@
 #include <Epub/Section.h>
 #include <GfxRenderer.h>
 #include <TxtToHtml.h>
+#include <Epub/parsers/ChapterHtmlSlimParser.h>
 #include <gtest/gtest.h>
 
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <new>
 #include <string>
+
+// The parser's own allocation refused on the Nth ask, and the heap left as a radio leaves it (under the step floor).
+namespace parserAlloc {
+unsigned asks = 0, refuseAsk = 0;
+}
+void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
+  if (size == sizeof(ChapterHtmlSlimParser) && ++parserAlloc::asks == parserAlloc::refuseAsk) {
+    ESP.freeHeap = 16820;
+    ESP.maxAlloc = 8180;
+    return nullptr;
+  }
+  try {
+    return ::operator new(size);
+  } catch (...) {
+    return nullptr;
+  }
+}
+void operator delete(void* value, const std::nothrow_t&) noexcept { ::operator delete(value); }
 
 namespace {
 namespace fs = std::filesystem;
@@ -66,6 +86,8 @@ class SectionRestartTest : public ::testing::Test {
     epub->contents = html;
   }
   void TearDown() override {
+    parserAlloc::refuseAsk = 0;
+    ESP = {};
     fs::remove_all(root);
     fs::remove_all(coldRoot);
   }
@@ -305,6 +327,28 @@ TEST_F(SectionRestartTest, AParseErrorAfterAParkedResumeLaysTheChapterOutAgainFr
   ASSERT_TRUE(openOneMoreAncestor(checkpoint));
   writeAll(sidecar("1.bin.checkpoint.part"), checkpoint);
   ASSERT_TRUE(section.buildSomeMore(0)) << "the resume point that led to a parse error is not dropped";
+  ASSERT_TRUE(section.isBuildComplete());
+  EXPECT_EQ(readAll(bin()), want);
+}
+
+// The layout laid out again from the top after a resume point that failed is a resume like the first: short of heap
+// (the radio came up beside it), it is a starved build, parked at the top, not a chapter that does not parse.
+TEST_F(SectionRestartTest, ALayoutOutAgainAfterAFailedResumeThatRunsShortOfHeapIsStarvedNotBroken) {
+  const std::string want = cold(html);
+  Section section(epub, SPINE, renderer);
+  ASSERT_TRUE(section.startBuild(spec));
+  ASSERT_TRUE(section.buildSomeMore(3));
+  ASSERT_TRUE(section.parkBuild());
+  std::string checkpoint = readAll(sidecar("1.bin.checkpoint.part"));
+  ASSERT_TRUE(openOneMoreAncestor(checkpoint));
+  writeAll(sidecar("1.bin.checkpoint.part"), checkpoint);
+  parserAlloc::refuseAsk = parserAlloc::asks + 2;  // the resume gets its parser; the layout again from the top does not
+  EXPECT_FALSE(section.buildSomeMore(0));
+  EXPECT_TRUE(section.buildStarved());
+  EXPECT_TRUE(section.isBuilding()) << "the reader would free heap and find a build that is gone: a build error";
+  EXPECT_TRUE(section.isBuildParked());
+  ESP = {};
+  ASSERT_TRUE(section.buildSomeMore(0)) << "the build parked at the top did not go on when the heap came back";
   ASSERT_TRUE(section.isBuildComplete());
   EXPECT_EQ(readAll(bin()), want);
 }
