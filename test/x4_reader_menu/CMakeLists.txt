@@ -1,5 +1,5 @@
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-foreach(case IN ITEMS state layout chrome)
+foreach(case IN ITEMS state layout chrome contents_mark)
   if(case STREQUAL "layout")
     add_test(NAME X4ReaderMenu.${case}
       COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/${case}.py"
