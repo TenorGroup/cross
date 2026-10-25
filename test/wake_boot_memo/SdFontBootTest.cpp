@@ -695,7 +695,7 @@ TEST_F(SdFontBoot, AWholeBookWithAHeadingLeavesNoFontBlocksBehind) {
   EXPECT_LE(backAtHome - atHome, 6) << "the book left " << backAtHome - atHome << " blocks behind";
 }
 
-// A size the heap has no room for (the largest free block under 48 KB). A board with PSRAM says so (REFUSED), and the chapter is
+// A size the heap has no room for (16 KB more than the heap floor leaves standing). A board with PSRAM says so (REFUSED), and the chapter is
 // not built, instead of laying it out at the body size: the page count would then depend on the heap of the moment.
 // A board without PSRAM keeps the body size (headings never ask there, see HEADING_SIZES).
 TEST_F(SdFontBoot, ASizeTheHeapCannotHoldIsRefusedOnABoardWithPsramNotQuietlyDropped) {
@@ -703,7 +703,7 @@ TEST_F(SdFontBoot, ASizeTheHeapCannotHoldIsRefusedOnABoardWithPsramNotQuietlyDro
   GfxRenderer renderer;
   boot(ESP_RST_POWERON, system, renderer);
   const int base = system.resolveFontId("Bokerlam", 14);
-  ESP.largest = 32 * 1024;
+  ESP.largest = 20 * 1024;
   const int lowHeap = renderer.variantProvider.resolveFont(base, 1.3f);
   ESP.largest = 256 * 1024;
   const int roomy = renderer.variantProvider.resolveFont(base, 1.3f);

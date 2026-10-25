@@ -115,7 +115,7 @@ the moment. A board without PSRAM (the X3 and the original X4) lays h1..h6 out a
 size, with or without a size in the book's CSS, as tenor/cross 1.0.x did, and loads no
 second size of an SD or vector font for any CSS `font-size` either, so a page count never
 depends on the heap (sizes of the built-in font stay). A board with PSRAM gives a heading its size, and when the font
-system cannot load that size (it asks for a free block of 48 KB first) the chapter is not built at all, where version 69
+system cannot load that size (it asks the heap for 16 KB on top of the heap floor first) the chapter is not built at all, where version 69
 quietly fell back to the body size and moved the page breaks. That build is short of heap, like any other: the reader
 frees the font caches and the radio's heap and builds again, or shows the memory notice and keeps the saved page. CSS cache
 version 20 and book cache version 10 stay. Book metadata and saved progress are kept.

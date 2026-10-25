@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <HalMemory.h>
+#include <HeapFloor.h>
 #ifndef SIMULATOR
 #include <esp_system.h>
 #endif
@@ -567,7 +568,7 @@ int SdCardFontSystem::resolveVariant(const int fontId, const float scale) {
   }
   if (chosen == base) return fontId;
   const int id = variantFontId(fontId, chosen);
-  // The size exists on the card; not loading it is the heap's doing (the 48 KB gate below, or the load itself).
+  // The size exists on the card; not loading it is the heap's doing (the room asked for below, or the load itself).
   return loadCpfontVariant(*family, chosen, id) ? id : FontVariantProvider::NO_ROOM;
 }
 
@@ -605,14 +606,16 @@ bool SdCardFontSystem::loadCpfontVariant(const SdCardFontFamilyInfo& family, con
   }
   // UI fallback sizes stay resident and must not enter the variant eviction list.
   if (manager_.getFontId(family.name, pointSize) == fontId) return true;
-  // Each size keeps its interval tables resident (small for Latin, tens of KB for broad
-  // CJK subsets), so skip it on a tight heap. resolveVariant then answers NO_ROOM: a board with PSRAM does
-  // not build the chapter at the reader size (it would break pages elsewhere than with the heap to spare);
-  // one without keeps the reader size.
-  static constexpr size_t MIN_VARIANT_FREE_BLOCK = 48 * 1024;
-  if (ESP.getMaxAllocHeap() < MIN_VARIANT_FREE_BLOCK) {
-    LOG_DBG("SDFS", "Skipping %upt variant: largest free block %u", pointSize,
-            static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  // A size keeps a font object and its style records in internal RAM, about 2 KB (the interval, glyph and kern tables of
+  // a board that loads sizes are in PSRAM), until the book is left or the size is evicted. The room asked of the heap is
+  // 16 KB, forecast through the heap floor like every other block: what is left must still stand on it. Short of that
+  // resolveVariant answers NO_ROOM: a board with PSRAM does not build the chapter at the reader size (it would break
+  // pages elsewhere than with the heap to spare), and the build is then short of heap for the reader to relieve.
+  // (It was a free block of 48 KB, which the heap of an X4C with the radio up, 41 KB, never has.)
+  static constexpr size_t VARIANT_INTERNAL_BYTES = 16 * 1024;
+  if (!heapfloor::leaves(VARIANT_INTERNAL_BYTES, VARIANT_INTERNAL_BYTES, ESP.getFreeHeap(), ESP.getMaxAllocHeap())) {
+    LOG_DBG("SDFS", "Skipping %upt variant: free %u, largest free block %u", pointSize,
+            static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
     return false;
   }
   if (cpfontVariants_.size() >= MAX_CPFONT_VARIANTS) {

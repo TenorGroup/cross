@@ -15,6 +15,7 @@ target_include_directories(SdFontBootTest PRIVATE
   ${REPO_ROOT}/src
   ${REPO_ROOT}/lib/EpdFont
   ${REPO_ROOT}/lib/GfxRenderer
+  ${REPO_ROOT}/lib/Memory
 )
 target_link_libraries(SdFontBootTest PRIVATE GTest::gtest_main)
 gtest_discover_tests(SdFontBootTest)
@@ -28,6 +29,7 @@ target_include_directories(SdFontBootPsramTest PRIVATE
   ${REPO_ROOT}/src
   ${REPO_ROOT}/lib/EpdFont
   ${REPO_ROOT}/lib/GfxRenderer
+  ${REPO_ROOT}/lib/Memory
 )
 target_link_libraries(SdFontBootPsramTest PRIVATE GTest::gtest_main)
 gtest_discover_tests(SdFontBootPsramTest TEST_SUFFIX .Psram)
