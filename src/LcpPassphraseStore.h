@@ -24,6 +24,9 @@ class LcpPassphraseStore : public PersistableStore<LcpPassphraseStore> {
 
   LcpPassphraseStore() = default;
   friend class PersistableStore<LcpPassphraseStore>;
+  static LcpPassphraseStore* instance();
+  std::string find(const std::string& provider) const;
+  bool upsert(const std::string& provider, const std::string& userKeyHex);
 
  public:
   static const char* getFilePath() { return "/.crosspoint/lcp_passphrases.json"; }
@@ -31,10 +34,11 @@ class LcpPassphraseStore : public PersistableStore<LcpPassphraseStore> {
   bool fromJson(JsonVariantConst doc);
 
   // The stored hash for a provider (empty when none).
-  std::string get(const std::string& provider) const;
+  // Both made and loaded on the first call (a person borrowing LCP books), then kept: the base class's
+  // getInstance() would hold the object in static RAM from boot. An empty/false answer when the heap has no room.
+  static std::string get(const std::string& provider);
   // Upserts the hash for a provider; empty removes the entry. No-op (no SD
   // write) when unchanged. Returns true on success.
-  bool put(const std::string& provider, const std::string& userKeyHex);
+  static bool put(const std::string& provider, const std::string& userKeyHex);
 };
 
-#define LCP_PASSPHRASES LcpPassphraseStore::getInstance()

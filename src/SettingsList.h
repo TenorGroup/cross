@@ -465,7 +465,10 @@ inline bool settingHiddenOnThisBoard(const SettingInfo& s) {
 // there when needed. Return -1 for rows hidden in device categories.
 inline bool settingHiddenInShell(const SettingInfo& setting) {
   const bool ugly = SETTINGS.uiShell == 1;
-  return (ugly && setting.valuePtr == &CrossPointSettings::tipsEnabled) ||
+  // Nothing reads this one: a short Back leaves the book for Recent/Continue (ReaderUtils::handleBackNavigation).
+  // It leaves every list on every board but stays in the saved file, so an old settings.json keeps its value.
+  return setting.nameId == StrId::STR_BACK_SHORT_TO_FILE_BROWSER ||
+         (ugly && setting.valuePtr == &CrossPointSettings::tipsEnabled) ||
          (!ugly && setting.valuePtr == &CrossPointSettings::uglyRootScreen);
 }
 

@@ -28,8 +28,7 @@
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
-      "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_BACK_SHORT_TO_FILE_BROWSER:0:backShortToFileBrowser"
+      "STR_SHORT_PWR_BTN:0:shortPwrBtn"
     ],
     [
       "STR_CLOCK:14:",
@@ -115,8 +114,7 @@
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
-      "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_BACK_SHORT_TO_FILE_BROWSER:0:backShortToFileBrowser"
+      "STR_SHORT_PWR_BTN:0:shortPwrBtn"
     ],
     [
       "STR_CLOCK:14:",
@@ -202,8 +200,7 @@
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
       "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack",
-      "STR_BACK_SHORT_TO_FILE_BROWSER:0:backShortToFileBrowser"
+      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack"
     ],
     [
       "STR_CLOCK:14:",
@@ -290,8 +287,7 @@
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
       "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack",
-      "STR_BACK_SHORT_TO_FILE_BROWSER:0:backShortToFileBrowser"
+      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack"
     ],
     [
       "STR_CLOCK:14:",
@@ -376,8 +372,7 @@
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
-      "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_BACK_SHORT_TO_FILE_BROWSER:0:backShortToFileBrowser"
+      "STR_SHORT_PWR_BTN:0:shortPwrBtn"
     ],
     [
       "STR_CLOCK:14:",
@@ -463,8 +458,7 @@
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
-      "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_BACK_SHORT_TO_FILE_BROWSER:0:backShortToFileBrowser"
+      "STR_SHORT_PWR_BTN:0:shortPwrBtn"
     ],
     [
       "STR_CLOCK:14:",
@@ -550,8 +544,7 @@
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
       "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack",
-      "STR_BACK_SHORT_TO_FILE_BROWSER:0:backShortToFileBrowser"
+      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack"
     ],
     [
       "STR_CLOCK:14:",
@@ -638,8 +631,7 @@
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
       "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack",
-      "STR_BACK_SHORT_TO_FILE_BROWSER:0:backShortToFileBrowser"
+      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack"
     ],
     [
       "STR_CLOCK:14:",
@@ -723,8 +715,7 @@
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
-      "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_BACK_SHORT_TO_FILE_BROWSER:0:backShortToFileBrowser"
+      "STR_SHORT_PWR_BTN:0:shortPwrBtn"
     ],
     [
       "STR_CLOCK:14:",
@@ -794,8 +785,7 @@
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
-      "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_BACK_SHORT_TO_FILE_BROWSER:0:backShortToFileBrowser"
+      "STR_SHORT_PWR_BTN:0:shortPwrBtn"
     ],
     [
       "STR_CLOCK:14:",
@@ -865,8 +855,7 @@
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
       "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack",
-      "STR_BACK_SHORT_TO_FILE_BROWSER:0:backShortToFileBrowser"
+      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack"
     ],
     [
       "STR_CLOCK:14:",
@@ -937,8 +926,7 @@
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
       "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack",
-      "STR_BACK_SHORT_TO_FILE_BROWSER:0:backShortToFileBrowser"
+      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack"
     ],
     [
       "STR_CLOCK:14:",
@@ -1007,8 +995,7 @@
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
-      "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_BACK_SHORT_TO_FILE_BROWSER:0:backShortToFileBrowser"
+      "STR_SHORT_PWR_BTN:0:shortPwrBtn"
     ],
     [
       "STR_CLOCK:14:",
@@ -1078,8 +1065,7 @@
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
-      "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_BACK_SHORT_TO_FILE_BROWSER:0:backShortToFileBrowser"
+      "STR_SHORT_PWR_BTN:0:shortPwrBtn"
     ],
     [
       "STR_CLOCK:14:",
@@ -1149,8 +1135,7 @@
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
       "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack",
-      "STR_BACK_SHORT_TO_FILE_BROWSER:0:backShortToFileBrowser"
+      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack"
     ],
     [
       "STR_CLOCK:14:",
@@ -1221,8 +1206,7 @@
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
       "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack",
-      "STR_BACK_SHORT_TO_FILE_BROWSER:0:backShortToFileBrowser"
+      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack"
     ],
     [
       "STR_CLOCK:14:",

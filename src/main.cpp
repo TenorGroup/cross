@@ -8,6 +8,7 @@
 #endif
 #if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
 #include "activities/network/CrossPointWebServerActivity.h"
+#include "activities/network/WebDavPullActivity.h"
 #endif
 #include "activities/settings/OtaUpdateActivity.h"
 #include "network/UpdateBoot.h"
@@ -1100,7 +1101,6 @@ void setup() {
   KOREADER_STORE.loadFromFile();
   OPDS_STORE.loadFromFile();
   OPDS_TOKENS.loadFromFile();
-  LCP_PASSPHRASES.loadFromFile();
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
   logHeapMark("stores");
@@ -2130,6 +2130,12 @@ void loop() {
         } else {
           logSerial.printf("UI_TRANSFER:LOW_MEMORY\n");
         }
+#if !FREEINK_DEVICE_X3
+      } else if (cmd == "WEBDAV_PULL") {
+        // The WebDAV pull screen from a command (it joins Wi-Fi itself), so the heap of the TLS session behind it
+        // can be measured from Home, from Settings and after reading with HEAP_INFO around it. No WebDAV on the X3.
+        activityManager.replaceActivity(makeUniqueNoThrow<WebDavPullActivity>(renderer, mappedInputManager));
+#endif
       } else if (cmd == "HOME_NEXT" || cmd == "HOME_PREV") {
         activityManager.stepHomeForTest(cmd == "HOME_NEXT" ? 1 : -1);
       } else if (cmd.startsWith("HOME_TAB ")) {

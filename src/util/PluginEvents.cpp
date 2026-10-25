@@ -9,6 +9,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <memory>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -44,7 +46,20 @@ struct Subscriber {
   uint8_t mask = 0;         // bit per Event
   uint8_t connectMask = 0;  // events whose handler declares "connect": true
 };
-Subscriber subscribers[MAX_EVENT_PLUGINS];
+// Made when the first plugin subscribes (720 B the X3 does not spend with plugins off, the default), then kept: a
+// refresh rewrites the slots in place, so a reader on another task never walks freed memory.
+std::unique_ptr<Subscriber[]> subscribers;
+
+struct Slots {
+  const Subscriber* first;
+  const Subscriber* last;
+  const Subscriber* begin() const { return first; }
+  const Subscriber* end() const { return last; }
+};
+Slots slots() {
+  const Subscriber* table = subscribers.get();
+  return {table, table ? table + MAX_EVENT_PLUGINS : table};
+}
 
 uint8_t eventBit(const pluginevents::Event e) { return static_cast<uint8_t>(1u << static_cast<uint8_t>(e)); }
 
@@ -62,7 +77,7 @@ std::string outboxPath(const Subscriber& sub) { return std::string(sub.dir) + OU
 namespace pluginevents {
 
 void refreshSubscriptions() {
-  for (auto& sub : subscribers) sub = Subscriber{};
+  for (size_t i = 0; subscribers && i < MAX_EVENT_PLUGINS; ++i) subscribers[i] = Subscriber{};
 
   size_t slot = 0;
   for (const auto& entry : PluginLocations::scanPlugins()) {
@@ -101,6 +116,11 @@ void refreshSubscriptions() {
     // flag would make the common case silently defer to the next session.
     if (mask & eventBit(Event::SleepEnter)) connectMask |= eventBit(Event::SleepEnter);
     if (mask == 0) continue;
+    if (!subscribers) subscribers.reset(new (std::nothrow) Subscriber[MAX_EVENT_PLUGINS]());
+    if (!subscribers) {
+      LOG_ERR("PEVT", "out of memory for the subscription table");
+      break;
+    }
     Subscriber& sub = subscribers[slot++];
     // Lengths checked above, so these copy whole strings.
     strncpy(sub.name, entry.name.c_str(), sizeof(sub.name) - 1);
@@ -112,21 +132,21 @@ void refreshSubscriptions() {
 }
 
 bool anySubscriber(const Event e) {
-  for (const auto& sub : subscribers) {
+  for (const auto& sub : slots()) {
     if (sub.name[0] != '\0' && (sub.mask & eventBit(e))) return true;
   }
   return false;
 }
 
 uint8_t subscriptionMask(const char* plugin) {
-  for (const auto& sub : subscribers) {
+  for (const auto& sub : slots()) {
     if (sub.name[0] != '\0' && strcmp(sub.name, plugin) == 0) return sub.mask;
   }
   return 0;
 }
 
 bool wantsConnectAny() {
-  for (const auto& sub : subscribers) {
+  for (const auto& sub : slots()) {
     if (sub.name[0] == '\0' || sub.connectMask == 0) continue;
     std::string raw;
     if (!Storage.readFileToString("PEVT", outboxPath(sub), MAX_OUTBOX_BYTES + MAX_EVENT_LINE, raw)) continue;
@@ -170,7 +190,7 @@ void emit(const Event e, const Var* vars, const size_t varCount) {
     return;
   }
 
-  for (const auto& sub : subscribers) {
+  for (const auto& sub : slots()) {
     if (sub.name[0] == '\0' || !(sub.mask & eventBit(e))) continue;
     const std::string path = outboxPath(sub);
     HalFile file = Storage.open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND);
@@ -402,7 +422,7 @@ bool deliverLine(const DrainManifest& mf, const std::string& lineText, std::stri
 
 void drain(GfxRenderer* renderer, const size_t maxEvents) {
   size_t budget = maxEvents;
-  for (const auto& sub : subscribers) {
+  for (const auto& sub : slots()) {
     if (budget == 0) break;
     if (sub.name[0] == '\0') continue;
     const std::string path = outboxPath(sub);

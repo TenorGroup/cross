@@ -11,6 +11,8 @@
 #include <base64.h>
 
 #include <cstring>
+#include <memory>
+#include <new>
 
 #include "network/HttpDownloader.h"
 
@@ -31,11 +33,8 @@ constexpr const char* LCP_ENROLL_URL = "https://lcp.freeink.org/enroll";
 // One enrolled identity per device, persisted like the other credential
 // stores: the private key obfuscated with the device key, the id plain.
 class LcpDeviceStore : public PersistableStore<LcpDeviceStore> {
- private:
-  LcpDeviceStore() = default;
-  friend class PersistableStore<LcpDeviceStore>;
-
  public:
+  LcpDeviceStore() = default;
   std::string deviceId;
   std::string privHex;  // 64 hex chars
 
@@ -54,7 +53,16 @@ class LcpDeviceStore : public PersistableStore<LcpDeviceStore> {
   bool valid() const { return !deviceId.empty() && privHex.size() == 64; }
 };
 
-#define LCP_DEVICE LcpDeviceStore::getInstance()
+// Made and loaded on first use, then kept: only a person borrowing LCP books ever needs it, and the object is
+// 64 B of static RAM the X3 would otherwise pay at boot.
+std::unique_ptr<LcpDeviceStore> g_store;
+LcpDeviceStore* lcpStore() {
+  if (!g_store) {
+    g_store.reset(new (std::nothrow) LcpDeviceStore());
+    if (g_store) g_store->loadFromFile();
+  }
+  return g_store.get();
+}
 
 bool hexToBytes32(const std::string& hex, uint8_t out[32]) {
   if (hex.size() != 64) return false;
@@ -100,20 +108,12 @@ bool parseEnrollResponse(const std::string& response, std::string* deviceId) {
 
 }  // namespace
 
-// getInstance() does not read the file; load once on first use.
-void loadOnce() {
-  static bool loaded = false;
-  if (!loaded) {
-    LCP_DEVICE.loadFromFile();
-    loaded = true;
-  }
-}
-
 bool ensureEnrolled(std::string& deviceId, bool& notEnrollable) {
-  loadOnce();
   notEnrollable = false;
-  if (LCP_DEVICE.valid()) {
-    deviceId = LCP_DEVICE.deviceId;
+  LcpDeviceStore* store = lcpStore();
+  if (!store) return false;
+  if (store->valid()) {
+    deviceId = store->deviceId;
     return true;
   }
   static constexpr char RELEASE_KEY[] = FREEINK_LCP_RELEASE_KEY;
@@ -146,9 +146,9 @@ bool ensureEnrolled(std::string& deviceId, bool& notEnrollable) {
 
   char privHex[65];
   for (int i = 0; i < 32; i++) snprintf(privHex + i * 2, 3, "%02x", priv[i]);
-  LCP_DEVICE.deviceId = deviceId;
-  LCP_DEVICE.privHex = privHex;
-  if (!LCP_DEVICE.saveToFile()) {
+  store->deviceId = deviceId;
+  store->privHex = privHex;
+  if (!store->saveToFile()) {
     LOG_ERR("LCPDEV", "Cannot persist device identity");
     return false;
   }
@@ -157,10 +157,11 @@ bool ensureEnrolled(std::string& deviceId, bool& notEnrollable) {
 }
 
 void forget() {
-  loadOnce();
-  LCP_DEVICE.deviceId.clear();
-  LCP_DEVICE.privHex.clear();
-  LCP_DEVICE.saveToFile();
+  LcpDeviceStore* store = lcpStore();
+  if (!store) return;
+  store->deviceId.clear();
+  store->privHex.clear();
+  store->saveToFile();
 }
 
 bool unwrapContentKey(const std::string& epkB64, const std::string& ivB64, const std::string& ctB64,
@@ -176,9 +177,9 @@ bool unwrapContentKey(const std::string& epkB64, const std::string& ivB64, const
       base64Decode(tagB64.data(), tagB64.size(), tag, sizeof(tag)) != sizeof(tag)) {
     return false;
   }
-  loadOnce();
+  LcpDeviceStore* store = lcpStore();
   uint8_t priv[32];
-  if (!LCP_DEVICE.valid() || !hexToBytes32(LCP_DEVICE.privHex, priv)) return false;
+  if (!store || !store->valid() || !hexToBytes32(store->privHex, priv)) return false;
 
   freeink::content::WolfsslCrypto crypto;
   return freeink::content::lcpUnwrapContentKey(crypto, priv, epk, iv, ct, tag, out);

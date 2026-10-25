@@ -11,6 +11,7 @@
 #include <ByteSource.h>
 #include <ContentProtection.h>
 #include <HalStorage.h>
+#include <HeapFloor.h>
 #include <Logging.h>
 #include <Memory.h>
 #include <MemoryManager.h>
@@ -28,12 +29,6 @@ namespace freeink {
 namespace content {
 
 namespace {
-
-// One shared crypto backend for the whole read path.
-WolfsslCrypto& crypto() {
-  static WolfsslCrypto instance;
-  return instance;
-}
 
 void reclaimContentCaches() {
   // miniz needs a contiguous inflate state plus stream buffers and metadata.
@@ -82,7 +77,10 @@ class ProtectedBookDecryptor : public ContentDecryptor {
     // reconstructing and reopening it per encrypted entry.
     if (!source_.ensureOpen()) return false;
     reclaimContentCaches();
-    if (!book_->decryptEntryToSink(source_, crypto(), itemPath, sink, context)) {
+    // The crypto backend (its random generator) is made on the first entry read and lives with the book.
+    if (!crypto_) crypto_ = makeUniqueNoThrow<WolfsslCrypto>();
+    if (!crypto_) return false;
+    if (!book_->decryptEntryToSink(source_, *crypto_, itemPath, sink, context)) {
       LOG_ERR("CPRO", "Decrypt failed: %s (%s), free=%u max_block=%u", itemPath.c_str(), book_->lastError().c_str(),
               static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
       return false;
@@ -93,6 +91,7 @@ class ProtectedBookDecryptor : public ContentDecryptor {
  private:
   SdByteSource source_;
   std::unique_ptr<ProtectedBook> book_;
+  std::unique_ptr<WolfsslCrypto> crypto_;
 };
 
 }  // namespace
@@ -126,7 +125,7 @@ std::unique_ptr<ContentDecryptor> openProtectedBook(const std::string& epubPath,
     return nullptr;
   }
 
-  auto book = makeUniqueNoThrow<ProtectedBook>();
+  auto book = heapfloor::make<ProtectedBook>("protected-book");
   if (!book) {
     err = "out of memory";
     return nullptr;

@@ -543,7 +543,8 @@ bool wifiUp() {
 }
 
 // All plain GETs (pages, feeds, books) go through here. A body cut short resumes with a Range request; rewind
-// restarts the sink when the server ignores the Range. The legacy https->http step-down is refused, as before.
+// restarts the sink when the server ignores the Range. A redirect from https to http is refused unless the caller
+// sets downgradeRedirectsToHttp, and then only for a request with no login and no caller headers.
 HttpDownloader::DownloadError runGetResumable(const std::string& url, const std::string& username,
                                               const std::string& password,
                                               const std::vector<HttpDownloader::Header>& headers, Sink& sink,
@@ -551,13 +552,15 @@ HttpDownloader::DownloadError runGetResumable(const std::string& url, const std:
                                               const bool downgradeRedirectsToHttp = false) {
   g_lastStatus = 0;
   g_lastRedirected = false;
-  if (downgradeRedirectsToHttp) return HttpDownloader::HTTP_ERROR;
+  if (downgradeRedirectsToHttp && (!username.empty() || !password.empty() || !headers.empty()))
+    return HttpDownloader::HTTP_ERROR;
   if (!wifiUp()) return HttpDownloader::HTTP_ERROR;
 #if defined(FREEINK_NET_WOLFSSL)
   if (sink.poll()) return HttpDownloader::ABORTED;
   if (!tlsClockReady(url)) return HttpDownloader::HTTP_ERROR;
   WifiPowerSaveGuard psGuard;
   freeink::FetchOptions options;
+  options.redirectToHttp = downgradeRedirectsToHttp;
   freeink::FetchSink fetchSink;
   fetchSink.write = [&sink](const uint8_t* data, const size_t len) { return sink.write(data, len); };
   fetchSink.rewind = rewind;

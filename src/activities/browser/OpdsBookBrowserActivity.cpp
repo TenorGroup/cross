@@ -442,9 +442,9 @@ void OpdsBookBrowserActivity::fetchFeed(const std::string& path) {
   }
 
   const std::string url = UrlUtils::buildUrl(server.url, path);
-  // The SDK's OPDS 2.0 parser is one 14,592 B block taken on the first JSON byte, inside the TLS session and outside
-  // the heap floor. It cannot go through the door from here, so the forecast is made before the session starts: the
-  // block must fit with the floor standing (see YEU-CAU-S for the door in the SDK itself).
+  // The SDK's OPDS 2.0 parser is one 14,592 B block taken on the first JSON byte, inside the TLS session. The
+  // parser takes it through the heap floor's door (below); the forecast here spares the session when the block
+  // would not fit anyway, and stays as the first net.
   static constexpr size_t OPDS2_PARSER_BYTES = 14592;
   const auto heapNow = HalMemory::getDefaultHeap();
   if (!heapfloor::leaves(OPDS2_PARSER_BYTES, OPDS2_PARSER_BYTES, heapNow.freeBytes, heapNow.largestBlockBytes)) {
@@ -454,6 +454,7 @@ void OpdsBookBrowserActivity::fetchFeed(const std::string& path) {
     return;
   }
   OpdsFeedParser parser;
+  parser.setBlockAllocator([](const size_t bytes) { return heapfloor::take(bytes, "opds2-parser"); });
   const auto status = opdsClient.fetchFeed(url, parser);
   // The token state may have changed (renewed, or cleared on failure); persist
   // only when an auth handshake actually ran.
@@ -467,7 +468,7 @@ void OpdsBookBrowserActivity::fetchFeed(const std::string& path) {
         fail(StrId::STR_OPDS_AUTH_FAILED);
         break;
       case freeink::opds::OpdsClient::FetchStatus::ParseFailed:
-        fail(StrId::STR_PARSE_FEED_FAILED);
+        fail(parser.allocationFailed() ? StrId::STR_MEMORY_ERROR : StrId::STR_PARSE_FEED_FAILED);
         break;
       default:
         fail(feedFailureMessage());
@@ -823,7 +824,7 @@ OpdsBookBrowserActivity::LcpUnlock OpdsBookBrowserActivity::requestLcpUnlock(con
 // prompt entirely; only a stale one (403) falls through to the keyboard.
 void OpdsBookBrowserActivity::startLcpUnlock() {
   if (!pendingLcpLicense.provider.empty()) {
-    const std::string saved = LCP_PASSPHRASES.get(pendingLcpLicense.provider);
+    const std::string saved = LcpPassphraseStore::get(pendingLcpLicense.provider);
     if (!saved.empty()) {
       switch (requestLcpUnlock(saved)) {
         case LcpUnlock::Ok:
@@ -875,7 +876,7 @@ void OpdsBookBrowserActivity::promptLcpPassphrase(const bool retry) {
         // Remember the working hash per provider so the next borrow from
         // this library skips the prompt. Best-effort: on failure the reader
         // just types it again next time.
-        if (!pendingLcpLicense.provider.empty()) LCP_PASSPHRASES.put(pendingLcpLicense.provider, userKeyHex);
+        if (!pendingLcpLicense.provider.empty()) LcpPassphraseStore::put(pendingLcpLicense.provider, userKeyHex);
         downloadFinished(false);
         return;
       case LcpUnlock::WrongPassphrase:

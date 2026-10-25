@@ -160,7 +160,8 @@ class HttpDownloader {
    * added to the request (e.g. a Bearer Authorization), alongside any Basic
    * auth derived from username/password.
    *
-   * The legacy downgradeRedirectsToHttp flag is rejected by the TLS backend.
+   * A redirect from https to http is refused. downgradeRedirectsToHttp allows it for a request with no
+   * username, password or headers; with any of those the call fails instead.
    * validate, when given, judges the staged file before it replaces destPath: false is INVALID_EPUB.
    */
   static DownloadError downloadToFile(const std::string& url, const std::string& destPath,

@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include "ResumableFetch.h"
 #include "SecureHttpClient.h"
 // Test the production HTTP parser and redirect logic. TLS transport is stubbed.
 namespace freeink {
@@ -253,4 +254,64 @@ TEST_F(Transport, BoundsTrailersAndKeepsTruncatedFixedBodyIncomplete) {
     EXPECT_EQ(h.GET(), 200);
     EXPECT_FALSE(h.responseComplete());
   }
+}
+
+// fetchResumable follows redirects by hand, so the https->http refusal SecureHttpClient makes for its own
+// follower has to be made there too.
+namespace {
+struct Fetched {
+  freeink::FetchResult result;
+  std::string body;
+  bool authToLast = false;
+};
+Fetched fetch(const std::string& url, bool redirectToHttp = false) {
+  Fetched out;
+  freeink::FetchOptions options;
+  options.redirectToHttp = redirectToHttp;
+  freeink::FetchSink sink;
+  sink.write = [&out](const uint8_t* data, size_t len) {
+    out.body.append(reinterpret_cast<const char*>(data), len);
+    return true;
+  };
+  out.result = freeink::fetchResumable(
+      url, options, [](freeink::SecureHttpClient& http, bool sameOrigin) {
+        if (sameOrigin) http.setBasicAuth("user", "secret");
+      },
+      sink);
+  out.authToLast =
+      !wire::requests.empty() && wire::requests.back().bytes.find("Authorization:") != std::string::npos;
+  return out;
+}
+}  // namespace
+
+TEST_F(Transport, FetchResumableRefusesAnHttpsToHttpRedirect) {
+  wire::replies = {redirect("http://books.example/end"), success()};
+  const Fetched f = fetch("https://books.example/feed");
+  EXPECT_EQ(wire::requests.size(), 1u);
+  EXPECT_FALSE(f.result.complete);
+  EXPECT_EQ(f.body, "");
+}
+TEST_F(Transport, FetchResumableRefusesAnHttpsToHttpRedirectLaterInAChain) {
+  wire::replies = {redirect("https://cdn.example/a"), redirect("http://cdn.example/b"), success()};
+  const Fetched f = fetch("https://books.example/feed");
+  EXPECT_EQ(wire::requests.size(), 2u);
+  EXPECT_FALSE(f.result.complete);
+}
+TEST_F(Transport, FetchResumableFollowsHttpsToHttpsAndHttpToHttp) {
+  wire::replies = {redirect("https://cdn.example/a"), success()};
+  Fetched f = fetch("https://books.example/feed");
+  EXPECT_TRUE(f.result.complete);
+  EXPECT_EQ(f.body, "OK");
+  wire::reset();
+  wire::replies = {redirect("http://cdn.example/a"), success()};
+  f = fetch("http://books.example/feed");
+  EXPECT_TRUE(f.result.complete);
+}
+TEST_F(Transport, FetchResumableStepsDownOnlyWhenTheCallerAsksAndDropsTheCredentials) {
+  wire::replies = {redirect("http://books.example/end"), success()};
+  const Fetched f = fetch("https://books.example/feed", true);
+  EXPECT_TRUE(f.result.complete);
+  ASSERT_EQ(wire::requests.size(), 2u);
+  EXPECT_NE(wire::requests[0].bytes.find("Authorization: Basic"), std::string::npos);
+  EXPECT_FALSE(f.authToLast);
 }
