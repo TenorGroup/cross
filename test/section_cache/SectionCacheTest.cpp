@@ -3305,9 +3305,11 @@ TEST(AllocationProbe, ArrayDeleteGivesBackWhatArrayNewCounted) {
   EXPECT_EQ(after, before);
 }
 
-// A TXT book is one chapter of lines. Its converted HTML must give the parser block boundaries to park at
-// and resume from (a checkpoint), as the paragraphs of an EPUB do; without them a long TXT builds in one
-// piece, and every build that stops short of its end starts the next one from the first page.
+// A TXT book is one chapter of lines separated by <br />. The parser must still be able to park it at a line
+// break and resume from there (a checkpoint, and a resume point for the preview of a new text setting) as it
+// does at the end of an EPUB paragraph; without it a long TXT builds in one piece, and every build that stops
+// short of its end starts the next one from the first page. The layout after a resume must be the cold one:
+// the block that waits after a line break is "soft" (no paragraph gap, no first-line indent).
 namespace {
 struct HtmlText : Print {
   std::string str;
@@ -3341,12 +3343,6 @@ std::string txtHtml(const std::string& text) {
   return out.str;
 }
 
-std::string withoutDivs(std::string html) {
-  for (const char* tag : {"<div>", "</div>"}) {
-    for (size_t at = html.find(tag); at != std::string::npos; at = html.find(tag, at)) html.erase(at, strlen(tag));
-  }
-  return html;
-}
 }  // namespace
 
 TEST_F(SectionCacheTest, ATxtBookParksAtACheckpointAndResumesToTheColdBytes) {
@@ -3375,12 +3371,9 @@ TEST_F(SectionCacheTest, ATxtBookParksAtACheckpointAndResumesToTheColdBytes) {
   EXPECT_EQ(bytes(cache()), cold);
 }
 
-// The grouping is for the parser alone: with it or without it, a page holds the same words in the same places,
-// whatever the paragraph spacing, indent and alignment the reader chose.
-TEST_F(SectionCacheTest, GroupingATxtDoesNotMoveAnythingOnItsPages) {
-  const std::string text = txtBook(300);
-  const std::string grouped = txtHtml(text);
-  const std::string plain = withoutDivs(grouped);
+// Parked and resumed under every spacing, indent and alignment the reader offers, the TXT lays out as a cold build.
+TEST_F(SectionCacheTest, AResumedTxtLaysOutAsAColdOneForEveryParagraphLook) {
+  epub->contents = txtHtml(txtBook(500));
   struct Look {
     uint8_t spacing, indent, alignment;
     bool embedded;
@@ -3394,23 +3387,88 @@ TEST_F(SectionCacheTest, GroupingATxtDoesNotMoveAnythingOnItsPages) {
     spec.embeddedStyle = look.embedded;
     spec.viewportWidth = 300;
     spec.viewportHeight = 200;
-    std::vector<std::string> pages[2];
-    for (const bool group : {false, true}) {
-      epub->contents = group ? grouped : plain;
-      std::filesystem::remove_all(root / "html");
-      std::filesystem::remove(cache());
+    std::filesystem::remove_all(root / "html");
+    std::filesystem::remove(cache());
+    std::string cold;
+    {
       Section section(epub, 0, renderer);
       ASSERT_TRUE(section.createSectionFile(spec));
-      ASSERT_TRUE(section.isBuildComplete());
-      for (uint16_t i = 0; i < section.pageCount; ++i) {
-        auto page = section.loadPage(i);
-        ASSERT_NE(page, nullptr);
-        std::string signature;
-        ASSERT_TRUE(serializedPageSignature(*page, root / "page.sig", signature));
-        pages[group].push_back(signature);
-      }
+      ASSERT_GT(section.pageCount, 30);
+      cold = bytes(cache());
     }
-    ASSERT_GT(pages[0].size(), 8u);
-    EXPECT_EQ(pages[0], pages[1]);
+    const std::string partial = makeDensePartial(20);
+    ASSERT_FALSE(partial.empty());
+    const auto checkpoint = checkpointOffset(partial);
+    ASSERT_TRUE(checkpoint.has_value());
+    ASSERT_EQ(pod<uint32_t>(partial, *checkpoint), 0x43504b31u) << "the partial of a TXT carries no checkpoint";
+    Section resumed(epub, 0, renderer);
+    ASSERT_TRUE(resumed.loadSectionFile(spec));
+    ASSERT_TRUE(resumed.startBuild(spec));
+    while (!resumed.isBuildComplete()) ASSERT_TRUE(resumed.buildSomeMore(8));
+    EXPECT_TRUE(bytes(cache()) == cold) << "the resumed pages differ from the cold ones";
+  }
+}
+
+// The page shown while a TXT is laid out again under new text settings opens at a line break the old build
+// left a resume point at, and carries the lines, indents and gaps of the full layout from there.
+namespace {
+struct Placed {
+  size_t page;
+  int x, y;
+  std::string text;
+};
+std::vector<Placed> placedLines(const Page& page, const size_t number) {
+  std::vector<Placed> lines;
+  for (const auto& element : page.elements) {
+    if (element->getTag() != TAG_PageLine) continue;
+    const auto& block = *static_cast<const PageLine&>(*element).getBlock();
+    std::string line;
+    for (uint16_t i = 0; i < block.wordCount(); ++i) line += (i ? " " : "") + std::string(block.wordText(i));
+    lines.push_back({number, element->xPos, element->yPos, line});
+  }
+  return lines;
+}
+}  // namespace
+
+TEST(PreviewPage, ATxtOpensAtALineBreakWithTheColdIndentsAndGaps) {
+  PreviewBook book;
+  book.epub->contents = txtHtml(txtBook(400));
+  book.narrow.extraParagraphSpacing = 3;
+  book.narrow.paragraphIndentSpaces = 3;
+  book.wide.extraParagraphSpacing = 3;
+  book.wide.paragraphIndentSpaces = 3;
+  std::vector<uint32_t> starts;
+  {
+    Section old(book.epub, 0, book.renderer);
+    ASSERT_TRUE(old.createSectionFile(book.narrow));
+    ASSERT_GT(old.pageCount, 30);
+    for (uint16_t k = 1; k < old.pageCount; ++k) starts.push_back(*old.getVisibleTextOffsetForPage(k));
+  }
+  std::vector<Placed> cold;
+  {
+    Section wide(book.epub, 0, book.renderer);
+    ASSERT_TRUE(wide.loadSectionFile(book.wide) || wide.createSectionFile(book.wide));
+    for (int i = 0; i < wide.pageCount; ++i) {
+      auto page = wide.loadPage(i);
+      ASSERT_TRUE(page);
+      for (auto& line : placedLines(*page, i)) cold.push_back(line);
+    }
+  }
+  ASSERT_FALSE(cold.empty());
+  for (const uint32_t start : starts) {
+    Section section(book.epub, 0, book.renderer);
+    auto page = section.previewPage(book.wide, start);
+    ASSERT_TRUE(page) << "offset " << start;
+    const auto lines = placedLines(*page, 0);
+    ASSERT_FALSE(lines.empty());
+    const auto at = std::find_if(cold.begin(), cold.end(), [&](const Placed& p) { return p.text == lines[0].text; });
+    ASSERT_NE(at, cold.end()) << lines[0].text;
+    for (size_t i = 0; i < lines.size() && at + i != cold.end(); ++i) {
+      const Placed& want = *(at + i);
+      EXPECT_EQ(lines[i].text, want.text);
+      EXPECT_EQ(lines[i].x, want.x) << "indent of '" << want.text << "'";
+      if (i > 0 && want.page == (at + i - 1)->page)
+        EXPECT_EQ(lines[i].y - lines[i - 1].y, want.y - (at + i - 1)->y) << "gap before '" << want.text << "'";
+    }
   }
 }
