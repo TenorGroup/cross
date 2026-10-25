@@ -53,3 +53,27 @@ target_include_directories(SectionCacheTest PRIVATE
 target_link_libraries(SectionCacheTest PRIVATE GTest::gtest_main expat)
 target_compile_definitions(SectionCacheTest PRIVATE TENOR_SECTION_HOST_TEST=1)
 gtest_discover_tests(SectionCacheTest)
+
+# What a build does with the files an earlier version left, and with a font size the font system refused. For a board
+# with PSRAM: a heading has a size of its own there (HEADING_SIZES), which is the path the refusal takes.
+add_executable(SectionRestartTest
+  SectionRestartTest.cpp ParserLinkStubs.cpp
+  ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/Section.cpp
+  ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/Page.cpp
+  ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/blocks/TextBlock.cpp
+  ${SECTION_SOURCE_ROOT}/lib/MiniBidi/BidiUtils.cpp
+  ${SECTION_SOURCE_ROOT}/lib/MiniBidi/minibidi.c
+  ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp
+  ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/css/CssParser.cpp
+  ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/ParsedText.cpp
+  ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/WordStore.cpp
+  ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/converters/ImageDimsProbe.cpp
+  ${SECTION_SOURCE_ROOT}/lib/Utf8/Utf8.cpp
+  ${SECTION_SOURCE_ROOT}/lib/Txt/TxtToHtml.cpp
+)
+target_include_directories(SectionRestartTest PRIVATE
+  $<TARGET_PROPERTY:SectionCacheTest,INCLUDE_DIRECTORIES>)
+target_link_libraries(SectionRestartTest PRIVATE GTest::gtest_main expat)
+target_compile_definitions(SectionRestartTest PRIVATE TENOR_SECTION_HOST_TEST=1 BOARD_HAS_PSRAM=1
+  FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+gtest_discover_tests(SectionRestartTest)
