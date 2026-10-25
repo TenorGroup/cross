@@ -1227,6 +1227,70 @@ TEST_F(ChapterBlockDecorationTest, SdAndVectorFontsSizeThroughTheVariantProvider
   EXPECT_EQ(body.wordFontId(1, SD_FONT), SD_FONT * 1000 + 80);
 }
 
+// A board without PSRAM (the X3) has no memory for a second font size and v1.0.76 laid headings out at the book size:
+// no heading, with or without a size of its own in the book's CSS, asks the font system for a variant. The sizes of
+// other text are not the heading's business.
+TEST_F(ChapterBlockDecorationTest, HeadingsOfABoardWithoutRoomForSizesStayAtTheBookSizeAndAskForNoVariant) {
+  constexpr int SD_FONT = 7;
+  parser.fontId = SD_FONT;
+  parser.setHeadingSizes(false);
+  int asked = 0;
+  renderer.setFontVariantProvider({&asked, [](void* ctx, const int fontId, const float scale) {
+                                     ++*static_cast<int*>(ctx);
+                                     return fontId * 1000 + static_cast<int>(scale * 100 + 0.5f);
+                                   }});
+  open("h1", nullptr);
+  text("Title");
+  close("h1");
+  open("h2", "font-size: 2em");
+  text("Section");
+  close("h2");
+  EXPECT_EQ(asked, 0) << "a heading asked the font system for a size";
+  open("p", nullptr);
+  text("Body ");
+  open("span", "font-size: 0.8em");
+  text("small");
+  close("span");
+  close("p");
+
+  const auto lines = elementsWithTag(TAG_PageLine);
+  ASSERT_EQ(lines.size(), 3u);
+  EXPECT_EQ(static_cast<const PageLine*>(lines[0])->getBlock()->getBlockStyle().fontId, 0) << "h1 left the book size";
+  EXPECT_EQ(static_cast<const PageLine*>(lines[1])->getBlock()->getBlockStyle().fontId, 0) << "h2 left the book size";
+  EXPECT_EQ(asked, 1) << "the small span still sizes itself";
+}
+
+// A board that has the memory gives a heading its size or does not build the chapter: never the body size because the
+// heap was low at that moment, which would put a page break elsewhere than in a build with the heap to spare.
+TEST_F(ChapterBlockDecorationTest, ASizeTheFontSystemRefusedStopsTheBuildInsteadOfFallingBackToTheBodySize) {
+  constexpr int SD_FONT = 7;
+  parser.fontId = SD_FONT;
+  renderer.setFontVariantProvider({nullptr, [](void*, int, float) { return FontVariantProvider::REFUSED; }});
+  open("h1", nullptr);
+  text("Title");
+  close("h1");
+  open("p", nullptr);
+  text("Body");
+  close("p");
+
+  EXPECT_TRUE(parser.hasFailed()) << "the chapter was laid out with the heading at the body size";
+  for (const auto* line : elementsWithTag(TAG_PageLine))
+    EXPECT_STRNE(static_cast<const PageLine*>(line)->getBlock()->wordText(0), "Title");
+}
+
+TEST_F(ChapterBlockDecorationTest, ASizeTheFontSystemHasRoomForIsUsedAndTheBuildGoesOn) {
+  constexpr int SD_FONT = 7;
+  parser.fontId = SD_FONT;
+  installSyntheticVariants(renderer);
+  open("h1", nullptr);
+  text("Title");
+  close("h1");
+  EXPECT_FALSE(parser.hasFailed());
+  const auto lines = elementsWithTag(TAG_PageLine);
+  ASSERT_EQ(lines.size(), 1u);
+  EXPECT_EQ(static_cast<const PageLine*>(lines[0])->getBlock()->getBlockStyle().fontId, SD_FONT * 1000 + 200);
+}
+
 TEST_F(ChapterBlockDecorationTest, UnloadableVariantFallsBackToSectionFont) {
   EXPECT_EQ(TextBlock::renderFontId(renderer, 12345, 7), 7);
   installSyntheticVariants(renderer);

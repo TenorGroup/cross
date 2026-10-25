@@ -64,6 +64,7 @@ class ChapterHtmlSlimParser {
   // (khoang ngan doan thuoc ranh gioi giua hai khoi, cong o dau khoi ke tiep).
   bool khoiTruocDaXepTrang = false;
   uint8_t paragraphIndentSpaces = 2;
+  bool headingSizes = true;
   int8_t characterSpacing = 0;
   uint8_t wordSpacingPercent = 100;
   uint8_t paragraphAlignment;
@@ -390,6 +391,8 @@ class ChapterHtmlSlimParser {
     wordSpacingPercent = wordPercent;
   }
   void setParagraphIndentSpaces(const uint8_t spaces) { paragraphIndentSpaces = spaces; }
+  // Whether h1..h6 get a size of their own (HEADING_SIZES in ReaderRenderSpec.h says what a board does).
+  void setHeadingSizes(const bool on) { headingSizes = on; }
 
   // One-shot parse: builds every page before returning (begin + step* + finish).
   bool parseAndBuildPages();

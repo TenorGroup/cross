@@ -18,3 +18,16 @@ target_include_directories(SdFontBootTest PRIVATE
 )
 target_link_libraries(SdFontBootTest PRIVATE GTest::gtest_main)
 gtest_discover_tests(SdFontBootTest)
+
+# The same, as a board with PSRAM builds it: a size the heap cannot hold is refused, not dropped.
+add_executable(SdFontBootPsramTest SdFontBootTest.cpp HostRegistry.cpp ${CMAKE_CURRENT_BINARY_DIR}/SdCardFontSystem.cpp)
+target_compile_definitions(SdFontBootPsramTest PRIVATE FREEINK_SIZES_NEED_ROOM)
+target_include_directories(SdFontBootPsramTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${REPO_ROOT}/src
+  ${REPO_ROOT}/lib/EpdFont
+  ${REPO_ROOT}/lib/GfxRenderer
+)
+target_link_libraries(SdFontBootPsramTest PRIVATE GTest::gtest_main)
+gtest_discover_tests(SdFontBootPsramTest TEST_SUFFIX .Psram)

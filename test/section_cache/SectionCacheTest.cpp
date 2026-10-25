@@ -706,6 +706,21 @@ TEST_F(SectionCacheTest, YieldCallbackEndsATickAfterOneParseStepAndTheBuildResum
   EXPECT_TRUE(section.isBuildComplete());
   EXPECT_EQ(section.pageCount, fullPages);
 }
+// The builder hands the parser the board's heading policy (HEADING_SIZES): a board without PSRAM asks the font system
+// for no heading size, a board with PSRAM asks.
+TEST_F(SectionCacheTest, SectionBuildGivesTheParserTheBoardsHeadingPolicy) {
+  int asked = 0;
+  renderer.setFontVariantProvider({&asked, [](void* ctx, const int fontId, float) {
+                                     ++*static_cast<int*>(ctx);
+                                     return fontId;
+                                   }});
+  epub->contents = "<html><body><h1>Title</h1><p>Body text</p></body></html>";
+  std::filesystem::remove_all(root / "html");
+  std::filesystem::remove(cache());
+  Section section(epub, 0, renderer);
+  ASSERT_TRUE(section.createSectionFile(spec));
+  EXPECT_EQ(asked > 0, HEADING_SIZES) << "font system asked " << asked << " times";
+}
 // Every field that moves a line break or a gap is part of the cache key.
 TEST_F(SectionCacheTest, SpacingAndDropCapFieldsAreInTheCacheKey) {
   const std::vector<std::function<void(ReaderRenderSpec&)>> changes = {

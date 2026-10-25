@@ -10,6 +10,15 @@
 // This is the only definition: Section.cpp uses it and does not declare its own.
 inline constexpr uint8_t SECTION_FILE_VERSION = 69;
 
+// Whether h1..h6 are laid out at sizes of their own (the browser sizes, 2.0 down to 0.67) rather than at the book size.
+// A size of its own is a second font; a board without PSRAM has the memory for none, and v1.0.76 laid headings out at
+// the book size on every board.
+#ifdef BOARD_HAS_PSRAM
+inline constexpr bool HEADING_SIZES = true;
+#else
+inline constexpr bool HEADING_SIZES = false;
+#endif
+
 // The resolved text-rendering configuration a reader hands to the layout
 // engine. Section-cache validation keys on every field: a section file built
 // with a different spec is discarded and rebuilt.

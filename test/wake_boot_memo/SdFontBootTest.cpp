@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <Arduino.h>
 #include <SdCardFontManager.h>
 #include <esp_system.h>
 
@@ -689,4 +690,29 @@ TEST_F(SdFontBoot, AWholeBookWithAHeadingLeavesNoFontBlocksBehind) {
   countingBlocks = false;
   EXPECT_LE(whileReading - atHome, 6) << "reading a heading allocated " << whileReading - atHome << " blocks";
   EXPECT_LE(backAtHome - atHome, 6) << "the book left " << backAtHome - atHome << " blocks behind";
+}
+
+// A size the heap has no room for (the largest free block under 48 KB). A board with PSRAM says so (REFUSED), and the chapter is
+// not built, instead of laying it out at the body size: the page count would then depend on the heap of the moment.
+// A board without PSRAM keeps the body size (headings never ask there, see HEADING_SIZES).
+TEST_F(SdFontBoot, ASizeTheHeapCannotHoldIsRefusedOnABoardWithPsramNotQuietlyDropped) {
+  SdCardFontSystem system;
+  GfxRenderer renderer;
+  boot(ESP_RST_POWERON, system, renderer);
+  const int base = system.resolveFontId("Bokerlam", 14);
+  ESP.largest = 32 * 1024;
+  const int lowHeap = renderer.variantProvider.resolveFont(base, 1.3f);
+  ESP.largest = 256 * 1024;
+  const int roomy = renderer.variantProvider.resolveFont(base, 1.3f);
+  EXPECT_EQ(lowHeap, FontVariantProvider::NO_ROOM) << "the answer at a low heap was " << lowHeap;
+#ifdef FREEINK_SIZES_NEED_ROOM
+  EXPECT_EQ(lowHeap, FontVariantProvider::REFUSED);
+#else
+  EXPECT_EQ(lowHeap, 0);
+#endif
+  EXPECT_NE(roomy, 0);  // ids are hashes, any sign
+  EXPECT_NE(roomy, FontVariantProvider::REFUSED);
+  EXPECT_NE(roomy, base);
+  // The id is the same whatever the heap was when it was asked first: a cached section keeps its meaning.
+  EXPECT_EQ(renderer.variantProvider.resolveFont(base, 1.3f), roomy);
 }
