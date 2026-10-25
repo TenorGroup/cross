@@ -14,6 +14,9 @@ class Epub {
   int tocCount = 0;
   std::map<std::string, std::string> images;
   CssParser* cssParser = nullptr;
+  // A TXT or Markdown file opened through the EPUB pipeline (its HTML is made by TxtToHtml).
+  bool plainText = false;
+  bool isPlainText() const { return plainText; }
   // Streams still to fail: refused ones as the heap floor refuses a buffer (the count moves),
   // failed ones as a card write fails (it does not).
   mutable int refuseStreams = 0;

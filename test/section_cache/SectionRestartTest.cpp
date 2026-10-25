@@ -103,6 +103,7 @@ class SectionRestartTest : public ::testing::Test {
   // The chapter laid out in one pass from nothing, under the same spec and the same answers.
   std::string cold(const std::string& chapterHtml) {
     auto coldEpub = std::make_shared<Epub>();
+    coldEpub->plainText = epub->plainText;
     coldEpub->cachePath = coldRoot.string();
     coldEpub->cssParser = epub->cssParser;
     coldEpub->contents = chapterHtml;
@@ -126,6 +127,7 @@ class SectionRestartTest : public ::testing::Test {
   // A checkpoint is: "1KPC", byte count, CRC-32 of the payload, then the payload (source size, offset, pages, the
   // prolog and open ancestors the resume replays as a string with a 4-byte length, the layout state). It ends the file.
   static constexpr size_t CHECKPOINT_PAYLOAD = 12, PREFIX_LENGTH_AT = 10;
+  static constexpr size_t CHECKPOINT_PAYLOAD_AT = CHECKPOINT_PAYLOAD;
   static uint32_t crc32(const std::string& data, const size_t from, const size_t count) {
     uint32_t crc = UINT32_MAX;
     for (size_t i = from; i < from + count; ++i) {
@@ -468,6 +470,7 @@ TEST_F(SectionRestartTest, AParseErrorAfterAParkedResumeOfATxtLaysItOutAgainAsTh
   HtmlSink converted;
   ASSERT_TRUE(TxtToHtml::stream("book.txt", text, converted));
   epub->contents = converted.str;
+  epub->plainText = true;
   const std::string want = cold(converted.str);
   Section section(epub, SPINE, renderer);
   ASSERT_TRUE(section.startBuild(spec));
@@ -478,6 +481,37 @@ TEST_F(SectionRestartTest, AParseErrorAfterAParkedResumeOfATxtLaysItOutAgainAsTh
   writeAll(sidecar("1.bin.checkpoint.part"), checkpoint);
   ASSERT_TRUE(section.buildSomeMore(0)) << "the resume point that led to a parse error is not dropped";
   ASSERT_TRUE(section.isBuildComplete());
+  EXPECT_EQ(readAll(bin()), want);
+}
+
+// An EPUB is not a converted TXT because one of its comments says so: a book that carries TxtToHtml's version comment
+// is parked only where an EPUB can be (the end of a block, never the end of a <br />), and laid out parked and resumed
+// as it is cold. (A comment cannot be told from the one TxtToHtml writes; the TXT open path says what the file is.)
+TEST_F(SectionRestartTest, ACommentThatLooksLikeTheTxtVersionTagDoesNotMakeAnEpubParkAtALineBreak) {
+  std::string chapter =
+      "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!-- TXT_CACHE_VERSION: 2 -->\n<html xmlns=\"http://www.w3.org/1999/xhtml\">"
+      "<head><title>T</title></head><body>\n";
+  for (int line = 0; line < 240; ++line)
+    chapter += "Line " + std::to_string(line) + " alpha beta gamma delta epsilon zeta eta theta iota kappa.<br />";
+  chapter += "\n</body></html>";
+  epub->contents = chapter;
+  spec.viewportWidth = 480;
+  spec.viewportHeight = 320;
+  const std::string want = cold(chapter);
+  Section section(epub, SPINE, renderer);
+  ASSERT_TRUE(section.startBuild(spec));
+  ASSERT_TRUE(section.buildSomeMore(5));
+  if (section.parkBuild() && fs::exists(sidecar("1.bin.checkpoint.part"))) {
+    const std::string checkpoint = readAll(sidecar("1.bin.checkpoint.part"));
+    const auto at = checkpoint.rfind("1KPC");
+    ASSERT_NE(at, std::string::npos);
+    uint32_t offset = 0;
+    std::memcpy(&offset, &checkpoint[at + CHECKPOINT_PAYLOAD_AT + 4], 4);
+    ASSERT_GE(offset, 6u);
+    ASSERT_LE(offset, chapter.size());
+    EXPECT_NE(chapter.substr(offset - 6, 6), "<br />") << "an EPUB parked at the end of a <br />, as a converted TXT does";
+  }
+  buildInChunks(section, 5);
   EXPECT_EQ(readAll(bin()), want);
 }
 

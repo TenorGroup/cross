@@ -3370,6 +3370,7 @@ std::string txtHtml(const std::string& text) {
 
 TEST_F(SectionCacheTest, ATxtBookParksAtACheckpointAndResumesToTheColdBytes) {
   epub->contents = txtHtml(txtBook(1500));
+  epub->plainText = true;
   spec.viewportWidth = 480;
   spec.viewportHeight = 320;
   std::filesystem::remove_all(root / "html");
@@ -3397,6 +3398,7 @@ TEST_F(SectionCacheTest, ATxtBookParksAtACheckpointAndResumesToTheColdBytes) {
 // A TXT in another encoding, or with a stray byte, must still lay out: the converter declares UTF-8 and the parser
 // stops on a byte that is not.
 TEST_F(SectionCacheTest, ATxtWithBytesThatAreNotUtf8StillLaysOut) {
+  epub->plainText = true;
   epub->contents = txtHtml("first line\nstray \x80 byte, cut \xE2\x82 sequence, \xFF end\rold mac line\nlast line\n");
   spec.viewportWidth = 300;
   spec.viewportHeight = 200;
@@ -3422,6 +3424,7 @@ TEST_F(SectionCacheTest, ATxtWithBytesThatAreNotUtf8StillLaysOut) {
 // Parked and resumed under every spacing, indent and alignment the reader offers, the TXT lays out as a cold build.
 TEST_F(SectionCacheTest, AResumedTxtLaysOutAsAColdOneForEveryParagraphLook) {
   epub->contents = txtHtml(txtBook(500));
+  epub->plainText = true;
   struct Look {
     uint8_t spacing, indent, alignment;
     bool embedded;
@@ -3481,6 +3484,7 @@ std::vector<Placed> placedLines(const Page& page, const size_t number) {
 TEST(PreviewPage, ATxtOpensAtALineBreakWithTheColdIndentsAndGaps) {
   PreviewBook book;
   book.epub->contents = txtHtml(txtBook(400));
+  book.epub->plainText = true;
   book.narrow.extraParagraphSpacing = 3;
   book.narrow.paragraphIndentSpaces = 3;
   book.wide.extraParagraphSpacing = 3;
