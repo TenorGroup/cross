@@ -3079,7 +3079,7 @@ void ChapterHtmlSlimParser::trackCheckpointEnd(const XML_Char* name) {
   // A page finished in this step, or a requested checkpoint once any page is done (a restore needs one).
   const bool pageBoundary = completedPageCount > stepStartPages_ || (checkpointWanted_ && completedPageCount > 0);
   if (replayingCheckpoint_ || buildFailed_ || (!pageBoundary && !resumePointFn) ||
-      !isHeaderOrBlock(name) || strcmp(name, "br") == 0 || !insideBody ||
+      !isHeaderOrBlock(name) || (strcmp(name, "br") == 0 && !lineBreakCheckpoints_) || !insideBody ||
       checkpointUnsupported_ != 0 || checkpointDepth_ == 0 || skipUntilDepth != INT_MAX ||
       boldUntilDepth != INT_MAX || italicUntilDepth != INT_MAX || partWordBufferIndex != 0 ||
       !currentTextBlock || !currentTextBlock->isEmpty() || wordsExtractedInBlock != 0 ||
@@ -3092,19 +3092,49 @@ void ChapterHtmlSlimParser::trackCheckpointEnd(const XML_Char* name) {
   int contextOffset = 0, contextSize = 0;
   const char* context = XML_GetInputContext(xmlParser_, &contextOffset, &contextSize);
   const int eventBytes = XML_GetCurrentByteCount(xmlParser_);
-  if (!context || contextOffset < 0 || eventBytes < 3 || contextOffset > contextSize - eventBytes ||
-      context[contextOffset] != '<' || context[contextOffset + 1] != '/') return;
+  if (!context || contextOffset < 0 || contextOffset > contextSize) return;
+  if (eventBytes == 0 && lineBreakCheckpoints_ && strcmp(name, "br") == 0) {
+    // The end of an empty-element tag has no bytes of its own and sits at the end of the tag, which is "<br />"
+    // of a converted TXT: nothing else is a source boundary the next parser can start after.
+    const char* end = context + contextOffset;
+    const char* tag = end;
+    while (tag > context && end - tag < 8 && tag[-1] != '<') --tag;
+    if (end - context < 5 || end[-1] != '>' || end[-2] != '/' || tag == context || tag[-1] != '<' ||
+        memcmp(tag, "br", 2) != 0) return;
+  } else if (eventBytes < 3 || contextOffset > contextSize - eventBytes || context[contextOffset] != '<' ||
+             context[contextOffset + 1] != '/') {
+    return;
+  }
   const int64_t offset = sourceOffsetBase_ + XML_GetCurrentByteIndex(xmlParser_) + eventBytes;
   if (offset <= 0 || offset >= static_cast<int64_t>(parseFile_.size())) return;
   if (resumePointFn) {
-    resumePointFn(ResumePoint{static_cast<uint32_t>(offset), visibleTextOffset, imageCounter}, checkpointPrefix_,
-                  checkpointPrologBytes_);
+    resumePointFn(ResumePoint{static_cast<uint32_t>(offset), visibleTextOffset, imageCounter, lineBreakState()},
+                  checkpointPrefix_, checkpointPrologBytes_);
   }
   if (!pageBoundary) return;
   if (XML_StopParser(xmlParser_, XML_TRUE) == XML_STATUS_ERROR) return;
   checkpointOffset_ = static_cast<uint32_t>(offset);
   checkpointReady_ = true;
   checkpointWanted_ = false;
+}
+
+void XMLCALL ChapterHtmlSlimParser::commentHandler(void* userData, const XML_Char* data) {
+  // TxtToHtml's second line: <!-- TXT_CACHE_VERSION: n --> or <!-- MD_CACHE_VERSION: n -->.
+  if (strstr(data, "TXT_CACHE_VERSION") || strstr(data, "MD_CACHE_VERSION")) {
+    static_cast<ChapterHtmlSlimParser*>(userData)->lineBreakCheckpoints_ = true;
+  }
+}
+
+uint8_t ChapterHtmlSlimParser::lineBreakState() const {
+  if (!lineBreakCheckpoints_ || !currentTextBlock) return 0;
+  const bool soft = currentTextBlock->getBlockStyle().fromBrElement;
+  return static_cast<uint8_t>(currentTextBlock->firstLineState() | (soft ? 4 : 0));
+}
+
+void ChapterHtmlSlimParser::restoreLineBreakState(const uint8_t state) {
+  if (!currentTextBlock) return;
+  currentTextBlock->setFirstLineState(state & 3);
+  currentTextBlock->getBlockStyle().fromBrElement = (state & 4) != 0;
 }
 
 bool ChapterHtmlSlimParser::requestCheckpoint() {
@@ -3149,7 +3179,7 @@ bool ChapterHtmlSlimParser::writeCheckpoint(HalFile& file) {
     if (!copied || !restored) return false;
   }
   if (file.write(checkpointPrefix_.data(), checkpointPrefix_.size()) != checkpointPrefix_.size() ||
-      !writeCheckpointStyle(file, currentTextBlock->getBlockStyle()) ||
+      !writeCheckpointStyle(file, currentTextBlock->getBlockStyle()) || !writePod(file, lineBreakState()) ||
       !writePod(file, currentPageNextY) || !writePod(file, imageCounter) || !writePod(file, dropCapBottom) ||
       !writePod(file, visibleTextOffset) || !writePod(file, partWordVisibleOffset) ||
       !writePod(file, currentPageVisibleOffset) || !writePod(file, xpathParagraphIndex) ||
@@ -3179,9 +3209,11 @@ bool ChapterHtmlSlimParser::restoreCheckpoint(HalFile& file, const uint16_t expe
   uint16_t pages = 0;
   std::string prefix;
   BlockStyle style;
+  uint8_t lineState = 0;
   if (!reader.pod(total) || total != parseFile_.size() || !reader.pod(offset) || offset == 0 || offset >= total ||
       !reader.pod(pages) || pages == 0 || pages != expectedPages ||
-      !reader.string(prefix, MAX_CHECKPOINT_PREFIX) || prefix.empty() || !readCheckpointStyle(reader, style)) return false;
+      !reader.string(prefix, MAX_CHECKPOINT_PREFIX) || prefix.empty() || !readCheckpointStyle(reader, style) ||
+      !reader.pod(lineState) || lineState > 7) return false;
   replayingCheckpoint_ = true;
   const auto xmlStatus = XML_Parse(xmlParser_, prefix.data(), static_cast<int>(prefix.size()), XML_FALSE);
   replayingCheckpoint_ = false;
@@ -3193,6 +3225,7 @@ bool ChapterHtmlSlimParser::restoreCheckpoint(HalFile& file, const uint16_t expe
   currentCssStyle.reset();
   updateEffectiveInlineStyle();
   currentTextBlock->setBlockStyle(style);
+  if (lineState != 0) restoreLineBreakState(lineState);
   currentTextBlock->resetDropCap();
   pendingAnchorId.clear();
   anchorData.clear();
@@ -3239,6 +3272,7 @@ bool ChapterHtmlSlimParser::restoreResumePoint(const std::string& prologAndPrefi
   currentCssStyle.reset();
   updateEffectiveInlineStyle();
   currentTextBlock->resetDropCap();
+  if (point.lineState != 0) restoreLineBreakState(point.lineState);
   pendingAnchorId.clear();
   anchorData.clear();
   tocAnchorsHeld_ = SIZE_MAX;
@@ -3323,6 +3357,7 @@ bool ChapterHtmlSlimParser::beginParse() {
   XML_SetUserData(xmlParser_, this);
   XML_SetElementHandler(xmlParser_, startElement, endElement);
   XML_SetCharacterDataHandler(xmlParser_, characterData);
+  XML_SetCommentHandler(xmlParser_, commentHandler);
   XML_SetXmlDeclHandler(xmlParser_, [](void* data, const XML_Char*, const XML_Char* encoding, int) {
     if (encoding && strcasecmp(encoding, "UTF-8") != 0 && strcasecmp(encoding, "US-ASCII") != 0)
       static_cast<ChapterHtmlSlimParser*>(data)->checkpointAllowed_ = false;

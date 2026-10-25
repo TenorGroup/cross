@@ -546,7 +546,7 @@ std::unique_ptr<ChapterHtmlSlimParser> Section::makeBuildParser(BuildContext* ct
       }
       ctxPtr->ddProlog = prologBytes;
       ctxPtr->ddLast = DdRecord{point.offset, point.visible, static_cast<uint16_t>(point.imageCounter),
-                                static_cast<uint8_t>(id), 0};
+                                static_cast<uint8_t>(id), point.lineState};
       ctxPtr->ddLastValid = point.imageCounter >= 0 && point.imageCounter <= UINT16_MAX;
     };
   }
@@ -1334,7 +1334,7 @@ std::unique_ptr<Page> Section::previewPage(const ReaderRenderSpec& spec, const u
         if (html.read(replay.data(), prolog) != static_cast<int>(prolog)) return reject("html_prolog");
         if (dd.read(replay.data() + prolog, length) != static_cast<int>(length)) return reject("dd_prefix_read");
       }
-      point = ChapterHtmlSlimParser::ResumePoint{best.offset, best.visible, best.imageCounter};
+      point = ChapterHtmlSlimParser::ResumePoint{best.offset, best.visible, best.imageCounter, best.pad};
     }
   }
 

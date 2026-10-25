@@ -743,10 +743,11 @@ TEST_F(SectionCacheTest, SpacingAndDropCapFieldsAreInTheCacheKey) {
   EXPECT_TRUE(same.loadSectionFile(spec));
 }
 // Both firmwares' last section versions (58 and CrossPoint's 67, 68) and the 1.1.0 development builds' 69 (heading sizes
-// that followed the heap) are below the merged one, so their caches rebuild.
+// that followed the heap) and 70 (before a TXT was parked at its line breaks, with the soft block kept there) are
+// below the merged one, so their caches rebuild.
 TEST_F(SectionCacheTest, RejectsFinalCacheOfEarlierFirmwareVersions) {
-  ASSERT_EQ(SECTION_FILE_VERSION, 70);
-  for (const uint8_t version : {58, 67, 68, 69}) {
+  ASSERT_EQ(SECTION_FILE_VERSION, 71);
+  for (const uint8_t version : {58, 67, 68, 69, 70}) {
     std::string legacy = valid;
     legacy[0] = static_cast<char>(version);
     writeCache(legacy);
@@ -764,8 +765,8 @@ TEST_F(SectionCacheTest, RejectsPartialCacheOfEarlierFirmwareVersions) {
     ASSERT_TRUE(partial.isPartial());
   }
   const std::string current = bytes(cache());
-  ASSERT_EQ(static_cast<uint8_t>(current[0]), 0xFE - (70 - 28));
-  for (const uint8_t version : {58, 67, 68, 69}) {
+  ASSERT_EQ(static_cast<uint8_t>(current[0]), 0xFE - (71 - 28));
+  for (const uint8_t version : {58, 67, 68, 69, 70}) {
     std::string legacy = current;
     legacy[0] = static_cast<char>(0xFE - (version - 28));
     writeCache(legacy);
@@ -3424,7 +3425,7 @@ std::vector<Placed> placedLines(const Page& page, const size_t number) {
     const auto& block = *static_cast<const PageLine&>(*element).getBlock();
     std::string line;
     for (uint16_t i = 0; i < block.wordCount(); ++i) line += (i ? " " : "") + std::string(block.wordText(i));
-    lines.push_back({number, element->xPos, element->yPos, line});
+    lines.push_back({number, element->xPos + (block.wordCount() ? block.wordXpos(0) : 0), element->yPos, line});
   }
   return lines;
 }

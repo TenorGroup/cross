@@ -39,7 +39,7 @@ class Section {
     uint32_t visible;
     uint16_t imageCounter;
     uint8_t prefix;
-    uint8_t pad;
+    uint8_t pad;  // ChapterHtmlSlimParser::ResumePoint::lineState
   };
   static_assert(sizeof(DdRecord) == 12, "resume point record");
   struct BuildContext;

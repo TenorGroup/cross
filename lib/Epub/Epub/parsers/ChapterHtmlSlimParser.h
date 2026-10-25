@@ -280,6 +280,14 @@ class ChapterHtmlSlimParser {
   // Set by requestCheckpoint(): the next eligible block close stops the parse, page finished or not.
   bool checkpointWanted_ = false;
   bool replayingCheckpoint_ = false;
+  // A TXT or Markdown file converted by TxtToHtml (its version comment says so): its lines are separated by <br />
+  // alone, so the end of a <br /> is a place to park and resume at, with the soft block that waits there kept.
+  bool lineBreakCheckpoints_ = false;
+  static void XMLCALL commentHandler(void* userData, const XML_Char* data);
+  // The state of the empty block after a line break, as bits: 1 first-line indent already used, 2 paragraph start
+  // emitted (ParsedText::firstLineState), 4 soft (BlockStyle::fromBrElement: no paragraph gap before it).
+  uint8_t lineBreakState() const;
+  void restoreLineBreakState(uint8_t state);
   // One page from the middle of a chapter (restoreResumePoint): lines starting at or before the
   // text offset below replace the candidate page. Its last line opens the preview at Y=0, and
   // following elements and spacing stay on that page once the target's block is complete.
@@ -415,10 +423,12 @@ class ChapterHtmlSlimParser {
   // literal closing tag, with nothing pending. The same conditions as a checkpoint, minus "a page has
   // just finished", and none of it depends on the font, size, spacing or alignment, so a point taken
   // under one layout opens the chapter under any other. prefix: the open ancestors to replay.
+  // lineState: the soft block that waits after a line break of a TXT (lineBreakState), 0 elsewhere.
   struct ResumePoint {
     uint32_t offset;
     uint32_t visible;
     int imageCounter;
+    uint8_t lineState = 0;
   };
   std::function<void(const ResumePoint&, const std::string& prefix, uint16_t prologBytes)> resumePointFn;
   // Call on a newly begun parser: replays prolog + prefix, seeks the file to the point and lays out

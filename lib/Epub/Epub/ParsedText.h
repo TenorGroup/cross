@@ -207,6 +207,12 @@ class ParsedText {
   void ensureRubyCapacity();
   void suppressFirstLineIndent() { firstLineConsumed = true; }
   void resetFirstLineIndent() { firstLineConsumed = paragraphStartEmitted = false; }
+  // The two flags above as bits, for a parser resumed at a line break (see ChapterHtmlSlimParser::lineBreakState).
+  uint8_t firstLineState() const { return (firstLineConsumed ? 1 : 0) | (paragraphStartEmitted ? 2 : 0); }
+  void setFirstLineState(const uint8_t state) {
+    firstLineConsumed = (state & 1) != 0;
+    paragraphStartEmitted = (state & 2) != 0;
+  }
   void setBlockStyle(const BlockStyle& blockStyle) { this->blockStyle = blockStyle; }
   BlockStyle& getBlockStyle() { return blockStyle; }
   size_t size() const { return words.size(); }
