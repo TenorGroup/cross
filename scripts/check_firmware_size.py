@@ -25,12 +25,17 @@ def check_image_size(image, partition_table, slot_bytes=None):
             if entry[2:16] != b"\xff" * 14 or entry[16:] != hashlib.md5(data[:start]).digest():
                 raise ValueError("Partition table checksum mismatch")
             break
-        magic, kind, _, offset, capacity, label, _ = struct.unpack("<HBBII16sI", entry)
+        magic, kind, subtype, offset, capacity, label, _ = struct.unpack("<HBBII16sI", entry)
         if magic != 0x50AA or capacity == 0:
             raise ValueError("Invalid partition table entry")
         if kind == 0:
             name = label.split(b"\0", 1)[0].decode("ascii", errors="replace")
-            slots.append((name, offset, slot_bytes or capacity))
+            slots.append((subtype, name, offset, slot_bytes or capacity))
+    # An image goes to an ota slot. A factory app beside them (the Picco's `safeboot` recovery) is not one it
+    # has to fit; a table with only a factory app still checks it.
+    if any(subtype != 0 for subtype, *_ in slots):
+        slots = [slot for slot in slots if slot[0] != 0]
+    slots = [slot[1:] for slot in slots]
     if not slots:
         raise ValueError("Partition table has no application slots")
     for name, offset, capacity in slots:
