@@ -13,6 +13,11 @@ struct Request {
   uint16_t port;
   std::string bytes;
 };
+struct TlsMode {
+  bool insecure;
+  const char* roots;
+};
+inline std::vector<TlsMode> tls;
 inline std::deque<std::string> replies;
 inline std::vector<Request> requests;
 inline int connectAttempts = 0;
@@ -23,6 +28,7 @@ inline std::vector<std::unique_ptr<uint8_t[]>> timeWaitPcbs;
 inline void reset() {
   replies.clear();
   requests.clear();
+  tls.clear();
   connectAttempts = 0;
   closeAfterReply = false;
   modelTimeWait = false;
