@@ -53,4 +53,20 @@ constexpr bool allowed(std::string_view path) {
   }
   return true;
 }
+
+// WebDAV's rule: web_path::allowed, and no dot-named item either (as in v1.0.76: clients such as Finder write
+// .DS_Store and ._ files that would otherwise litter the card), and no credential store.
+inline bool davAllowed(std::string_view path) {
+  for (size_t start = 0; start < path.size();) {
+    if (path[start] == '/') {
+      ++start;
+    } else {
+      if (path[start] == '.') return false;
+      const size_t slash = path.find('/', start);
+      if (slash == std::string_view::npos) break;
+      start = slash + 1;
+    }
+  }
+  return allowed(path);
+}
 }  // namespace web_path

@@ -896,20 +896,7 @@ void WebDAVHandler::urlEncodePath(const String& path, String& out) const {
 }
 
 bool WebDAVHandler::isProtectedPath(const String& path) const {
-  const std::string_view view(path.c_str(), path.length());
-  // web_path lets the file manager reach dot-named items (#4031). WebDAV keeps them out of reach as in v1.0.76:
-  // clients such as Finder write .DS_Store and ._ files that would otherwise litter the card.
-  for (size_t start = 0; start < view.size();) {
-    if (view[start] == '/') {
-      ++start;
-    } else {
-      if (view[start] == '.') return true;
-      const size_t slash = view.find('/', start);
-      if (slash == std::string_view::npos) break;
-      start = slash + 1;
-    }
-  }
-  return !web_path::allowed(view);
+  return !web_path::davAllowed(std::string_view(path.c_str(), path.length()));
 }
 
 int WebDAVHandler::getDepth(WebServer& s) const {
