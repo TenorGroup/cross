@@ -194,8 +194,9 @@ int runQuickActions() {
                                           StrId::STR_FORCE_REFRESH, StrId::STR_FOOTNOTES, StrId::STR_SELECT,
                                           StrId::STR_SHAKE_BACK, StrId::STR_READER_MENU,
                                           StrId::STR_QUOTES_SAVE_ACTION, StrId::STR_SAVE_CLIPPING,
-                                          StrId::STR_BOOKMARK_OPTION, StrId::STR_KOSYNC, StrId::STR_READER_MENU},
-              "the power button lists every action, old ones at their old places") &&
+                                          StrId::STR_BOOKMARK_OPTION, StrId::STR_KOSYNC},
+              "the power button lists every action once, old ones at their old places (the 2.0.0 Reader menu 12 is the "
+              "tenor 7, QuickAction.h powerLabels)") &&
        ok;
   ok = expect(quickaction::shakeLabels() ==
                   std::vector<StrId>{StrId::STR_STATE_OFF, StrId::STR_FORCE_REFRESH, StrId::STR_SLEEP,
