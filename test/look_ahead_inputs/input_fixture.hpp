@@ -1,5 +1,6 @@
 #include "FakeBle.h"
 #include "HidDescriptors.h"
+#include "Preferences.h"
 #include "BlePageTurner.h"
 #include "RadioPort.h"
 #include "Runtime.h"

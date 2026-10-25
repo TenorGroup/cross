@@ -36,7 +36,7 @@ bool popKey(KeyPress&out){auto&h=BleKeyboardHost::getInstance();if(h.queue.empty
 bool armBondedReconnect(uint8_t,const char*addr){auto&h=BleKeyboardHost::getInstance();h.armCalls++;h.armedAddr=addr?addr:"";h.events.emplace_back("arm");return h.armResult;}
 Peer linked(){auto&h=BleKeyboardHost::getInstance();return h.connected?Peer{h.addr.c_str(),h.name.c_str()}:Peer{"",""};}
 void scan(uint32_t){}bool connect(const char*){return false;}void disconnect(){}void forget(const char*){}
-bool takeConnectFailure(char*,size_t){return false;}uint8_t bondCount(){return 1;}Peer bond(uint8_t){return {"",""};}uint8_t foundCount(){return 0;}Peer found(uint8_t){return {"",""};}
+bool takeConnectFailure(char*,size_t){return false;}uint8_t bondCount(){return 1;}Peer bond(uint8_t){return {"",""};}bool firstSavedBond(char*,size_t,char*,size_t){return false;}uint8_t foundCount(){return 0;}Peer found(uint8_t){return {"",""};}
 bool spawnStart(){if(freeink::ble::startQueued)throw std::runtime_error("two radio starts queued");freeink::ble::startQueued=true;return true;}
 uint32_t nowMs(){return ::nowMs;}
 void sleepMs(uint32_t ms){::nowMs+=ms;}

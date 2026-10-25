@@ -32,6 +32,7 @@ struct DiscoveredDevice {
 };
 class BleKeyboardHost {
  public:
+  static constexpr uint8_t kMaxBonds = 4;
   static BleKeyboardHost& getInstance() { static BleKeyboardHost host; return host; }
   bool isRunning() const { return running; }
   bool isStopping() const { return stopping; }
