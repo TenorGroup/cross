@@ -2,6 +2,7 @@
 
 #include <HalClock.h>
 #include <HalStorage.h>
+#include <HeapFloor.h>
 #include <Logging.h>
 #include <NetworkTrust.h>
 #include <RecoverableFile.h>
@@ -224,7 +225,21 @@ int request(freeink::SecureHttpClient* session, const std::string& url, const st
         }
         const size_t needed = out.length() + len;
         // Grow geometrically instead of reallocating for every network chunk.
-        if (needed > reserved) reserved = std::min(maxResponse, std::max(needed, reserved * 2));
+        if (needed > reserved) {
+          const size_t want = std::min(maxResponse, std::max(needed, reserved * 2));
+          // The answer grows with the TLS session live (the plugin relay up to 32 KB, on the X3 with the radio on
+          // about 45 KB of heap). A block from 4 KB up is asked of the heap floor (rule 20) first; a realloc holds
+          // the old block and the new one. Refused, the transfer ends as an overflow does: -1, the relay says 502.
+          if (want >= heapfloor::kBigBytes &&
+              !heapfloor::leaves(reserved + want, want, ESP.getFreeHeap(), ESP.getMaxAllocHeap())) {
+            LOG_ERR("PHTP", "no room on the heap for %u bytes of answer (free %u, largest %u)",
+                    static_cast<unsigned>(want), static_cast<unsigned>(ESP.getFreeHeap()),
+                    static_cast<unsigned>(ESP.getMaxAllocHeap()));
+            overflow = true;
+            return false;
+          }
+          reserved = want;
+        }
         if (!out.reserve(reserved) || !out.concat(reinterpret_cast<const char*>(data), len)) {
           overflow = true;
           return false;

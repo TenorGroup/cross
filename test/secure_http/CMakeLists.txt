@@ -12,6 +12,6 @@ add_executable(OpdsImplicitAuthTest
   ${OPDS_SRC}/src/OpdsSearchTemplate.cpp
 )
 target_compile_definitions(OpdsImplicitAuthTest PRIVATE FREEINK_NET_WOLFSSL=1 CROSSPOINT_VERSION="test")
-target_include_directories(OpdsImplicitAuthTest BEFORE PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/stubs ${REPO_ROOT}/freeink-sdk/libs/network/SecureNet/include ${OPDS_SRC}/include)
+target_include_directories(OpdsImplicitAuthTest BEFORE PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/stubs ${REPO_ROOT}/freeink-sdk/libs/network/SecureNet/include ${OPDS_SRC}/include ${REPO_ROOT}/lib/Memory)
 target_link_libraries(OpdsImplicitAuthTest PRIVATE crosspoint_test_common GTest::gtest_main)
 gtest_discover_tests(OpdsImplicitAuthTest)
