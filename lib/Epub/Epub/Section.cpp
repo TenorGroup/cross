@@ -706,6 +706,7 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
     return false;
   }
   buildStarved_ = false;
+  starvedBySize_ = false;
   // Reclaim rebuildable font caches before CSS and layout allocations when the heap is short of
   // what a build needs to start: SD font glyph and advance caches grown by paging can leave the
   // layout's first allocations no contiguous block. Only below the bar the reader's background
@@ -1228,6 +1229,27 @@ bool Section::parkAtChapterTop() {
   return true;
 }
 
+// The font system turned a size down: the chapter is sound, the heap is short. The parser that met the refusal is let
+// go for one at the last checkpoint, when no page was finished since. Pages finished since cannot be taken back out of
+// the staging file, so they go to the card as a partial without a checkpoint (what a partial of a crash is): readable
+// meanwhile, and laid out again from the chapter top when a try finds the heap back. Dropped instead, the page the
+// reader is on vanished and every later turn laid the chapter out again up to it.
+bool Section::parkAfterSizeRefused() {
+  if (parkAtLastCheckpoint()) return true;
+  if (builtPageCount_ > 0 && (!partial_ || builtPageCount_ > partialPageCount_)) {
+    const uint32_t consumed = static_cast<uint32_t>(build_->parser->parseBytesConsumed());
+    if (commitBuildFile(SECTION_FILE_PARTIAL_VERSION, consumed, build_->totalBytes)) {
+      partial_ = true;
+      partialPageCount_ = builtPageCount_;
+      partialBytesConsumed_ = consumed;
+      partialTotalBytes_ = build_->totalBytes;
+      ddClose(*build_, true, false);
+      LOG_INF("SCT", "Size refused: %u pages kept as a partial", builtPageCount_);
+    }
+  }
+  return parkAtChapterTop();
+}
+
 #ifdef TENOR_SECTION_HOST_TEST
 size_t Section::parkedAnchorCountForTest() const { return build_ ? build_->parkedAnchors.size() : 0; }
 #endif
@@ -1235,6 +1257,7 @@ size_t Section::parkedAnchorCountForTest() const { return build_ ? build_->parke
 bool Section::buildSomeMore(const int maxPages, bool (*yieldNow)()) {
   BUILD_PROBE_SCOPE(Tick);
   buildStarved_ = false;
+  starvedBySize_ = false;
   bool ready = build_ && resumeParkedBuild();
   if (!ready && build_ && !buildStarved_ && !build_->coldRetried && !build_->failed) {
     // A resume point that does not restore (damaged, or written by a layout this parser reads otherwise): dropped, the
@@ -1295,7 +1318,8 @@ bool Section::buildSomeMore(const int maxPages, bool (*yieldNow)()) {
                 static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
                 static_cast<unsigned>(builtPageCount_));
         buildStarved_ = true;
-        if (!parkAtLastCheckpoint() && !parkAtChapterTop()) abandonBuild();
+        starvedBySize_ = true;
+        if (!parkAfterSizeRefused()) abandonBuild();
         return false;
       }
       if (!build_->failed && build_->resumed && !build_->coldRetried) {
@@ -1650,7 +1674,9 @@ bool Section::commitBuildFile(const uint8_t version, const uint32_t bytesConsume
 #endif
     return false;
   };
-  if (build_->failed || build_->parser->hasFailed() || !file || !build_->lut || !flushLutPending(*build_))
+  // A parser that stopped on a refused size holds pages that are sound (the refusal is the heap's, not the chapter's).
+  if (build_->failed || (build_->parser->hasFailed() && !build_->parser->sizeRefused()) || !file || !build_->lut ||
+      !flushLutPending(*build_))
     return failCommit();
 
   // Fixed 768-byte heap workspace, independent of chapter length and render-task stack.

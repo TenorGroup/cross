@@ -878,7 +878,8 @@ bool EpubReaderActivity::buildTickHeapGate() {
 }
 
 bool EpubReaderActivity::backgroundBuildCanTick() {
-  if (!section || !section->isBuilding() || backgroundBuildFailed || deferBackgroundBuildForBle())
+  if (!section || !section->isBuilding() || backgroundBuildFailed || deferBackgroundBuildForBle() ||
+      section->starvedBySize())  // a refused font size: only a foreground try, which frees heap first, goes on
     return false;
   // The loop clears a one-pass park latch before it reaches this predicate.
   // Keeping the predicate side-effect free also prevents skipLoopDelay() from
@@ -1736,6 +1737,7 @@ void EpubReaderActivity::loop() {
   if (buildViewportWidth > 0 && !partialRebuildStartFailed && !backgroundBuildSuspended) {
     RenderLock lock(RenderLock::TryTake{});
     if (lock.acquired() && section && !section->isBuilding() && section->isPartial() &&
+        !section->starvedBySize() &&
         section->currentPage + PARTIAL_REBUILD_START_MARGIN >= static_cast<int>(section->pageCount) &&
         backgroundBuildStartHeapGate()) {
       BackgroundBuildFrameGuard frameGuard(*this);
@@ -1794,7 +1796,7 @@ void EpubReaderActivity::loop() {
         lock.acquired() && lookAheadWindow && section &&
         ((continuing && section->isBuilding()) || section->isBuildParked() ||
          (section->isPartial() && !section->isBuilding() && !partialRebuildStartFailed && buildViewportWidth > 0)) &&
-        lookAheadPage != section->currentPage &&
+        lookAheadPage != section->currentPage && !section->starvedBySize() &&
         section->currentPage + LOOK_AHEAD_PAGES >= static_cast<int>(section->pageCount);
     if (lock.acquired() && !pendingInput &&
         (lookAhead || (!inputThisPass && !backgroundBuildParkedThisLoop && backgroundBuildWanted() &&

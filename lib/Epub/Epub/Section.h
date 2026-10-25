@@ -132,12 +132,15 @@ class Section {
   // True with the parser at a checkpoint, or with the build finalized because the chapter ended.
   bool reachCheckpoint();
   bool parkAtLastCheckpoint();
+  // A refused font size: park at the last checkpoint, or keep the finished pages as a partial and park at the top.
+  bool parkAfterSizeRefused();
   static bool stepHeapAvailable();
   static constexpr uint32_t CHECKPOINT_REACH_MAX_MS = 100;
   static constexpr unsigned CHECKPOINT_REACH_MAX_STEPS = 24;
   std::unique_ptr<BuildContext> build_;
   bool buildComplete_ = false;
   bool buildStarved_ = false;
+  bool starvedBySize_ = false;
   // One parse step allocates words, lines and page links out of the render heap.
   // Below these floors the next allocation aborts the firmware.
   static constexpr size_t BUILD_STEP_MIN_FREE_HEAP = 16 * 1024;
@@ -215,6 +218,10 @@ class Section {
   // per-step floor. The build stays parked or resident instead of being abandoned, so
   // the caller can free memory and call buildSomeMore() again.
   bool buildStarved() const { return buildStarved_; }
+  // True from a font size the font system turned down until the next try (startBuild or buildSomeMore). A loop that
+  // builds ahead of the reader must not make that try: on the heap that refused, it lays the chapter out from its top
+  // and is refused at the same place, for as long as it runs. A foreground demand makes it (and frees heap first).
+  bool starvedBySize() const { return starvedBySize_; }
   bool isBuildComplete() const { return buildComplete_; }
   // Best-known total page count: the exact pageCount once finalized, or a smoothed byte-based
   // estimate (pages so far scaled by totalBytes/bytesConsumed, damped by an EMA) while a giant spine

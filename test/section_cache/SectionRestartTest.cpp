@@ -243,6 +243,56 @@ TEST_F(SectionRestartTest, ASizeRefusedAfterPagesWereLaidOutKeepsThePagesAndStar
   EXPECT_EQ(readAll(bin()), want);
 }
 
+// The loop that builds ahead of the reader asks starvedBySize() before every try: set by the refusal, gone with the
+// next try (the foreground's, after it has freed heap), and the pages stay readable the whole time.
+TEST_F(SectionRestartTest, ARefusedSizeIsHeldAgainstTheBackgroundUntilTheNextTry) {
+  const std::string chapter = chapterWithHeadingAfter(60);
+  epub->contents = chapter;
+  Section section(epub, SPINE, renderer);
+  ASSERT_TRUE(section.startBuild(spec));
+  EXPECT_FALSE(section.starvedBySize());
+  ASSERT_TRUE(section.buildSomeMore(4));
+  heapIsShort = true;
+  EXPECT_FALSE(section.buildSomeMore(0));
+  EXPECT_TRUE(section.starvedBySize());
+  const uint16_t kept = section.pageCount;
+  heapIsShort = false;
+  ASSERT_TRUE(section.buildSomeMore(0));
+  EXPECT_FALSE(section.starvedBySize());
+  EXPECT_GE(section.pageCount, kept);
+}
+
+// The pages kept for the reader are on the card as a partial: a reader that leaves meanwhile finds them, and the
+// chapter lays out to the end from there exactly as a cold build does.
+TEST_F(SectionRestartTest, PagesKeptAfterARefusedSizeSurviveALeaveAndTheChapterIsLaidOutAsACold) {
+  const std::string chapter = chapterWithHeadingAfter(60);
+  epub->contents = chapter;
+  const std::string want = cold(chapter);
+  uint16_t kept = 0;
+  {
+    Section section(epub, SPINE, renderer);
+    ASSERT_TRUE(section.startBuild(spec));
+    ASSERT_TRUE(section.buildSomeMore(4));
+    heapIsShort = true;
+    EXPECT_FALSE(section.buildSomeMore(0));
+    ASSERT_TRUE(section.buildStarved());
+    kept = section.pageCount;
+    ASSERT_GE(kept, 4);
+  }
+  heapIsShort = false;
+  for (const char* left : {"1.bin.part", "1.bin.lut.part", "1.bin.checkpoint.part", "1.dd.part"})
+    EXPECT_FALSE(fs::exists(sidecar(left))) << left << " outlived the reader";
+  Section reopened(epub, SPINE, renderer);
+  ASSERT_TRUE(reopened.loadSectionFile(spec));
+  EXPECT_TRUE(reopened.isPartial());
+  EXPECT_EQ(reopened.pageCount, kept);
+  EXPECT_NE(reopened.loadPage(kept - 1), nullptr);
+  ASSERT_TRUE(reopened.startBuild(spec));
+  ASSERT_TRUE(reopened.buildSomeMore(0));
+  ASSERT_TRUE(reopened.isBuildComplete());
+  EXPECT_EQ(readAll(bin()), want);
+}
+
 // ---- A resume point that does not parse is dropped, once --------------------------------------------------------------
 
 TEST_F(SectionRestartTest, AParseErrorAfterAParkedResumeLaysTheChapterOutAgainFromItsTop) {
