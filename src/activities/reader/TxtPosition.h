@@ -104,9 +104,7 @@ inline int percentToOpenAt(const int fromIndex, const int fromStats) { return fr
 // (the heap could not lay it out), is page 0 of the chapter and not the place, and the next open would not return to
 // the old cache for it.
 inline bool legacyCacheMayGo(const bool saved, const bool jumpPending, const bool pageLaidOut) {
-  (void)jumpPending;
-  (void)pageLaidOut;
-  return saved;
+  return saved && !jumpPending && pageLaidOut;
 }
 
 }  // namespace txtposition
