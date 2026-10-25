@@ -57,8 +57,9 @@ class FakeX4Pro:
     """Answers TCF1 as src/platform/CableFlash.h does, with knobs for the cases under test."""
 
     def __init__(self, cable=True, state='valid', elf='aaaaaaaaaaaaaaaa', answer='yes', drop_ack=(), nak=(),
-                 end='DONE', after=None, running='app0', hellos=()):
+                 end='DONE', after=None, running='app0', hellos=(), wait=True):
         self.cable, self.state, self.elf, self.answer = cable, state, elf, answer
+        self.wait = wait  # True: a device that asks for a tap first (WAIT); False: one that starts at once
         self.running, self.hellos = running, list(hellos)  # hellos: raw answers sent before whole ones
         self.drop_ack, self.nak, self.end, self.after = set(drop_ack), set(nak), end, after or []
         self.out = b''
@@ -102,11 +103,12 @@ class FakeX4Pro:
         elif line.startswith('TCF1 BEGIN '):
             self.size, self.sha, self.version = line.split()[2:]
             self.out += b'I (12) [CABLE] begin\n'  # the device log shares the line
+            wait = b'TCF1 WAIT 60\n' if self.wait else b''
             if self.answer == 'yes':
-                self.out += b'TCF1 WAIT 60\nTCF1 READY 0000beef 1024\n'
+                self.out += wait + b'TCF1 READY 0000beef 1024\n'
                 self.began = True
             else:
-                self.out += f'TCF1 WAIT 60\nTCF1 FAIL {self.answer}\n'.encode()
+                self.out += wait + f'TCF1 FAIL {self.answer}\n'.encode()
 
     def on_frame(self, frame):
         kind, length, session, seq, offset, crc = frame[4], *struct.unpack_from('<HIIII', frame, 6)
@@ -261,10 +263,11 @@ class NapTest(unittest.TestCase):
         self.assertIn('busy', out)
         self.assertNotIn('its firmware has no cable flash channel', out)
 
-    def test_a_whole_image_with_a_lost_ack_and_a_nak_reaches_valid(self):
+    def flash_and_restart(self, wait, **knobs):
+        """A whole image sent to a fake X4 Pro that restarts into the new slot; returns code, output, device, image."""
         data = image(body=5000, elf=b'\x22' * 32)
         after = FakeX4Pro(elf='22' * 8, running='app1')
-        first = FakeX4Pro(drop_ack={1}, nak={3})
+        first = FakeX4Pro(wait=wait, **knobs)
         devices = {PRO.device: first}
         ports = Ports([PRO], [], [PRO])
         serial_module = FakeSerialModule(devices)
@@ -281,10 +284,32 @@ class NapTest(unittest.TestCase):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             code = nap.main([self.file(data)], list_ports=ports, serial_module=serial_module, run=None)
-        self.assertEqual(code, 0, out.getvalue())
+        return code, out.getvalue(), first, data
+
+    def test_a_whole_image_with_a_lost_ack_and_a_nak_reaches_valid(self):
+        code, out, first, data = self.flash_and_restart(True, drop_ack={1}, nak={3})
+        self.assertEqual(code, 0, out)
         self.assertEqual(bytes(first.written), data)
-        self.assertIn('VALID', out.getvalue())
-        self.assertIn('Tap "Update firmware"', out.getvalue())
+        self.assertIn('VALID', out)
+        self.assertIn('Tap "Update firmware"', out)
+
+    def test_a_device_that_starts_at_once_needs_no_tap(self):
+        code, out, first, data = self.flash_and_restart(False, drop_ack={1}, nak={3})
+        self.assertEqual(code, 0, out)
+        self.assertEqual(bytes(first.written), data)
+        self.assertIn('VALID', out)
+        self.assertNotIn('Tap', out)
+        for answer, words in (('trial', 'on trial'), ('busy', 'already open')):
+            code, out, _, _ = self.nap([self.file(image())], Ports([PRO]),
+                                       {PRO.device: lambda a=answer: FakeX4Pro(answer=a, wait=False)})
+            self.assertEqual(code, 1)
+            self.assertIn(words, out)
+
+    def test_the_plan_does_not_promise_a_tap(self):
+        # The device starts at once: no screen to answer, so the plan must not say there is one.
+        code, out, _, _ = self.nap([self.file(image()), '--dry-run'], Ports([PRO]), {PRO.device: FakeX4Pro})
+        self.assertEqual(code, 0, out)
+        self.assertNotIn('ask on the device', out)
 
     def test_a_refusal_on_the_device_is_reported(self):
         for answer, words in (('denied', 'declined'), ('trial', 'on trial'), ('busy', 'already open')):

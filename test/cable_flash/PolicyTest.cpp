@@ -119,3 +119,29 @@ TEST(CablePolicy, ScreenDecisionCoversCableEntryAndExit) {
   EXPECT_EQ(decidePolicy(PolicyInput{true, false, false, false, false, false, ""}).action,
             PolicyAction::Finish);
 }
+
+// The founder's rule: the cable channel never asks for a tap, with or without the recovery keys. Every input
+// that opens a session is tried; the decision itself must say so (the caller only follows it).
+TEST(CablePolicy, NoSessionThatCanOpenAsksForATap) {
+  using cableflash::PolicyAction;
+  using cableflash::PolicyInput;
+  using cableflash::decidePolicy;
+  int opened = 0;
+  for (int bits = 0; bits < 64; ++bits) {
+    for (const bool consented : {false, true}) {
+      PolicyInput in;
+      in.readerOpen = bits & 1;
+      in.confirmationOpen = bits & 2;
+      in.updateOpen = bits & 4;
+      in.updateIsCable = bits & 8;
+      in.updateFailed = bits & 16;
+      in.book = bits & 32 ? "/book.epub" : "";
+      in.consented = consented;
+      const auto decision = decidePolicy(in);
+      if (decision.action != PolicyAction::Push && decision.action != PolicyAction::Replace) continue;
+      ++opened;
+      EXPECT_FALSE(decision.askTap) << "bits=" << bits << " consented=" << consented;
+    }
+  }
+  EXPECT_GT(opened, 0);
+}

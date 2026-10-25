@@ -57,22 +57,25 @@ struct PolicyInput {
   bool updateIsCable = false;
   bool updateFailed = false;
   const char* book = nullptr;
+  bool consented = false;  // the recovery keys were held at power on
 };
 
 struct PolicyDecision {
   PolicyAction action;
   const char* book;
+  bool askTap = false;  // the device asks for a tap before the session starts
 };
 
 // The only policy for opening a cable session and leaving it. Callers supply screen facts and the
 // saved book path, so this rule stays independent of Activity and remains host-testable.
 inline PolicyDecision decidePolicy(const PolicyInput& in) {
-  if (in.ending) return {in.book && in.book[0] != '\0' ? PolicyAction::ReturnToBook : PolicyAction::Finish, in.book};
-  if (in.confirmationOpen) return {PolicyAction::Reject, nullptr};
+  if (in.ending) return {in.book && in.book[0] != '\0' ? PolicyAction::ReturnToBook : PolicyAction::Finish, in.book, false};
+  if (in.confirmationOpen) return {PolicyAction::Reject, nullptr, false};
   if (in.updateOpen) {
-    return {in.updateIsCable && in.updateFailed ? PolicyAction::Replace : PolicyAction::Reject, in.book};
+    const bool reopen = in.updateIsCable && in.updateFailed;
+    return {reopen ? PolicyAction::Replace : PolicyAction::Reject, in.book, reopen && !in.consented};
   }
-  return {in.readerOpen ? PolicyAction::Replace : PolicyAction::Push, in.book};
+  return {in.readerOpen ? PolicyAction::Replace : PolicyAction::Push, in.book, !in.consented};
 }
 
 // "<size> <sha256 as 64 hex digits> <version>"; the version is what the user is asked about, and END
