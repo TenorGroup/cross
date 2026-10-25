@@ -4,6 +4,7 @@
 #include <GfxRenderer.h>
 #include <gtest/gtest.h>
 #include <Arduino.h>
+#include <TxtToHtml.h>
 #include <algorithm>
 #include <array>
 #include <filesystem>
@@ -3302,4 +3303,114 @@ TEST(AllocationProbe, ArrayDeleteGivesBackWhatArrayNewCounted) {
   const long after = allocationProbe::live;
   allocationProbe::enabled = false;
   EXPECT_EQ(after, before);
+}
+
+// A TXT book is one chapter of lines. Its converted HTML must give the parser block boundaries to park at
+// and resume from (a checkpoint), as the paragraphs of an EPUB do; without them a long TXT builds in one
+// piece, and every build that stops short of its end starts the next one from the first page.
+namespace {
+struct HtmlText : Print {
+  std::string str;
+  size_t write(uint8_t b) override {
+    str.push_back(static_cast<char>(b));
+    return 1;
+  }
+  size_t write(const uint8_t* data, size_t length) override {
+    str.append(reinterpret_cast<const char*>(data), length);
+    return length;
+  }
+};
+
+std::string txtBook(const unsigned lines) {
+  std::string text;
+  for (unsigned line = 0; line < lines; ++line) {
+    if (line % 11 == 7) {  // a blank line, as between paragraphs
+      text += "\n";
+      continue;
+    }
+    if (line % 13 == 5) text += "   ";  // an indented line
+    for (unsigned word = 0; word < 6 + line % 40; ++word) text += "w" + std::to_string(line) + "x" + std::to_string(word) + " ";
+    text += (line % 17 == 3 ? "\r\n" : "\n");
+  }
+  return text;
+}
+
+std::string txtHtml(const std::string& text) {
+  HtmlText out;
+  EXPECT_TRUE(TxtToHtml::stream("book.txt", text, out));
+  return out.str;
+}
+
+std::string withoutDivs(std::string html) {
+  for (const char* tag : {"<div>", "</div>"}) {
+    for (size_t at = html.find(tag); at != std::string::npos; at = html.find(tag, at)) html.erase(at, strlen(tag));
+  }
+  return html;
+}
+}  // namespace
+
+TEST_F(SectionCacheTest, ATxtBookParksAtACheckpointAndResumesToTheColdBytes) {
+  epub->contents = txtHtml(txtBook(1500));
+  spec.viewportWidth = 480;
+  spec.viewportHeight = 320;
+  std::filesystem::remove_all(root / "html");
+  std::filesystem::remove(cache());
+  std::string cold;
+  {
+    Section section(epub, 0, renderer);
+    ASSERT_TRUE(section.createSectionFile(spec));
+    ASSERT_TRUE(section.isBuildComplete());
+    ASSERT_GT(section.pageCount, 64);
+    cold = bytes(cache());
+  }
+  const std::string partial = makeDensePartial(40);
+  ASSERT_FALSE(partial.empty());
+  const auto checkpoint = checkpointOffset(partial);
+  ASSERT_TRUE(checkpoint.has_value());
+  EXPECT_EQ(pod<uint32_t>(partial, *checkpoint), 0x43504b31u) << "the partial of a TXT carries no checkpoint";
+  Section resumed(epub, 0, renderer);
+  ASSERT_TRUE(resumed.loadSectionFile(spec));
+  ASSERT_TRUE(resumed.startBuild(spec));
+  while (!resumed.isBuildComplete()) ASSERT_TRUE(resumed.buildSomeMore(8));
+  EXPECT_EQ(bytes(cache()), cold);
+}
+
+// The grouping is for the parser alone: with it or without it, a page holds the same words in the same places,
+// whatever the paragraph spacing, indent and alignment the reader chose.
+TEST_F(SectionCacheTest, GroupingATxtDoesNotMoveAnythingOnItsPages) {
+  const std::string text = txtBook(300);
+  const std::string grouped = txtHtml(text);
+  const std::string plain = withoutDivs(grouped);
+  struct Look {
+    uint8_t spacing, indent, alignment;
+    bool embedded;
+  };
+  for (const Look look : {Look{0, 2, 0, false}, Look{3, 0, 0, false}, Look{4, 4, 3, true}, Look{1, 2, 1, false},
+                          Look{2, 3, 2, true}}) {
+    SCOPED_TRACE(int(look.spacing) * 1000 + int(look.indent) * 100 + int(look.alignment) * 10 + look.embedded);
+    spec.extraParagraphSpacing = look.spacing;
+    spec.paragraphIndentSpaces = look.indent;
+    spec.paragraphAlignment = look.alignment;
+    spec.embeddedStyle = look.embedded;
+    spec.viewportWidth = 300;
+    spec.viewportHeight = 200;
+    std::vector<std::string> pages[2];
+    for (const bool group : {false, true}) {
+      epub->contents = group ? grouped : plain;
+      std::filesystem::remove_all(root / "html");
+      std::filesystem::remove(cache());
+      Section section(epub, 0, renderer);
+      ASSERT_TRUE(section.createSectionFile(spec));
+      ASSERT_TRUE(section.isBuildComplete());
+      for (uint16_t i = 0; i < section.pageCount; ++i) {
+        auto page = section.loadPage(i);
+        ASSERT_NE(page, nullptr);
+        std::string signature;
+        ASSERT_TRUE(serializedPageSignature(*page, root / "page.sig", signature));
+        pages[group].push_back(signature);
+      }
+    }
+    ASSERT_GT(pages[0].size(), 8u);
+    EXPECT_EQ(pages[0], pages[1]);
+  }
 }

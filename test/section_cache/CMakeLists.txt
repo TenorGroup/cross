@@ -31,6 +31,7 @@ add_executable(SectionCacheTest
   ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/WordStore.cpp
   ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/converters/ImageDimsProbe.cpp
   ${SECTION_SOURCE_ROOT}/lib/Utf8/Utf8.cpp
+  ${SECTION_SOURCE_ROOT}/lib/Txt/TxtToHtml.cpp
 )
 target_include_directories(SectionCacheTest PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/stubs
@@ -46,6 +47,7 @@ target_include_directories(SectionCacheTest PRIVATE
   ${SECTION_SOURCE_ROOT}/lib/Serialization
   ${SECTION_SOURCE_ROOT}/lib/MiniBidi
   ${SECTION_SOURCE_ROOT}/lib/FsHelpers
+  ${SECTION_SOURCE_ROOT}/lib/Txt
   ${SECTION_SOURCE_ROOT}/lib/XmlParserUtils
   ${REPO_ROOT}/freeink-sdk/libs/hardware/SDCardManager/include)
 target_link_libraries(SectionCacheTest PRIVATE GTest::gtest_main expat)
