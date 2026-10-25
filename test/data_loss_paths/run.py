@@ -66,6 +66,7 @@ def main():
     methods = [deletion, sdk] + [method(dav, signature) for signature in (
         'String WebDAVHandler::getRequestPath(', 'bool WebDAVHandler::isProtectedPath(', 'void WebDAVHandler::handleDelete(')]
     (build/'policy.h').write_text(get('src/network/WebPathPolicy.h'))
+    (build/'ProtectedPaths.h').write_text(get('src/network/ProtectedPaths.h'))
     generated = (HERE/'card.cpp.in').read_text().replace('@NORMALIZE@', normalize).replace('@METHODS@', '\n'.join(methods))
     (build/'card.cpp').write_text(generated)
     (build/'hashes.json').write_text(json.dumps(inputs, indent=2)+'\n')
