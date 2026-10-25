@@ -1,5 +1,11 @@
 #include "OpdsHttpTransport.h"
 
+#include <HalClock.h>
+#include <NetworkTrust.h>
+
+#include <ctime>
+
+#include "../../freeink-sdk/libs/network/SecureNet/include/HttpUrl.h"
 #include "network/HttpDownloader.h"
 #include "util/UrlUtils.h"
 
@@ -29,4 +35,11 @@ bool OpdsHttpTransport::postForm(const std::string& url, const std::string& body
 
 std::string OpdsHttpTransport::resolveUrl(const std::string& base, const std::string& ref) {
   return UrlUtils::buildUrl(base, ref);
+}
+
+const char* OpdsHttpTransport::rootsFor(const std::string& url) {
+  freeink::http_url::Parts parsed;
+  if (!freeink::http_url::parse(url, parsed)) return nullptr;
+  if (parsed.tls && time(nullptr) < 1735689600 && !halClock.syncFromNTP()) return nullptr;
+  return network_trust::forUrl(url);
 }

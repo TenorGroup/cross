@@ -15,4 +15,7 @@ class OpdsHttpTransport final : public freeink::opds::OpdsTransport {
   bool postForm(const std::string& url, const std::string& body, std::string& outResponse, int& outStatus) override;
 
   std::string resolveUrl(const std::string& base, const std::string& ref) override;
+
+  // The roots network_trust gives the host, once the clock is real (a certificate is judged against it).
+  const char* rootsFor(const std::string& url) override;
 };
