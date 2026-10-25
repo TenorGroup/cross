@@ -755,6 +755,26 @@ TEST_F(SectionCacheTest, RejectsFinalCacheOfEarlierFirmwareVersions) {
     EXPECT_FALSE(reopened.loadSectionFile(spec)) << int(version);
   }
 }
+// The card moves between boards, and a board with PSRAM sizes headings and CSS font-sizes where one without keeps the
+// book's size: the layouts differ, so each must rebuild the other's. The byte after the render spec (the header's
+// Focus Reading byte: bit 0 Focus Reading, bit 1 headings sized, bit 2 sizes loaded) is part of the key.
+TEST_F(SectionCacheTest, ACacheOfABoardThatSizesItsFontsOtherwiseIsRebuilt) {
+  constexpr size_t flagsOffset = 22;
+  ASSERT_EQ(pod<uint16_t>(valid, pageCountOffset), fullPages);
+  writeCache(valid);
+  {
+    Section same(epub, 0, renderer);
+    EXPECT_TRUE(same.loadSectionFile(spec));
+  }
+  for (const uint8_t flip : {1, 2, 4, 6}) {
+    std::string other = valid;
+    other[flagsOffset] = static_cast<char>(other[flagsOffset] ^ flip);
+    writeCache(other);
+    Section reopened(epub, 0, renderer);
+    EXPECT_FALSE(reopened.loadSectionFile(spec)) << int(flip);
+  }
+}
+
 TEST_F(SectionCacheTest, RejectsPartialCacheOfEarlierFirmwareVersions) {
   {
     Section partial(epub, 0, renderer);
