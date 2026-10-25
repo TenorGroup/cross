@@ -15,6 +15,7 @@
 #include <algorithm>
 
 #include "CrossPointSettings.h"
+#include "PxcSleepBmp.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "components/TenorMenuChrome.h"
 #include "activities/home/DocThuMuc.h"
@@ -28,7 +29,6 @@ constexpr char JPEG_SLEEP_TMP_PXC[] = "/sleep.bmp.pxc.tmp";
 constexpr char TRANSPARENT_SLEEP_ROOT_BMP[] = "/sleep-overlay.bmp";
 constexpr char TRANSPARENT_SLEEP_ROOT_PNG[] = "/sleep-overlay.png";
 constexpr size_t COPY_BUFFER_SIZE = 2048;
-constexpr uint8_t GRAYSCALE_PALETTE[] = {0, 0, 0, 0, 85, 85, 85, 0, 170, 170, 170, 0, 255, 255, 255, 0};
 
 RenderConfig fitImage(const ImageDimensions& dimensions, const GfxRenderer& renderer) {
   const float scale = std::min({static_cast<float>(renderer.getScreenWidth()) / dimensions.width,
@@ -355,48 +355,7 @@ bool BmpViewerActivity::saveJpegSleepCover() {
     return false;
   }
 
-  HalFile input, output;
-  if (!Storage.openFileForRead("BMP", JPEG_SLEEP_TMP_PXC, input)) return false;
-  uint16_t width, height;
-  if (input.read(&width, sizeof(width)) != sizeof(width) || input.read(&height, sizeof(height)) != sizeof(height) ||
-      width != config.maxWidth || height != config.maxHeight) {
-    LOG_ERR("BMP", "Invalid sleep image pixels");
-    return false;
-  }
-  const size_t pixelRowBytes = (width + 3) / 4;
-  const size_t bmpRowBytes = (width + 15) / 16 * 4;
-  if (input.size() != 4 + pixelRowBytes * height) {
-    LOG_ERR("BMP", "Incomplete sleep image pixels");
-    return false;
-  }
-  auto row = makeUniqueNoThrow<uint8_t[]>(bmpRowBytes);
-  if (!row) {
-    LOG_ERR("BMP", "OOM: sleep image row");
-    return false;
-  }
-  if (!Storage.openFileForWrite("BMP", CUSTOM_SLEEP_TMP_BMP, output)) return false;
-  BmpHeader header;
-  createBmpHeader(&header, width, height, BmpRowOrder::TopDown);
-  header.infoHeader.biBitCount = 2;
-  header.infoHeader.biClrUsed = header.infoHeader.biClrImportant = 4;
-  header.infoHeader.biSizeImage = bmpRowBytes * height;
-  header.fileHeader.bfOffBits = sizeof(header) - sizeof(header.colors) + sizeof(GRAYSCALE_PALETTE);
-  header.fileHeader.bfSize = header.fileHeader.bfOffBits + header.infoHeader.biSizeImage;
-  if (output.write(&header, sizeof(header) - sizeof(header.colors)) != sizeof(header) - sizeof(header.colors) ||
-      output.write(GRAYSCALE_PALETTE, sizeof(GRAYSCALE_PALETTE)) != sizeof(GRAYSCALE_PALETTE)) {
-    LOG_ERR("BMP", "Failed to write sleep image header");
-    return false;
-  }
-  for (int y = 0; y < height; ++y) {
-    if (input.read(row.get(), pixelRowBytes) != pixelRowBytes || output.write(row.get(), bmpRowBytes) != bmpRowBytes) {
-      LOG_ERR("BMP", "Failed to write sleep image row %d", y);
-      return false;
-    }
-  }
-  if (!output.close()) {
-    LOG_ERR("BMP", "Failed to close sleep image");
-    return false;
-  }
+  if (!pxcsleep::toBmp(JPEG_SLEEP_TMP_PXC, CUSTOM_SLEEP_TMP_BMP, config.maxWidth, config.maxHeight)) return false;
   if (!Storage.replaceFile(CUSTOM_SLEEP_TMP_BMP, CUSTOM_SLEEP_ROOT_BMP)) {
     // ponytail: FAT replacement is not atomic; keep the complete temp for recovery.
     keepBmpTemp = true;
