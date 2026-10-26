@@ -38,13 +38,25 @@ won't trigger deprecation warnings.
 #if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
 #if defined(ARDUINO_USB_MODE) && !ARDUINO_USB_MODE
 using LogSerialPort = USBCDC;
+#define LOG_SERIAL_HWCDC 0
 #else
 using LogSerialPort = HWCDC;
+#define LOG_SERIAL_HWCDC 1
 #endif
 #define LOG_SERIAL_HAS_TX_TIMEOUT 1
 #else
 using LogSerialPort = HardwareSerial;
 #define LOG_SERIAL_HAS_TX_TIMEOUT 0
+#define LOG_SERIAL_HWCDC 0
+#endif
+
+#if LOG_SERIAL_HAS_TX_TIMEOUT
+// The tx timeout that lets one write wait at most `waitMs` for a host that stopped reading. HWCDC waits
+// its timeout once per try and gives up after 20 tries with no progress (HWCDC.cpp); TinyUSB's port
+// counts it once per write.
+constexpr uint32_t logSerialTimeoutFor(const uint32_t waitMs) {
+  return LOG_SERIAL_HWCDC ? (waitMs >= 20 ? waitMs / 20 : 1) : waitMs;
+}
 #endif
 
 // X4 Pro probe build: the unit under test may have no working serial link, so what the probe
@@ -99,6 +111,7 @@ class LogSerialTee {
   void setTxTimeoutMs(uint32_t ms) { port.setTxTimeoutMs(ms); }
   void enableReboot(bool on) { port.enableReboot(on); }
   operator bool() const { return static_cast<bool>(port); }
+  Port& raw() { return port; }  // log lines: the copy is kept apart from the send (Logging.cpp)
 
  private:
   Port& port;

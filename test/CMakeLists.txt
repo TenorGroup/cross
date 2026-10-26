@@ -345,6 +345,8 @@ add_test(NAME ProbeFlags COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE
 # The release packager (scripts/package_tenor_ota.py): board tags, the cable channel of the X4 Pro and X4 Classic.
 add_test(NAME OtaPackage COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/ota_package/test_package.py")
 add_test(NAME BuiltinFontMetadata COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/font_metadata/test_pooling.py")
+add_test(NAME LoggingPortNeverWaits COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/logging_low_clock/run.py"
+         --output "${CMAKE_CURRENT_BINARY_DIR}/logging_low_clock")
 add_test(NAME TiltSensorForegroundOwnership COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tilt_sensor_ownership/run.py" --source "${REPO_ROOT}")
 add_test(NAME ReaderMenuTilt COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tilt/run.py" --source "${REPO_ROOT}")
 add_test(NAME ImuDoubleTap COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/imu_double_tap/run.py" --source "${REPO_ROOT}")

@@ -2413,8 +2413,9 @@ void loop() {
       } else if (cmd.startsWith("TXTIMEOUT ")) {
         // CMD:TXTIMEOUT <ms>: the serial write timeout until the next restart, for the long dumps
         // (LOGDUMP, CAT, SCREENSHOT) over a CDC port that drops bytes at the load-bearing 1 ms.
+        // <ms> is the longest one write waits for a host that stopped reading, on either port.
         const long ms = std::max(1L, std::min(5000L, cmd.substring(10).toInt()));
-        logSerial.setTxTimeoutMs(static_cast<uint32_t>(ms));
+        logSerial.setTxTimeoutMs(logSerialTimeoutFor(static_cast<uint32_t>(ms)));
         logSerial.printf("TXTIMEOUT:%ld\n", ms);
 #endif
 #if (TENOR_CABLE_FLASH || defined(TENOR_X3_CARD_PROBE)) && !defined(SIMULATOR)

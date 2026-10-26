@@ -1,19 +1,27 @@
 #pragma once
+#include <chrono>
+#include <thread>
+
 #include "Arduino.h"
 class HardwareSerial {
  public:
   bool connected = false;
   unsigned writes = 0;
   std::string bytes;
+  size_t room = 4096;    // free bytes in the TX buffer; the host drains what it is given at once
+  int stallMs = 0;       // a write that does not fit waits this long, then takes nothing (HWCDC: 20 tries)
+  bool refuse = false;   // the port takes nothing (TinyUSB's write timed out)
   operator bool() const { return connected; }
-  size_t print(const char* text) {
-    ++writes;
-    bytes += text;
-    return strlen(text);
-  }
+  int availableForWrite() { return static_cast<int>(room); }
+  size_t print(const char* text) { return write(reinterpret_cast<const uint8_t*>(text), strlen(text)); }
   size_t write(const uint8_t* data, size_t len) {
     ++writes;
-    bytes.append(reinterpret_cast<const char*>(data), len);
+    if (connected && refuse) return 0;
+    if (connected && len > room) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(stallMs));
+      return 0;
+    }
+    bytes.append(reinterpret_cast<const char*>(data), len);  // with no host the port queues, never waits
     return len;
   }
   size_t printf(const char* format, ...) {

@@ -3,6 +3,7 @@
 #include <BoardConfig.h>
 #include <esp_rom_sys.h>
 
+#include <atomic>
 #include <string>
 
 #define MAX_ENTRY_LEN 256
@@ -103,6 +104,59 @@ void addToLogRingBuffer(const char* message) {
   logHead = (logHead + 1) % MAX_LOG_LINES;
 }
 
+#if LOG_SERIAL_HAS_TX_TIMEOUT && FREEINK_LOG_TRANSPORT != FREEINK_LOG_TRANSPORT_ROM_PRINTF
+// A log line never waits on a USB port the host does not drain. On the X3 the C3's USB Serial/JTAG
+// once stopped taking IN data with the host still reading, and HWCDC::write held the loop and the
+// render task 20 tries x the tx timeout per line (lane/TREO-X3.md): the unit stood still. A line goes
+// out only when the port has room for it. With none it waits up to kLogRoomWaitMs for a host that is
+// reading, then is dropped and counted; once one was dropped the next ones do not wait. When the room
+// is back "[LOG] lines dropped: N" goes out first. Command replies (logSerial.printf) and the cable
+// flash lines (CableFlash.h) do not come here and keep the port's own timeout.
+static constexpr int kLogRoomWaitMs = 10;
+static std::atomic<uint32_t> logLinesDropped{0};
+
+// Room the port must have before a write that cannot wait for the host.
+static size_t logRoomFor(const size_t n) {
+#if LOG_SERIAL_HWCDC
+  return n;  // the TX ring takes a write whole or waits
+#else
+  return std::min<size_t>(n, 64);  // TinyUSB holds 64 B and the write hands it the rest as the host reads
+#endif
+}
+
+template <typename Port>
+static void sendLogLine(Port& port, const char* line, const size_t n, const unsigned long ms) {
+  if (!port) {
+    // No host, or a SOF-watchdog flap at the 10 MHz clock: write() queues without waiting and re-arms
+    // the TX interrupt that brings the port back.
+    port.write(reinterpret_cast<const uint8_t*>(line), n);
+    return;
+  }
+  const uint32_t dropped = logLinesDropped.load();
+  char note[48];
+  size_t noteLen = 0;
+  if (dropped) {
+    noteLen = std::min<size_t>(snprintf(note, sizeof(note), "[%lu] [INF] [LOG] lines dropped: %u\n", ms,
+                                        static_cast<unsigned>(dropped)),
+                               sizeof(note) - 1);
+  }
+  size_t room = static_cast<size_t>(std::max(0, port.availableForWrite()));
+  for (int i = 0; !dropped && room < logRoomFor(n) && i < kLogRoomWaitMs; ++i) {
+    delay(1);
+    room = static_cast<size_t>(std::max(0, port.availableForWrite()));
+  }
+  if (room < logRoomFor(noteLen + n)) {
+    logLinesDropped.fetch_add(1);
+    return;
+  }
+  if (noteLen) {
+    port.write(reinterpret_cast<const uint8_t*>(note), noteLen);
+    logLinesDropped.fetch_sub(dropped);
+  }
+  if (port.write(reinterpret_cast<const uint8_t*>(line), n) < n) logLinesDropped.fetch_add(1);
+}
+#endif
+
 // Since logging can take a large amount of flash, we want to make the format string as short as possible.
 // This logPrintf prepend the timestamp, level and origin to the user-provided message, so that the user only needs to
 // provide the format string for the message itself.
@@ -116,9 +170,9 @@ void logPrintf(const char* level, const char* origin, const char* format, ...) {
 void vlogPrintf(const char* level, const char* origin, const char* format, va_list args) {
   char buf[MAX_ENTRY_LEN];
   char* c = buf;
+  const unsigned long ms = millis();
   // add timestamp, level and origin
   {
-    unsigned long ms = millis();
     int len = snprintf(c, sizeof(buf), "[%lu] [%s] [%s] ", ms, level, origin);
     // error while writing => return
     if (len < 0) {
@@ -138,11 +192,12 @@ void vlogPrintf(const char* level, const char* origin, const char* format, va_li
   // Sticky's USB serial bridge uses UART0; ROM output also works before Serial0.begin().
   esp_rom_printf("%s", buf);
 #elif TENOR_COLD_LOG
-  logSerial.print(buf);  // the tee keeps the copy, with or without a host on the port
+  // The copy keeps every line, with or without a host on the port.
+  probeLogAppend(buf, strnlen(buf, sizeof(buf)));
+  sendLogLine(logSerial.raw(), buf, strnlen(buf, sizeof(buf)), ms);
+#elif LOG_SERIAL_HAS_TX_TIMEOUT
+  sendLogLine(logSerial, buf, strnlen(buf, sizeof(buf)), ms);
 #else
-  // Write even when `logSerial` reports disconnected: after a brief SOF-watchdog flap
-  // (common at the 10 MHz low-power clock) HWCDC keeps `connected` false until its next
-  // TX interrupt. write() queues without blocking in that state and re-arms that interrupt.
   logSerial.print(buf);
 #endif
   addToLogRingBuffer(buf);
