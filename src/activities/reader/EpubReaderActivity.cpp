@@ -2423,8 +2423,10 @@ void EpubReaderActivity::loop() {
   // Anything still queued goes first, so a new press joins the queue behind it, and so does a
   // press while the page on screen still waits for its layout.
   if (turnGuardActive || pendingManualTurn != 0 || pageAwaitsLayout()) {
+    const int8_t queuedBefore = pendingManualTurn;
     pendingManualTurn = static_cast<int8_t>(
         std::clamp<int>(pendingManualTurn + (prevTriggered ? -1 : 1), -MAX_QUEUED_TURNS, MAX_QUEUED_TURNS));
+    if (pendingManualTurn == queuedBefore) sideHoldTurn = 0;  // a press the full queue refused turned no page
 #ifdef TENOR_TURN_TRACE
     replaceQueuedTurnTrace(pendingManualTurnTrace, currentTurnTrace, "manual_guard", true);
     currentTurnTrace = {};
