@@ -625,6 +625,48 @@ int main() {
     // The press added no page (the queue was full), so the hold goes back one, not two.
     require(reader.pendingManualTurn == reader.MAX_QUEUED_TURNS - 1, "the hold went back for a page the press never queued");
   });
+  // X3 journey lui-40 (may/x3/c9/ht8, 1968500-1969503): a front Prev press is queued while page 0 of
+  // chapter 3 paints; the pass that drains it into chapter 2 (no section until its paint lays it out)
+  // also reads the next Prev press. A dropped press leaves the 40 presses back one page short.
+  test("EPUB press read in the pass that turns back into an unlaid chapter is queued", [] {
+    struct Reader : EpubReaderActivity {
+      // Every production turn (EpubReaderActivity::latTrangThat) stamps lastPageTurnTime.
+      bool latTrangThat(bool forward) override { ready = false; return EpubReaderActivity::latTrangThat(forward); }
+    } reader;
+    reader.chapter = 1;
+    reader.layout(0, 12, true);  // page 0 of chapter 3, still being laid out
+    reader.ready = false;        // its paint: the Prev press joins the queue
+    reader.manualInput(true, true, false, false);
+    require(reader.pendingManualTurn == -1, "setup: the press during the paint was not queued");
+    reader.ready = true;  // the paint is done
+    nowMs = 1500;
+    reader.drainThenInput(true, true, false, false);  // drains into chapter 2 and reads the next press
+    require(!reader.section && reader.chapter == 0, "setup: the drain did not turn back into chapter 2");
+    require(reader.pendingManualTurn == -1, "the press read in the drain pass was dropped");
+    reader.layout(13, 14, false);  // the paint lays chapter 2 out on its last page
+    reader.ready = true;
+    nowMs = 1800;
+    reader.drainManual();
+    require(reader.section->currentPage == 12, "two presses back from chapter 3 did not end two pages back");
+  });
+  test("EPUB press read in the pass that turns on into an unlaid chapter is queued", [] {
+    struct Reader : EpubReaderActivity {
+      bool latTrangThat(bool forward) override { ready = false; return EpubReaderActivity::latTrangThat(forward); }
+    } reader;
+    reader.layout(9, 10, false);  // the last page of chapter 0
+    reader.ready = false;
+    reader.manualInput(false, false, false, false);
+    reader.ready = true;
+    nowMs = 1500;
+    reader.drainThenInput(false, false, false, false);
+    require(!reader.section && reader.chapter == 1, "setup: the drain did not turn on into chapter 1");
+    require(reader.pendingManualTurn == 1, "the press read in the drain pass was dropped");
+    reader.layout(0, 10, false);
+    reader.ready = true;
+    nowMs = 1800;
+    reader.drainManual();
+    require(reader.section->currentPage == 1, "two presses on from chapter 0 did not end on page 1 of chapter 1");
+  });
   std::cout << "RESULT " << tests - failures << "/" << tests << " passed\n";
   return failures ? 1 : 0;
 }
