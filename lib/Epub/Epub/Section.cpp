@@ -1240,7 +1240,14 @@ bool Section::parkAtChapterTop() {
 // reader is on vanished and every later turn laid the chapter out again up to it.
 bool Section::parkAfterSizeRefused() {
   if (parkAtLastCheckpoint()) return true;
-  if (builtPageCount_ > 0 && (!partial_ || builtPageCount_ > partialPageCount_)) {
+  keepBuiltPagesAsPartial();
+  return parkAtChapterTop();
+}
+
+// The pages this build has finished go to the card as a partial without a checkpoint, when they are more than the
+// partial already there covers. The parser stays alive for its anchors; a page being written is not among them.
+void Section::keepBuiltPagesAsPartial() {
+  if (build_->parser && builtPageCount_ > 0 && (!partial_ || builtPageCount_ > partialPageCount_)) {
     const uint32_t consumed = static_cast<uint32_t>(build_->parser->parseBytesConsumed());
     if (commitBuildFile(SECTION_FILE_PARTIAL_VERSION, consumed, build_->totalBytes)) {
       partial_ = true;
@@ -1248,10 +1255,9 @@ bool Section::parkAfterSizeRefused() {
       partialBytesConsumed_ = consumed;
       partialTotalBytes_ = build_->totalBytes;
       ddClose(*build_, true, false);
-      LOG_INF("SCT", "Size refused: %u pages kept as a partial", builtPageCount_);
+      LOG_INF("SCT", "%u pages kept as a partial", builtPageCount_);
     }
   }
-  return parkAtChapterTop();
 }
 
 // The card did not take a page whole (X3 c9/ht5: 123 bytes short at free 70 KB, largest 20 KB; the write allocates
@@ -1265,7 +1271,15 @@ bool Section::parkAfterPageWriteFailed() {
           static_cast<unsigned>(ESP.getMaxAllocHeap()));
   build_->pageWriteRetried = true;
   build_->failed = false;
-  if (parkAtLastCheckpoint() || parkAtChapterTop()) return true;
+  // Not at the checkpoint the build resumed from: the pages finished since cannot be taken back out of the staging
+  // file, and dropped with the rest the chapter was laid out again from its first page (rule 16). They go to the card
+  // as a partial, readable while the chapter is laid out again; the file is at the start of the refused page, so the
+  // table written after the last good page goes over what the card took of it. A cache already committed on the card
+  // stays as it was until the new one is whole: only a partial of this build, or no file, is written over.
+  const bool parked = parkAtLastCheckpoint();
+  if (!parked && (partial_ || !Storage.exists(filePath.c_str()))) keepBuiltPagesAsPartial();
+  build_->pageWriteFailed = false;
+  if (parked || parkAtChapterTop()) return true;
   build_->failed = true;
   return false;
 }
@@ -1717,7 +1731,9 @@ bool Section::commitBuildFile(const uint8_t version, const uint32_t bytesConsume
     return false;
   };
   // A parser that stopped on a refused size holds pages that are sound (the refusal is the heap's, not the chapter's).
-  if (build_->failed || (build_->parser->hasFailed() && !build_->parser->sizeRefused()) || !file || !build_->lut ||
+  if (build_->failed ||
+      (build_->parser->hasFailed() && !build_->parser->sizeRefused() && !build_->pageWriteFailed) || !file ||
+      !build_->lut ||
       !flushLutPending(*build_))
     return failCommit();
 

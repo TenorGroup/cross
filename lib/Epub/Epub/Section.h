@@ -138,6 +138,7 @@ class Section {
   bool parkAtLastCheckpoint();
   // A refused font size: park at the last checkpoint, or keep the finished pages as a partial and park at the top.
   bool parkAfterSizeRefused();
+  void keepBuiltPagesAsPartial();
   // A page write the card did not take: park at the last checkpoint or the top, once per build. True when parked.
   bool parkAfterPageWriteFailed();
   static bool stepHeapAvailable();
