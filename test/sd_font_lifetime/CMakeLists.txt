@@ -15,6 +15,8 @@ add_executable(SdFontLifetimeTest
   ${REPO_ROOT}/lib/GfxRenderer/FontCacheManager.cpp
   ${REPO_ROOT}/lib/GfxRenderer/InlineSymbols.cpp
   ${REPO_ROOT}/lib/Epub/Epub/blocks/TextBlock.cpp
+  ${REPO_ROOT}/lib/Epub/Epub/CjkBreaks.cpp
+  ${REPO_ROOT}/lib/Epub/Epub/hyphenation/HyphenationCommon.cpp
   ${REPO_ROOT}/lib/MiniBidi/BidiUtils.cpp
   ${REPO_ROOT}/lib/MiniBidi/minibidi.c
 )
@@ -76,6 +78,7 @@ get_filename_component(RUBY_BLOCK_DIR "${RUBY_TEXT_SOURCE}" DIRECTORY)
 file(READ "${RUBY_TEXT_SOURCE}" RUBY_BLOCK_CODE)
 string(REPLACE "#include \"TextBlock.h\"" "#include \"${RUBY_BLOCK_DIR}/TextBlock.h\"" RUBY_BLOCK_CODE "${RUBY_BLOCK_CODE}")
 string(REPLACE "../../../../src/fontIds.h" "${REPO_ROOT}/src/fontIds.h" RUBY_BLOCK_CODE "${RUBY_BLOCK_CODE}")
+string(REPLACE "../CjkBreaks.h" "${RUBY_BLOCK_DIR}/../CjkBreaks.h" RUBY_BLOCK_CODE "${RUBY_BLOCK_CODE}")
 string(REPLACE "void TextBlock::render(const GfxRenderer& renderer, const int sectionFontId, const int x, const int y) const {"
   "void TextBlock::render(const GfxRenderer& renderer, const int sectionFontId, const int x, const int y) const { ++rasterBlockCalls;"
   RUBY_BLOCK_CODE "${RUBY_BLOCK_CODE}")

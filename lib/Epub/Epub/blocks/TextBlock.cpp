@@ -11,8 +11,10 @@
 
 #include <algorithm>
 #include <cstring>
+#include <string_view>
 
 #include "../../../../src/fontIds.h"
+#include "../CjkBreaks.h"
 
 size_t TextBlock::arenaSize(const uint16_t wordCount, const bool hasFocus, const uint16_t textBytes) {
   // Layout documented in TextBlock.h: 16-bit arrays first, then 8-bit arrays, then text.
@@ -356,9 +358,8 @@ void TextBlock::render(const GfxRenderer& renderer, const int sectionFontId, con
       drawText(wordFont, drawX, wordY, word, currentStyle, baseDir);
     }
 
-    // Horizontal ruby text, centred over its group. Layout (extractLine) has already reserved
-    // extraStartOffset on the left and extraEndOffset on the right, so the centred x stays within
-    // the page margins.
+    // Horizontal ruby text over its group. Layout (extractLine) has already reserved extraStartOffset on
+    // the left and extraEndOffset on the right, so the ruby stays within the page margins.
     const auto ruby = getRubyText(i);
     if (!ruby.empty() && (currentStyle & EpdFontFamily::RUBY_CONTINUE) == 0) {
       int groupWordCount = 1;
@@ -370,8 +371,50 @@ void TextBlock::render(const GfxRenderer& renderer, const int sectionFontId, con
         groupWidth += renderer.getTextAdvanceX(fontId, wordText(i + k), wordStyle(i + k), tracking);
       }
       const int rubyWidth = renderer.getTextAdvanceX(fontId, ruby.data(), EpdFontFamily::SUP, tracking);
-      drawText(fontId, wordX - (rubyWidth - groupWidth) / 2, wordY - ascender, ruby.data(), EpdFontFamily::SUP,
-               baseDir);
+      const int rubyY = wordY - ascender;
+      // ruby-align: space-around (W3C simple ruby placement). A ruby narrower than its base is split into
+      // the tokens body text breaks at; each gap between tokens is twice the gap at either end, capped at
+      // half a base character, and the centers still coincide. One token, or a wider ruby, is centred.
+      std::vector<size_t> breaks;
+      int tokenSum = 0;
+      std::string tok;
+      if (!scanning && rubyWidth < groupWidth) {
+        const std::string rubyText(ruby);
+        breaks = CjkBreaks::characterBreakByteOffsets(rubyText);
+        for (size_t k = 0; !breaks.empty() && k <= breaks.size(); ++k) {
+          const size_t b = k == 0 ? 0 : breaks[k - 1];
+          const size_t e = k == breaks.size() ? ruby.size() : breaks[k];
+          tok.assign(ruby.data() + b, e - b);
+          tokenSum += renderer.getTextAdvanceX(fontId, tok.c_str(), EpdFontFamily::SUP, tracking);
+        }
+        if (tokenSum >= groupWidth) breaks.clear();
+      }
+      if (breaks.empty()) {
+        drawText(fontId, wordX - (rubyWidth - groupWidth) / 2, rubyY, ruby.data(), EpdFontFamily::SUP, baseDir);
+      } else {
+        int baseChars = 0;
+        for (int k = 0; k < groupWordCount; ++k) {
+          for (const char* p = wordText(i + k); *p; ++p) {
+            if ((static_cast<uint8_t>(*p) & 0xC0) != 0x80) ++baseChars;
+          }
+        }
+        const int edgeCap = groupWidth / (2 * std::max(baseChars, 1));
+        const int n = static_cast<int>(breaks.size()) + 1;  // n >= 2 here
+        const int spread = groupWidth - tokenSum;
+        const int edge = std::min(spread / (2 * n), edgeCap);
+        const int innerTotal = spread - 2 * edge;
+        // Token k starts after the edge gap plus k inner gaps, computed from k so rounding does not build up.
+        int pen = 0;
+        for (int k = 0; k < n; ++k) {
+          const int t = baseDir == BidiUtils::BidiBaseDir::RTL ? n - 1 - k : k;
+          const size_t b = t == 0 ? 0 : breaks[t - 1];
+          const size_t e = t == n - 1 ? ruby.size() : breaks[t];
+          tok.assign(ruby.data() + b, e - b);
+          drawText(fontId, wordX + pen + edge + (innerTotal * k + (n - 1) / 2) / (n - 1), rubyY, tok.c_str(),
+                   EpdFontFamily::SUP, baseDir);
+          pen += renderer.getTextAdvanceX(fontId, tok.c_str(), EpdFontFamily::SUP, tracking);
+        }
+      }
     }
 
     if (scanning) {

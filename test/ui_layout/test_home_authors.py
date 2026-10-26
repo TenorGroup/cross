@@ -114,7 +114,7 @@ includes = ['test/button_symbols/stubs', 'test/sd_card_font/stubs', 'src', 'lib/
 sources = ['lib/GfxRenderer/GfxRenderer.cpp', 'lib/GfxRenderer/FontCacheManager.cpp',
            'lib/GfxRenderer/InlineSymbols.cpp', 'lib/EpdFont/EpdFont.cpp',
            'lib/EpdFont/EpdFontFamily.cpp', 'lib/EpdFont/SdCardFont.cpp', 'lib/Utf8/Utf8.cpp',
-           'lib/Epub/Epub/blocks/TextBlock.cpp', 'lib/MiniBidi/BidiUtils.cpp',
+           'lib/Epub/Epub/blocks/TextBlock.cpp', 'lib/Epub/Epub/CjkBreaks.cpp', 'lib/Epub/Epub/hyphenation/HyphenationCommon.cpp', 'lib/MiniBidi/BidiUtils.cpp',
            'lib/EpdFont/FontDecompressor.cpp', 'lib/InflateReader/InflateReader.cpp']
 exe = a.output / 'authors'
 bidi = a.output / 'minibidi.o'

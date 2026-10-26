@@ -5,7 +5,7 @@ p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);a
 root=Path(__file__).resolve().parents[2];a.output=a.output.resolve();a.output.mkdir(parents=True,exist_ok=True)
 fixture=Path(__file__).with_name('home_x3_pixels_fixture.cpp').read_text()
 units=['lib/GfxRenderer/GfxRenderer.cpp','lib/GfxRenderer/FontCacheManager.cpp','lib/GfxRenderer/InlineSymbols.cpp',
-       'lib/EpdFont/EpdFont.cpp','lib/EpdFont/EpdFontFamily.cpp','lib/Utf8/Utf8.cpp','lib/Epub/Epub/blocks/TextBlock.cpp',
+       'lib/EpdFont/EpdFont.cpp','lib/EpdFont/EpdFontFamily.cpp','lib/Utf8/Utf8.cpp','lib/Epub/Epub/blocks/TextBlock.cpp','lib/Epub/Epub/CjkBreaks.cpp','lib/Epub/Epub/hyphenation/HyphenationCommon.cpp',
        'lib/MiniBidi/BidiUtils.cpp','lib/MiniBidi/minibidi.c']
 includes=['src','src/components','lib/EpdFont','lib/Utf8','lib/GfxRenderer','lib/Epub','lib/Memory','lib/MiniBidi',
           'lib/Serialization','lib/hal','lib/I18n','freeink-sdk/libs/display/FreeInkDisplay/include']

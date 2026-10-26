@@ -2777,6 +2777,14 @@ void CrossPointWebServer::handleFetch() {
   // A certificate is judged against the clock: sync it first when it still has its cold-boot value.
   freeink::http_url::Parts urlParts;
   if (freeink::http_url::parse(url, urlParts) && urlParts.tls && time(nullptr) < 1735689600) halClock.syncFromNTP();
+  // The write callback only runs when bytes arrive; with the 60s no-data
+  // timeout a server stall would starve this task's WDT subscription.
+  // shouldAbort is polled in every wait loop, and by connect().
+  const auto feedWatchdog = [&] {
+    resetTaskWatchdogIfSubscribed();
+    keepBrowserAlive();
+    return false;  // never aborts; only feeds
+  };
   const freeink::FetchResult result = freeink::fetchResumable(
       url, options,
       [&](freeink::SecureHttpClient& http, const bool sameOrigin) {
@@ -2789,19 +2797,15 @@ void CrossPointWebServer::handleFetch() {
         http.setTimeout(60000);
         // The plugin's headers (typically its Authorization) stay with the
         // starting origin; a redirect to another server gets none of them.
-        if (sameOrigin) {
+        if (sameOrigin && !requestHeaders.empty()) {
+          // Handshake before the client copies the headers: a several-KB session
+          // cookie would otherwise take heap the handshake needs. A failed connect
+          // is retried, and reported, by the request itself.
+          http.connect(feedWatchdog);
           for (const auto& header : requestHeaders) http.addHeader(header.first, header.second);
         }
       },
-      sink,
-      // The write callback only runs when bytes arrive; with the 60s no-data
-      // timeout a server stall would starve this task's WDT subscription.
-      // shouldAbort is polled in every wait loop.
-      [&] {
-        resetTaskWatchdogIfSubscribed();
-        keepBrowserAlive();
-        return false;  // never aborts; only feeds
-      });
+      sink, feedWatchdog);
   if (file.isOpen()) {
     file.flush();
     file.close();

@@ -222,6 +222,8 @@ def compile_variant(repo: Path, source: str, width: int, height: int, build: Pat
         repo / "lib/EpdFont/SdCardFont.cpp",
         repo / "lib/Utf8/Utf8.cpp",
         repo / "lib/Epub/Epub/blocks/TextBlock.cpp",
+        repo / "lib/Epub/Epub/CjkBreaks.cpp",
+        repo / "lib/Epub/Epub/hyphenation/HyphenationCommon.cpp",
         repo / "lib/MiniBidi/BidiUtils.cpp",
     )
     includes = (

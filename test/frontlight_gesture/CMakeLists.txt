@@ -16,6 +16,7 @@ add_executable(frontlight_renderer renderer.cpp
   "${REPO_ROOT}/lib/EpdFont/EpdFontFamily.cpp"
   "${REPO_ROOT}/lib/Utf8/Utf8.cpp"
   "${REPO_ROOT}/lib/Epub/Epub/blocks/TextBlock.cpp"
+  "${REPO_ROOT}/lib/Epub/Epub/CjkBreaks.cpp"
   "${REPO_ROOT}/lib/MiniBidi/BidiUtils.cpp"
   "${REPO_ROOT}/lib/MiniBidi/minibidi.c")
 target_compile_features(frontlight_renderer PRIVATE cxx_std_20)

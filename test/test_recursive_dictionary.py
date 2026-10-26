@@ -463,6 +463,8 @@ lookup_harness = r'''
 #include <string>
 #include <string_view>
 #include <vector>
+#include <CjkBreaks.h>
+#include <Utf8.h>
 #define LOG_ERR(...) ((void)0)
 #define LOG_INF(...) ((void)0)
 constexpr size_t DEFINITION_HEAP_HEADROOM_BYTES = 8192;
@@ -542,7 +544,7 @@ with tempfile.TemporaryDirectory() as directory:
     (path / "navigation.cpp").write_text(harness)
     subprocess.run(["cc", "-c", str(ROOT / "lib/MiniBidi/minibidi.c"), "-o", str(path / "minibidi.o")], check=True)
     subprocess.run([
-        "c++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
+        "c++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-I", str(ROOT / "lib/Memory"),
         "-I", str(ROOT / "src"), "-I", str(ROOT / "lib/Memory"),
         "-I", str(ROOT / "lib/MiniBidi"), "-I", str(ROOT / "lib/Utf8"),
         "-I", str(ROOT / "test/minibidi_arabic/stubs"),
@@ -553,6 +555,10 @@ with tempfile.TemporaryDirectory() as directory:
     subprocess.run([str(path / "navigation")], check=True)
     (path / "lookup.cpp").write_text(lookup_harness)
     subprocess.run(["c++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-I", str(ROOT / "lib/Memory"),
-                    str(path / "lookup.cpp"), "-o", str(path / "lookup")], check=True)
+                    "-I", str(ROOT / "lib/Epub/Epub"), "-I", str(ROOT / "lib/Utf8"),
+                    str(path / "lookup.cpp"),
+                    str(ROOT / "lib/Utf8/Utf8.cpp"), str(ROOT / "lib/Epub/Epub/CjkBreaks.cpp"),
+                    str(ROOT / "lib/Epub/Epub/hyphenation/HyphenationCommon.cpp"),
+                    "-o", str(path / "lookup")], check=True)
     subprocess.run([str(path / "lookup")], check=True)
 print("Recursive dictionary navigation checks passed")

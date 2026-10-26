@@ -23,6 +23,7 @@ add_executable(SectionCacheTest
   ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/Section.cpp
   ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/Page.cpp
   ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/blocks/TextBlock.cpp
+  ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/CjkBreaks.cpp
   ${SECTION_SOURCE_ROOT}/lib/MiniBidi/BidiUtils.cpp
   ${SECTION_SOURCE_ROOT}/lib/MiniBidi/minibidi.c
   ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp
@@ -61,6 +62,7 @@ add_executable(SectionRestartTest
   ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/Section.cpp
   ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/Page.cpp
   ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/blocks/TextBlock.cpp
+  ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/CjkBreaks.cpp
   ${SECTION_SOURCE_ROOT}/lib/MiniBidi/BidiUtils.cpp
   ${SECTION_SOURCE_ROOT}/lib/MiniBidi/minibidi.c
   ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp
