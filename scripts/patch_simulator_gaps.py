@@ -7,7 +7,8 @@
 - HalGPIO::wasCapacitivePagePressed / isCapacitivePagePressed (v1.1.0): no simulated board has page pads.
 - HalStorage::readFileToString / replaceFile, HalGPIO::hasToggleSwitch / isToggleSwitchOn, BoardConfig::isEegoA4 /
   isM5PaperV11 / isMetalioEInk4 / isPicco, esp_wifi_get_ps (v1.1.0): plugin catalog, slide switch, board checks, Wi-Fi guard.
-- SecureHttpClient std::string headers, streamed sendRequest, responseComplete (v1.1.0): clipping sync.
+- SecureHttpClient std::string headers, streamed sendRequest, responseComplete (v1.1.0): clipping sync; connect
+  (CrossPoint #4167): plugin request headers.
 - BoardProfile corner fields and the FREEINK_DEVICE_PICCO / EEGO_A4 / METALIO_EINK4 defaults (v1.1.0): theme layout and
   the power-wake test read them. (HalClock::begin(bool) and rtcEpoch are in patch_simulator_clock.py.)
 - ResumableFetch.h (v1.1.0): the plugin fetch in the web server; SecureNet is ignored here, so the fetch reports no route.
@@ -120,6 +121,8 @@ EDITS = (
      "    return status;\n"
      "  }\n"
      "  bool responseComplete() const { return complete_; }\n"
+     "  // The SDK handshakes ahead so request headers do not take the heap TLS needs; the simulator has no TLS.\n"
+     "  bool connect(const std::function<bool()> & = nullptr) { return true; }\n"
      "  // The simulator's HTTP client keeps no response headers.\n"
      "  std::vector<std::pair<std::string, std::string>> getHeaders() const { return {}; }\n"),
     ("SecureHttpClient.h", "private:\n  NetworkClientSecure client_;\n",
