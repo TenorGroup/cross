@@ -841,7 +841,11 @@ TEST_F(SectionCacheTest, CorruptCssPayloadDefersTheSectionUntilCacheRebuild) {
   EXPECT_TRUE(section.startBuild(spec));
   epub->cssParser = nullptr;
 }
-TEST_F(SectionCacheTest, MiddlePageShortWriteFailsImmediatelyAndKeepsPreviousCache) {
+// A page write the card did not take is laid out again (X3 c9/ht5, see
+// PageShortWriteAfterAResumeLaysThePageOutAgainFromTheCheckpoint), no longer the end of the build. With
+// no checkpoint behind it the chapter is laid out again from its top; nothing is committed meanwhile, so
+// the cache already on the card stays as it was until the new one is whole.
+TEST_F(SectionCacheTest, MiddlePageShortWriteLaysTheChapterOutAgainAndKeepsPreviousCache) {
   {
     Section section(epub, 0, renderer);
     ASSERT_TRUE(section.startBuild(spec));
@@ -851,25 +855,28 @@ TEST_F(SectionCacheTest, MiddlePageShortWriteFailsImmediatelyAndKeepsPreviousCac
     while (section.isBuilding() && storageFault::hit == 0 && ticks++ < 1000u) {
       advanced = section.buildSomeMore(2);
     }
-    EXPECT_FALSE(advanced);
-    EXPECT_FALSE(section.isBuildComplete());
+    EXPECT_TRUE(advanced) << "a short page write dropped the chapter";
     EXPECT_EQ(storageFault::hit, 1u);
+    EXPECT_TRUE(bytes(cache()) == valid) << "Previously committed cache bytes changed";
+    EXPECT_TRUE(section.buildSomeMore(0));
+    EXPECT_TRUE(section.isBuildComplete());
+    EXPECT_EQ(section.pageCount, fullPages);
     storageFault::reset();
   }
-  EXPECT_TRUE(bytes(cache()) == valid) << "Previously committed cache bytes changed";
+  EXPECT_TRUE(bytes(cache()) == valid) << "the chapter written after the retry differs from a clean build";
   retryAndCheckEveryWord();
 }
-TEST_F(SectionCacheTest, LastPageShortWriteFailsAndKeepsPreviousCache) {
+TEST_F(SectionCacheTest, LastPageShortWriteLaysTheChapterOutAgain) {
   {
     Section section(epub, 0, renderer);
     ASSERT_TRUE(section.startBuild(spec));
     armWrite(pageOffsets.back());
-    EXPECT_FALSE(section.buildSomeMore(0));
-    EXPECT_FALSE(section.isBuildComplete());
+    EXPECT_TRUE(section.buildSomeMore(0)) << "a short page write dropped the chapter";
+    EXPECT_TRUE(section.isBuildComplete());
     EXPECT_EQ(storageFault::hit, 1u);
     storageFault::reset();
   }
-  EXPECT_TRUE(bytes(cache()) == valid) << "Previously committed cache bytes changed";
+  EXPECT_TRUE(bytes(cache()) == valid) << "the chapter written after the retry differs from a clean build";
   retryAndCheckEveryWord();
 }
 TEST_F(SectionCacheTest, FinalLutShortWriteRejectsCommitAndKeepsPreviousCache) {
@@ -1019,6 +1026,52 @@ TEST_F(SectionCacheTest, CorruptLutRangesAndPageCountAreRejectedBeforeAllocation
     EXPECT_FALSE(accepted) << "corrupt field offset=" << offset;
     EXPECT_LE(allocationProbe::largest, 8192u);
   }
+}
+// X3 c9/ht5 (26/10/2026): one page write to the staging file came back short (123 bytes, the card took
+// the same chapter again 0.6 s later). The build was dropped, and the reader went to page 0 of the
+// chapter. A page the card did not take is laid out again, here from the checkpoint the build resumed
+// from, and the chapter comes out byte for byte as a clean build.
+TEST_F(SectionCacheTest, PageShortWriteAfterAResumeLaysThePageOutAgainFromTheCheckpoint) {
+  std::filesystem::remove(cache());
+  Section section(epub, 0, renderer);
+  ASSERT_TRUE(section.startBuild(spec));
+  while (section.pageCount < 4u) ASSERT_TRUE(section.buildSomeMore(2));
+  ASSERT_TRUE(parkSection(section));
+  ASSERT_TRUE(sectionIsParked(section));
+  const uint16_t parkedPages = section.pageCount;
+  ASSERT_LT(parkedPages, fullPages);
+  storageFault::target = "/sections/0.bin.part";
+  storageFault::writeOffset = 0;
+  storageFault::failOnce = true;
+  EXPECT_TRUE(section.buildSomeMore(0)) << "a short page write dropped the chapter";
+  EXPECT_EQ(storageFault::hit, 1u);
+  EXPECT_EQ(storageFault::hitOffset, pageOffsets[parkedPages]) << "the fault did not hit the page after the checkpoint";
+  EXPECT_TRUE(section.isBuildComplete());
+  EXPECT_EQ(section.pageCount, fullPages);
+  EXPECT_TRUE(bytes(cache()) == valid) << "the chapter written after the retry differs from a clean build";
+}
+// A card that keeps refusing is not retried without end: the second short write ends the build, and
+// the cache already on the card stays as it was.
+TEST_F(SectionCacheTest, PageShortWriteTwiceEndsTheBuildAndKeepsPreviousCache) {
+  {
+    Section section(epub, 0, renderer);
+    ASSERT_TRUE(section.startBuild(spec));
+    storageFault::target = "/sections/0.bin.part";
+    storageFault::writeOffset = pageOffsets[3];
+    storageFault::writeEndOffset = pageOffsets[3] + 1;
+    bool advanced = true;
+    for (unsigned ticks = 0; advanced && section.isBuilding() && ticks < 1000u; ++ticks) {
+      storageFault::failOnce = true;
+      advanced = section.buildSomeMore(2);
+    }
+    EXPECT_FALSE(advanced);
+    EXPECT_FALSE(section.buildStarved());
+    EXPECT_FALSE(section.isBuildComplete());
+    EXPECT_EQ(storageFault::hit, 2u);
+    storageFault::reset();
+  }
+  EXPECT_TRUE(bytes(cache()) == valid) << "Previously committed cache bytes changed";
+  retryAndCheckEveryWord();
 }
 TEST_F(SectionCacheTest, ActiveLutShortWriteFailsAndKeepsPreviousCache) {
   {

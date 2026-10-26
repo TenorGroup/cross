@@ -601,6 +601,47 @@ int main() {
     require(r.section->resumes == 1 && !r.section->isBuildParked(),
             "heap that covers the parser did not resume the parked build");
   });
+  // X3 c9/ht5 (26/10/2026): a page write the card did not take ended the build of the chapter the reader
+  // was turning through (page 7 asked, pages 0-6 laid out, page 3 shown and saved). The section went,
+  // and the next paint laid the chapter out at nextPageNumber, still 0 from the turn into it: page 0
+  // shown and saved, 8 pages lost. A build that fails goes back to the saved page and saves nothing.
+  {
+    const auto failedBuild = [](EpubReaderActivity& r, bool partial) {
+      r.lastSavedSpineIndex = 2; r.lastSavedPage = 3; r.lastSavedPageCount = 19;
+      r.currentSpineIndex = 2; r.nextPageNumber = 0;
+      r.section->partial = partial; r.section->currentPage = 7;
+      r.section->oldPages = r.section->pageCount = r.section->builtPages = 7;
+      r.section->failTick = true;
+    };
+    // What the next paint shows and whether it writes the progress (as the starved-jump cases below).
+    const auto nextPaint = [](EpubReaderActivity& r) {
+      struct Landing { int spine, page; } landing{r.currentSpineIndex, r.section ? r.section->currentPage : r.nextPageNumber};
+      { RenderLock held; r.saveProgressIfMoved(); }
+      return landing;
+    };
+    for (const bool partial : {false, true}) {
+      test(partial ? "a build that fails past the cache keeps the saved page and saves nothing"
+                   : "a build that fails under a turn keeps the saved page and saves nothing",
+           [&] {
+             EpubReaderActivity r; failedBuild(r, partial);
+             { RenderLock held; r.foreground(); }
+             require(buildErrors == 1, "the failed build was not reported");
+             const auto landing = nextPaint(r);
+             require(landing.spine == 2 && landing.page == 3, "the next paint shows a page the reader never saved");
+             require(r.saveAttempts == 0, "a page the reader never saved was written as the progress");
+           });
+    }
+    test("a turn into a chapter whose build fails goes back to the saved page", [&] {
+      EpubReaderActivity r; failedBuild(r, false);
+      r.lastSavedSpineIndex = 1; r.lastSavedPage = 18;
+      r.section->currentPage = 0; r.section->oldPages = r.section->pageCount = r.section->builtPages = 0;
+      { RenderLock held; r.initialResume(0); }
+      require(buildErrors == 1, "the failed build was not reported");
+      const auto landing = nextPaint(r);
+      require(landing.spine == 1 && landing.page == 18, "the next paint shows a page the reader never saved");
+      require(r.saveAttempts == 0, "a page the reader never saved was written as the progress");
+    });
+  }
 #if defined(FREEINK_CAP_BLE_HID_HOST) && FREEINK_CAP_BLE_HID_HOST
   // X3 r43 (v1.0.16): the radio's stack came up beside a live layout parser and left a largest
   // block of 32,756 B, under the 32,768 B its own check keeps, so the start was rolled back; the
