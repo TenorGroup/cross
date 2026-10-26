@@ -1043,9 +1043,11 @@ TEST_F(SectionCacheTest, PageShortWriteAfterAResumeLaysThePageOutAgainFromTheChe
   storageFault::target = "/sections/0.bin.part";
   storageFault::writeOffset = 0;
   storageFault::failOnce = true;
-  EXPECT_TRUE(section.buildSomeMore(0)) << "a short page write dropped the chapter";
+  EXPECT_TRUE(section.buildSomeMore(1)) << "a short page write dropped the chapter";
   EXPECT_EQ(storageFault::hit, 1u);
   EXPECT_EQ(storageFault::hitOffset, pageOffsets[parkedPages]) << "the fault did not hit the page after the checkpoint";
+  EXPECT_GT(section.pageCount, parkedPages) << "the pages before the checkpoint were laid out again from the top";
+  EXPECT_TRUE(section.buildSomeMore(0));
   EXPECT_TRUE(section.isBuildComplete());
   EXPECT_EQ(section.pageCount, fullPages);
   EXPECT_TRUE(bytes(cache()) == valid) << "the chapter written after the retry differs from a clean build";

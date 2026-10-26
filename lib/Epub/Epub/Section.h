@@ -77,6 +77,10 @@ class Section {
     // chapter's top since; and whether it was, once (a resume that fails is dropped once, not in a loop).
     bool resumed = false;
     bool coldRetried = false;
+    // A page the card did not take whole (X3 c9/ht5: one short write, the same chapter went out 0.6 s
+    // later): laid out again once, not the end of the build.
+    bool pageWriteFailed = false;
+    bool pageWriteRetried = false;
     ReaderRenderSpec spec;
     HalFile lut;
     // The last pages' entries, written to `lut` a block at a time. Written one per page, each
@@ -134,6 +138,8 @@ class Section {
   bool parkAtLastCheckpoint();
   // A refused font size: park at the last checkpoint, or keep the finished pages as a partial and park at the top.
   bool parkAfterSizeRefused();
+  // A page write the card did not take: park at the last checkpoint or the top, once per build. True when parked.
+  bool parkAfterPageWriteFailed();
   static bool stepHeapAvailable();
   static constexpr uint32_t CHECKPOINT_REACH_MAX_MS = 100;
   static constexpr unsigned CHECKPOINT_REACH_MAX_STEPS = 24;
@@ -156,7 +162,8 @@ class Section {
   // Parse watermark from the partial's trailer, for estimating the total page count.
   uint32_t partialBytesConsumed_ = 0;
   uint32_t partialTotalBytes_ = 0;
-  bool finalizeBuild();
+  // layOutAgain: a trailing page the card did not take parks the build (parkAfterPageWriteFailed) instead of ending it.
+  bool finalizeBuild(bool layOutAgain = false);
   bool restorePartialBuild();
   // Write the LUTs/anchor map (and, for a partial, the watermark trailer), patch the
   // header, stamp the version byte, and swap the tmp .bin over filePath.

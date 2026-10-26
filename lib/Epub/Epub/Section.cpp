@@ -179,6 +179,8 @@ uint32_t Section::onPageComplete(std::unique_ptr<Page> page) {
   const uint32_t position = file.position();
   if (!page->serialize(file)) {
     LOG_ERR("SCT", "Failed to serialize page %d", builtPageCount_);
+    // Back to where the page began: laid out again, it goes over the bytes that got out.
+    file.seek(position);
     return 0;
   }
   LOG_DBG("SCT", "Page %d processed", builtPageCount_);
@@ -496,6 +498,7 @@ std::unique_ptr<ChapterHtmlSlimParser> Section::makeBuildParser(BuildContext* ct
         const uint32_t position = this->onPageComplete(std::move(page));
         if (position == 0 ||
             (ctxPtr->lutPendingCount == BuildContext::LUT_PENDING_MAX && !flushLutPending(*ctxPtr))) {
+          ctxPtr->pageWriteFailed = position == 0;
           ctxPtr->failed = true;
           ctxPtr->parser->failBuild();
           return;
@@ -1251,6 +1254,22 @@ bool Section::parkAfterSizeRefused() {
   return parkAtChapterTop();
 }
 
+// The card did not take a page whole (X3 c9/ht5: 123 bytes short at free 70 KB, largest 20 KB; the write allocates
+// nothing, and the same chapter went out 0.6 s later). The chapter is sound: the parser that met it is let go for one
+// at the checkpoint the build resumed from, or at the chapter's top; nothing is committed meanwhile. Dropped, the
+// reader laid the chapter out again at page 0 and saved it. Once: a card that keeps refusing ends the build.
+bool Section::parkAfterPageWriteFailed() {
+  if (!build_ || !build_->pageWriteFailed || build_->pageWriteRetried) return false;
+  LOG_ERR("SCT", "Page %u did not go out whole; laying it out again free=%u largest=%u",
+          static_cast<unsigned>(builtPageCount_), static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  build_->pageWriteRetried = true;
+  build_->failed = false;
+  if (parkAtLastCheckpoint() || parkAtChapterTop()) return true;
+  build_->failed = true;
+  return false;
+}
+
 #ifdef TENOR_SECTION_HOST_TEST
 size_t Section::parkedAnchorCountForTest() const { return build_ ? build_->parkedAnchors.size() : 0; }
 #endif
@@ -1310,6 +1329,15 @@ bool Section::buildSomeMore(const int maxPages, bool (*yieldNow)()) {
       return false;
     }
     if (status == ChapterHtmlSlimParser::ParseStatus::Error || build_->failed) {
+      if (parkAfterPageWriteFailed()) {
+        if (resumeParkedBuild()) {
+          startCount = builtPageCount_;
+          continue;
+        }
+        // Short of heap for the parser again (the radio up beside it): parked, the reader frees heap and builds on.
+        if (!buildStarved_) abandonBuild();
+        return false;
+      }
       if (!build_->failed && build_->parser->sizeRefused()) {
         // The font system turned a size down for want of memory: the chapter is sound, the heap is short. A starved
         // build, as every other: the reader frees heap and builds on, or says it could not. The failed parser is let
@@ -1353,7 +1381,15 @@ bool Section::buildSomeMore(const int maxPages, bool (*yieldNow)()) {
               steps, static_cast<unsigned>(millis() - tickStart), static_cast<unsigned>(ESP.getFreeHeap()),
               static_cast<unsigned>(ESP.getMaxAllocHeap()));
 #endif
-      return finalizeBuild();
+      // The trailing page goes out here: one the card did not take is laid out again as above.
+      if (finalizeBuild(true)) return true;
+      if (!build_) return false;
+      if (resumeParkedBuild()) {
+        startCount = builtPageCount_;
+        continue;
+      }
+      if (!buildStarved_) abandonBuild();
+      return false;
     }
     // ParseStatus::More: yield once we've laid out the requested number of pages (or the tick's step and
     // time budget is spent), or as soon as the caller has something more urgent to do.
@@ -1754,9 +1790,10 @@ bool Section::commitBuildFile(const uint8_t version, const uint32_t bytesConsume
   return true;
 }
 
-bool Section::finalizeBuild() {
+bool Section::finalizeBuild(const bool layOutAgain) {
   // Flush the trailing page (emits the last page via the completePageFn into the LUT).
   if (!build_->parser->finishParse() || build_->failed) {
+    if (layOutAgain && parkAfterPageWriteFailed()) return false;
     LOG_ERR("SCT", "Parse finalize failed; abandoning section build");
     abandonBuild();
     return false;

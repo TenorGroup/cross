@@ -1114,6 +1114,8 @@ void EpubReaderActivity::forgetPendingJump() {
 // V-A). With a saved place (a jump) the reader goes back there and paints it; with none yet (an
 // open) it keeps its target, pending offset included, and the memory notice stays until the next
 // input tries again. No page of the target chapter is painted or saved.
+// Also where a build that fails leaves the reader (X3 c9/ht5: a page the card did not take twice):
+// the section went and the next paint laid the chapter out at a stale nextPageNumber, page 0.
 void EpubReaderActivity::stayAfterStarvedJump() {
   const bool backToSaved = lastSavedSpineIndex >= 0 && lastSavedSpineIndex != currentSpineIndex;
   if (lastSavedSpineIndex >= 0) {
@@ -3600,7 +3602,7 @@ void EpubReaderActivity::renderBook() {
               return;
             }
             LOG_ERR("ERS", "Failed to start section build");
-            section.reset();
+            stayAfterStarvedJump();
             buildPopupPending = false;
             showBuildError();
             return;
@@ -3619,7 +3621,7 @@ void EpubReaderActivity::renderBook() {
               return;
             }
             LOG_ERR("ERS", "Failed during incremental section build");
-            section.reset();
+            stayAfterStarvedJump();
             buildPopupPending = false;
             showBuildError();
             return;
@@ -3698,7 +3700,7 @@ void EpubReaderActivity::renderBook() {
               return;
             }
             LOG_ERR("ERS", "Failed to start section build");
-            section.reset();
+            stayAfterStarvedJump();
             buildPopupPending = false;
             showBuildError();
             return;
@@ -3727,7 +3729,7 @@ void EpubReaderActivity::renderBook() {
                 return;
               }
               LOG_ERR("ERS", "Failed during incremental section build");
-              section.reset();
+              stayAfterStarvedJump();
               buildPopupPending = false;
               showBuildError();
               return;
@@ -3826,7 +3828,7 @@ void EpubReaderActivity::renderBook() {
           return;
         }
         LOG_ERR("ERS", "Failed to start partial extension build");
-        section.reset();
+        stayAfterStarvedJump();
         buildPopupPending = false;
         showBuildError();
         return;
@@ -3846,7 +3848,7 @@ void EpubReaderActivity::renderBook() {
             return;
           }
           LOG_ERR("ERS", "Failed during incremental section build");
-          section.reset();
+          stayAfterStarvedJump();
           buildPopupPending = false;
           showBuildError();
           return;
@@ -3871,7 +3873,7 @@ void EpubReaderActivity::renderBook() {
           return;
         }
         LOG_ERR("ERS", "Failed during incremental section build");
-        section.reset();
+        stayAfterStarvedJump();
         showBuildError();
         return;
       }
