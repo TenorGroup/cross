@@ -1019,7 +1019,7 @@ void OpdsBookBrowserActivity::openPublicationDetail(const OpdsEntry& entry) {
   spec.descriptionHtml = true;  // publication documents may carry markup; plain text parses as-is
   spec.actionLabel = acquireLabel(publication.availability);
 
-  auto details = makeUniqueNoThrow<DetailsActivity>(renderer, mappedInput, std::move(spec));
+  auto details = heapfloor::make<DetailsActivity>("details", renderer, mappedInput, std::move(spec));
   if (!details) {
     LOG_ERR("OPDS", "OOM: publication details");
     startBrowse();

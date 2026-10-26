@@ -5,6 +5,7 @@
 #include <FreeInkUIIcon.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
+#include <HeapFloor.h>
 #include <I18n.h>
 #include <JsonListParser.h>
 #include <LibraryBuilder.h>
@@ -1527,7 +1528,7 @@ void PluginCatalogActivity::showItemDetails(const int itemIndex) {
   const bool updateAvailable = item.status == tr(STR_UPDATE_AVAILABLE);
   spec.actionLabel = updateAvailable ? tr(STR_UPDATE) : (manifest.tracksInstalls() ? tr(STR_INSTALL) : tr(STR_FETCH));
 
-  auto detailsActivity = makeUniqueNoThrow<DetailsActivity>(renderer, mappedInput, std::move(spec));
+  auto detailsActivity = heapfloor::make<DetailsActivity>("details", renderer, mappedInput, std::move(spec));
   if (!detailsActivity) {
     LOG_ERR("PCAT", "OOM: item details");
     return;
