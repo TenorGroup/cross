@@ -347,6 +347,8 @@ add_test(NAME OtaPackage COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE
 add_test(NAME BuiltinFontMetadata COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/font_metadata/test_pooling.py")
 add_test(NAME LoggingPortNeverWaits COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/logging_low_clock/run.py"
          --output "${CMAKE_CURRENT_BINARY_DIR}/logging_low_clock")
+add_test(NAME LoggingDumpsOutwaitTheHost
+  COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/logging_low_clock/check_dump_wait.py ${REPO_ROOT})
 add_test(NAME TiltSensorForegroundOwnership COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tilt_sensor_ownership/run.py" --source "${REPO_ROOT}")
 add_test(NAME ReaderMenuTilt COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tilt/run.py" --source "${REPO_ROOT}")
 add_test(NAME ImuDoubleTap COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/imu_double_tap/run.py" --source "${REPO_ROOT}")
