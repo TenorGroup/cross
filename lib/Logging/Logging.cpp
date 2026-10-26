@@ -110,7 +110,7 @@ void addToLogRingBuffer(const char* message) {
 // render task 20 tries x the tx timeout per line (lane/TREO-X3.md): the unit stood still. A line goes
 // out only when the port has room for it. With none it waits up to kLogRoomWaitMs for a host that is
 // reading, then is dropped and counted; once one was dropped the next ones do not wait. When the room
-// is back "[LOG] lines dropped: N" goes out first. Command replies (logSerial.printf) and the cable
+// is back "[LOG] lines dropped: N" goes out first, alone, then the line asks for room by itself. Command replies (logSerial.printf) and the cable
 // flash lines (CableFlash.h) do not come here and keep the port's own timeout.
 static constexpr int kLogRoomWaitMs = 10;
 static std::atomic<uint32_t> logLinesDropped{0};
@@ -132,26 +132,34 @@ static void sendLogLine(Port& port, const char* line, const size_t n, const unsi
     port.write(reinterpret_cast<const uint8_t*>(line), n);
     return;
   }
-  const uint32_t dropped = logLinesDropped.load();
-  char note[48];
-  size_t noteLen = 0;
-  if (dropped) {
-    noteLen = std::min<size_t>(snprintf(note, sizeof(note), "[%lu] [INF] [LOG] lines dropped: %u\n", ms,
-                                        static_cast<unsigned>(dropped)),
-                               sizeof(note) - 1);
-  }
+  // The count of dropped lines goes first and on its own, when the port has room for it alone. One task
+  // takes it, whole (exchange): two logging at once cannot both send it and take it off twice.
   size_t room = static_cast<size_t>(std::max(0, port.availableForWrite()));
-  for (int i = 0; !dropped && room < logRoomFor(n) && i < kLogRoomWaitMs; ++i) {
+  bool mayWait = true;
+  if (logLinesDropped.load()) {
+    mayWait = false;  // a port that dropped lines makes no one wait, unless the count gets out below
+    char note[48];
+    if (room >= logRoomFor(sizeof(note) - 1)) {
+      if (const uint32_t dropped = logLinesDropped.exchange(0)) {
+        const size_t noteLen = std::min<size_t>(snprintf(note, sizeof(note), "[%lu] [INF] [LOG] lines dropped: %u\n",
+                                                         ms, static_cast<unsigned>(dropped)),
+                                                sizeof(note) - 1);
+        if (port.write(reinterpret_cast<const uint8_t*>(note), noteLen) < noteLen) {
+          logLinesDropped.fetch_add(dropped);  // not taken: still owed
+        } else {
+          mayWait = true;  // the port took the count, so it is draining
+        }
+        room = static_cast<size_t>(std::max(0, port.availableForWrite()));
+      }
+    }
+  }
+  for (int i = 0; mayWait && room < logRoomFor(n) && i < kLogRoomWaitMs; ++i) {
     delay(1);
     room = static_cast<size_t>(std::max(0, port.availableForWrite()));
   }
-  if (room < logRoomFor(noteLen + n)) {
+  if (room < logRoomFor(n)) {
     logLinesDropped.fetch_add(1);
     return;
-  }
-  if (noteLen) {
-    port.write(reinterpret_cast<const uint8_t*>(note), noteLen);
-    logLinesDropped.fetch_sub(dropped);
   }
   if (port.write(reinterpret_cast<const uint8_t*>(line), n) < n) logLinesDropped.fetch_add(1);
 }
