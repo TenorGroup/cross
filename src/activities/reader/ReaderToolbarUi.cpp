@@ -755,7 +755,13 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_.valueText.maxLines = 1;
     listProps_.chosenMark = fui::bitmapFromIcon(icon_reader_tick_24);
     switchShapes(listProps_);
-    listProps_.partialTrailingRow = fonts;
+    // Rows go on below: the row past the last full one shows its top, faded (render: fadeMoreBelow), as the X3's
+    // panels and every framed list do (founder 26/10/2026). The rows fill the frame to its foot, five of 62 px, so
+    // the 5th becomes the glimpse. The font list keeps its shorter room and its own glimpse; tenor/ugly's paper keeps
+    // its scroll mark instead.
+    const bool glimpse = fonts || !shell::isUgly();
+    listProps_.partialTrailingRow = glimpse;
+    if (!fonts) listProps_.partialTrailingMinPercent = 75;
     // The shared page scrollbar stands outside the frame, so the rows take the frame's whole width, as every list's do.
     // tenor/ugly's paper keeps the 12 px strip its own scroll mark stood in.
     const int16_t kBarStrip = shell::isUgly() ? 12 : 0;
@@ -765,8 +771,13 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     nav_.followOnBuild = nav_.selected >= 0;
     nav_.followPending = false;
     nav_.syncToProps(listRect, 62, 0, count, listProps_);
+    // The last page reaches the foot: a scroll by the full rows stops one row short of it once the glimpse is one.
+    if (glimpse && !fonts && nav_.top > 0 && count - nav_.top < nav_.visibleRows) {
+      nav_.top = std::max(0, count - nav_.visibleRows);
+      listProps_.topIndex = static_cast<uint16_t>(nav_.top);
+    }
     const int16_t labelRoom = static_cast<int16_t>(listRect.width - kBarStrip - 2 * listProps_.sidePadding);
-    const int windowCount = std::min({nav_.visibleRows + (fonts ? 1 : 0), count - nav_.top, kMaxWindow});
+    const int windowCount = std::min({nav_.visibleRows + (glimpse ? 1 : 0), count - nav_.top, kMaxWindow});
     for (int i = 0; i < windowCount; ++i) {
       const int index = nav_.top + i;
       windowLabels_[i] = model_.rowText ? model_.rowText(index) : std::string();
@@ -813,9 +824,11 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
       const fui::Rect rowsRect{listRect.x, listRect.y, static_cast<int16_t>(listRect.width - kBarStrip), listRect.height};
       fadeRight_ = rowsRect.right();
       fui::list(screen.frame(), rowsRect, listProps_);
-      if (fonts && windowCount > nav_.visibleRows) {
-        const int previewIndex = nav_.top + nav_.visibleRows;
-        const int16_t previewY = static_cast<int16_t>(listRect.y + nav_.visibleRows * 62);
+      // The glimpse opens its row, as the full rows do.
+      const int fullRows = nav_.pageRowsFor(count);
+      if (glimpse && windowCount > fullRows) {
+        const int previewIndex = nav_.top + fullRows;
+        const int16_t previewY = static_cast<int16_t>(listRect.y + fullRows * 62);
         const int16_t previewHeight = static_cast<int16_t>(listRect.bottom() - previewY);
         if (previewIndex < count && previewHeight > 0)
           screen.frame().hit({rowsRect.x, previewY, rowsRect.width, previewHeight}, ACTION_ROW,

@@ -180,20 +180,21 @@ def toc_book(sach, chapters=24):
 
 
 def check_contents_page(tmp):
-    # Five rows fit the approved sheet. Two swipes reach chapters 11..15; tap 15,
-    # then open again: current chapter is the first row and carries the chosen tick.
+    # Four full rows and the faded top of the next fit the approved sheet (founder 26/10: a list that goes on
+    # fades at its foot); a flick turns the four full rows. Two swipes reach chapters 9..12 over a faded 13; a tap
+    # on the faded row opens 13, then open again: current chapter is the first row and carries the chosen tick.
     folder = fresh(tmp, 'cp')
     open_book = f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,68'
-    page3, chapter15, again = run(folder, f'{open_book};9500:TAP:240,775;12000:TAP:226,754;'
+    page3, chapter13, again = run(folder, f'{open_book};9500:TAP:240,775;12000:TAP:226,754;'
         '14500:SWIPE:240,650,240,420,150;17000:SWIPE:240,650,240,420,150;'
         '19500:TAP:240,681;22500:TAP:240,775;25000:TAP:226,754',
         [19000,21500,27500], write_books=toc_book)
     require_reader(folder)
-    capture(folder, ('chapters-11-15','chapter15','current-chapter-contents'), (page3,chapter15,again))
-    assert 'Progress saved: spine=14 ' in (folder/'simulator.log').read_text(), 'fixture did not read chapter 15'
+    capture(folder, ('chapters-9-13','chapter13','current-chapter-contents'), (page3,chapter13,again))
+    assert 'Progress saved: spine=12 ' in (folder/'simulator.log').read_text(), 'fixture did not read chapter 13'
     assert ink(page3,(32,370,160,398)) > 0.04 and ink(again,(32,370,160,398)) > 0.04, 'Contents never opened'
     assert ink(again,(404,408,440,458)) > 0.015, 'current chapter did not open as the chosen first row'
-    # Chapter 15 was row 5; reopening must move the viewport to its chosen first row.
+    # Chapter 13 was the faded 5th row; reopening must move the viewport to its chosen first row.
     assert not same(page3,again,(32,404,410,466)), 'Contents ignored current chapter and reused old viewport'
 
 
