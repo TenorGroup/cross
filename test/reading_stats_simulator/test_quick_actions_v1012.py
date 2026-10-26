@@ -100,10 +100,10 @@ class QuickActionsV1012Test(unittest.TestCase):
         self.assertEqual((saved['tiltStrengthH'], saved['tiltStrengthV']), (2, 1), log[-4000:])
 
     def test_confirm_hold_list_offers_file_transfer(self):
-        # Fourth row of Controls is "Hold Select while reading" (remap, follow orientation,
-        # long press, then it). Its popup opens on Off (index 1); four Right move to File
-        # transfer (index 5).
-        rows = [f'{4500 + 400 * i}:RIGHT' for i in range(3)]
+        # Third row of Controls is "Hold Select while reading" (remap, follow orientation, then it;
+        # v1.1.0 moved Hold page buttons while reading to the Reader tab). Its popup opens on Off
+        # (index 1); four Right move to File transfer (index 5).
+        rows = [f'{4500 + 400 * i}:RIGHT' for i in range(2)]
         log = self.run_sim([*HOME_TO_CONTROLS, *rows, '8000:CONFIRM', '10000:RIGHT', '10400:RIGHT',
                             '10800:RIGHT', '11200:RIGHT', '12000:CONFIRM'],
                            shots=[(9800, 'confirm-hold-values')])

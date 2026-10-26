@@ -46,8 +46,9 @@ def want_radius(kind, box):
 PAGE = lambda number: ['DOWN'] * 4 + ['RIGHT'] * number + ['CONFIRM']
 ROWS = [
     # Home's Settings order since v1.0.69 (ce8ba308): Connections, Display, Reader, Controls, System, Device, Keyboard,
-    # Motion, Sleep, Other; Get fonts left the Reader tab (f3b010db).
-    ('hienthi', 1, [0, 1, 4, 5, 6, 7, 9]), ('ngu', 8, [1, 2]), ('trinhdoc', 2, [1, 2, 4, 5]), ('dieukhien', 3, [2]),
+    # Motion, Sleep, Other; Get fonts left the Reader tab (f3b010db). v1.1.0 moved the Controls dialog row
+    # (Hold page buttons while reading) to Reader row 6.
+    ('hienthi', 1, [0, 1, 4, 5, 6, 7, 9]), ('ngu', 8, [1, 2]), ('trinhdoc', 2, [1, 2, 4, 5, 6]),
     ('cuchi', 7, list(range(10))), ('banphim', 6, [0]),
 ]
 # a settings page, then the row (the first row is the one selected), then the press that opens its pop-up

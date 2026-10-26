@@ -18,7 +18,8 @@ from cai_dat_truoc_tenor import truoc_tenor
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
 
-# Same Home-to-Controls walk test_quick_actions_v1012 uses; the Hold Select row is the fourth one.
+# Same Home-to-Controls walk test_quick_actions_v1012 uses; the Hold Select row is the third one
+# (v1.1.0 moved Hold page buttons while reading to the Reader tab).
 HOME_TO_CONTROLS = ['1000:UP', '1500:RIGHT', '2000:RIGHT', '2500:RIGHT', '3500:CONFIRM']
 SAVE_QUOTATION = 7
 
@@ -66,7 +67,7 @@ class GiuTrichDanTest(unittest.TestCase):
 
     def test_hold_list_offers_save_quotation_last(self):
         # The popup opens on Off (index 1); six Right reach index 7, the last entry.
-        rows = [f'{4500 + 400 * i}:RIGHT' for i in range(3)]
+        rows = [f'{4500 + 400 * i}:RIGHT' for i in range(2)]
         steps = [f'{10000 + 400 * i}:RIGHT' for i in range(6)]
         log = self.run_sim([*HOME_TO_CONTROLS, *rows, '8000:CONFIRM', *steps, '13500:CONFIRM'], end=15000)
         self.assertIn('Entering activity: Settings', log)
