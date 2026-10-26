@@ -211,7 +211,7 @@ inline SettingInfo buildLongPressButtonSetting() {
       [](const uint8_t position) {
         SETTINGS.longPressButtonBehavior = position == 3 ? CrossPointSettings::SIDE_HOLD_BACK : position;
       },
-      "longPressButtonBehavior", StrId::STR_CAT_CONTROLS);
+      "longPressButtonBehavior", StrId::STR_CAT_READER);
 }
 
 inline SettingInfo buildLongPressMenuSetting(const bool hasTilt) {
