@@ -58,7 +58,8 @@ epub_fields = re.search(r"(?m)^  (?:int8_t pendingManualTurn = 0|std::atomic<int
                         epub_header).group(0)
 if epub_trace_match:
     epub_fields += "\n#ifdef TENOR_TURN_TRACE\n" + epub_trace_match.group(0) + "\n#endif"
-names = ["pageTurn", "pageTurnLocked", "luotLatTrangNgoai", "processExternalPageTurn", "onPause", "onResume", "loop"]
+names = ["pageTurn", "pageTurnLocked", "luotLatTrangNgoai", "processExternalPageTurn", "onPause", "onResume", "loop",
+         "forgetSideHoldTurn", "sideHoldToPreviousPage", "turnBackPages"]
 if "ReaderActivity::queuePageTurn(" in cpp:
     names.append("queuePageTurn")
 # A reader without it (before v1.0.14 round 3) never lowers the exit flag.
@@ -87,14 +88,14 @@ manual_slice = epub[manual_start:manual_end + len("  if (pageTurn(!prevPageTrigg
 manual = ("void EpubReaderActivity::manualInput(bool prevTriggered, bool prevPageTriggered, "
           "bool touchTriggered, bool fromTilt) {\n"
           "  struct Touch { bool prev, next; } touch{touchTriggered, false};\n"
-          "  struct Turns { bool fromTilt; } turns{fromTilt};\n"
+          "  struct Turns { bool fromTilt; int8_t sideTurn; } turns{fromTilt, passSideTurn};\n"
           "  (void)touch; (void)turns;\n" + guard + "\n" + manual_slice + "\n}")
 # One loop pass that drains the guarded queue and then reads a press from the
 # same pass, in production order: a return inside the drain would skip the press.
 tick = ("void EpubReaderActivity::drainThenInput(bool prevTriggered, bool prevPageTriggered, "
         "bool touchTriggered, bool fromTilt) {\n"
         "  struct Touch { bool prev, next; } touch{touchTriggered, false};\n"
-        "  struct Turns { bool fromTilt; } turns{fromTilt};\n"
+        "  struct Turns { bool fromTilt; int8_t sideTurn; } turns{fromTilt, passSideTurn};\n"
         "  (void)touch; (void)turns;\n" + guard + "\n" + block(epub, drain_start) + "\n" +
         manual_slice + "\n}")
 # One EPUB loop pass that applies a queued remote turn, then reads a button press from the same
@@ -104,7 +105,7 @@ external_line = re.compile(r"(?m)^  if \(processExternalPageTurn\(\)\) return;$"
 external_tick = ("void EpubReaderActivity::externalThenInput(bool prevTriggered, bool prevPageTriggered, "
                  "bool touchTriggered, bool fromTilt) {\n"
                  "  struct Touch { bool prev, next; } touch{touchTriggered, false};\n"
-                 "  struct Turns { bool fromTilt; } turns{fromTilt};\n"
+                 "  struct Turns { bool fromTilt; int8_t sideTurn; } turns{fromTilt, passSideTurn};\n"
                  "  (void)touch; (void)turns;\n" + external_line + "\n" + guard + "\n" +
                  block(epub, drain_start) + "\n" + manual_slice + "\n}")
 # The paint's clamp once the chapter is laid out, as renderBook runs it: `turnPastLaidOut` is
@@ -124,6 +125,7 @@ projection = args.output / "projection.cpp"
 projection.write_text(fixture + "\n" + "\n\n".join(function(name) for name in names) +
                       "\n" + "\n\n".join((drain, manual, tick, external_tick, menu, settle)) + "\n" +
                       (function("pageAwaitsLayout", epub, "EpubReaderActivity") + "\n" if epub_layout else "") +
+                      function("turnBackPages", epub, "EpubReaderActivity") + "\n" +
                       (function("onPause", epub, "EpubReaderActivity") if epub_pause else "") +
                       "\n" + exit_method + "\n" +
                       ("" if stay_after_exit else "void ReaderActivity::stayAfterDroppedExit() {}\n") + cases)

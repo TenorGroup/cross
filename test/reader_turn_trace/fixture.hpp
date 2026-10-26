@@ -9,6 +9,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #define TRACE_PRESENT @@TRACE_PRESENT@@
@@ -42,6 +43,9 @@ struct RenderLock {
   ~RenderLock() { if (owns) busy = false; }
   bool acquired() const { return owns; }
   static bool peek() { return busy; }
+  // The blocking form (RenderLock(Activity&)): nothing paints in this projection while the main task holds it.
+  template <class Owner>
+  explicit RenderLock(Owner&) : owns(true) { busy = true; }
 };
 enum class HomeMenuItem { NONE, RECENT_CONTINUE };
 struct ActivityManager {
@@ -70,12 +74,21 @@ struct ReadingStats {
 } READING_STATS;
 // What one pass of ReaderActivity::loop reads from the buttons; a test sets it before the pass.
 struct Renderer {};
+struct MappedInputManager {
+  enum class Button { PageBack, PageForward };
+};
 struct MappedInput {
+  bool sideKeyDown = false;  // a side page key goes down this pass
   unsigned long getHeldTime() const { return 0; }
+  bool wasPressed(MappedInputManager::Button) const { return sideKeyDown; }
 };
 struct PageTurns {
   bool prev = false, next = false, prevLongPressed = false, nextLongPressed = false, fromTilt = false, sideBack = false;
+  bool sidePrev = false;  // a held side key under SIDE_HOLD_PREV
+  int8_t sideTurn = 0;    // this pass's side key turn (1 on, -1 back)
 };
+// The side key turn the EPUB press slice (manualInput) reads this pass.
+int8_t passSideTurn = 0;
 struct TouchTurns { bool prev = false, next = false; unsigned long heldMs = 0; };
 PageTurns passTurns;
 namespace ReaderUtils {
@@ -123,6 +136,10 @@ struct ReaderActivity {
   bool changed = true;
   bool atEnd = false;
   int modelPage = 1;
+  int8_t sideHoldTurn = 0;
+  void forgetSideHoldTurn();
+  void sideHoldToPreviousPage();
+  virtual void turnBackPages(int pages);
   uint32_t statsLastMs = 0, statsDayPollMs = 0, statsDay = 0, statsSavedMs = 0;
   bool statsActive = false, statsEnabled = true, statsDirty = false;
   Renderer renderer;
@@ -149,7 +166,11 @@ struct ReaderActivity {
     return true;
   }
   bool isAtEndOfBook() const { return atEnd; }
-  void onReturnFromEndOfBook() { atEnd = false; }
+  // XTC's end is the page after the last; the EPUB model keeps its chapter on the last page.
+  virtual void onReturnFromEndOfBook() {
+    if (atEnd) --modelPage;
+    atEnd = false;
+  }
   bool handleEndOfBookPageTurn(bool, bool) { return false; }
   void requestUpdate() { ++updates; }
   void updateReadingTime(bool) {}
@@ -229,4 +250,6 @@ struct EpubReaderActivity : ReaderActivity {
   void dropCatchUp() {}
 @@EPUB_ON_PAUSE@@
   void onExit() override;
+  void turnBackPages(int pages) override;
+  void onReturnFromEndOfBook() override { atEnd = false; }
 };

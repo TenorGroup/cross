@@ -888,6 +888,38 @@ int runV1076Meaning() {
     ok = expect(SETTINGS.loadFromFile() && SETTINGS.pluginsEnabled == 1, "a stored plugin switch is kept") && ok;
   }
 
+  // 8. Page-turn hold (D4): the v1.0.76 numbers keep their choice (3 is retired and reads Off), and the v1.1.0
+  // previous-page choice is stored as 5, after them. The row maps list place to number; the web settings page
+  // reads and writes through the same getter and setter.
+  {
+    static const Wire holdWire[] = {{0, StrId::STR_LONG_PRESS_BEHAVIOR_OFF},
+                                    {1, StrId::STR_LONG_PRESS_BEHAVIOR_SKIP},
+                                    {2, StrId::STR_LONG_PRESS_BEHAVIOR_ORIENTATION},
+                                    {4, StrId::STR_LONG_PRESS_BEHAVIOR_SIDE_BACK},
+                                    {5, StrId::STR_LONG_PRESS_BEHAVIOR_SIDE_PREV}};
+    ok = expect(CrossPointSettings::SIDE_HOLD_BACK == 4 && CrossPointSettings::SIDE_HOLD_PREV == 5 &&
+                    CrossPointSettings::LONG_PRESS_BUTTON_BEHAVIOR_COUNT == 6,
+                "page-turn hold numbers: tenor 0..4, then previous page 5") && ok;
+    const SettingInfo holdRow = buildLongPressButtonSetting();
+    ok = expect(holdRow.enumLabels().size() == 5, "the row offers five choices (3 is not one)") && ok;
+    for (const auto& w : holdWire) {
+      ok = expect(loadValue(before, "longPressButtonBehavior", w.number) && SETTINGS.longPressButtonBehavior == w.number,
+                  "a page-turn hold number loads") && ok;
+      ok = expect(holdRow.enumLabels()[holdRow.valueGetter()] == w.label, "and the row shows its choice") && ok;
+      ok = expect(saved()["longPressButtonBehavior"] == w.number, "and saves under the same number") && ok;
+      holdRow.valueSetter(holdRow.valueGetter());
+      ok = expect(SETTINGS.longPressButtonBehavior == w.number, "and the row writes the same number back") && ok;
+    }
+    holdRow.valueSetter(4);
+    ok = expect(SETTINGS.longPressButtonBehavior == CrossPointSettings::SIDE_HOLD_PREV,
+                "list place 4 (the web's choice index too) is previous page") && ok;
+    ok = expect(loadValue(before, "longPressButtonBehavior", 3) &&
+                    SETTINGS.longPressButtonBehavior == CrossPointSettings::OFF,
+                "the retired 3 still reads Off") && ok;
+    ok = expect(loadValue(before, "longPressButtonBehavior", 6) && SETTINGS.longPressButtonBehavior != 6,
+                "a number past the last choice is not taken") && ok;
+  }
+
   std::printf("settings_upgrade=v1076-meaning:%s\n", ok ? "GREEN" : "RED");
   return ok ? 0 : 1;
 }

@@ -8,6 +8,7 @@ void test(const char* name, const std::function<void()>& run) {
   activityManager.generation = 1;
   activityManager.toReaderPage = false;
   passTurns = {};
+  passSideTurn = 0;
   events.clear();
   try { run(); std::cout << "PASS " << name << '\n'; }
   catch (const std::exception& error) {
@@ -468,6 +469,149 @@ int main() {
             "the next pause wrote statistics before its screen's first frame");
     activityManager.nextScreenFramed();
     require(reader.statsSaves + cardStatsSaves == 1, "the next pause did not write statistics");
+  });
+  // "Giu nut lat trang khi doc" = side buttons, previous page (SIDE_HOLD_PREV, founder 26/10/2026). A side key turns
+  // on its press, so a hold that only went back one page would land on the page the press started from: the hold
+  // ends on the page BEFORE the one shown when the key went down, with one paint for the pages it goes back.
+  test("XTC side hold after a forward press ends one page before the press", [] {
+    ReaderActivity reader;
+    reader.modelPage = 5;
+    reader.mappedInput.sideKeyDown = true;
+    passTurns.next = true;
+    passTurns.sideTurn = 1;
+    reader.loop();
+    require(reader.modelPage == 6 && reader.updates == 1, "setup: the press did not turn on its press");
+    reader.mappedInput.sideKeyDown = false;
+    passTurns.sidePrev = true;
+    reader.loop();
+    require(reader.modelPage == 4, "the hold did not end on the page before the one the press started on");
+    require(reader.updates == 2, "the two pages back did not go out as one paint");
+    require(reader.sideHoldTurn == 0, "the press's turn outlived its hold");
+  });
+  test("XTC side hold after a back press goes back no further", [] {
+    ReaderActivity reader;
+    reader.modelPage = 5;
+    reader.mappedInput.sideKeyDown = true;
+    passTurns.prev = true;
+    passTurns.sideTurn = -1;
+    reader.loop();
+    require(reader.modelPage == 4, "setup: the back press did not turn");
+    reader.mappedInput.sideKeyDown = false;
+    passTurns.sidePrev = true;
+    reader.loop();
+    require(reader.modelPage == 4 && reader.updates == 1, "the hold went past the page before the press");
+  });
+  test("XTC side hold after a press that turned nothing goes back one page", [] {
+    ReaderActivity reader;
+    reader.modelPage = 5;
+    reader.sideHoldTurn = 1;  // an earlier press, then a side key went down that something else took
+    reader.mappedInput.sideKeyDown = true;
+    reader.loop();
+    reader.mappedInput.sideKeyDown = false;
+    passTurns.sidePrev = true;
+    reader.loop();
+    require(reader.modelPage == 4, "an earlier press counted for this hold");
+  });
+  test("XTC side hold from the end of the book lands before the last page", [] {
+    ReaderActivity reader;
+    reader.modelPage = 9;  // the last page
+    reader.mappedInput.sideKeyDown = true;
+    passTurns.next = true;
+    passTurns.sideTurn = 1;
+    reader.loop();
+    reader.atEnd = true;  // page 10 is the end screen
+    reader.mappedInput.sideKeyDown = false;
+    passTurns.sidePrev = true;
+    reader.loop();
+    require(!reader.atEnd && reader.modelPage == 8, "the hold from the end did not land on the page before the last");
+  });
+  test("XTC side hold on the end screen after its press goes back to the last page", [] {
+    ReaderActivity reader;
+    reader.modelPage = 10;
+    reader.atEnd = true;  // the end screen; its menu took the press
+    reader.mappedInput.sideKeyDown = true;
+    reader.loop();
+    reader.mappedInput.sideKeyDown = false;
+    passTurns.sidePrev = true;
+    reader.loop();
+    require(!reader.atEnd && reader.modelPage == 9 && reader.updates == 1, "the end screen did not go back to the last page");
+  });
+  test("EPUB side hold after a forward press goes back two pages as one move", [] {
+    EpubReaderActivity reader;
+    reader.chapter = 1;
+    reader.layout(5, 10, false);
+    passSideTurn = 1;
+    reader.manualInput(false, false, false, false);
+    require(reader.section->currentPage == 6 && reader.sideHoldTurn == 1, "setup: the press did not turn");
+    reader.sideHoldToPreviousPage();
+    require(reader.pendingManualTurn == -2, "the hold did not queue two pages back");
+    reader.drainManual();
+    require(reader.chapter == 1 && reader.section->currentPage == 4 && reader.pendingManualTurn == 0 &&
+                reader.updates == 2,
+            "two pages back did not land as one move");
+  });
+  test("EPUB side hold across the start of a chapter paints only the page it ends on", [] {
+    EpubReaderActivity reader;
+    reader.chapter = 1;
+    reader.layout(0, 10, false);  // the first page of chapter 1
+    passSideTurn = 1;
+    reader.manualInput(false, false, false, false);
+    reader.sideHoldToPreviousPage();
+    reader.drainManual();
+    require(!reader.section && reader.chapter == 0 && reader.pendingManualTurn == 0,
+            "the hold did not go back into chapter 0");
+    reader.layout(7, 8, false);  // the paint lays chapter 0 out on its last page
+    require(reader.section->currentPage == 7, "the hold did not end on chapter 0's last page");
+  });
+  test("EPUB side hold from the first page of a chapter goes back into the one before", [] {
+    EpubReaderActivity reader;
+    reader.layout(7, 8, false);  // the last page of chapter 0
+    passSideTurn = 1;
+    reader.manualInput(false, false, false, false);
+    require(!reader.section && reader.chapter == 1, "setup: the press did not go on into chapter 1");
+    reader.layout(0, 10, false);  // its paint
+    reader.sideHoldToPreviousPage();
+    reader.drainManual();
+    require(!reader.section && reader.chapter == 0 && reader.pendingManualTurn == -1,
+            "the turn back into chapter 0 did not wait for its layout");
+    reader.layout(7, 8, false);  // laid out on its last page; queued, so this paint is dropped (nextScreenWaiting)
+    reader.drainManual();
+    require(reader.chapter == 0 && reader.section->currentPage == 6 && reader.pendingManualTurn == 0,
+            "the hold did not end on the page before the press");
+  });
+  test("EPUB side hold during the press's paint lands with it", [] {
+    EpubReaderActivity reader;
+    reader.layout(5, 10, false);
+    reader.ready = false;  // the press's turn is still in its paint
+    passSideTurn = 1;
+    reader.manualInput(false, false, false, false);
+    require(reader.pendingManualTurn == 1 && reader.sideHoldTurn == 1, "setup: the press was not queued");
+    reader.sideHoldToPreviousPage();
+    reader.ready = true;
+    reader.drainManual();
+    require(reader.section->currentPage == 4 && reader.trangDaLat == 1, "the queued press and the hold did not add up");
+  });
+  test("EPUB side hold does not go before the first page", [] {
+    EpubReaderActivity reader;
+    reader.layout(0, 10, false);  // the first page of the book
+    passSideTurn = 1;
+    reader.manualInput(false, false, false, false);
+    reader.sideHoldToPreviousPage();
+    reader.drainManual();
+    require(reader.chapter == 0 && reader.section->currentPage == 0 && reader.pendingManualTurn == 0,
+            "the hold went before the first page");
+  });
+  test("EPUB side hold from the end of the book lands before the last page", [] {
+    EpubReaderActivity reader;
+    reader.chapter = 1;
+    reader.layout(9, 10, false);  // the last page of the book
+    passSideTurn = 1;
+    reader.manualInput(false, false, false, false);
+    require(reader.atEnd, "setup: the press did not reach the end of the book");
+    reader.sideHoldToPreviousPage();
+    require(!reader.atEnd && reader.pendingManualTurn == -1, "the end did not go back to the last page");
+    reader.drainManual();
+    require(reader.section->currentPage == 8, "the hold did not end on the page before the last");
   });
   std::cout << "RESULT " << tests - failures << "/" << tests << " passed\n";
   return failures ? 1 : 0;

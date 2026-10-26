@@ -10,3 +10,6 @@ add_test(NAME reader_turn_trace_projection
           "${REPO_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/production-projection"
           --compiler "${CMAKE_CXX_COMPILER}")
 set_tests_properties(reader_turn_trace_projection PROPERTIES TIMEOUT 60)
+add_test(NAME reader_side_hold_input
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_side_hold_input.py")
+set_tests_properties(reader_side_hold_input PROPERTIES TIMEOUT 60)
