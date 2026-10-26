@@ -3363,7 +3363,10 @@ void EpubReaderActivity::onReturnFromEndOfBook() {
   if (epub && epub->getSpineItemsCount() > 0) {
     currentSpineIndex = epub->getSpineItemsCount() - 1;
     nextPageNumber = 0;
-    pendingPageJump = std::numeric_limits<uint16_t>::max();
+    // The end screen is reached with the last chapter still laid out, on its last page: that page stays. A jump
+    // left pending here would never be consumed (only loading a section does), and the next load of any chapter
+    // (a bookmark, a text size change) would land on its last page and save it as the progress.
+    if (!section) pendingPageJump = std::numeric_limits<uint16_t>::max();
   }
 }
 
