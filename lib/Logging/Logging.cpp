@@ -81,6 +81,7 @@ static void probeLogAppend(const char* line) {
 #endif
 void probeLogDump() {
   [[maybe_unused]] LogSerialBinary binary;
+  [[maybe_unused]] LogSerialDumpWait wait;
   logSerial.printf("LOGDUMP_START:%u\n", static_cast<unsigned>(probeLogLen));
   logSerial.write(reinterpret_cast<const uint8_t*>(probeLog), probeLogLen);
   logSerial.printf("LOGDUMP_END\n");

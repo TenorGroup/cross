@@ -127,6 +127,26 @@ static LogSerialPort& logSerial = Serial;
 struct LogSerialBinary {};
 #endif
 
+#if LOG_SERIAL_HAS_TX_TIMEOUT
+// The write timeout between dumps: the 1 ms main.cpp sets (load-bearing) until CMD:TXTIMEOUT sets another.
+inline uint32_t logSerialUsualTimeoutMs = 1;
+// The longest a SCREENSHOT or LOGDUMP waits for a host that stopped reading, as the 200 ms TXTIMEOUT of the
+// journey runner meant before the port's tries were divided out (20 x 200). A dump holds it for its whole
+// length and puts the usual timeout back. Log lines ask the port for room first and never wait on it.
+constexpr uint32_t kLogDumpStallMs = 4000;
+struct LogSerialDumpWait {
+  LogSerialDumpWait() {
+    const uint32_t dump = logSerialTimeoutFor(kLogDumpStallMs);
+    logSerial.setTxTimeoutMs(dump > logSerialUsualTimeoutMs ? dump : logSerialUsualTimeoutMs);
+  }
+  ~LogSerialDumpWait() { logSerial.setTxTimeoutMs(logSerialUsualTimeoutMs); }
+  LogSerialDumpWait(const LogSerialDumpWait&) = delete;
+  LogSerialDumpWait& operator=(const LogSerialDumpWait&) = delete;
+};
+#else
+struct LogSerialDumpWait {};
+#endif
+
 void logPrintf(const char* level, const char* origin, const char* format, ...);
 // The same with the arguments already collected (a library that logs through the app).
 void vlogPrintf(const char* level, const char* origin, const char* format, va_list args);

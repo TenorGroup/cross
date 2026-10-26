@@ -90,5 +90,15 @@ int main() {
   assert(logSerialTimeoutFor(200) == 200);
 #endif
 
+  // A screenshot or log dump outwaits a stalled host as long as the 200 ms of the journey runner meant (20 tries
+  // x 200 ms on HWCDC), whatever the divided-out TXTIMEOUT is, and puts the usual timeout back.
+  logSerialUsualTimeoutMs = logSerialTimeoutFor(200);  // CMD:TXTIMEOUT 200
+  Serial.timeoutMs = logSerialUsualTimeoutMs;
+  {
+    LogSerialDumpWait wait;
+    assert(Serial.timeoutMs * (LOG_SERIAL_HWCDC ? 20 : 1) >= 4000);
+  }
+  assert(Serial.timeoutMs == logSerialUsualTimeoutMs);
+
   puts("stalled port: lines dropped at once and counted, the count sent when it drains");
 }
