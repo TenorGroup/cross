@@ -478,6 +478,12 @@ int main(int argc, char** argv) {
               "base catalog keeps the Root and On wake descriptors before shell filtering, and not the two it replaced") && ok;
   ok = expect(longPressValuesMatch(catalog, hasImu), "Confirm-hold list shows Reader menu and appends the new actions") &&
        ok;
+  // Founder 26/10/2026: holding the page buttons while reading is a reader setting, not a control one.
+  const SettingInfo* holdPage = findSetting(catalog, "longPressButtonBehavior");
+  ok = expect(holdPage && holdPage->category == StrId::STR_CAT_READER &&
+                  deviceSettingsTab(*holdPage) == static_cast<int>(settingstabs::Tab::READER),
+              "Hold page buttons while reading sits in Settings > Reader") &&
+       ok;
   ok = longPressStoreKept(catalog, hasImu) && ok;
 
   if (!hasImu) {
