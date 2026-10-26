@@ -1,5 +1,5 @@
 #pragma once
-// Measurement builds of the X3 only: a watchdog for a main loop or a render task that stops for good (v1.1.0 journeys,
+// Measurement builds of the X3 only (TENOR_NO_HANGWATCH leaves it out, to measure heap without it): a watchdog for a main loop or a render task that stops for good (v1.1.0 journeys,
 // two hangs with no panic and no restart). Past the limit it writes where both tasks stand to RTC memory (COLDLOG
 // prints it after the restart), prints it to the cable, and aborts: the panic stores a core dump of every task.
 #include <cstdint>
@@ -19,7 +19,7 @@ inline uint8_t stuck(const uint32_t nowMs, const uint32_t loopSeenMs, const uint
   return s;
 }
 
-#if defined(TENOR_PRESS_PROBE) && defined(FREEINK_DEVICE_X3) && FREEINK_DEVICE_X3 && !defined(SIMULATOR)
+#if defined(TENOR_PRESS_PROBE) && defined(FREEINK_DEVICE_X3) && FREEINK_DEVICE_X3 && !defined(SIMULATOR) && !defined(TENOR_NO_HANGWATCH)
 // Each loop pass (the first one names the loop task and starts the watchdog). From another task it does nothing.
 void loopAlive();
 // The render task, around each paint.

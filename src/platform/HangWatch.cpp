@@ -1,6 +1,6 @@
 #include "HangWatch.h"
 
-#if defined(TENOR_PRESS_PROBE) && defined(FREEINK_DEVICE_X3) && FREEINK_DEVICE_X3 && !defined(SIMULATOR)
+#if defined(TENOR_PRESS_PROBE) && defined(FREEINK_DEVICE_X3) && FREEINK_DEVICE_X3 && !defined(SIMULATOR) && !defined(TENOR_NO_HANGWATCH)
 
 #include <Arduino.h>
 #include <Logging.h>
