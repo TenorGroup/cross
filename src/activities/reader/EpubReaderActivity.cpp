@@ -1571,6 +1571,7 @@ void EpubReaderActivity::loop() {
   // never fires later over a menu or overlay that owned this pass.
   const ReaderShortcut shortcut = std::exchange(pendingShortcut, ReaderShortcut::None);
   stayAfterDroppedExit();
+  forgetSideHoldTurn();
   if (!epub) {
     finish();
     return;
@@ -2324,6 +2325,10 @@ void EpubReaderActivity::loop() {
     }
     return;
   }
+  if (turns.sidePrev) {
+    sideHoldToPreviousPage();
+    return;
+  }
   const bool prevPageTriggered = turns.prev || touch.prev;
   const bool nextPageTriggered = turns.next || touch.next;
   const bool prevTriggered = prevPageTriggered || turns.prevLongPressed;
@@ -2347,6 +2352,7 @@ void EpubReaderActivity::loop() {
   }
 
   if (handleEndOfBookPageTurn(prevTriggered, nextTriggered)) {
+    sideHoldTurn = turns.sideTurn;  // back from the end: the last page
     return;
   }
 
@@ -2409,6 +2415,7 @@ void EpubReaderActivity::loop() {
     return;
   }
 
+  sideHoldTurn = turns.sideTurn;  // queued or turned below
 #ifdef TENOR_TURN_TRACE
   currentTurnTrace = detectTurnTrace((touch.prev || touch.next) ? "touch" : turns.fromTilt ? "tilt" : "button",
                                      !prevPageTriggered);
@@ -3223,6 +3230,14 @@ bool EpubReaderActivity::nhayChuongMotBac(int huong, std::optional<int> logicalO
     return true;
   }
   return false;  // da o chuong dau hoac chuong cuoi
+}
+
+// Through the press queue: the loop's drain turns them as one move, and a chapter on the way is laid out without
+// its page reaching the panel (nextScreenWaiting), so only the page they end on is painted. A gray pass of the page
+// on screen stops for them (TextGrayContext::pendingManualTurn).
+void EpubReaderActivity::turnBackPages(const int pages) {
+  pendingManualTurn = static_cast<int8_t>(
+      std::clamp<int>(pendingManualTurn - pages, -MAX_QUEUED_TURNS, MAX_QUEUED_TURNS));
 }
 
 bool EpubReaderActivity::skipPages(int amount) {

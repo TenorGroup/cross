@@ -46,7 +46,7 @@ using MappedInputManager=FakeInput;FakeInput mappedInputManager;
 struct FakeSettings{static constexpr uint8_t READER_MENU=7,SAVE_QUOTE=8;enum Behavior{FONT_SIZE_STEP,CHAPTER_SKIP};Behavior longPressButtonBehavior=CHAPTER_SKIP;bleturner::Config ble;}SETTINGS;
 using CrossPointSettings=FakeSettings;
 namespace ReaderUtils {constexpr int SKIP_HOLD_MS=500;
-struct Turns{bool prev=false,next=false,prevLongPressed=false,nextLongPressed=false,fromTilt=false,sideBack=false;};
+struct Turns{bool prev=false,next=false,prevLongPressed=false,nextLongPressed=false,fromTilt=false,sideBack=false,sidePrev=false;int8_t sideTurn=0;};
 inline bool holdSkipsChapters(){return SETTINGS.longPressButtonBehavior==CrossPointSettings::CHAPTER_SKIP;}
 struct Touch{bool prev=false,next=false;unsigned long heldMs=0;};
 Turns detectPageTurn(FakeInput&i){Turns t;t.prev=i.prev;t.next=i.next;return t;}
@@ -62,6 +62,8 @@ struct ReaderActivity:Activity{
  int8_t pendingExternalTurn=0;uint32_t pendingExternalGeneration=0;bool pendingTurnIsLocal=false,pendingExternalChapter=false;int backCalls=0,formatCalls=0,chapterSkips=0;std::string bookPath="fixture.txt";void finish(){}
  bool statsEnabled=true,statsActive=false,statsDirty=false;uint32_t statsLastMs=0,statsSavedMs=0,statsDay=1,statsDayPollMs=0;
  virtual bool latTrangThat(bool)=0;virtual bool isAtEndOfBook()const=0;virtual void onReturnFromEndOfBook()=0;
+ // A held side button under SIDE_HOLD_PREV (v1.1.0): not a remote path, nothing to spy on here.
+ int8_t sideHoldTurn=0;void forgetSideHoldTurn(){}void sideHoldToPreviousPage(){}
  static constexpr int8_t MAX_QUEUED_TURNS=8;void queuePageTurn(bool,bool,const char*);
  bool pageTurn(bool);bool pageTurnLocked(bool);bool luotLatTrangNgoai(bool);bool luotNhayChuongNgoai(bool);bool processExternalPageTurn();void cancelExternalPageTurn();
  // Trinh doc khong co muc luc tra ve false: giu nut o do khong lam gi ca.

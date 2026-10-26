@@ -68,40 +68,49 @@ struct PageTurnResult {
   bool prevButtonPressed;
   bool nextButtonPressed;
   bool sideBack;  // a held side button under SIDE_HOLD_BACK: do what Back does
+  bool sidePrev;  // a held side button under SIDE_HOLD_PREV: end on the page before its press
+  int8_t sideTurn;  // this pass's side button turn: 1 on, -1 back, 0 none
 };
 
-// A held page-turn button or touch skips a chapter: under the chapter setting, and under SIDE_HOLD_BACK for every
-// hold but a side button's (detectPageTurn turns those into sideBack).
+// A held page-turn button or touch skips a chapter: under the chapter setting, and under SIDE_HOLD_BACK and
+// SIDE_HOLD_PREV for every hold but a side button's (detectPageTurn turns those into sideBack, sidePrev).
 inline bool holdSkipsChapters() {
   return SETTINGS.longPressButtonBehavior == CrossPointSettings::CHAPTER_SKIP ||
-         SETTINGS.longPressButtonBehavior == CrossPointSettings::SIDE_HOLD_BACK;
+         SETTINGS.longPressButtonBehavior == CrossPointSettings::SIDE_HOLD_BACK ||
+         SETTINGS.longPressButtonBehavior == CrossPointSettings::SIDE_HOLD_PREV;
 }
 
 inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
   const bool longPressEnabled = SETTINGS.longPressButtonBehavior != SETTINGS.OFF;
   // SIDE_HOLD_BACK: a side button turns when it is let go, so a hold has turned nothing when it becomes Back (a
-  // long press consumes its release). Each button's long press is asked once a frame (it is a one-shot).
+  // long press consumes its release). SIDE_HOLD_PREV: it turns on the press, and the hold goes back to the page
+  // before the one the press started on (ReaderActivity::sideHoldToPreviousPage). Each button's long press is asked
+  // once a frame (it is a one-shot).
   const bool sideHoldsBack = SETTINGS.longPressButtonBehavior == CrossPointSettings::SIDE_HOLD_BACK;
-  const bool sideBack =
-      sideHoldsBack && (input.wasLongPressed(MappedInputManager::Button::PageBack, SKIP_HOLD_MS) ||
+  const bool sideHoldIsOwn =
+      sideHoldsBack || SETTINGS.longPressButtonBehavior == CrossPointSettings::SIDE_HOLD_PREV;
+  const bool sideHeld =
+      sideHoldIsOwn && (input.wasLongPressed(MappedInputManager::Button::PageBack, SKIP_HOLD_MS) ||
                         input.wasLongPressed(MappedInputManager::Button::PageForward, SKIP_HOLD_MS));
   const auto sideTurn = [&](const MappedInputManager::Button side) {
     return sideHoldsBack ? input.wasReleased(side) : input.wasPressed(side);
   };
+  const bool sidePrevTurn = sideTurn(MappedInputManager::Button::PageBack);
+  const bool sideNextTurn = sideTurn(MappedInputManager::Button::PageForward);
   const bool tiltNext = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedForward();
   const bool tiltPrev = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedBack();
   const bool swapFront = input.isNavDirectionSwapped();
   const auto prevButton = swapFront ? MappedInputManager::Button::Right : MappedInputManager::Button::Left;
   const auto nextButton = swapFront ? MappedInputManager::Button::Left : MappedInputManager::Button::Right;
-  const bool prevButtonPressed = sideTurn(MappedInputManager::Button::PageBack) || input.wasPressed(prevButton);
-  const bool nextButtonPressed = sideTurn(MappedInputManager::Button::PageForward) || input.wasPressed(nextButton);
+  const bool prevButtonPressed = sidePrevTurn || input.wasPressed(prevButton);
+  const bool nextButtonPressed = sideNextTurn || input.wasPressed(nextButton);
   const bool prevLongPressed =
       longPressEnabled &&
-      ((!sideHoldsBack && input.wasLongPressed(MappedInputManager::Button::PageBack, SKIP_HOLD_MS)) ||
+      ((!sideHoldIsOwn && input.wasLongPressed(MappedInputManager::Button::PageBack, SKIP_HOLD_MS)) ||
        input.wasLongPressed(prevButton, SKIP_HOLD_MS));
   const bool nextLongPressed =
       longPressEnabled &&
-      ((!sideHoldsBack && input.wasLongPressed(MappedInputManager::Button::PageForward, SKIP_HOLD_MS)) ||
+      ((!sideHoldIsOwn && input.wasLongPressed(MappedInputManager::Button::PageForward, SKIP_HOLD_MS)) ||
        input.wasLongPressed(nextButton, SKIP_HOLD_MS));
   const bool prev = tiltPrev || prevButtonPressed;
   const bool powerTurn = SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::PAGE_TURN &&
@@ -109,8 +118,16 @@ inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
   // A Home-key board can map the Home key to the next page (HomeButtonAction::NextPage).
   const bool next =
       input.homeButtonAction() == HomeButtonAction::NextPage || tiltNext || nextButtonPressed || powerTurn;
-  return {prev, next, tiltPrev || tiltNext, prevLongPressed, nextLongPressed, prevButtonPressed, nextButtonPressed,
-          sideBack};
+  return {prev,
+          next,
+          tiltPrev || tiltNext,
+          prevLongPressed,
+          nextLongPressed,
+          prevButtonPressed,
+          nextButtonPressed,
+          sideHeld && sideHoldsBack,
+          sideHeld && !sideHoldsBack,
+          static_cast<int8_t>(sideNextTurn ? 1 : sidePrevTurn ? -1 : 0)};
 }
 
 struct TouchPageTurn {

@@ -126,6 +126,15 @@ class ReaderActivity : public Activity {
   void dropTurnTrace(TurnTrace& trace, const char* reason);
 #endif
   virtual bool skipPages(int amount) { return pageTurn(amount > 0); }
+  // SIDE_HOLD_PREV: what the press of the side button now held turned (1 on, -1 back, 0 nothing). A side button
+  // going down clears it (forgetSideHoldTurn, first in the loop) before anything can take the press, so a press a
+  // menu or the end of the book took does not count with an earlier one.
+  int8_t sideHoldTurn = 0;
+  void forgetSideHoldTurn();
+  // The held side button ends on the page before the one shown when it went down.
+  void sideHoldToPreviousPage();
+  // Turns `pages` back as one move with one paint.
+  virtual void turnBackPages(int pages);
   // Nhay DUNG MOT chuong theo `huong` (+1 toi, -1 lui). Khoa ve da duoc nguoi goi
   // giu san. Trinh doc khong co muc luc tra ve false: giu nut o do khong lam gi.
   virtual bool nhayChuongThat(int /*huong*/) { return false; }

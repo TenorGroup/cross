@@ -197,19 +197,21 @@ inline SettingInfo buildDictionarySetting(const std::vector<DictionaryEntry>& di
 // Hold-Select row. The list shows the functions this board offers, in stored-number order; what is saved is
 // the number (CrossPointSettings.cpp saves and loads it by hand, like the dictionary). A board without an IMU
 // leaves the tilt toggle out, so there Save quotation sits at list position 6 and is still stored as 7.
-// Page-turn hold: Off, chapter, orientation, side buttons back. The list skips number 3 (retired), so the row is
-// dynamic and saved by hand (CrossPointSettings.cpp); list position 3 is number 4.
+// Page-turn hold: Off, chapter, orientation, side buttons back, side buttons previous page. The list skips number 3
+// (retired), so the row is dynamic and saved by hand (CrossPointSettings.cpp); list positions 3 and 4 are numbers 4
+// and 5.
 inline SettingInfo buildLongPressButtonSetting() {
   return SettingInfo::DynamicEnum(
       StrId::STR_LONG_PRESS_BEHAVIOR,
       {StrId::STR_LONG_PRESS_BEHAVIOR_OFF, StrId::STR_LONG_PRESS_BEHAVIOR_SKIP,
-       StrId::STR_LONG_PRESS_BEHAVIOR_ORIENTATION, StrId::STR_LONG_PRESS_BEHAVIOR_SIDE_BACK},
+       StrId::STR_LONG_PRESS_BEHAVIOR_ORIENTATION, StrId::STR_LONG_PRESS_BEHAVIOR_SIDE_BACK,
+       StrId::STR_LONG_PRESS_BEHAVIOR_SIDE_PREV},
       []() -> uint8_t {
         const uint8_t number = SETTINGS.longPressButtonBehavior;
-        return number == CrossPointSettings::SIDE_HOLD_BACK ? 3 : number;
+        return number > CrossPointSettings::FONT_SIZE_STEP ? number - 1 : number;
       },
       [](const uint8_t position) {
-        SETTINGS.longPressButtonBehavior = position == 3 ? CrossPointSettings::SIDE_HOLD_BACK : position;
+        SETTINGS.longPressButtonBehavior = position >= CrossPointSettings::FONT_SIZE_STEP ? position + 1 : position;
       },
       "longPressButtonBehavior", StrId::STR_CAT_READER);
 }

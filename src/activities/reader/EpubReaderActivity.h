@@ -607,6 +607,7 @@ class EpubReaderActivity final : public ReaderActivity {
 
   bool latTrangThat(bool isForward) override;
   bool skipPages(int amount) override;
+  void turnBackPages(int pages) override;
   bool nhayChuongThat(int huong) override;
   bool remoteShortcut(bool readerMenu) override;
   bool isAtEndOfBook() const override;

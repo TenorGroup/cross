@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <utility>
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
@@ -681,6 +682,7 @@ void ReaderActivity::stayAfterDroppedExit() {
 
 void ReaderActivity::loop() {
   stayAfterDroppedExit();
+  forgetSideHoldTurn();
   if (handlePreviewInput()) return;
   clearEndOfBookOptionsIfNeeded();
   if (handleEndOfBookMenu()) {
@@ -701,9 +703,14 @@ void ReaderActivity::loop() {
     activityManager.goHome(HomeMenuItem::RECENT_CONTINUE);
     return;
   }
+  if (turns.sidePrev) {
+    sideHoldToPreviousPage();
+    return;
+  }
   const bool prevTriggered = turns.prev || turns.prevLongPressed || touch.prev;
   const bool nextTriggered = turns.next || turns.nextLongPressed || touch.next;
   if (!prevTriggered && !nextTriggered) return;
+  sideHoldTurn = turns.sideTurn;  // the end of the book and pageTurn below both turn it
   if (handleEndOfBookPageTurn(prevTriggered, nextTriggered)) return;
 
   const unsigned long heldMs = (touch.prev || touch.next) ? touch.heldMs : mappedInput.getHeldTime();
@@ -719,6 +726,33 @@ void ReaderActivity::loop() {
 
   const bool changed = skip ? skipPages(prevTriggered ? -10 : 10) : pageTurn(!prevTriggered);
   if (changed) requestUpdate();
+}
+
+void ReaderActivity::forgetSideHoldTurn() {
+  if (mappedInput.wasPressed(MappedInputManager::Button::PageBack) ||
+      mappedInput.wasPressed(MappedInputManager::Button::PageForward))
+    sideHoldTurn = 0;
+}
+
+// SIDE_HOLD_PREV. The press already turned sideHoldTurn pages, so the hold goes back one more than that; the end of
+// the book counts as the page after the last one, and no turn goes before the first page (latTrangThat refuses it).
+void ReaderActivity::sideHoldToPreviousPage() {
+  int back = 1 + std::exchange(sideHoldTurn, int8_t{0});
+  if (back > 0 && isAtEndOfBook()) {
+    {
+      RenderLock lock(*this);
+      onReturnFromEndOfBook();
+    }
+    if (--back == 0) requestUpdate();
+  }
+  if (back > 0) turnBackPages(back);
+}
+
+// A busy render lock queues each turn (queuePageTurn), and the queue lands them together.
+void ReaderActivity::turnBackPages(const int pages) {
+  bool moved = false;
+  for (int i = 0; i < pages; ++i) moved = pageTurn(false) || moved;
+  if (moved) requestUpdate();
 }
 
 void ReaderActivity::render(RenderLock&&) {

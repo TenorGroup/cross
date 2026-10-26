@@ -233,6 +233,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     // Side buttons turn on release and a held side button goes back (founder 24/10/2026); the front buttons and a
     // held touch still skip a chapter. 3 stays retired: an old file holding it reads as OFF.
     SIDE_HOLD_BACK = 4,
+    // Side buttons turn on press and a held side button ends on the page before the one shown when it went down
+    // (founder 26/10/2026, ReaderActivity::sideHoldToPreviousPage); the front buttons and a held touch still skip a
+    // chapter. Number after the tenor ones (PLAN-110 D4).
+    SIDE_HOLD_PREV = 5,
     LONG_PRESS_BUTTON_BEHAVIOR_COUNT
   };
 
