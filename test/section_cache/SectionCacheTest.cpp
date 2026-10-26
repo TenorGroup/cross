@@ -1052,6 +1052,36 @@ TEST_F(SectionCacheTest, PageShortWriteAfterAResumeLaysThePageOutAgainFromTheChe
   EXPECT_EQ(section.pageCount, fullPages);
   EXPECT_TRUE(bytes(cache()) == valid) << "the chapter written after the retry differs from a clean build";
 }
+// The same, but the page the card refuses is not the first one after the checkpoint: two pages were laid out and
+// written since. The checkpoint is behind them, so the parser cannot go back to it; those pages were dropped with
+// the rest and the chapter laid out again from page 0 (rule 16). They are kept on the card as a partial, readable
+// while the chapter is laid out again, and the chapter still comes out byte for byte as a clean build.
+TEST_F(SectionCacheTest, PageShortWriteFarFromTheCheckpointKeepsThePagesLaidOutSince) {
+  std::filesystem::remove(cache());
+  Section section(epub, 0, renderer);
+  ASSERT_TRUE(section.startBuild(spec));
+  while (section.pageCount < 4u) ASSERT_TRUE(section.buildSomeMore(2));
+  ASSERT_TRUE(parkSection(section));
+  ASSERT_TRUE(sectionIsParked(section));
+  const uint16_t parkedPages = section.pageCount;
+  ASSERT_LT(parkedPages + 3u, fullPages);
+  storageFault::target = "/sections/0.bin.part";
+  storageFault::writeOffset = pageOffsets[parkedPages + 2];
+  storageFault::failOnce = true;
+  for (unsigned ticks = 0; storageFault::hit == 0 && ticks < 1000u; ++ticks) {
+    ASSERT_TRUE(section.buildSomeMore(1)) << "a short page write dropped the chapter";
+  }
+  EXPECT_EQ(storageFault::hit, 1u);
+  EXPECT_EQ(storageFault::hitOffset, pageOffsets[parkedPages + 2]) << "the fault did not hit the third page after the checkpoint";
+  EXPECT_GE(section.pageCount, parkedPages + 2u) << "the pages laid out since the checkpoint were dropped";
+  for (uint16_t page = 0; page < parkedPages + 2u; ++page) {
+    EXPECT_NE(section.loadPage(page), nullptr) << "page " << page << " is gone while the chapter is laid out again";
+  }
+  EXPECT_TRUE(section.buildSomeMore(0));
+  EXPECT_TRUE(section.isBuildComplete());
+  EXPECT_EQ(section.pageCount, fullPages);
+  EXPECT_TRUE(bytes(cache()) == valid) << "the chapter written after the retry differs from a clean build";
+}
 // A card that keeps refusing is not retried without end: the second short write ends the build, and
 // the cache already on the card stays as it was.
 TEST_F(SectionCacheTest, PageShortWriteTwiceEndsTheBuildAndKeepsPreviousCache) {
