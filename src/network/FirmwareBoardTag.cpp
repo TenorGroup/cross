@@ -39,10 +39,10 @@
 #error "FirmwareBoardTag: no FREEINK_DEVICE_* flag set; cannot derive board name"
 #endif
 
-// The X4 Pro cannot be reached in USB download mode: a release without the cable channel would
-// leave it with none.
-#if FREEINK_DEVICE_X4PRO && !defined(SIMULATOR) && !TENOR_CABLE_FLASH
-#error "X4 Pro builds must keep the cable flash channel (-DTENOR_CABLE_FLASH=1)"
+// The X4 Pro (and a domestic X4 Classic) cannot be reached in USB download mode: a release without the
+// cable channel would leave it with none.
+#if (FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC) && !defined(SIMULATOR) && !TENOR_CABLE_FLASH
+#error "X4 Pro and X4 Classic builds must keep the cable flash channel (-DTENOR_CABLE_FLASH=1)"
 #endif
 #if TENOR_CABLE_FLASH
 #define TENOR_CABLE_FIELD "TENOR-CABLE-V1:1;"

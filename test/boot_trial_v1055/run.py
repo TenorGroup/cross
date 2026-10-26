@@ -10,16 +10,17 @@ parser.add_argument('--output', type=Path, required=True)
 parser.add_argument('--cxx', default='c++')
 parser.add_argument('--main-source', type=Path)
 parser.add_argument('--boot-source', type=Path)
+# v1.1.0: the X4 Classic is built as the X4 Pro is (TinyUSB CDC, TCF1, boot trial), without a touch panel.
+parser.add_argument('--board', choices=('x4pro', 'x4c'), default='x4pro')
 args = parser.parse_args()
 here = Path(__file__).resolve().parent
 repo = here.parents[1]
 out = args.output.resolve()
 out.mkdir(parents=True, exist_ok=True)
 source = (args.main_source or repo / 'src/main.cpp').read_text()
-if 'const bool trialBoot = boot_trial::begin();' in source:
-    begin = source[source.index('#if FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)\n  const bool trialBoot'):]
-else:
-    begin = source[source.index('#if FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)\n  boot_trial::begin();'):]
+# The #if around the trial's start, whatever it names, through its #endif.
+call = source.index('boot_trial::begin();')
+begin = source[source.rindex('\n#if', 0, call) + 1:]
 begin = begin[:begin.index('#endif') + len('#endif')]
 route_start = source.index('  if (recoveryFirmwareMode) {\n    // Skip normal home/reader routing:')
 route_end = source.index('\n  if (resume == BootResume::Silent) {\n    // Block until', route_start)
@@ -39,7 +40,8 @@ def function_of(signature):
 binary = out / 'boot-trial'
 boot_source = args.boot_source or repo / 'src/platform/BootTrial.cpp'
 subprocess.run([args.cxx, '-std=c++17', '-Wall', '-Wextra', '-Werror',
-                '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-DFREEINK_DEVICE_X4PRO=1',
+                '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-DTENOR_CABLE_FLASH=1',
+                '-DFREEINK_DEVICE_X4PRO=1' if args.board == 'x4pro' else '-DFREEINK_DEVICE_X4CLASSIC=1',
                 '-I' + str(here / 'stubs'), '-I' + str(boot_source.parent), '-I' + str(repo / 'src/platform'), '-I' + str(repo / 'src'),
                 '-I' + str(out), str(here / 'BootTrial.cpp'), str(boot_source),
                 '-o', str(binary)], check=True)
@@ -47,7 +49,12 @@ cases = ['valid', 'new', 'aborted', 'query-error', 'pass', 'recovery', 'no-touch
          'create-error', 'start-error', 'hung-paint', 'valid-race', 'silent-large-book',
          'wake-large-book', 'valid-wake-book', 'silent-transfer', 'silent-fonts',
          'silent-task-clock', 'silent-task-login', 'silent-task-signup', 'silent-task-over-settings',
-         'silent-settings-place', 'silent-settings-first-tab', 'silent-join-book', 'silent-join-home']
+         'silent-settings-place', 'silent-settings-first-tab', 'silent-join-book', 'silent-join-home', 'no-port',
+         'small-rx']
+if args.board == 'x4c':
+    # No touch panel: its self-check is the first paint and the cable port (CDC begun, its receive buffer).
+    cases = ['valid', 'new', 'aborted', 'query-error', 'pass', 'recovery', 'no-touch-x4c', 'no-port', 'small-rx',
+             'mark-error', 'create-error', 'start-error', 'hung-paint', 'valid-race']
 results = []
 for case in cases:
     proc = subprocess.run([str(binary), case], text=True, capture_output=True)

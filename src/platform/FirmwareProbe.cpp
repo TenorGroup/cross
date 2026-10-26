@@ -1,6 +1,6 @@
 #include "FirmwareProbe.h"
 
-#if defined(TENOR_PRESS_PROBE) && (FREEINK_DEVICE_X4PRO || defined(TENOR_X3_CARD_PROBE)) && !defined(SIMULATOR)
+#if defined(TENOR_PRESS_PROBE) && (TENOR_CABLE_FLASH || defined(TENOR_X3_CARD_PROBE)) && !defined(SIMULATOR)
 
 #include <HalStorage.h>
 #include <Logging.h>

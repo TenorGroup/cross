@@ -92,5 +92,41 @@ class WebDavProbe(unittest.TestCase):
         self.assertTrue(any("FREEINK_DEVICE_X3" in g for g in stack), stack)
 
 
+def own_or_inherited(ini, section, key, seen=()):
+    """An option as PlatformIO resolves `extends`: the section's own value, else the first parent's."""
+    if section in seen or section not in ini:
+        return None
+    if key in ini[section]:
+        return ini[section][key]
+    for parent in re.split(r"[,\s]+", ini[section].get("extends", "").strip()):
+        if parent:
+            value = own_or_inherited(ini, parent, key, seen + (section,))
+            if value is not None:
+                return value
+    return None
+
+
+class X4ClassicCableProbe(unittest.TestCase):
+    """v1.1.0: the X4 Classic is built as the X4 Pro is (TinyUSB CDC, TCF1, boot trial). Its measurement builds
+    run on the same CDC port, and the commands Q6 measures it with (EFUSE, OTA_STATE, FLASH_DUMP, SD_FLASH,
+    ROLLBACK_TEST, SHOT, USB_DRIVE) are in every cable board's probe, not the X4 Pro's alone."""
+
+    def test_the_x4_classic_measurement_builds_run_on_the_cdc_port(self):
+        ini = load()
+        for env in ("env:m-x4c", "env:m-ota-x4c"):
+            with self.subTest(env=env):
+                self.assertIn("env:x4c-gh_release", chain(ini, env))
+                self.assertIn("TENOR_CABLE_FLASH", flags(ini, env))
+                self.assertIn("-DARDUINO_USB_MODE=1", (own_or_inherited(ini, env, "build_unflags") or "").split())
+
+    def test_the_cable_probe_commands_follow_the_cable_channel(self):
+        for path, needle in (("src/main.cpp", "fwprobe::command(cmd)"), ("src/main.cpp", "fwprobe::onBoot()"),
+                             ("src/main.cpp", 'cmd == "USB_DRIVE"'), ("src/platform/FirmwareProbe.cpp", "#include <HalStorage.h>")):
+            with self.subTest(path=path, needle=needle):
+                stack = guards(ROOT / path, needle)
+                self.assertIsNotNone(stack, needle)
+                self.assertTrue(any("TENOR_CABLE_FLASH" in g for g in stack), stack)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -341,6 +341,8 @@ add_test(NAME HeapFloorDoorSites COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURREN
 add_test(NAME WolfsslFlagWarnings COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/wolfssl_flags/test_wolfssl_warnings.py")
 add_test(NAME LazyStatics COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/static_ram/test_lazy_statics.py")
 add_test(NAME ProbeFlags COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/cable_tool/test_probe_flags.py")
+# The release packager (scripts/package_tenor_ota.py): board tags, the cable channel of the X4 Pro and X4 Classic.
+add_test(NAME OtaPackage COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/ota_package/test_package.py")
 add_test(NAME BuiltinFontMetadata COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/font_metadata/test_pooling.py")
 add_test(NAME TiltSensorForegroundOwnership COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tilt_sensor_ownership/run.py" --source "${REPO_ROOT}")
 add_test(NAME ReaderMenuTilt COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tilt/run.py" --source "${REPO_ROOT}")

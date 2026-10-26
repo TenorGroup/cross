@@ -1,6 +1,6 @@
 #include "BootTrial.h"
 
-#if FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)
+#if TENOR_CABLE_FLASH && !defined(SIMULATOR)
 
 #include <Logging.h>
 #include <esp_ota_ops.h>
@@ -10,7 +10,7 @@
 #include <atomic>
 
 // Keeps a trial image PENDING_VERIFY through initArduino(), which would otherwise accept it before
-// setup() runs. setup() accepts it after the first paint and touch self-check.
+// setup() runs. setup() accepts it after the first paint and its self-check.
 extern "C" bool verifyRollbackLater() { return true; }
 
 namespace boot_trial {
@@ -52,8 +52,13 @@ bool begin() {
   return true;
 }
 
-void passed(const bool touchReady) {
+void passed(const bool touchReady, const bool cablePortUp) {
   if (!watchdog) return;
+  if (!cablePortUp) {
+    failureReason.store("boot trial: cable port (USB CDC) not up", std::memory_order_relaxed);
+    LOG_ERR("OTA", "Boot self-check: no cable port, left on trial");
+    return;
+  }
   if (!touchReady) {
     failureReason.store("boot trial: touch controller unavailable", std::memory_order_relaxed);
     LOG_ERR("OTA", "Boot self-check: no touch controller, left on trial");

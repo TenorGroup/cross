@@ -2,6 +2,7 @@
 import configparser
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import tempfile
 import unittest
@@ -46,9 +47,22 @@ class S3Profiles(unittest.TestCase):
                 # German patterns: every Bluetooth image carries them since v1.0.69 (Noto Serif left the image).
                 self.assertNotIn("-DTENOR_HYPH_NO_DE", flags)
                 # v1.0.59: an X4 Pro image without the cable channel (the TENOR-CABLE-V1 board-tag field) is
-                # refused by the unit's own SD_FLASH. The X4 Classic takes images over the chip's USB download
-                # mode (tools/nap.py route "rom") and its envs carry no such flag.
-                self.assertEqual("-DTENOR_CABLE_FLASH=1" in flags, board == "x4pro")
+                # refused by the unit's own SD_FLASH. v1.1.0: the X4 Classic is built as the X4 Pro is (a domestic
+                # unit may have its USB-Serial/JTAG fused off as the domestic X4 Pro has): TinyUSB CDC on the OTG
+                # port from boot, the TCF1 channel, the boot trial.
+                for name in (board, board + "-gh_release", board + "-gh_release_rc", board + "-ble"):
+                    env_flags = option("env:" + name, "build_flags").split()
+                    self.assertIn("-DTENOR_CABLE_FLASH=1", env_flags, name)
+                    self.assertIn("-DARDUINO_USB_MODE=0", env_flags, name)
+                    self.assertIn("-DARDUINO_USB_MODE=1", option("env:" + name, "build_unflags").split(), name)
+                    self.assertIn("-DARDUINO_USB_CDC_ON_BOOT=1", env_flags, name)
+                    # PlatformIO splits build_flags as a shell does (SCons ParseFlags, shlex): a name with spaces
+                    # stays one define only inside quotes; \\" alone cut it at the first space (e5a0ac61: the core's
+                    # USB.cpp then failed with "missing terminating \" character").
+                    product = {"x4pro": "X4 Pro", "x4c": "X4 Classic"}[board]
+                    tokens = shlex.split(option("env:" + name, "build_flags"))
+                    self.assertIn('-DUSB_PRODUCT="tenor/cross ' + product + '"', tokens, name)
+                    self.assertIn('-DUSB_MANUFACTURER="Tenor"', tokens, name)
                 # NimBLE's host allocated from PSRAM: the stack costs 46,508 B of internal RAM, not 68,152 B.
                 self.assertIn("-include", flags)
                 self.assertIn("scripts/s3_nimble_psram.h", flags)

@@ -103,6 +103,12 @@ struct {
   bool touch = true;
   bool hasTouch() const { return touch; }
 } gpio;
+// The cable port as setup() leaves it: TinyUSB started with its CDC task, and the receive buffer it sized.
+bool usbStarted = true;
+size_t serialRxBytes = 2048;
+namespace cableflash {
+bool portUp(size_t rxBytes) { return usbStarted && rxBytes >= 1048; }
+}  // namespace cableflash
 struct {
   HomeMenuItem home = HomeMenuItem::NONE;
   template<class T> void replaceActivity(std::unique_ptr<T>) {}
@@ -133,7 +139,9 @@ int main(int argc, char** argv) {
   if (name == "query-error") queryResult = ESP_FAIL;
   if (name == "create-error") createResult = ESP_FAIL;
   if (name == "start-error") startResult = ESP_FAIL;
-  if (name == "no-touch") gpio.touch = false;
+  if (name == "no-touch" || name == "no-touch-x4c") gpio.touch = false;
+  if (name == "no-port") usbStarted = false;
+  if (name == "small-rx") serialRxBytes = 256;  // the default queue: a 1,048 B frame does not fit
   if (name == "mark-error") markResult = ESP_FAIL;
   if (name == "silent-large-book") { resume = BootResume::Silent; snapshotTarget = SILENT_REBOOT_TARGET_READER; }
   // The font store's Wi-Fi restart, opened from Connections: back into Connections, not Home.
@@ -188,6 +196,10 @@ int main(int argc, char** argv) {
     ok = !abortReason.empty() && marked == 0 && (name != "start-error" || deleted == 1);
   else if (name == "no-touch")
     ok = marked == 0 && state == ESP_OTA_IMG_PENDING_VERIFY && abortReason.find("touch") != std::string::npos;
+  else if (name == "no-port" || name == "small-rx")
+    ok = marked == 0 && state == ESP_OTA_IMG_PENDING_VERIFY && abortReason.find("cable") != std::string::npos;
+  else if (name == "no-touch-x4c")
+    ok = abortReason.empty() && marked == 1 && state == ESP_OTA_IMG_VALID && deleted == 1 && !acceptedBeforePaint;
   else if (name == "mark-error")
     ok = marked == 1 && state == ESP_OTA_IMG_PENDING_VERIFY && abortReason.find("accept") != std::string::npos;
   else if (name == "hung-paint")

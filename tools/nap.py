@@ -4,19 +4,21 @@
   <penv>/bin/python tools/nap.py firmware.bin [--serial SERIAL] [--dry-run] [--log DIR]
 
 The image is checked before any port is opened: an ESP app image (a merged or factory image is
-refused), one board tag, the chip, and on the X4 Pro the cable flash channel, since an X4 Pro image
-without it could never be flashed over the cable again. The device is then found by its USB
+refused), one board tag, the chip, and on the X4 Pro and X4 Classic the cable flash channel, since such
+an image without it could never be flashed over the cable again. The device is then found by its USB
 identity:
 
-* X3, X4 (ESP32-C3) and X4 Classic answer as the chip's own USB-Serial/JTAG. esptool reads the
-  partition table and otadata of the device and writes the image into the app slot it boots now.
-* The X4 Pro has its USB download mode fused off. Its release firmware keeps the TCF1 channel
+* X3, X4 (ESP32-C3), and an X4 Classic held in download mode or still on v1.0.76 or older, answer as the
+  chip's own USB-Serial/JTAG. esptool reads the partition table and otadata of the device and writes the
+  image into the app slot it boots now.
+* The X4 Pro has its USB download mode fused off (a domestic X4 Classic may too; from v1.1.0 it is built
+  as the X4 Pro is, its port named tenor/cross X4 Classic). Its release firmware keeps the TCF1 channel
   (src/platform/CableFlash.h): HELLO, BEGIN, the image in 1 KB frames, END. A device from v1.1.0 on
   starts at once; an older one answers WAIT and needs a tap on its screen first, which this tool still
   waits for. It then follows the device through its restart until
   the new build runs and has passed its trial boot, or has rolled back.
 
---dry-run checks the image, finds the device, asks the X4 Pro HELLO (read only) and prints the plan;
+--dry-run checks the image, finds the device, asks a cable device HELLO (read only) and prints the plan;
 nothing is written and nothing is reset. Needs pyserial and esptool (the PlatformIO python has both).
 Exit status: 0 the new build runs (or the plan, with --dry-run), 1 refused or failed, 2 the device
 rolled back to its previous build, 3 written but not seen running (or not confirmed: every HELLO came
@@ -42,8 +44,10 @@ _spec.loader.exec_module(package)
 
 ESPRESSIF_VID = 0x303A
 CHIPS = {5: 'ESP32-C3', 9: 'ESP32-S3'}
-# How each board takes an image: its chip's USB download mode, or the release's cable channel.
-ROUTE = {'x4': 'rom', 'x4c': 'rom', 'x4pro': 'cable'}
+# How each board takes an image, in order of preference: the release's cable channel, its chip's USB download mode.
+ROUTE = {'x4': ('rom',), 'x4c': ('cable', 'rom'), 'x4pro': ('cable',)}
+# The cable port's product string names its board (USB_PRODUCT in platformio.ini; CrossPoint_X4_Pro before v1.1.0).
+CABLE_PRODUCTS = (('X4 Classic', 'x4c'), ('X4 Pro', 'x4pro'), ('X4_Pro', 'x4pro'))
 NAMES = {'x4': 'X3/X4', 'x4c': 'X4 Classic', 'x4pro': 'X4 Pro'}
 DATA, END, ABORT = 1, 2, 3
 ACK_SECONDS = 5  # a frame not answered in this time is sent again
@@ -106,7 +110,7 @@ class Image:
         if self.board in package.CABLE_BOARDS and not self.cable:
             raise Stop(f'{self.path.name}: this {NAMES[self.board]} image has no cable flash channel; once on the '
                        f'device it could not be flashed over the cable again. Refused.')
-        if ROUTE[self.board] == 'cable' and not self.version:
+        if 'cable' in ROUTE[self.board] and not self.version:
             raise Stop(f'{self.path.name}: no product version in its tag')
         # esp_app_desc_t opens the first segment; its app_elf_sha256 is at offset 144.
         self.elf = self.data[176:208].hex() if self.data[32:36] == b'\x32\x54\xcd\xab' else ''
@@ -120,8 +124,8 @@ class Image:
 # ---- the device on the cable ---------------------------------------------------------------
 
 class Port:
-    def __init__(self, device, serial, product, route):
-        self.device, self.serial, self.product, self.route = device, serial, product, route
+    def __init__(self, device, serial, product, route, board=None):
+        self.device, self.serial, self.product, self.route, self.board = device, serial, product, route, board
 
     def __repr__(self):
         return f'{self.device} serial={self.serial or "-"} product={self.product or "-"}'
@@ -129,23 +133,28 @@ class Port:
 
 def espressif_ports(list_ports):
     """Every Espressif USB port: the chip's own USB-Serial/JTAG (product 'USB JTAG/serial debug unit',
-    VID/PID 303a:1001 on both C3 and S3) or the X4 Pro release's TinyUSB CDC (product tenor/cross X4 Pro, CrossPoint_X4_Pro before v1.1.0,
-    the same VID/PID). Only the product string tells them apart."""
+    VID/PID 303a:1001 on both C3 and S3) or the TinyUSB CDC of an X4 Pro release (product tenor/cross X4 Pro,
+    CrossPoint_X4_Pro before v1.1.0) or an X4 Classic one from v1.1.0 (tenor/cross X4 Classic), the same VID/PID.
+    Only the product string tells them apart."""
     found = []
     for p in list_ports():
         if p.vid != ESPRESSIF_VID:
             continue
         product = p.product or p.description or ''
-        route = 'rom' if 'JTAG' in product else 'cable' if 'X4_Pro' in product or 'X4 Pro' in product else None
-        found.append(Port(p.device, p.serial_number or '', product, route))
+        board = next((b for words, b in CABLE_PRODUCTS if words in product), None)
+        route = 'rom' if 'JTAG' in product else 'cable' if board else None
+        found.append(Port(p.device, p.serial_number or '', product, route, board))
     return found
 
 
 def choose(ports, image, serial):
-    want = ROUTE[image.board]
     if serial:
         ports = [p for p in ports if p.serial.startswith(serial)]
-    matches = [p for p in ports if p.route == want]
+    matches = []
+    for route in ROUTE[image.board]:
+        matches = [p for p in ports if p.route == route and p.board in (None, image.board)]
+        if matches:
+            break
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:
@@ -153,15 +162,15 @@ def choose(ports, image, serial):
                    '. Pick one with --serial.')
     if not ports:
         raise Stop('No device found on the USB cable' + (f' with serial {serial}' if serial else '') +
-                   '. An X4 Pro in USB Drive mode has no serial port: leave USB Drive first.')
+                   '. An X4 Pro or X4 Classic in USB Drive mode has no serial port: leave USB Drive first.')
     other = [p for p in ports if p.route]
     if other:
         raise Stop(f'This image is for the {NAMES[image.board]}; the device on the cable is '
-                   f'{"an X4 Pro" if other[0].route == "cable" else "an X3, X4 or X4 Classic"} ({other[0]!r}).')
+                   f'{"an " + NAMES[other[0].board] if other[0].board else "an X3, X4 or X4 Classic"} ({other[0]!r}).')
     raise Stop('Unknown Espressif device: ' + '; '.join(map(repr, ports)))
 
 
-# ---- X4 Pro: the TCF1 cable channel --------------------------------------------------------
+# ---- X4 Pro, X4 Classic: the TCF1 cable channel --------------------------------------------------------
 
 def frame(kind, session, seq, offset, payload=b''):
     head = b'TCF1' + bytes([kind, 0]) + struct.pack('<HIII', len(payload), session, seq, offset)
@@ -238,15 +247,17 @@ MESSAGES = {
 def flash_cable(image, port, args, log, serial_module, list_ports):
     link = Link(open_port(port.device, serial_module), log)
     status, cut = hello(link)
+    name = NAMES[image.board]
     if status is None and cut:
-        raise Stop(f'The X4 Pro answers TCF1 HELLO, but {cut} of {HELLO_TRIES} answers came back cut short and none '
+        raise Stop(f'The {name} answers TCF1 HELLO, but {cut} of {HELLO_TRIES} answers came back cut short and none '
                    f'whole. Nothing was written; run the tool again.')
     if status is None:
-        raise Stop(f'The X4 Pro does not answer TCF1 HELLO ({HELLO_TRIES} tries). It may be busy (an update '
-                   f'download, sleep): wait until it shows Home, then retry. v1.0.58 and older have no cable flash '
-                   f'channel; put v1.0.59 or newer on them from the card or over the network.')
+        raise Stop(f'The {name} does not answer TCF1 HELLO ({HELLO_TRIES} tries). It may be busy (an update '
+                   f'download, sleep): wait until it shows Home, then retry. An X4 Pro on v1.0.58 or older, an X4 '
+                   f'Classic on v1.0.76 or older, has no cable flash channel; update it from the card or over the '
+                   f'network first.')
     log('hello', **status)
-    say(f'Device: X4 Pro {status.get("version")} ({status.get("state")}), running {status.get("running")}, '
+    say(f'Device: {NAMES.get(status.get("board"), status.get("board"))} {status.get("version")} ({status.get("state")}), running {status.get("running")}, '
         f'next slot {status.get("next")}')
     if status.get('board') != image.board or status.get('chip') != str(image.chip):
         raise Stop(f'The device is board {status.get("board")} chip {status.get("chip")}; refused before writing.')
@@ -356,7 +367,7 @@ def follow(image, port, target, log, serial_module, list_ports, wait=90, cut_cap
     return 3
 
 
-# ---- X3, X4 and X4 Classic: the chip's USB download mode -------------------------------------
+# ---- X3, X4 and an X4 Classic in download mode: the chip's USB download mode -------------------------------------
 
 def partitions(table):
     rows = {}

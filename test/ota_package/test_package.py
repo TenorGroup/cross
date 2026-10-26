@@ -16,8 +16,10 @@ ota = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ota)
 
 
-# The X4 Pro tag carries the cable flash channel, as every X4 Pro build does (TENOR_CABLE_FLASH).
+# The X4 Pro tag carries the cable flash channel, as every X4 Pro build does (TENOR_CABLE_FLASH); the X4 Classic's
+# too from v1.1.0, built as the X4 Pro is.
 X4PRO_TAG = b'CROSSPOINT-BOARD-V1:x4pro;TENOR-CABLE-V1:1;'
+X4C_TAG = b'CROSSPOINT-BOARD-V1:x4c;TENOR-CABLE-V1:1;'
 
 
 def image(version='0.1.0', chip=5, tag=b'CROSSPOINT-BOARD-V1:x4;', digest=True, sdk_version='1.6.0-19-gc33a8b0', product_tag=True):
@@ -160,6 +162,18 @@ class PackageTest(unittest.TestCase):
                 self.assertFalse((self.root / 'out').exists())
         self.assertTrue(ota.keeps_cable(image(version='v1.0.54', chip=9, tag=X4PRO_TAG), 'x4pro'))
 
+    def test_x4c_without_cable_channel_is_not_packaged(self):
+        # v1.1.0: an X4 Classic image without the channel (v1.0.76 and older) would leave a unit whose USB
+        # download mode is fused off with no cable flash; the packager refuses it as it does the X4 Pro's.
+        self.assertIn('x4c', ota.CABLE_BOARDS)
+        for tag in (b'CROSSPOINT-BOARD-V1:x4c;', b'CROSSPOINT-BOARD-V1:x4c;TENOR-CABLE-V1:0;'):
+            with self.subTest(tag=tag):
+                (self.root / 'x4c.bin').write_bytes(image(version='v1.1.0', chip=9, tag=tag))
+                with self.assertRaisesRegex(ValueError, 'no cable flash channel'):
+                    ota.verified_application(self.root / 'x4c.bin', 9, 'x4c')
+        (self.root / 'x4c.bin').write_bytes(image(version='v1.1.0', chip=9, tag=X4C_TAG))
+        self.assertEqual(ota.verified_application(self.root / 'x4c.bin', 9, 'x4c')[1], 'v1.1.0')
+
     def test_board_identity_is_unique_and_unmixed(self):
         for index, tag in enumerate((b'CROSSPOINT-BOARD-V1:x4;CROSSPOINT-BOARD-V1:x4pro;',
                     b'CROSSPOINT-BOARD-V1:x4;CROSSPOINT-BOARD-V1:x4;',
@@ -203,7 +217,7 @@ class PackageTest(unittest.TestCase):
         # v1.0.69: the X4 Classic asks the update page for tenor-cross-x4c.bin (OtaUpdater.cpp).
         c3 = image(version='v1.0.69')
         pro = image(version='v1.0.69', chip=9, tag=X4PRO_TAG)
-        x4c = image(version='v1.0.69', chip=9, tag=b'CROSSPOINT-BOARD-V1:x4c;')
+        x4c = image(version='v1.0.69', chip=9, tag=X4C_TAG)
         self.binary.write_bytes(c3)
         (self.root / 'pro.bin').write_bytes(pro)
         (self.root / 'x4c.bin').write_bytes(x4c)

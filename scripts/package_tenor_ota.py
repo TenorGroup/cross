@@ -40,8 +40,8 @@ def validate_image(data, limit=0x640000):
         raise ValueError('Invalid image SHA-256')
 
 
-# Boards built with TENOR_CABLE_FLASH (FirmwareBoardTag.h): their USB download mode is fused off.
-CABLE_BOARDS = ('x4pro',)
+# Boards built with TENOR_CABLE_FLASH (FirmwareBoardTag.h): their USB download mode is (or may be) fused off.
+CABLE_BOARDS = ('x4pro', 'x4c')
 
 
 def tag_fields(data, board):

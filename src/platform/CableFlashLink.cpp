@@ -1,4 +1,4 @@
-// X4 Pro builds only (TENOR_CABLE_FLASH); an empty unit elsewhere.
+// Cable boards only (TENOR_CABLE_FLASH: X4 Pro, X4 Classic); an empty unit elsewhere.
 #if TENOR_CABLE_FLASH
 #include "CableFlashLink.h"
 
@@ -24,6 +24,8 @@
 #include <esp_random.h>
 
 #include "network/FirmwareFlasher.h"
+
+extern "C" bool tud_inited(void);  // TinyUSB (arduino_tinyusb), started by the core before setup()
 #endif
 
 namespace cableflash {
@@ -100,6 +102,14 @@ void say(const char* line) {
   sendLine(logSerial, line, 1);  // back to main.cpp's load-bearing 1 ms
 #else
   logSerial.printf("%s\n", line);
+#endif
+}
+
+bool portUp(const size_t rxBytes) {
+#ifndef SIMULATOR
+  return tud_inited() && xTaskGetHandle("usbd") != nullptr && rxBytes >= kFrame;
+#else
+  return rxBytes >= kFrame;
 #endif
 }
 

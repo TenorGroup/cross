@@ -21,6 +21,9 @@ nap.HELLO_SECONDS = 0.2
 PRO_TAG = b'CROSSPOINT-BOARD-V1:x4pro;TENOR-CROSS-VERSION-V1:v1.0.59;TENOR-CABLE-V1:1;'
 OLD_PRO_TAG = b'CROSSPOINT-BOARD-V1:x4pro;TENOR-CROSS-VERSION-V1:v1.0.58;'
 C3_TAG = b'CROSSPOINT-BOARD-V1:x4;TENOR-CROSS-VERSION-V1:v1.0.59;'
+# v1.1.0: the X4 Classic is built as the X4 Pro is (TinyUSB CDC, TCF1); v1.0.76 and older have no channel.
+X4C_TAG = b'CROSSPOINT-BOARD-V1:x4c;TENOR-CROSS-VERSION-V1:v1.1.0;TENOR-CABLE-V1:1;'
+OLD_X4C_TAG = b'CROSSPOINT-BOARD-V1:x4c;TENOR-CROSS-VERSION-V1:v1.0.76;'
 # Raw lines the X4 Pro sent on 13/10 (cap59/may/b2-tu3-1, b2-ve-do59-s1/nap.jsonl): a HELLO cut at its
 # 64th byte with the next log line glued on, and a log line cut at its 64th byte with the HELLO glued on.
 CUT_HELLO = 'TCF1 HELLO board=x4pro chip=9 version=v1.0.58 cable=1 state=vali[12477] [INF] [BAT] soc=100 prev=100 task=loopTask\n'
@@ -57,8 +60,8 @@ class FakeX4Pro:
     """Answers TCF1 as src/platform/CableFlash.h does, with knobs for the cases under test."""
 
     def __init__(self, cable=True, state='valid', elf='aaaaaaaaaaaaaaaa', answer='yes', drop_ack=(), nak=(),
-                 end='DONE', after=None, running='app0', hellos=(), wait=True):
-        self.cable, self.state, self.elf, self.answer = cable, state, elf, answer
+                 end='DONE', after=None, running='app0', hellos=(), wait=True, board='x4pro'):
+        self.cable, self.state, self.elf, self.answer, self.board = cable, state, elf, answer, board
         self.wait = wait  # True: a device that asks for a tap first (WAIT); False: one that starts at once
         self.running, self.hellos = running, list(hellos)  # hellos: raw answers sent before whole ones
         self.drop_ack, self.nak, self.end, self.after = set(drop_ack), set(nak), end, after or []
@@ -74,7 +77,7 @@ class FakeX4Pro:
             return self.hellos.pop(0)
         slots = {'app0': 'app0@0x10000+0x7e0000', 'app1': 'app1@0x7f0000+0x7e0000'}
         other = 'app1' if self.running == 'app0' else 'app0'
-        return (f'TCF1 HELLO board=x4pro chip=9 version=v1.0.59 cable=1 state={self.state} elf={self.elf} '
+        return (f'TCF1 HELLO board={self.board} chip=9 version=v1.0.59 cable=1 state={self.state} elf={self.elf} '
                 f'running={slots[self.running]} boot={self.running} next={slots[other]} frame=1024\n')
 
     def receive(self, data):
@@ -188,6 +191,8 @@ PRO2 = ListedPort('/dev/cu.usbmodemAA2', 'AA0011223344', 'CrossPoint_X4_Pro')
 C3 = ListedPort('/dev/cu.usbmodem83301', '83301', 'USB JTAG/serial debug unit')
 # From v1.1.0 the X4 Pro names its cable port after tenor/cross; .59-.76 still say CrossPoint_X4_Pro.
 TENOR_PRO = ListedPort('/dev/cu.usbmodem1C2904243F2C2', '1C2904243F2C', 'tenor/cross X4 Pro')
+# The X4 Classic from v1.1.0: the same TinyUSB CDC on its OTG port, named after the board.
+X4C = ListedPort('/dev/cu.usbmodemB81F3FCAC44C2', 'B81F3FCAC44C', 'tenor/cross X4 Classic')
 
 
 class NapTest(unittest.TestCase):
@@ -265,17 +270,17 @@ class NapTest(unittest.TestCase):
         self.assertIn('busy', out)
         self.assertNotIn('its firmware has no cable flash channel', out)
 
-    def flash_and_restart(self, wait, **knobs):
+    def flash_and_restart(self, wait, port=PRO, tag=PRO_TAG, **knobs):
         """A whole image sent to a fake X4 Pro that restarts into the new slot; returns code, output, device, image."""
-        data = image(body=5000, elf=b'\x22' * 32)
-        after = FakeX4Pro(elf='22' * 8, running='app1')
+        data = image(tag, body=5000, elf=b'\x22' * 32)
+        after = FakeX4Pro(elf='22' * 8, running='app1', board=knobs.get('board', 'x4pro'))
         first = FakeX4Pro(wait=wait, **knobs)
-        devices = {PRO.device: first}
-        ports = Ports([PRO], [], [PRO])
+        devices = {port.device: first}
+        ports = Ports([port], [], [port])
         serial_module = FakeSerialModule(devices)
 
         def reopened(port_name):
-            devices[PRO.device] = after
+            devices[port.device] = after
         orig_open = serial_module.Serial.open
 
         def open_after_restart(self):
@@ -317,6 +322,44 @@ class NapTest(unittest.TestCase):
         code, out, _, _ = self.nap([self.file(image()), '--dry-run'], Ports([TENOR_PRO]), {TENOR_PRO.device: FakeX4Pro})
         self.assertEqual(code, 0, out)
         self.assertIn('Device: X4 Pro', out)
+
+    # -- X4 Classic: the X4 Pro's cable channel from v1.1.0, the chip's download mode still on an open unit
+
+    def test_the_x4_classic_cable_port_takes_an_x4c_image_over_tcf1(self):
+        code, out, serial_module, _ = self.nap([self.file(image(X4C_TAG)), '--dry-run'], Ports([X4C]),
+                                               {X4C.device: lambda: FakeX4Pro(board='x4c')})
+        self.assertEqual(code, 0, out)
+        self.assertIn('Device: X4 Classic', out)
+        self.assertEqual(serial_module.devices[X4C.device].lines, ['TCF1 HELLO'])
+
+    def test_a_whole_x4c_image_goes_over_the_cable(self):
+        code, out, first, data = self.flash_and_restart(False, port=X4C, tag=X4C_TAG, board='x4c')
+        self.assertEqual(code, 0, out)
+        self.assertEqual(bytes(first.written), data)
+        self.assertIn('VALID', out)
+
+    def test_an_x4c_image_without_the_cable_channel_is_refused_offline(self):
+        code, out, serial_module, _ = self.nap([self.file(image(OLD_X4C_TAG))], Ports([X4C]),
+                                               {X4C.device: lambda: FakeX4Pro(board='x4c')})
+        self.assertEqual(code, 1)
+        self.assertIn('no cable flash channel', out)
+        self.assertEqual(serial_module.opened, [])
+
+    def test_the_cable_port_names_its_board(self):
+        # An X4 Pro image on an X4 Classic's cable port, and the other way round: refused before any port opens.
+        for data, ports, words in ((image(), [X4C], 'an X4 Classic'), (image(X4C_TAG), [TENOR_PRO], 'an X4 Pro')):
+            with self.subTest(words=words):
+                code, out, serial_module, _ = self.nap([self.file(data)], Ports(ports))
+                self.assertEqual(code, 1, out)
+                self.assertIn(words, out)
+                self.assertEqual(serial_module.opened, [])
+
+    def test_an_open_x4c_in_download_mode_still_takes_the_rom_path(self):
+        # An international unit held in ROM (left button + power), or one still on v1.0.76: the chip's own port.
+        code, out, serial_module, calls = self.nap([self.file(image(X4C_TAG)), '--dry-run'], Ports([C3]))
+        self.assertEqual(code, 0, out)
+        self.assertIn("USB download mode", out)
+        self.assertEqual((serial_module.opened, calls), ([], []))
 
     def test_a_refusal_on_the_device_is_reported(self):
         for answer, words in (('denied', 'declined'), ('trial', 'on trial'), ('busy', 'already open')):

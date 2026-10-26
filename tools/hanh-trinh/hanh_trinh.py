@@ -21,7 +21,8 @@ from PIL import Image
 
 MAY = {
     'x3': {'port': '/dev/cu.usbmodem83301', 'w': 792, 'h': 528, 'floor': True},
-    'x4c': {'port': '/dev/cu.usbmodem1101', 'w': 800, 'h': 480, 'floor': False},
+    # v1.1.0: the X4 Classic speaks over TinyUSB CDC as the X4 Pro does; its port is found by name (cong_may).
+    'x4c': {'port': '/dev/cu.usbmodem1101', 'w': 800, 'h': 480, 'floor': False, 'product': 'tenor/cross X4 Classic'},
     'x4pro': {'port': '/dev/cu.usbmodem1C2904243F2C2', 'w': 800, 'h': 480, 'floor': False},
 }
 SACH = {'x3': '/v1015/v1015-thu-30.epub', 'x4c': '/v1069-thu-30.epub', 'x4pro': '/v1053-thu-30.epub'}
@@ -188,9 +189,16 @@ def su_kien(kiem, moi, im, nho, moc=None, hop=HOP['x3']):
     return True, ''
 
 
+def cong_may(cfg):
+    """The unit's port: the CDC port named after it when one is on the cable, else the fixed name."""
+    from serial.tools import list_ports
+    named = [p.device for p in list_ports.comports() if cfg.get('product') and cfg['product'] in (p.product or '')]
+    return named[0] if named else cfg['port']
+
+
 def chay(may, out, chon=None, moc=None, spike=None):
     os.makedirs(out, exist_ok=True)
-    cfg = MAY[may]; c = Cong(cfg['port'], out); c.pump(2)
+    cfg = MAY[may]; c = Cong(cong_may(cfg), out); c.pump(2)
     # TXTIMEOUT: the CDC ports drop bytes at the release's 1 ms write timeout (cut HEAP_INFO lines).
     for cmd in ('TXTIMEOUT 200', 'HOME', 'SET textAntiAliasing=1', 'FONT_TEST ' + FONT[may]):
         c.gui(cmd, 3)

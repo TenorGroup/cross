@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-// X4 Pro probe build only (TENOR_PRESS_PROBE): read-only views of the chip's eFuses, flash and
+// Probe builds of the cable boards (X4 Pro, X4 Classic) and the X3 card probe only (TENOR_PRESS_PROBE): read-only views of the chip's eFuses, flash and
 // otadata, an install from the card driven over the cable, and a test of the bootloader's
 // rollback. Nothing here writes an eFuse.
 namespace fwprobe {

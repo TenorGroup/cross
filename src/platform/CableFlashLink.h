@@ -1,5 +1,5 @@
 #pragma once
-// The X4 Pro end of the cable flash channel (CableFlash.h): the TCF1 lines the main loop passes on,
+// The device end of the cable flash channel (X4 Pro, X4 Classic) (CableFlash.h): the TCF1 lines the main loop passes on,
 // the session over the real cable into the OTA slot that is not running.
 #include <cstddef>
 
@@ -17,5 +17,8 @@ void onLine(const char* line, GfxRenderer& renderer, MappedInputManager& input);
 Result run(const Begin& begin, void (*progress)(size_t written, size_t total, void* ctx), void* ctx);
 // One line to the host.
 void say(const char* line);
+// The boot trial's check of the port this channel needs: TinyUSB started with its device task, and a receive
+// buffer of `rxBytes` (what setup() sized) that holds a whole frame.
+bool portUp(size_t rxBytes);
 
 }  // namespace cableflash

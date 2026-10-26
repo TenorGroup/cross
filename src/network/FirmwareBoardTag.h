@@ -16,7 +16,7 @@
 // board.
 //
 // A board built with TENOR_CABLE_FLASH (the X4 Pro, whose USB download mode is
-// fused off) can only be reflashed over the cable by firmware that carries the
+// fused off, and the X4 Classic from v1.1.0) can only be reflashed over the cable by firmware that carries the
 // cable channel. Its tag then ends in "TENOR-CABLE-V1:1;", and the cable session and the OTA refuse an
 // image whose own tag lacks that field (dropsCable below). The card takes it: that is the way to any other
 // firmware, which updates from the card too.

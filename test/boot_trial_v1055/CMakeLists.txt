@@ -10,3 +10,7 @@ add_test(NAME BootTrialProduction
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/run.py
     --output ${CMAKE_CURRENT_BINARY_DIR}/harness --cxx ${CMAKE_CXX_COMPILER}
     --main-source ${BOOT_TRIAL_MAIN_SOURCE})
+add_test(NAME BootTrialX4Classic
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/run.py --board x4c
+    --output ${CMAKE_CURRENT_BINARY_DIR}/harness-x4c --cxx ${CMAKE_CXX_COMPILER}
+    --main-source ${BOOT_TRIAL_MAIN_SOURCE})

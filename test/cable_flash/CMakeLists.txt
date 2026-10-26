@@ -26,5 +26,13 @@ if(NOT APPLE)
 endif()
 gtest_discover_tests(CableFlashSessionTest)
 
+# The X4 Classic from v1.1.0: built as the X4 Pro is, with the channel.
+add_executable(CableFlashX4ClassicPolicyTest X4ClassicPolicyTest.cpp ${REPO_ROOT}/src/network/FirmwareBoardTag.cpp)
+target_compile_definitions(CableFlashX4ClassicPolicyTest PRIVATE FREEINK_DEVICE_X4CLASSIC=1 TENOR_CABLE_FLASH=1
+                           CROSSPOINT_VERSION="v1.1.0")
+target_include_directories(CableFlashX4ClassicPolicyTest PRIVATE ${CABLE_FLASH_INCLUDES})
+target_link_libraries(CableFlashX4ClassicPolicyTest PRIVATE GTest::gtest_main)
+gtest_discover_tests(CableFlashX4ClassicPolicyTest)
+
 # tools/nap.py, the computer's side, against fake ports, a fake X4 Pro and a fake esptool.
 add_test(NAME CableFlashTool COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/test/cable_tool/test_nap.py)

@@ -968,6 +968,7 @@ static void openFreshBootTask(const FreshBootTask task, const WakePlace& returnP
 
 void setup() {
   BoardConfig::holdPowerRails();
+  [[maybe_unused]] size_t serialRxBytes = 0;  // the cable port's receive buffer, for the boot trial
 
 #ifdef ENABLE_SERIAL_LOG
 #ifdef CROSSPOINT_WAIT_FOR_USB_SERIAL
@@ -976,9 +977,9 @@ void setup() {
   delay(250);
 #endif
 #ifdef TENOR_PRESS_PROBE
-  logSerial.setRxBufferSize(8192);  // CMD:PUT: a 4096 byte window must fit while the card is written
+  serialRxBytes = logSerial.setRxBufferSize(8192);  // CMD:PUT: a 4096 byte window must fit while the card is written
 #elif TENOR_CABLE_FLASH && !defined(SIMULATOR)
-  logSerial.setRxBufferSize(2048);  // a whole cable flash frame (1,048 B) waits while the slot is written
+  serialRxBytes = logSerial.setRxBufferSize(2048);  // a whole cable flash frame (1,048 B) waits while the slot is written
 #endif
   Serial.begin(115200);
 #if LOG_SERIAL_HAS_TX_TIMEOUT
@@ -990,12 +991,12 @@ void setup() {
   logSerial.enableReboot(false);
 #endif
 #endif
-#if FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)
+#if TENOR_CABLE_FLASH && !defined(SIMULATOR)
   const bool trialBoot = boot_trial::begin();
 #else
   const bool trialBoot = false;
 #endif
-#if defined(TENOR_PRESS_PROBE) && (FREEINK_DEVICE_X4PRO || defined(TENOR_X3_CARD_PROBE)) && !defined(SIMULATOR)
+#if defined(TENOR_PRESS_PROBE) && (TENOR_CABLE_FLASH || defined(TENOR_X3_CARD_PROBE)) && !defined(SIMULATOR)
   fwprobe::onBoot();  // CMD:ROLLBACK_TEST crashes the boots it was armed for, here
 #endif
 
@@ -1548,8 +1549,10 @@ void setup() {
       otaState == ESP_OTA_IMG_PENDING_VERIFY) {
     // SD, settings and activity startup succeeded. Wait for the first physical paint.
     activityManager.requestUpdateAndWait();
-#if FREEINK_DEVICE_X4PRO
-    boot_trial::passed(gpio.hasTouch());
+#if TENOR_CABLE_FLASH && FREEINK_DEVICE_X4PRO
+    boot_trial::passed(gpio.hasTouch(), cableflash::portUp(serialRxBytes));
+#elif TENOR_CABLE_FLASH
+    boot_trial::passed(true, cableflash::portUp(serialRxBytes));  // the X4 Classic has no touch panel
 #else
     const esp_err_t verified = esp_ota_mark_app_valid_cancel_rollback();
     LOG_INF("OTA", "Boot self-check complete: %s", esp_err_to_name(verified));
@@ -2414,7 +2417,7 @@ void loop() {
         logSerial.setTxTimeoutMs(static_cast<uint32_t>(ms));
         logSerial.printf("TXTIMEOUT:%ld\n", ms);
 #endif
-#if (FREEINK_DEVICE_X4PRO || defined(TENOR_X3_CARD_PROBE)) && !defined(SIMULATOR)
+#if (TENOR_CABLE_FLASH || defined(TENOR_X3_CARD_PROBE)) && !defined(SIMULATOR)
       } else if (fwprobe::command(cmd)) {
         // EFUSE, OTA_STATE, FLASH_DUMP, SD_FLASH, ROLLBACK_TEST: handled there
       } else if (cmd.startsWith("SHOT ")) {
@@ -2427,12 +2430,14 @@ void loop() {
                                                              renderer.getDisplayWidth(), renderer.getDisplayHeight());
         logSerial.printf("SHOT:ok=%d,path=%s\n", ok, path.c_str());
 #endif
-#if FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)
+#if TENOR_CABLE_FLASH && !defined(SIMULATOR)
       } else if (cmd == "USB_DRIVE") {
         // CMD:USB_DRIVE: USB Drive, opened as the menu opens it. The log goes to the card first, the
         // host owns the card from here; its eject restarts the unit, which then runs the next script.
         logSerial.printf("USB_DRIVE:t=%lu\n", millis());
-        coldlog::flush("usb-drive");
+#if TENOR_COLD_LOG
+        coldlog::flush("usb-drive");  // the X4 Pro probe's card log; the X4 Classic's probe has none
+#endif
         activityManager.goToUsbDrive();
 #endif
 #if FREEINK_DEVICE_X4PRO
