@@ -129,14 +129,14 @@ class Port:
 
 def espressif_ports(list_ports):
     """Every Espressif USB port: the chip's own USB-Serial/JTAG (product 'USB JTAG/serial debug unit',
-    VID/PID 303a:1001 on both C3 and S3) or the X4 Pro release's TinyUSB CDC (product CrossPoint_X4_Pro,
+    VID/PID 303a:1001 on both C3 and S3) or the X4 Pro release's TinyUSB CDC (product tenor/cross X4 Pro, CrossPoint_X4_Pro before v1.1.0,
     the same VID/PID). Only the product string tells them apart."""
     found = []
     for p in list_ports():
         if p.vid != ESPRESSIF_VID:
             continue
         product = p.product or p.description or ''
-        route = 'rom' if 'JTAG' in product else 'cable' if 'X4_Pro' in product else None
+        route = 'rom' if 'JTAG' in product else 'cable' if 'X4_Pro' in product or 'X4 Pro' in product else None
         found.append(Port(p.device, p.serial_number or '', product, route))
     return found
 

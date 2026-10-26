@@ -316,7 +316,7 @@ class NapTest(unittest.TestCase):
     def test_the_tenor_named_cable_port_is_found_as_the_x4_pro(self):
         code, out, _, _ = self.nap([self.file(image()), '--dry-run'], Ports([TENOR_PRO]), {TENOR_PRO.device: FakeX4Pro})
         self.assertEqual(code, 0, out)
-        self.assertIn('tenor/cross X4 Pro', out)
+        self.assertIn('Device: X4 Pro', out)
 
     def test_a_refusal_on_the_device_is_reported(self):
         for answer, words in (('denied', 'declined'), ('trial', 'on trial'), ('busy', 'already open')):
