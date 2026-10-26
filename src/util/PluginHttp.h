@@ -39,6 +39,11 @@ void substituteAll(std::string& s, const char* key, const std::string& value);
 // Reads a manifest "headers" object into name/value pairs.
 void readHeaders(JsonVariantConst node, Headers& out);
 
+// False when the SDK's copy of these headers would take the heap under the floor: it keeps every line and builds the
+// request from them, so 2 x the total at the peak and one block of about the whole size. Asked after the handshake,
+// before the headers are handed over, and by the web handlers up front (they answer 413). Under 4 KB nothing is asked.
+bool headersFit(const Headers& headers);
+
 // One declarative HTTP request as manifests express it. Shared by the catalog
 // auth/poll groups and the event handlers so the {url, method, body, headers}
 // shape is parsed in exactly one place.

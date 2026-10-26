@@ -40,6 +40,7 @@ freeink::SecureHttpClient* openClient(freeink::SecureHttpClient* session, freein
   // Handshake first: the client's copy of a large header (a session cookie can
   // be several KB) would otherwise take heap the handshake needs.
   if (!http.connect(shouldAbort)) return nullptr;
+  if (!pluginhttp::headersFit(headers)) return nullptr;  // the SDK would copy them with a plain new; -1 to the caller
   for (const auto& h : headers) http.addHeader(h.first, h.second);
   return &http;
 }
@@ -114,6 +115,19 @@ void readHeaders(JsonVariantConst node, Headers& out) {
   for (JsonPairConst kv : headers) {
     out.emplace_back(kv.key().c_str(), kv.value().as<const char*>() ? kv.value().as<const char*>() : "");
   }
+}
+
+bool headersFit(const Headers& headers) {
+  size_t total = 0;
+  for (const auto& h : headers) total += h.first.size() + h.second.size() + 4;  // ": " and CRLF
+  if (total < heapfloor::kBigBytes) return true;
+  // The lines held, then the request string (the lines and its own ~256 B of request line and fixed headers).
+  constexpr size_t kRequestExtra = 512;
+  if (heapfloor::leaves(2 * total + kRequestExtra, total + kRequestExtra, ESP.getFreeHeap(), ESP.getMaxAllocHeap()))
+    return true;
+  LOG_ERR("PHTP", "headers too large for memory: %u B (free %u, largest %u)", static_cast<unsigned>(total),
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  return false;
 }
 
 std::string urlEncodeQuery(const std::string& s) {

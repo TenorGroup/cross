@@ -2414,6 +2414,10 @@ void CrossPointWebServer::handleRelay() {
   req.clear();
   req.shrinkToFit();
   releaseRequestArguments(server.get());
+  if (!pluginhttp::headersFit(headers)) {
+    server->send(413, "application/json", "{\"error\":\"headers too large for memory\"}");
+    return;
+  }
 
   suspendTransferServices();
   ScopedCleanup resumeServices{[this] { resumeTransferServices(); }};
@@ -2666,6 +2670,10 @@ void CrossPointWebServer::handleFetch() {
   req.clear();
   req.shrinkToFit();
   releaseRequestArguments(server.get());
+  if (!pluginhttp::headersFit(requestHeaders)) {
+    server->send(413, "application/json", "{\"error\":\"headers too large for memory\"}");
+    return;
+  }
 
   // Stage in <dest>.part so an interrupted or abandoned download never sits
   // under the real name, and an existing dest survives until the new copy is complete.
@@ -2780,10 +2788,11 @@ void CrossPointWebServer::handleFetch() {
   // The write callback only runs when bytes arrive; with the 60s no-data
   // timeout a server stall would starve this task's WDT subscription.
   // shouldAbort is polled in every wait loop, and by connect().
+  bool headersRefused = false;
   const auto feedWatchdog = [&] {
     resetTaskWatchdogIfSubscribed();
     keepBrowserAlive();
-    return false;  // never aborts; only feeds
+    return headersRefused;  // only feeds, until the handshake leaves no room for the headers
   };
   const freeink::FetchResult result = freeink::fetchResumable(
       url, options,
@@ -2802,6 +2811,10 @@ void CrossPointWebServer::handleFetch() {
           // cookie would otherwise take heap the handshake needs. A failed connect
           // is retried, and reported, by the request itself.
           http.connect(feedWatchdog);
+          if (!pluginhttp::headersFit(requestHeaders)) {
+            headersRefused = true;  // aborts the request below; the SDK is never given the headers
+            return;
+          }
           for (const auto& header : requestHeaders) http.addHeader(header.first, header.second);
         }
       },
@@ -2809,6 +2822,10 @@ void CrossPointWebServer::handleFetch() {
   if (file.isOpen()) {
     file.flush();
     file.close();
+  }
+  if (headersRefused) {
+    sendFetchResult(413, "{\"error\":\"headers too large for memory\"}");
+    return;
   }
   const int status = result.status;
   const size_t totalExpected = result.total;
