@@ -613,6 +613,18 @@ int main() {
     reader.drainManual();
     require(reader.section->currentPage == 8, "the hold did not end on the page before the last");
   });
+  test("EPUB side hold with the queue already full goes back no further than the queue", [] {
+    EpubReaderActivity reader;
+    reader.layout(5, 20, false);
+    reader.ready = false;  // the paint of an earlier press: every press joins the queue
+    reader.pendingManualTurn = reader.MAX_QUEUED_TURNS;
+    passSideTurn = 1;
+    reader.manualInput(false, false, false, false);
+    require(reader.pendingManualTurn == reader.MAX_QUEUED_TURNS, "setup: the press changed a full queue");
+    reader.sideHoldToPreviousPage();
+    // The press added no page (the queue was full), so the hold goes back one, not two.
+    require(reader.pendingManualTurn == reader.MAX_QUEUED_TURNS - 1, "the hold went back for a page the press never queued");
+  });
   std::cout << "RESULT " << tests - failures << "/" << tests << " passed\n";
   return failures ? 1 : 0;
 }
