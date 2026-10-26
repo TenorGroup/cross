@@ -239,6 +239,7 @@ add_subdirectory(section_cache)
 add_subdirectory(reader_build_budget)
 add_subdirectory(look_ahead_inputs)
 add_subdirectory(reader_turn_trace)
+add_subdirectory(end_of_book_jump)
 
 add_subdirectory(cache_serialization)
 
