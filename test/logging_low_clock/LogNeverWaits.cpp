@@ -46,6 +46,34 @@ int main() {
   logPrintf("INF", "TEST", "after\n");
   assert(Serial.bytes == "[85] [INF] [LOG] lines dropped: 1\n[85] [INF] [TEST] after\n");
 
+  // The port drained after a stall to the whole of its 256 B ring (HWCDC's). The count and a long line
+  // (230 B) do not fit the ring together, but each fits alone: the line used to be dropped for want of room
+  // for both, with the ring empty. The count goes out first on its own, then the line.
+  Serial.bytes.clear();
+  Serial.room = 0;
+  Serial.stallMs = 300;
+  for (int i = 0; i < 3; ++i) logPrintf("INF", "TEST", "stuck %d\n", i);
+  Serial.room = 256;
+  const std::string longLine(211, 'x');
+  logPrintf("INF", "TEST", "%s\n", longLine.c_str());
+  assert(Serial.bytes == "[85] [INF] [LOG] lines dropped: 3\n[85] [INF] [TEST] " + longLine + "\n");
+
+  // Two tasks logging at once: while the count goes out, the other task's line takes the port. The count
+  // is taken once, whole: no second note, and no count that wrapped below zero on the next line.
+  Serial.bytes.clear();
+  Serial.room = 0;
+  for (int i = 0; i < 5; ++i) logPrintf("INF", "TEST", "stuck %d\n", i);
+  Serial.room = 4096;
+  Serial.onWrite = [](const std::string& sent) {
+    if (sent.find("lines dropped") != std::string::npos) logPrintf("INF", "TEST", "other task\n");
+  };
+  logPrintf("INF", "TEST", "mine\n");
+  logPrintf("INF", "TEST", "next\n");
+  printf("%s", Serial.bytes.c_str());
+  assert(Serial.bytes ==
+         "[85] [INF] [LOG] lines dropped: 5\n[85] [INF] [TEST] other task\n[85] [INF] [TEST] mine\n"
+         "[85] [INF] [TEST] next\n");
+
   // No host, or a SOF flap at the 10 MHz clock: the line is still written (the port queues without
   // waiting and re-arms its TX interrupt), with no room asked.
   Serial.bytes.clear();
