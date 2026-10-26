@@ -186,6 +186,8 @@ class Ports:
 PRO = ListedPort('/dev/cu.usbmodem1C2904243F2C2', '1C2904243F2C', 'CrossPoint_X4_Pro')
 PRO2 = ListedPort('/dev/cu.usbmodemAA2', 'AA0011223344', 'CrossPoint_X4_Pro')
 C3 = ListedPort('/dev/cu.usbmodem83301', '83301', 'USB JTAG/serial debug unit')
+# From v1.1.0 the X4 Pro names its cable port after tenor/cross; .59-.76 still say CrossPoint_X4_Pro.
+TENOR_PRO = ListedPort('/dev/cu.usbmodem1C2904243F2C2', '1C2904243F2C', 'tenor/cross X4 Pro')
 
 
 class NapTest(unittest.TestCase):
@@ -310,6 +312,11 @@ class NapTest(unittest.TestCase):
         code, out, _, _ = self.nap([self.file(image()), '--dry-run'], Ports([PRO]), {PRO.device: FakeX4Pro})
         self.assertEqual(code, 0, out)
         self.assertNotIn('ask on the device', out)
+
+    def test_the_tenor_named_cable_port_is_found_as_the_x4_pro(self):
+        code, out, _, _ = self.nap([self.file(image()), '--dry-run'], Ports([TENOR_PRO]), {TENOR_PRO.device: FakeX4Pro})
+        self.assertEqual(code, 0, out)
+        self.assertIn('tenor/cross X4 Pro', out)
 
     def test_a_refusal_on_the_device_is_reported(self):
         for answer, words in (('denied', 'declined'), ('trial', 'on trial'), ('busy', 'already open')):
