@@ -2410,7 +2410,10 @@ void EpubReaderActivity::loop() {
     return;
   }
 
-  if (!section && !xemTruoc) {
+  // No chapter laid out: a press only asks for the paint, unless a turn just left for a chapter its paint has
+  // still to lay out (the drain above, in this same pass): then it joins the queue that paint drains.
+  const bool turnAwaitsChapter = !section && !xemTruoc;
+  if (turnAwaitsChapter && manualPageTurnReady()) {
     requestUpdate();
     return;
   }
@@ -2422,7 +2425,7 @@ void EpubReaderActivity::loop() {
 #endif
   // Anything still queued goes first, so a new press joins the queue behind it, and so does a
   // press while the page on screen still waits for its layout.
-  if (turnGuardActive || pendingManualTurn != 0 || pageAwaitsLayout()) {
+  if (turnGuardActive || turnAwaitsChapter || pendingManualTurn != 0 || pageAwaitsLayout()) {
     const int8_t queuedBefore = pendingManualTurn;
     pendingManualTurn = static_cast<int8_t>(
         std::clamp<int>(pendingManualTurn + (prevTriggered ? -1 : 1), -MAX_QUEUED_TURNS, MAX_QUEUED_TURNS));
