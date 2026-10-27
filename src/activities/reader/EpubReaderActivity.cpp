@@ -3027,6 +3027,15 @@ void EpubReaderActivity::toggleAutoPageTurn(const uint8_t selectedPageTurnOption
   }
 }
 
+// A turn reads on from where a jump landed: the way back goes, and Back leaves the book again.
+void EpubReaderActivity::sauKhiLatTrang() {
+  footnoteDepth = 0;
+  returnPushedForLoad = false;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  jumpBarPending = false;
+#endif
+}
+
 bool EpubReaderActivity::latTrangThat(bool isForwardTurn) {
   if (!section) {
     if (!xemTruoc) return false;

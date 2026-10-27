@@ -545,6 +545,7 @@ bool ReaderActivity::pageTurnLocked(const bool isForward) {
   logTurnTrace("APPLIED", appliedTurnTrace, "page");
 #endif
   ++trangDaLat;
+  sauKhiLatTrang();
   readerSession.noteTurn(isForward, true);  // under the caller's RenderLock
   if (!preview) readingPace.turned(millis(), isForward, pacePosition());
   // A Failed link note has been read: the page this turn paints shows the title again.

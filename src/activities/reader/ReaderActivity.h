@@ -80,6 +80,8 @@ class ReaderActivity : public Activity {
   // Lat trang THAT, moi dinh dang sach tu viet. KHONG goi thang ham nay; goi pageTurn()
   // o duoi, vi do la cho duy nhat dem so trang da lat.
   virtual bool latTrangThat(bool isForward) = 0;
+  // After a turn the reader made (pageTurnLocked): what reading on from here gives up.
+  virtual void sauKhiLatTrang() {}
 
   // Lat mot trang, va DEM no. Mot cho duy nhat dem, chu khong dem o ca ba trinh doc:
   // dem o ba noi thi mot dinh dang moi se im lang khong duoc dem.

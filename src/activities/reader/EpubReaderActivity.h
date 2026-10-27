@@ -606,6 +606,7 @@ class EpubReaderActivity final : public ReaderActivity {
   void render(RenderLock&& lock) override;
 
   bool latTrangThat(bool isForward) override;
+  void sauKhiLatTrang() override;
   bool skipPages(int amount) override;
   void turnBackPages(int pages) override;
   bool nhayChuongThat(int huong) override;
