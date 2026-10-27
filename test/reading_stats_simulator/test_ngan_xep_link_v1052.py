@@ -184,6 +184,19 @@ class NganXepLinkTest(unittest.TestCase):
         self.assertEqual(spines(log[opens[1]:])[:2], [1, 0], 'Back after the preview did not follow the link back')
         self.assertEqual(before[0], 2, 'links.bin keeps the current format version (LINK_STACK_FILE_VERSION)')
 
+    def test_a_page_turn_after_the_jump_drops_the_way_back(self):
+        # v1.1.1: the way back is on the card from an earlier open; reading on from the note gives it up, and Back
+        # leaves the book instead of jumping back to the link.
+        self.run_sim([*self.FOLLOW_AND_HOME, '17000:QUIT'])
+        self.assertEqual(len(self.links_files()), 1, 'the way back was not on the card before the reopen')
+        log = self.run_sim(['1000:CONFIRM', '5000:RIGHT', '9000:BACK', '14000:QUIT'])
+        reading = log[[m.start() for m in ENTER.finditer(log)][0]:]
+        self.assertIn('Loaded link stack, depth 1', reading, reading[-3000:])
+        self.assertEqual(spines(reading)[:2], [1, 1], f'reopen on the note, then a turn: {spines(reading)}')
+        self.assertNotIn('Restoring position', reading, 'Back jumped to the link after a page turn')
+        self.assertRegex(reading, EXIT, 'Back did not leave the book')
+        self.assertEqual(self.links_files(), [], 'the given-up way back is still on the card')
+
     def test_reading_without_a_link_leaves_no_file(self):
         log = self.run_sim(['1000:CONFIRM', '5000:RIGHT', '8000:BACK', '12000:QUIT'])
         self.assertNotIn('links.bin', log)
