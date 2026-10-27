@@ -362,6 +362,7 @@ struct ReaderActivity {
   readerstatus::Pace readingPace;
   ReaderSessionStub readerSession;
   virtual readerstatus::Pace::Position pacePosition() const { return {}; }
+  virtual void sauKhiLatTrang() {}
   int pendingExternalTurn = 0, requests = 0, trangDaLat = 0;
   uint32_t pendingExternalGeneration = 0;
   bool pendingTurnIsLocal = false, pendingExternalChapter = false, preview = false;

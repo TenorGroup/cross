@@ -57,7 +57,7 @@ struct FakeStats {uint32_t pages=0, records=0, habits=0;void record(uint32_t,uin
 struct ReaderActivity:Activity{
   readerstatus::Pace readingPace;
   virtual readerstatus::Pace::Position pacePosition() const { return {}; }
- virtual bool coversPage()const{return false;}bool preview=false;struct {void noteTurn(bool,bool){}}readerSession;struct {bool refreshBusy()const{return false;}}renderer;FakeInput mappedInput;uint16_t trangDaLat=0;int requests=0,goHome=0;
+ virtual bool coversPage()const{return false;}virtual void sauKhiLatTrang(){}bool preview=false;struct {void noteTurn(bool,bool){}}readerSession;struct {bool refreshBusy()const{return false;}}renderer;FakeInput mappedInput;uint16_t trangDaLat=0;int requests=0,goHome=0;
  std::atomic<bool>pageReady{true},leaving{false};std::unique_ptr<EndOfBookOptions>endOfBookOptions=std::make_unique<EndOfBookOptions>();std::atomic<bool>endOfBookOptionsReady{false};
  int8_t pendingExternalTurn=0;uint32_t pendingExternalGeneration=0;bool pendingTurnIsLocal=false,pendingExternalChapter=false;int backCalls=0,formatCalls=0,chapterSkips=0;std::string bookPath="fixture.txt";void finish(){}
  bool statsEnabled=true,statsActive=false,statsDirty=false;uint32_t statsLastMs=0,statsSavedMs=0,statsDay=1,statsDayPollMs=0;

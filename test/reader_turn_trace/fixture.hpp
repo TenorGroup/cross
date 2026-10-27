@@ -119,6 +119,7 @@ struct ReaderActivity {
   readerstatus::Pace readingPace;
   ReaderSessionStub readerSession;
   virtual readerstatus::Pace::Position pacePosition() const { return {}; }
+  virtual void sauKhiLatTrang() {}
   static constexpr int8_t MAX_QUEUED_TURNS = 8;
   int8_t pendingExternalTurn = 0;
   bool pendingTurnIsLocal = false;
