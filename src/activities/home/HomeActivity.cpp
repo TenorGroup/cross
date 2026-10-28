@@ -2913,13 +2913,9 @@ bool HomeActivity::homeGrayWanted() const {
 
 std::string HomeActivity::touchCoverPath(const std::string& cover, int width, int height) const {
   if (!homeInkEnabled()) return UITheme::getCoverThumbPath(cover, width, height);
-  const auto path = tenorink::cachePath(cover, width, height, homeGraySelected);
-  if (!homeGraySelected && !Storage.exists(path.c_str())) {
-    // An existing four-level thumbnail is dithered by the BW renderer during an upgrade.
-    const auto saved = tenorink::cachePath(cover, width, height, true);
-    if (Storage.exists(saved.c_str())) return saved;
-  }
-  return path;
+  // No stand-in for a missing 1 bit cover: the black and white renderer thresholds a 4-level one, and its dark
+  // grays come out solid black. The missing cover is made (wantThumb).
+  return tenorink::cachePath(cover, width, height, homeGraySelected);
 }
 
 void HomeActivity::clearHomeGray() {
