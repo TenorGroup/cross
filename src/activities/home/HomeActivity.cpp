@@ -3215,10 +3215,6 @@ bool HomeActivity::drawTouchCover(const HomeRecentRect& rect, const int index, c
     } else {
       settled = drawHolder(index, holder, rect.x, rect.y, rect.w, rect.h);
     }
-  } else if (tenorchrome::kTouchShell && homeInkEnabled() && !homeGraySelected &&
-             !Storage.exists(tenorink::cachePath(book.coverBmpPath, rect.w, rect.h, false).c_str())) {
-    // The four-level stand-in loses its grays in one bit: make the dithered one-bit cover.
-    queueTouchThumb(index, rect.w, rect.h);
   }
   homeCoverCorners(renderer, rect.x, rect.y, rect.w, rect.h);
   LOG_INF("HOME", "Home cover book=%d rect=%d,%d,%d,%d native=%u", index, rect.x, rect.y, rect.w, rect.h,
@@ -3544,7 +3540,7 @@ uint32_t HomeActivity::homeFrameKey(const HomeRecentLayout& f, const std::string
     const auto& r = slot.rect;
     book(slot.book);
     const auto& cover = recentBooks[slot.book].coverBmpPath;
-    // The path says which file is drawn (a 4 level stand-in or the 1 bit cover), the flag whether it is there.
+    // The path says which file is drawn (the 4 level or the 1 bit cover), the flag whether it is there.
     const std::string file = cover.empty() ? std::string() : touchCoverPath(cover, r.w, r.h);
     const int32_t place[] = {r.x, r.y, r.w, r.h, slot.book, slot.peek ? 1 : 0,
                              !file.empty() && Storage.exists(file.c_str()) ? 1 : 0,
