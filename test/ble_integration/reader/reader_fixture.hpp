@@ -28,13 +28,15 @@ struct RenderLock { struct TryTake{}; static inline bool busy=false; bool owns=f
  ~RenderLock(){if(owns)busy=false;}
  bool acquired()const{return owns;} static bool peek(){return busy;}
 };
-struct Activity {virtual ~Activity()=default;virtual bool isReaderActivity() const {return true;}};
+struct ReaderActivity;
+struct Activity {virtual ~Activity()=default;virtual bool isReaderActivity() const {return true;}virtual ReaderActivity* asReaderActivity(){return nullptr;}};
 enum class HomeMenuItem{NONE,RECENT_CONTINUE};
 enum class RemoteButton{None,Next,Previous,Confirm,Back};
 struct ActivityManager {void goHome(HomeMenuItem){}enum class PendingAction{None,Push};PendingAction pendingAction=PendingAction::None;
  std::shared_ptr<Activity>currentActivity;uint32_t generation=1;
  bool sleepTransition=false;bool exclusive=false,preventSleep=false;bool requiresExclusiveStorageLoop()const{return exclusive;}bool preventAutoSleep()const{return preventSleep;}bool isSleepTransition()const{return sleepTransition;}bool isForegroundReaderReady()const;bool isForegroundHomePainted()const{return false;}bool foregroundReaderHoldsRadio()const{return false;}bool foregroundReaderCoversPage()const;bool radioReady=true;int radioReadyAsks=0;bool yieldForegroundReaderForRadio(){radioReadyAsks++;radioSteps.emplace_back("ready");return radioReady;}void goToReader(const std::string&){}bool pageTurn(bool);bool chapterSkip(bool);bool remoteTurn(bool,bool){return false;}bool remoteClick(RemoteButton){return false;}uint32_t activityGeneration()const{return generation;}
  bool isForegroundReaderActivity()const{return pendingAction==PendingAction::None&&currentActivity&&currentActivity->isReaderActivity();}
+ ReaderActivity* foregroundReader()const;
 };
 ActivityManager activityManager;
 struct FakeInput{enum class Button{PageBack,PageForward,Left,Right,Back,Confirm};bool prev=false,next=false,back=false,confirm=false;bool released=false;int releasedButton=-1;bool wasAnyPressed()const{return prev||next||back||confirm;}bool wasReleased(Button button)const{if(button==Button::Back)return back;if(button==Button::Confirm)return confirm;return released&&(releasedButton<0||releasedButton==static_cast<int>(button));} unsigned long getHeldTime()const{return 0;}};
@@ -72,6 +74,7 @@ struct ReaderActivity:Activity{
  virtual bool manualPageTurnReady()const;
  virtual bool pageAwaitsLayout()const;
  bool isReaderActivity()const override{return !preview;}
+ ReaderActivity* asReaderActivity()override{return preview?nullptr:this;}
  bool isPageReady()const{return pageReady.load();}
  void requestUpdate(){requests++;}
  void onGoHome(){goHome++;}
@@ -87,8 +90,6 @@ struct ReaderActivity:Activity{
  mutable bleturner::LinkNote linkNoteDrawn=bleturner::LinkNote::None;mutable bool linkNoteInTitle=false;bool linkNoteTitle(std::string&)const;virtual void redrawLinkNote(){requestUpdate();}void onTick();
  virtual void loop();
 };
-bool ActivityManager::isForegroundReaderReady()const{return isForegroundReaderActivity()&&static_cast<ReaderActivity*>(currentActivity.get())->isPageReady();}
-bool ActivityManager::foregroundReaderCoversPage()const{return isForegroundReaderActivity()&&static_cast<ReaderActivity*>(currentActivity.get())->coversPage();}
 #if !NEW_PIPELINE
 bool ReaderActivity::externalPageTurnAllowed()const{return true;}
 bool ReaderActivity::manualPageTurnReady()const{return true;}

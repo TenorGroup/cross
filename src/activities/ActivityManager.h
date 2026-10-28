@@ -20,6 +20,7 @@
 #include "util/WakePlace.h"
 
 class Activity;    // forward declaration
+class ReaderActivity;
 namespace tenorchrome {
 enum class Zone : uint8_t;
 }
@@ -198,6 +199,7 @@ class ActivityManager {
   bool isForegroundReaderActivity() const;
   bool isForegroundActivityManagingTiltSensor() const;
   bool isForegroundReaderReady() const;
+  ReaderActivity* foregroundReader() const;
   // Home is in front and has painted a frame of its own (not one left from the screen before).
   bool isForegroundHomePainted() const;
   bool foregroundReaderHoldsRadio() const;

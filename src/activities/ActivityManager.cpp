@@ -1092,8 +1092,12 @@ bool ActivityManager::isForegroundActivityManagingTiltSensor() const {
   return pendingAction == PendingAction::None && currentActivity && currentActivity->managesTiltSensor();
 }
 
+ReaderActivity* ActivityManager::foregroundReader() const {
+  return pendingAction == PendingAction::None && currentActivity ? currentActivity->asReaderActivity() : nullptr;
+}
+
 bool ActivityManager::isForegroundReaderReady() const {
-  return isForegroundReaderActivity() && static_cast<ReaderActivity*>(currentActivity.get())->isPageReady();
+  return foregroundReader() && foregroundReader()->isPageReady();
 }
 
 bool ActivityManager::isForegroundHomePainted() const {
@@ -1102,30 +1106,30 @@ bool ActivityManager::isForegroundHomePainted() const {
 }
 
 bool ActivityManager::foregroundReaderHoldsRadio() const {
-  return isForegroundReaderActivity() && static_cast<ReaderActivity*>(currentActivity.get())->holdsRadio();
+  return foregroundReader() && foregroundReader()->holdsRadio();
 }
 
 bool ActivityManager::foregroundReaderCoversPage() const {
-  return isForegroundReaderActivity() && static_cast<ReaderActivity*>(currentActivity.get())->coversPage();
+  return foregroundReader() && foregroundReader()->coversPage();
 }
 
 bool ActivityManager::yieldForegroundReaderForRadio() {
-  return !isForegroundReaderActivity() || static_cast<ReaderActivity*>(currentActivity.get())->yieldForRadio();
+  return !foregroundReader() || foregroundReader()->yieldForRadio();
 }
 
 bool ActivityManager::pageTurn(const bool forward) {
   if (!isForegroundReaderReady() || sleepTransition) return false;
-  return static_cast<ReaderActivity*>(currentActivity.get())->luotLatTrangNgoai(forward);
+  return foregroundReader()->luotLatTrangNgoai(forward);
 }
 
 bool ActivityManager::chapterSkip(const bool forward) {
   if (!isForegroundReaderReady() || sleepTransition) return false;
-  return static_cast<ReaderActivity*>(currentActivity.get())->luotNhayChuongNgoai(forward);
+  return foregroundReader()->luotNhayChuongNgoai(forward);
 }
 
 bool ActivityManager::readerShortcut(const ReaderShortcut shortcut) {
   if (!isForegroundReaderReady() || sleepTransition) return false;
-  return static_cast<ReaderActivity*>(currentActivity.get())->requestShortcut(shortcut);
+  return foregroundReader()->requestShortcut(shortcut);
 }
 
 bool ActivityManager::isForegroundReader() const {
@@ -1142,8 +1146,8 @@ bool ActivityManager::remoteClick(const RemoteButton button) {
 }
 
 bool ActivityManager::remoteShortcut(const bool readerMenu) {
-  if (!isForegroundReader()) return false;
-  auto* reader = static_cast<ReaderActivity*>(currentActivity.get());
+  auto* reader = foregroundReader();
+  if (!reader) return false;
   if (!remoteTurnAccepted(reader->pageRendered.load(std::memory_order_acquire), RenderLock::peek(),
                           reader->inputOverPage())) {
     return false;
@@ -1153,7 +1157,7 @@ bool ActivityManager::remoteShortcut(const bool readerMenu) {
 
 bool ActivityManager::remoteTurn(const bool forward, const bool chapter) {
   if (!isRemoteReaderContext() || mappedInput.hasRemoteClick()) return false;
-  auto* reader = isForegroundReader() ? static_cast<ReaderActivity*>(currentActivity.get()) : nullptr;
+  auto* reader = foregroundReader();
   if (!reader || reader->inputOverPage()) {
     return !chapter && remoteClick(forward ? RemoteButton::Next : RemoteButton::Previous);
   }

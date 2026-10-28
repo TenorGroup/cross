@@ -1962,7 +1962,7 @@ void loop() {
     bleturner::Scene scene{};
     // A sheet over the page (the reader menu) puts the book out of front: the radio stopped before
     // the sheet was drawn (EpubReaderActivity::stopRadioForSheet) and starts again on the page.
-    const bool bookInFront = activityManager.isForegroundReaderActivity() && !activityManager.foregroundReaderCoversPage();
+    const bool bookInFront = activityManager.foregroundReader() && !activityManager.foregroundReaderCoversPage();
     const bool homeInFront = !bookInFront && activityManager.isForegroundHomePainted();
     scene.where = bookInFront ? bleturner::Where::Reader
                               : (homeInFront ? bleturner::Where::Home : bleturner::Where::Elsewhere);

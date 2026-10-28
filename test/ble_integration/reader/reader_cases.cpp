@@ -45,6 +45,14 @@ int main(){
  require(page(*r)==2,"a press queued while the book opened was thrown away");
  });
  formatTests<XtcReaderActivity>("XTC");formatTests<EpubReaderActivity>("EPUB");
+ test("BLE a screen that stands in for the reader (clip selection) is never treated as the book",[]{
+ struct StandIn:Activity{bool isReaderActivity()const override{return true;}};  // ClipSelectionActivity, IntervalSelectionActivity
+ activityManager.currentActivity=std::make_shared<StandIn>();
+ require(!activityManager.foregroundReader(),"a stand-in screen passed as ReaderActivity");
+ require(!activityManager.isForegroundReaderReady()&&!activityManager.foregroundReaderCoversPage(),"a stand-in screen read as a book page");
+ require(!activityManager.pageTurn(true),"a page turn reached a stand-in screen");
+ MainPump p; p.pump();
+ });
  test("EPUB chapter forward holds one nonrecursive lock",[]{auto r=reader<EpubReaderActivity>();r->section->currentPage=3;activityManager.pageTurn(true);r->loop();require(r->currentSpineIndex==1&&!r->section&&r->requests==1&&r->trangDaLat==1,"chapter forward has wrong model/repaint/stats");});
  test("EPUB chapter previous holds one nonrecursive lock",[]{auto r=reader<EpubReaderActivity>();r->section->currentPage=0;r->currentSpineIndex=1;activityManager.pageTurn(false);r->loop();require(r->currentSpineIndex==0&&!r->section&&r->pendingPageJump==65535&&r->requests==1&&r->trangDaLat==1,"chapter previous has wrong model/repaint/stats");});
  test("EPUB 200 ms manual guard defers",[]{auto r=reader<EpubReaderActivity>();r->lastPageTurnTime=900;activityManager.pageTurn(true);r->loop();require(page(*r)==1,"remote bypassed 200 ms guard");nowMs=1100;r->loop();require(page(*r)==2&&r->requests==1&&r->trangDaLat==1,"guard expiry did not drain once");});

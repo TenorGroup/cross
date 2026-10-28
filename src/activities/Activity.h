@@ -11,6 +11,8 @@
 #include "ActivityResult.h"
 #include "components/X3NavigationPath.h"
 #include "GfxRenderer.h"
+
+class ReaderActivity;
 #include "MappedInputManager.h"
 #include "MenuNavigationMemory.h"
 #include "RenderLock.h"
@@ -77,6 +79,9 @@ class Activity {
   // transitions so no filesystem code races a raw SD-card owner.
   virtual bool requiresExclusiveStorageLoop() const { return false; }
   virtual bool isReaderActivity() const { return false; }
+  // The book reader itself, or nullptr. isReaderActivity() is also true for screens that stand in for the
+  // reader (clip and interval selection), which are not ReaderActivity: cast only through this.
+  virtual ReaderActivity* asReaderActivity() { return nullptr; }
   // True when this activity calls HalTiltSensor::update() from its own loop.
   virtual bool managesTiltSensor() const { return false; }
   virtual bool acceptsRemoteInput() const { return false; }

@@ -15,7 +15,7 @@ def read(p):
     return (root / p).read_text()
 
 def function(text, name):
-    match = re.search('^\\s*(?:virtual\\s+|static\\s+)?(?:bool|void)\\s+' + re.escape(name) + '\\(', text, re.M)
+    match = re.search('^\\s*(?:virtual\\s+|static\\s+)?(?:bool|void|ReaderActivity\\s*\\*)\\s*' + re.escape(name) + '\\(', text, re.M)
     assert match, name
     pos = match.start()
     start = text.rfind('\n', 0, pos) + 1
@@ -82,6 +82,8 @@ for fmt in ['Xtc', 'Epub']:
             if 'EpubReaderActivity::' + n + '(' in text:
                 functions.append(function(text, 'EpubReaderActivity::' + n))
 functions.append(function(read('src/activities/ActivityManager.cpp'), 'ActivityManager::pageTurn'))
+for n in ['foregroundReader', 'isForegroundReaderReady', 'foregroundReaderCoversPage']:
+    functions.append(function(read('src/activities/ActivityManager.cpp'), 'ActivityManager::' + n))
 manager = read('src/activities/ActivityManager.cpp')
 if 'ActivityManager::chapterSkip(' in manager:
     functions.append(function(manager, 'ActivityManager::chapterSkip'))
