@@ -63,6 +63,7 @@ struct Manager {
   struct Current { ReaderActivity* value=nullptr; ReaderActivity* get() const { return value; } } currentActivity;
   bool sleepTransition=false;
   bool isForegroundReaderReady() const { return currentActivity.get() != nullptr; }
+  ReaderActivity* foregroundReader() const { return currentActivity.get(); }
   bool pageTurn(bool);
   bool chapterSkip(bool) { throw std::runtime_error("unexpected chapter turn"); }
   // A menu or overlay in front takes the remote's button as a click; none stands in front here.
