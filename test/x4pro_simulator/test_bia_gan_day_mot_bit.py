@@ -95,12 +95,15 @@ def main():
 
         shot = Path(tmp) / 'home.bmp'
         second = run(sd, '9000:QUIT', f'8000:{shot}')
+        assert FRAME.findall(second)[-1:] == [(str(x), str(y), str(w), str(h))], 'run 2 laid the card out elsewhere'
         with Image.open(shot) as image:
             box = image.convert('L').crop((x + 12, y + 12, x + w - 12, y + h - 12))
             black = sum(1 for p in box.getdata() if p < 128) / (box.width * box.height)
         print(f'cover {w}x{h} black={black:.2f}')
         assert (cache / f'ink2_1_{w}x{h}.bmp').exists(), 'Home did not make the 1 bit cover\n' + second[-2000:]
         assert black < 0.8, f'the cover is solid black ({black:.2f}): the 4-level file was drawn in black and white'
+        # A mid gray source dithers to about half black; an empty frame or ring is near 0.
+        assert black > 0.3, f'no cover in the frame ({black:.2f}): the 1 bit cover was made but not drawn'
         print('GREEN: the Recent cover is the 1 bit tenor/ink one')
 
 
