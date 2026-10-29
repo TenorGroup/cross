@@ -7,6 +7,7 @@
 #include <esp_timer.h>
 
 #include <atomic>
+#include <cstdio>
 
 #include "RadioPort.h"
 #include "freertos/FreeRTOS.h"
@@ -45,8 +46,9 @@ bool running() { return hid().isRunning(); }
 bool stopping() { return hid().isStopping(); }
 bool connected() { return hid().isConnected(); }
 bool connecting() { return hid().isConnecting(); }
-// The SDK reports no advertisement count: a connection attempt in flight is the only activity.
-ConnectionActivity connectionActivity() { return {hid().isConnecting(), 0}; }
+// The SDK reports no advertisement count. A connection attempt in flight or the scan for a bonded
+// remote (bounded by the SDK's 120 s window) is activity.
+ConnectionActivity connectionActivity() { return {hid().isConnecting() || hid().isScanning(), 0}; }
 bool scanning() { return hid().isScanning(); }
 void poll() { hid().poll(); }
 
@@ -73,10 +75,9 @@ bool popKey(KeyPress& out) {
   return true;
 }
 
-// The SDK reconnects one selected remote, so the pick policy cannot ask for "the first bonded
-// remote to come up": the chosen remote is armed, and nothing when none is chosen.
-bool armBondedReconnect(uint8_t, const char* priorityAddr) {
-  return priorityAddr != nullptr && priorityAddr[0] != '\0' && hid().armSelectedPeerReconnect(priorityAddr);
+bool armBondedReconnect(const uint8_t policy, const char* priorityAddr) {
+  return hid().armBondedReconnect(policy == 1 ? freeink::PickPolicy::First : freeink::PickPolicy::Priority,
+                                  priorityAddr);
 }
 Peer linked() { return peerOf(hid().connectedAddr(), hid().connectedName()); }
 
@@ -93,6 +94,13 @@ void disconnect() { hid().disconnect(); }
 void forget(const char* addr) { hid().forget(addr); }
 bool takeConnectFailure(char* out, const size_t outLen) { return hid().takeConnectFailure(out, outLen); }
 uint8_t bondCount() { return hid().pairedCount(); }
+bool firstSavedBond(char* addr, const size_t addrLen, char* name, const size_t nameLen) {
+  freeink::PairedHidDevice saved;
+  if (!hid().firstSavedBond(saved)) return false;
+  snprintf(addr, addrLen, "%s", saved.addr);
+  snprintf(name, nameLen, "%s", saved.name);
+  return true;
+}
 Peer bond(const uint8_t index) { return peerOf(hid().paired(index).addr, hid().paired(index).name); }
 uint8_t foundCount() { return hid().deviceCount(); }
 Peer found(const uint8_t index) { return peerOf(hid().device(index).addr, hid().device(index).name); }

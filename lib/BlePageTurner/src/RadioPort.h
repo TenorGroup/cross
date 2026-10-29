@@ -60,6 +60,8 @@ void disconnect();
 void forget(const char* addr);
 bool takeConnectFailure(char* out, size_t outLen);
 uint8_t bondCount();
+// The first remote the SDK saved, read while the radio is off. False when none.
+bool firstSavedBond(char* addr, size_t addrLen, char* name, size_t nameLen);
 Peer bond(uint8_t index);
 uint8_t foundCount();
 Peer found(uint8_t index);

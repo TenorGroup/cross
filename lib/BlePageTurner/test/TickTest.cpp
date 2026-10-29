@@ -471,6 +471,67 @@ TEST_F(TickTest, PairedRemoteBecomesTheChosenOneOnceItLinks) {
   EXPECT_FALSE(bleturner::service()) << "saved once";
 }
 
+// No remote is chosen (the chosen one was forgotten, or the bond predates the choice), so the book
+// keeps the radio off. A bonded remote that links on the settings screen becomes the chosen one.
+TEST_F(TickTest, ABondedRemoteThatLinksBecomesTheChoiceWhenNoneIsChosen) {
+  config.peerAddr[0] = '\0';
+  radio().bonds = {"11:22:33:44:55:66"};
+  radio().connected = true;
+  radio().addr = "11:22:33:44:55:66";
+  radio().name = "Remote B";
+  EXPECT_TRUE(bleturner::service()) << "the host saves the new choice";
+  EXPECT_STREQ(config.peerAddr, "11:22:33:44:55:66");
+  EXPECT_STREQ(config.peerName, "Remote B");
+  EXPECT_FALSE(bleturner::service()) << "saved once";
+}
+
+// A bond saved with no remote chosen would keep the book's radio off: begin() takes the first saved
+// remote as the choice.
+TEST_F(TickTest, BeginTakesTheFirstSavedRemoteWhenNoneIsChosen) {
+  config.peerAddr[0] = '\0';
+  radio().bonds = {"11:22:33:44:55:66", "7d:de:5c:bd:ae:ca"};
+  bleturner::begin(fake::hostFns(), config);
+  EXPECT_STREQ(config.peerAddr, "11:22:33:44:55:66");
+
+  config.peerAddr[0] = '\0';
+  radio().bonds.clear();
+  bleturner::begin(fake::hostFns(), config);
+  EXPECT_STREQ(config.peerAddr, "") << "nothing saved";
+
+  strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  radio().bonds = {"11:22:33:44:55:66", "7d:de:5c:bd:ae:ca"};
+  bleturner::begin(fake::hostFns(), config);
+  EXPECT_STREQ(config.peerAddr, "7d:de:5c:bd:ae:ca") << "a chosen remote stays";
+}
+
+// A failed pairing of another remote is still pending: a bonded remote that links still becomes the
+// choice when none is chosen.
+TEST_F(TickTest, APendingPairingDoesNotBlockTheChoiceOfALinkedBond) {
+  config.peerAddr[0] = '\0';
+  radio().bonds = {"7d:de:5c:bd:ae:ca"};
+  EXPECT_TRUE(bleturner::pair("11:22:33:44:55:66", "Remote B"));
+  radio().connected = true;
+  radio().addr = "7d:de:5c:bd:ae:ca";
+  radio().name = "Remote A";
+  EXPECT_TRUE(bleturner::service());
+  EXPECT_STREQ(config.peerAddr, "7d:de:5c:bd:ae:ca");
+}
+
+TEST_F(TickTest, ALinkedRemoteDoesNotReplaceTheChoiceOrBecomeOneUnbonded) {
+  config.peerAddr[0] = '\0';
+  radio().bonds.clear();
+  radio().connected = true;
+  radio().addr = "11:22:33:44:55:66";
+  EXPECT_FALSE(bleturner::service()) << "not bonded";
+  radio().bonds = {"7d:de:5c:bd:ae:ca"};
+  EXPECT_FALSE(bleturner::service()) << "another remote is bonded, not this one";
+  EXPECT_STREQ(config.peerAddr, "");
+  strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  radio().bonds = {"7d:de:5c:bd:ae:ca", "11:22:33:44:55:66"};
+  EXPECT_FALSE(bleturner::service()) << "a remote is already chosen";
+  EXPECT_STREQ(config.peerAddr, "7d:de:5c:bd:ae:ca");
+}
+
 // v1.0.50 saved the choice before a pairing completed. A choice left on a remote that never bonded
 // cannot link again: the bonded remote that does link turns pages instead of being dropped.
 TEST_F(TickTest, AChoiceThatIsNotBondedDoesNotBlockTheLinkedRemote) {

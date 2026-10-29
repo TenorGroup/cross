@@ -143,6 +143,12 @@ void disconnect() { theRadio.connected = false; }
 void forget(const char* addr) { theRadio.forgotten.emplace_back(addr); }
 bool takeConnectFailure(char*, size_t) { return false; }
 uint8_t bondCount() { return static_cast<uint8_t>(theRadio.bonds.size()); }
+bool firstSavedBond(char* addr, const size_t addrLen, char* name, const size_t nameLen) {
+  if (theRadio.bonds.empty()) return false;
+  snprintf(addr, addrLen, "%s", theRadio.bonds[0].c_str());
+  snprintf(name, nameLen, "%s", "");
+  return true;
+}
 Peer bond(const uint8_t index) { return {theRadio.bonds[index].c_str(), ""}; }
 uint8_t foundCount() { return 0; }
 Peer found(uint8_t) { return {"", ""}; }

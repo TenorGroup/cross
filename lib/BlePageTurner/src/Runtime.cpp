@@ -394,6 +394,8 @@ void resetForTests() {
 void begin(const Host& h, Config& c) {
   host = &h;
   config = &c;
+  // With no remote chosen the book keeps the radio off (NoBond): a remote the SDK saved becomes the choice.
+  if (c.peerAddr[0] == '\0') port::firstSavedBond(c.peerAddr, sizeof(c.peerAddr), c.peerName, sizeof(c.peerName));
 }
 
 void requestConnect() { connectRequested = true; }
@@ -656,14 +658,24 @@ bool switchOff() {
 
 bool service() {
   port::poll();
-  if (pairing.addr[0] == '\0' || !port::connected() ||
-      strncmp(port::linked().addr, pairing.addr, sizeof(pairing.addr)) != 0) {
-    return false;
+  if (!port::connected()) return false;
+  const Peer peer = port::linked();
+  if (pairing.addr[0] != '\0' && strncmp(peer.addr, pairing.addr, sizeof(pairing.addr)) == 0) {
+    memcpy(config->peerAddr, pairing.addr, sizeof(config->peerAddr));
+    memcpy(config->peerName, pairing.name, sizeof(config->peerName));
+    pairing = Pairing{};
+    return true;
   }
-  memcpy(config->peerAddr, pairing.addr, sizeof(config->peerAddr));
-  memcpy(config->peerName, pairing.name, sizeof(config->peerName));
-  pairing = Pairing{};
-  return true;
+  // With no remote chosen the book keeps the radio off (NoBond): a bonded remote that links while none
+  // is chosen becomes the choice.
+  if (config->peerAddr[0] != '\0') return false;
+  for (uint8_t i = 0; i < port::bondCount(); ++i) {
+    if (strncmp(port::bond(i).addr, peer.addr, sizeof(config->peerAddr)) != 0) continue;
+    strncpy(config->peerAddr, peer.addr, sizeof(config->peerAddr) - 1);
+    strncpy(config->peerName, peer.name, sizeof(config->peerName) - 1);
+    return true;
+  }
+  return false;
 }
 
 void scan(const uint32_t durationMs) { port::scan(durationMs); }

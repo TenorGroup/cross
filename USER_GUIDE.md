@@ -699,7 +699,7 @@ Available options include:
 - **Select Chapter** – Open the table of contents to jump to a specific chapter (see [Chapter Selection](#51-chapter-selection) below).
 - **Links and Footnotes** – Select an internal link on the current page. This option appears when the page contains links.
 - **Look Up** – Select a word on the current page and show its dictionary definition (see [docs/dictionary.md](docs/dictionary.md)). Requires a dictionary to be selected in **Settings → Reader → Dictionary**.
-- **Bluetooth Page Turner** – Toggle Bluetooth for the saved remote. This entry appears after pairing a remote in **Settings → Connectivity → Bluetooth Page Turner** and disappears if that selected remote is forgotten.
+- **Bluetooth Page Turner** – Toggle Bluetooth for your paired remotes. This entry appears after pairing a remote in **Settings → Connectivity → Bluetooth Page Turner**.
 - **Create Clipping** – Select a range of text on the current page and save it as a highlighted clipping.
 - **View Clippings** – Open this book's saved clippings *(shown after the first clipping is saved)*.
 - **Reading Orientation** – Cycle through screen orientations without leaving the reader.

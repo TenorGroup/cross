@@ -28,6 +28,7 @@ void disconnect() {}
 void forget(const char*) {}
 bool takeConnectFailure(char*, size_t) { return false; }
 uint8_t bondCount() { return 0; }
+bool firstSavedBond(char*, size_t, char*, size_t) { return false; }
 Peer bond(uint8_t) { return {"", ""}; }
 uint8_t foundCount() { return 0; }
 Peer found(uint8_t) { return {"", ""}; }
